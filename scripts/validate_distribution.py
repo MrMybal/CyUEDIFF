@@ -50,10 +50,13 @@ if desktop.is_file():
  subprocess.run([str(desktop),'--smoke','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  saved_workspace=json.loads(workspace_file.read_text(encoding='utf-8'))
  assert saved_workspace['schema']=='cyuediff.workspace/2' and len(saved_workspace['documents'])==1
+ saved_workspace['documents'][0]['viewState']={'asset':{'filter':'installed pending state'}}
+ workspace_file.write_text(json.dumps(saved_workspace),encoding='utf-8')
  original_workspace=workspace_file.read_bytes()
  subprocess.run([str(desktop),'--smoke','--workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  restored=json.loads(workspace_report.read_text(encoding='utf-8'))
  assert restored['workspaceFile']['loaded'] and restored['document'] is None and workspace_file.read_bytes()==original_workspace
+ assert restored['workspaceFile']['context']['documents'][0]['viewState']==saved_workspace['documents'][0]['viewState']
  print('Extracted desktop workspace save/reopen validated')
  if not (prefix/'share/CyUEDiff/licenses/CyUI/LICENSE').is_file():raise RuntimeError('Missing CyUI license')
 if args.consumer:

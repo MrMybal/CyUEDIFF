@@ -42,6 +42,64 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
     checks+=1
     copy=root/'copy.json';run('--workspace',workspace,'--save-workspace',copy)
     assert json.loads(copy.read_text(encoding='utf-8'))==saved;checks+=1
+    # State must survive a process restart and lazy, still-undisplayed documents.
+    zen_displayed=run('--workspace',workspace,'--document-index','2')
+    zen_state=zen_displayed['workspace']['documents'][2]['viewState']['container']
+    configured=json.loads(workspace.read_text(encoding='utf-8'));configured['active']=0;configured['documents'][0]['view']='properties'
+    configured['documents'][0]['viewState']={'asset':{'filter':'TestAsset','selected':'TestAsset','rawProperties':False,
+        'before':{'properties':{'TestAsset':{'filter':'Value','selected':'/properties/Value','changedOnly':True}}},
+        'comparison':{'query':'Value','split':False,'scroll':0}}}
+    configured['documents'][1]['viewState']={'container':{'filter':'B.bin','member':'Content/B.bin','changedOnly':False,'packagesOnly':False}}
+    configured['documents'][2]['viewState']={'container':zen_state}
+    zen_state['objectFilter']='Example';zen_state['propertyMode']=True
+    zen_state['values']={'filter':'Health','selected':'/DemoAsset.Health','changedOnly':False}
+    configured_file=root/'configured.json';configured_file.write_text(json.dumps(configured),encoding='utf-8')
+    loaded=run('--workspace',configured_file)
+    documents=loaded['workspace']['documents'];asset_state=documents[0]['viewState']['asset']
+    assert asset_state['filter']=='TestAsset' and asset_state['selected']=='TestAsset' and asset_state['comparison']['split'] is False
+    assert asset_state['before']['properties']['TestAsset']['selected']=='/properties/Value'
+    assert documents[1]['viewState']==configured['documents'][1]['viewState'] and documents[2]['viewState']==configured['documents'][2]['viewState']
+    checks+=1
+    pending_file=root/'pending.json';run('--workspace',configured_file,'--save-workspace',pending_file)
+    pending=json.loads(pending_file.read_text(encoding='utf-8'))
+    assert pending['documents'][1]['viewState']==configured['documents'][1]['viewState'] and pending['documents'][2]['viewState']==configured['documents'][2]['viewState'];checks+=1
+    selected_pak=run('--workspace',configured_file,'--document-index','1')
+    assert selected_pak['containerView']['selectedMember']=='Content/B.bin' and selected_pak['containerView']['visibleMembers']==1
+    assert selected_pak['document']==original['workspace']['documents'][1]['document'] # Highlighting does not inspect another member.
+    checks+=1
+    selected_zen=run('--workspace',configured_file,'--document-index','2')
+    actual=selected_zen['workspace']['documents'][2]['viewState']['container']
+    assert actual['values']['filter']=='Health' and actual['values']['selected']=='/DemoAsset.Health' and actual['object']==zen_state['object']
+    assert selected_zen['containerView']['objectProperties']['mode']=='properties';checks+=1
+    via_views=root/'views-actions.json'
+    view_action='view-state:'+json.dumps({'asset':{'rawProperties':True}},separators=(',',':'))
+    visited=run('--workspace',configured_file,*actions(view_action,'select:1','select:2','select:0','workspace-save:'+str(via_views)))
+    assert all(d['revision']==1 for d in visited['workspace']['documents']) and visited['workspace']['documents'][0]['viewState']['asset']['rawProperties']
+    checks+=1
+    reloaded_views=run('--workspace',via_views)
+    assert reloaded_views['workspace']['documents'][0]['viewState']==visited['workspace']['documents'][0]['viewState'];checks+=1
+    legacy=json.loads(workspace.read_text(encoding='utf-8'));legacy['schema']='cyuediff.workspace/1'
+    for d in legacy['documents']:d.pop('viewState')
+    legacy_file=root/'legacy.json';legacy_file.write_text(json.dumps(legacy),encoding='utf-8')
+    upgraded=root/'upgraded.json';run('--workspace',legacy_file,'--save-workspace',upgraded)
+    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/2';checks+=1
+    invalid_state=json.loads(configured_file.read_text(encoding='utf-8'))
+    invalid_state['documents'][0]['viewState']['asset']['before']['mesh']={'distance':-1}
+    invalid_file=root/'invalid-state.json';invalid_file.write_text(json.dumps(invalid_state),encoding='utf-8')
+    failed_state=run('--workspace',configured_file,*actions('workspace-open:'+str(invalid_file)),code=2)
+    assert failed_state['workspace']['documents'][0]['viewState']==loaded['workspace']['documents'][0]['viewState'] and len(failed_state['workspace']['documents'])==3;checks+=1
+    invalid_action='view-state:'+json.dumps({'asset':{'filter':'changed-before-error','before':{'mesh':{'distance':-1}}}},separators=(',',':'))
+    failed_action=run('--workspace',configured_file,*actions(invalid_action),code=2)
+    assert failed_action['workspace']['documents'][0]['viewState']==loaded['workspace']['documents'][0]['viewState'];checks+=1
+    stale=json.loads(configured_file.read_text(encoding='utf-8'));stale['active']=2
+    stale['documents'][2]['viewState']['container']['object']='object-no-longer-present'
+    stale_file=root/'stale.json';stale_file.write_text(json.dumps(stale),encoding='utf-8')
+    stale_result=run('--workspace',stale_file)
+    assert stale_result['containerView']['selectedObject']==-1 and not stale_result['containerView']['objectProperties']['available'];checks+=1
+    original_asset=before.read_bytes();before.unlink()
+    unavailable_file=root/'unavailable.json';unavailable=run('--workspace',configured_file,'--save-workspace',unavailable_file,code=2)
+    before.write_bytes(original_asset)
+    assert unavailable['workspace']['documents'][0]['viewState']==configured['documents'][0]['viewState'] and json.loads(unavailable_file.read_text(encoding='utf-8'))['documents'][0]['viewState']==configured['documents'][0]['viewState'];checks+=1
     first=before.read_bytes();before.write_bytes(after.read_bytes())
     reread=run('--workspace',workspace,'--document-index','0')
     assert reread['document']['diff']['status']=='identical';checks+=1

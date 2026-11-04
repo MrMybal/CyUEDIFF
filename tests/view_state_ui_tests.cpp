@@ -94,6 +94,25 @@ int main() {
         check(removed_view.view_state()["propertiesAfter"] == false &&
                   removed_view.view_state()["textureAfter"] == false,
               "Absent after side never becomes active");
+        auto asymmetric_before = std::make_shared<Package>(*package);
+        TextureSource first_texture;
+        first_texture.object_path = "First";
+        first_texture.width = 2;
+        first_texture.height = 1;
+        auto second_texture = first_texture;
+        second_texture.object_path = "Second";
+        asymmetric_before->textures = {first_texture, second_texture};
+        auto asymmetric_after = std::make_shared<Package>(*asymmetric_before);
+        asymmetric_after->exports.resize(1);
+        asymmetric_after->textures.resize(1);
+        AssetView asymmetric;
+        asymmetric.set_packages(asymmetric_before, asymmetric_after);
+        asymmetric.restore_view_state({{"selected", "B"}, {"textureSelected", "Second"}});
+        asymmetric.restore_view_state({{"propertiesAfter", true}, {"textureAfter", true}});
+        check(asymmetric.view_state()["selected"] == "A",
+              "Partial side restore clamps a selection beyond the peer export count");
+        check(asymmetric.view_state()["textureSelected"] == "First",
+              "Partial texture side restore clamps a selection beyond the peer source count");
         TextureSource source;
         source.object_path = "Texture";
         source.width = 2;

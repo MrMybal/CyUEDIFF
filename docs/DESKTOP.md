@@ -1,4 +1,4 @@
-# Desktop application — 0.37
+# Desktop application — 0.40
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -212,4 +212,4 @@ cyuediff_desktop.exe --smoke --report workspace.json --document-action duplicate
 
 **File → Open workspace...** (`Ctrl+Alt+O`), **Save workspace** (`Ctrl+S`) and **Save workspace as...** (`Ctrl+Shift+S`) manage explicit JSON workspace files. The files restore document order, active tab, source/project/engine/schema contexts, Git revision expressions, preview options and initial asset/container views. Current files are read again through the shared queue. An invalid import leaves the open documents intact. Workspace replacement clears closed-tab history and cancels previous work.
 
-Launch with `--workspace Review.json`; do not combine it with source arguments or `--new-document`. `--document-index` and preview flags can override saved choices. `--smoke --save-workspace Review.json` records a workspace through the hidden validation host. Workspace data cannot select/load codec modules, and no automatic workspace/profile restoration is enabled. Filters, selected rows and canvas state are retained only while the tabs stay open. Format, limits, path rules and command examples are documented in [workspace files](WORKSPACES.md).
+Launch with `--workspace Review.json`; do not combine it with source arguments or `--new-document`. `--document-index` and preview flags can override saved choices. `--smoke --save-workspace Review.json` records a workspace through the hidden validation host. Workspace data cannot select/load codec modules, and no automatic workspace/profile restoration is enabled. Version-two workspace files additionally record supported inspector/container filters and identity-based selections, graph/image transforms and the mesh camera. General panel layout and active gestures are not persisted. Format, limits, path rules and command examples are documented in [workspace files](WORKSPACES.md).

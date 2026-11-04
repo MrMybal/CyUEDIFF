@@ -32,6 +32,7 @@ struct Options {
     bool smoke = false, help = false, browse = false;
     fs::path capture, report, preferences, workspace_input, workspace_output;
     bool document_parameters = false;
+    Json view_state = Json::object();
     bool no_preferences = false, save_preferences = false, preference_write = false;
     bool theme_override = false, locale_override = false, previews_override = false, engine_override = false;
     std::string preferences_diagnostic;
@@ -378,6 +379,7 @@ Options workspace_options(Options options, const WorkspaceFile &file) {
         entry.view = doc.view;
         entry.container_tab = doc.container_tab;
         entry.cooked_view = doc.cooked_view;
+        entry.view_state = doc.view_state;
     };
     options.additional_documents.clear();
     apply(options, file.documents.front());
@@ -715,6 +717,7 @@ struct DocumentContext {
     std::string cooked_view;
 };
 struct DocumentPresentation : DocumentContext {
+    Json pending_view_state = Json::object();
     std::shared_ptr<const Document> displayed;
     AssetView view;
     ContainerView container_view;
@@ -774,6 +777,7 @@ class Shell {
             state->initial_tab = tab(entry.view);
             state->container_tab = entry.container_tab;
             state->cooked_view = entry.cooked_view;
+            state->pending_view_state = entry.view_state;
             state->container_view.set_filter(entry.container_filter);
             state->container_view.set_changed_only(entry.container_changes_only);
             presentations_[id] = std::move(state);
@@ -976,6 +980,28 @@ class Shell {
             presentations_[empty] = std::move(state);
         }
     }
+    Json presentation_state(const DocumentPresentation &p) const {
+        if (!p.displayed)
+            return p.pending_view_state;
+        return p.displayed->container ? Json{{"container", p.container_view.view_state()}}
+                                      : Json{{"asset", p.view.view_state()}};
+    }
+    void apply_presentation_state(const Json &state) {
+        cyuediff::view_state::validate(state);
+        if (!current().displayed)
+            throw Error("desktop-document", "No displayed document view");
+        if (current().displayed->container) {
+            if (state.contains("container"))
+                current().container_view.restore_view_state(state["container"]);
+        } else if (state.contains("asset"))
+            current().view.restore_view_state(state["asset"]);
+    }
+    void apply_pending_state() {
+        if (!current().pending_view_state.empty()) {
+            apply_presentation_state(current().pending_view_state);
+            current().pending_view_state = Json::object();
+        }
+    }
     WorkspaceFile saved_workspace() const {
         WorkspaceFile result;
         result.documents.clear();
@@ -984,6 +1010,7 @@ class Shell {
             const auto &p = *presentations_.at(entry.id);
             SavedDocument d;
             d.settings = p.settings;
+            d.view_state = presentation_state(p);
             d.view = views[static_cast<int>(p.displayed ? p.view.active_tab() : p.initial_tab)];
             d.container_tab =
                 p.displayed && p.displayed->container ? p.container_view.active_tab() : p.container_tab;
@@ -1023,6 +1050,7 @@ class Shell {
             state->initial_tab = tab(d.view);
             state->container_tab = d.container_tab;
             state->cooked_view = d.cooked_view;
+            state->pending_view_state = d.view_state;
             presentations_[id] = std::move(state);
             if (d.settings.ready())
                 session_.request(id, d.settings.request());
@@ -1129,6 +1157,8 @@ class Shell {
                 cycle_document(false);
             else if (command == "previous" && argument.empty())
                 cycle_document(true);
+            else if (command == "view-state" && !argument.empty())
+                apply_presentation_state(Json::parse(argument));
             else if (command == "workspace-save" && !argument.empty())
                 write_workspace(fs::u8path(argument));
             else if (command == "workspace-open" && !argument.empty())
@@ -1203,6 +1233,7 @@ class Shell {
                                {"containerSelection", view.container_view.selected_key()},
                                {"visibleMembers", view.container_view.visible_count()},
                                {"containerTab", view.container_view.active_tab()},
+                               {"viewState", presentation_state(view)},
                                {"document", entry.document ? entry.document->report() : Json(nullptr)}});
         }
         return {{"schema", "cyuediff.desktop-workspace/1"},
@@ -1291,6 +1322,7 @@ class Shell {
                 current().container_view.set_property_mode(current().cooked_view == "properties");
             if (current().container_tab >= 0 && !current().container_view.select_tab(current().container_tab))
                 throw Error("desktop-option", "Requested container tab is unavailable");
+            apply_pending_state();
             return;
         }
         current().container_view.set_document({});
@@ -1342,6 +1374,7 @@ class Shell {
                 current().gpu_diagnostics.push_back(e.what());
             }
         }
+        apply_pending_state();
     }
     std::string status() const {
 #ifdef CYUEDIFF_HAS_GIT

@@ -310,6 +310,12 @@ void AssetView::restore_view_state(const Json &state) {
                 break;
             }
     }
+    const auto &selected_package = properties_after_ ? after_ : before_;
+    if (!selected_package || selected_ >= selected_package->exports.size())
+        selected_ = 0;
+    const auto &selected_textures = texture_after_ ? after_textures_ : before_textures_;
+    if (texture_selected_ >= selected_textures.size())
+        texture_selected_ = 0;
     for (bool after : {false, true}) {
         const char *key = after ? "after" : "before";
         if (!state.contains(key))
