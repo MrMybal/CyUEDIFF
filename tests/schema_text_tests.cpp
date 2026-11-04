@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
         auto marker = invariant_text_value();
         marker.patch(5, 2);
         rejects([&] { decode(marker, options); }, "schema-value");
-        for (int history : {3, 7, 8, 9, 12, -2}) {
+        for (int history : {3, 12, -2}) {
             Bytes b;
             b.i(0);
             b.put<std::int8_t>(static_cast<std::int8_t>(history));

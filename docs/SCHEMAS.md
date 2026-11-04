@@ -289,3 +289,7 @@ The CLI, typed inspector and workspace selections consume the shared structured 
 Unsupported ArgumentDataFormat, date/time and text-generator histories remain opaque. ANSI high bytes still need an explicit character-set reader. The matching-build USMAP limitation for real cooked property validation remains unchanged.
 
 The renderer-independent property-table API adds an opt-in escape_non_bmp presentation option; it defaults to false. The UI enables it for 16-bit ImGui hosts. Only preview text changes, with at most threefold expansion of supplementary UTF-8 bytes into JSON escapes. Decoded values and comparison identities remain original data.
+
+## Calendar text histories - 0.58
+
+The shared bounded text reader retains date (7), time (8) and date-time (9) histories: signed 64-bit ticks, signed-byte styles (0 through 5), timezone and target culture. Date-time with custom date style additionally stores its serialized pattern. No calendar conversion, timezone lookup, pattern evaluation or host defaults are applied. Both explicit Zen profiles and supported classic packages use the same decoder; their supported UE4 base versions include the date timezone field. Tick bit patterns remain exact, including zero and negative values. Unsupported styles, malformed strings and truncated values retain the enclosing opaque range. Recursive histories share work, text and depth limits and cancellation. These layouts were checked against read-only local UE 5.5 TextHistory.cpp and DateTime.h; engine sources are excluded from distribution.

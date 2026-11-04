@@ -109,6 +109,23 @@ struct TextWireReader {
             const auto has_options = boolean(depth);
             value["formatOptions"] = has_options ? number_options(depth + 1) : Json(nullptr);
             value["culture"] = read(TextScalar::string);
+        } else if (history >= 7 && history <= 9) {
+            value["kind"] = history == 7 ? "date" : history == 8 ? "time" : "date-time";
+            value["ticks"] = read(TextScalar::int64);
+            auto style = [&] {
+                const auto result = read(TextScalar::int8).get<int>();
+                if (result < 0 || result > 5)
+                    throw Error(value_error, "Unsupported text date/time style", position());
+                return result;
+            };
+            if (history != 8)
+                value["dateStyle"] = style();
+            if (history != 7)
+                value["timeStyle"] = style();
+            if (history == 9 && value["dateStyle"] == 5)
+                value["customPattern"] = read(TextScalar::string);
+            value["timeZone"] = read(TextScalar::string);
+            value["culture"] = read(TextScalar::string);
         } else if (history == 11) {
             value["kind"] = "string-table";
             value["table"] = read(TextScalar::name);

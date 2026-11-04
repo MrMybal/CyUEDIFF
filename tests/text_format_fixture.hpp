@@ -104,6 +104,25 @@ inline Bytes numeric_text_value(unsigned history = 4, bool with_options = true,
     value.string(culture);
     return value;
 }
+inline Bytes calendar_text_value(unsigned history = 9, std::int64_t ticks = 638980123456789012LL,
+                                 int dateStyle = 2, int timeStyle = 1,
+                                 const std::string &zone = "Europe/Paris",
+                                 const std::string &culture = "fr-FR",
+                                 const std::string &pattern = "yyyy-MM-dd HH:mm:ss") {
+    Bytes value;
+    value.i(0);
+    value.put<std::int8_t>(static_cast<std::int8_t>(history));
+    value.put<std::int64_t>(ticks);
+    if (history != 8)
+        value.put<std::int8_t>(static_cast<std::int8_t>(dateStyle));
+    if (history != 7)
+        value.put<std::int8_t>(static_cast<std::int8_t>(timeStyle));
+    if (history == 9 && dateStyle == 5)
+        value.string(pattern);
+    value.string(zone);
+    value.string(culture);
+    return value;
+}
 inline Bytes format_text_payload(const std::string &mode) {
     const bool changed = mode.find("changed-") == 0;
     const auto type = changed ? mode.substr(8) : mode;
@@ -143,7 +162,7 @@ inline Bytes format_text_payload(const std::string &mode) {
     if (type == "unsupported") {
         Bytes value;
         value.i(0);
-        value.put<std::int8_t>(7);
+        value.put<std::int8_t>(12);
         return value;
     }
     const auto format = text_value(changed ? "{Label}: {Count}" : "{Count}: {Label}");
