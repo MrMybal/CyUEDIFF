@@ -119,6 +119,12 @@ if args.consumer:
  executable=schema_build/'Release'/('schema_consumer'+suffix) if os.name=='nt' else schema_build/'schema_consumer'
  result=subprocess.run([str(executable),str(mappings),str(values)],capture_output=True,check=True,env=env,timeout=20)
  if json.loads(result.stdout)['Consumer.Value']['value']!=42:raise RuntimeError('Installed USMAP consumer failed')
+ context_path=target/'consumer-context.json'
+ context_path.write_text(json.dumps({'format':'cyuediff.zen-schema/1','profile':'ue5.3',
+                                    'usmap':mappings.name,'sha256':hashlib.sha256(mappings.read_bytes()).hexdigest(),
+                                    'bindings':{'/Script/Consumer.Consumer':{'schema':'Consumer','offset':0}}}),encoding='utf-8')
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ if json.loads(result.stdout)['Consumer.Value']['value']!=42:raise RuntimeError('Installed schema context consumer failed')
  # Independently encode CEXT/PPTH/EATR/ENVP for the same external SDK consumer.
  names=[b'Consumer',b'Value',b'/Script/Consumer']
  payload=u32(3)+b''.join(bytes([len(n)])+n for n in names)+u32(0)+u32(1)

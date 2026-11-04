@@ -1,14 +1,23 @@
 #include <cyuediff/schema.hpp>
+#include <cyuediff/schema_context.hpp>
 #include <fstream>
 #include <iostream>
 namespace {
 int run(const std::vector<std::string> &args) {
-    if (args.size() != 2) {
-        std::cerr << "Usage: schema_consumer MAPPINGS.usmap VALUES.bin\n";
+    if (args.size() != 2 && args.size() != 3) {
+        std::cerr << "Usage: schema_consumer MAPPINGS.usmap VALUES.bin [CONTEXT.json]\n";
         return 2;
     }
     try {
         auto schemas = cyuediff::UnversionedSchemas::read(cyuediff::fs::u8path(args[0]));
+        if (args.size() == 3) {
+            const auto manifest = cyuediff::ZenSchemaManifest::read(cyuediff::fs::u8path(args[2]));
+            const auto context = manifest.load();
+            if (context->schemas->sha256() != schemas.sha256() ||
+                context->bindings.at("/Script/Consumer.Consumer").schema != "Consumer")
+                throw std::runtime_error("Unexpected schema context binding");
+            schemas = *context->schemas;
+        }
         std::ifstream file(cyuediff::fs::u8path(args[1]), std::ios::binary | std::ios::ate);
         if (!file || file.tellg() < 0 || file.tellg() > 1024 * 1024)
             throw std::runtime_error("Invalid property input");

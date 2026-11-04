@@ -160,9 +160,19 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-desktop-',dir=Path.
     assert expected.returncode==1 and mapped['selectedComparison']['zen']==json.loads(expected.stdout)
     assert mapped['zen']['propertyExportsDecoded']==mapped['after']['zen']['propertyExportsDecoded']==2
     checks+=1
+    assert report['containerView']['objectProperties']['comparing'] and report['containerView']['objectProperties']['mode']=='properties'
+    report=run(*mapped_pair,'--container-tab','schema')
+    assert report['containerView']['tab']==4
+    checks+=1
+    report=run(*mapped_pair,'--cooked-view','object')
+    assert report['containerView']['objectProperties']['mode']=='object'
+    checks+=1
+    run('--container',pak,'--container-tab','schema',code=2)
+    run('--container',pak,'--cooked-view','invalid',code=2)
     report=run(*mapped_pair[:-2])
     assert report['document']['container']['after']['zen']['propertyExportsDecoded']==0
     assert report['document']['container']['after']['schemaContext'] is None
+    assert report['containerView']['objectProperties']['available'] and not report['containerView']['objectProperties']['comparing']
     checks+=1
     missing=root/'missing-mapping.json'
     missing.write_text(json.dumps(dict(manifest,usmap='absent.usmap')),encoding='utf-8')

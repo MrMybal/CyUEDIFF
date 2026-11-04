@@ -252,3 +252,13 @@ Core without Git/UI/Desktop/Oodle passes 23 suites. New native context checks co
 ## 0.30 milestone: desktop mapped-property requests
 
 Desktop model and native CLI checks exercise metadata-only manifest reads without codec loading, named before/after property values, CLI parity, independent/empty after bindings, schema/profile mismatches, absent mappings, invalid offsets with whole-body fallback and manifest/USMAP hard-link protection on both sides. Combined view and distribution checks follow the dedicated inspection milestone.
+
+## 0.31 milestone: named property and provenance views
+
+Windows Release validation covers 40 suites, 1,790 reported checks and 380 renderer-free UI frames (30 asset, 30 history, 320 container). Core without Git/UI/Desktop/Oodle passes 23 suites, and desktop without Git covers 32. Context tests add 41 native checks; container model/native CLI coverage now reports 49/90 checks. The final changed container views and WARP host are rechecked in both desktop configurations after correcting a stale-table reset and adding French translation assertions.
+
+Typed UI tests verify Health 42-to-99 differences, unbound/opaque regions, one-sided property inspection without false removals, property-table clearing on index requests and provenance selection. Native checks retain exact Core/CLI package/diff parity and protect both context JSON files and both USMAP files through hard-link aliases. Synthetic context/mapping/container source hashes remain unchanged.
+
+Eighteen native DX11/WARP captures cover all ten theme/language combinations plus single/paired/partial properties, opaque failure, schema provenance, object details, empty properties, metadata-only mapping selection and context-only differences. Representative captures in all five themes and the partial/provenance/failure views are visually inspected. These mapped values are synthetic; the supplied real CyTrace corpus still has no matching USMAP. Native cooked payloads and defaults remain outside semantic coverage.
+
+The extracted 0.31 distribution is checked with its CLI/WARP host, four separately built Core consumers and the installed Git history consumer. The independent Python SDK fixture additionally exercises manifest loading, relative mapping resolution and a bound integer through the installed schema consumer. Proprietary mappings/assets/codecs, captures and reports remain outside Git and distribution archives. Hosted CI has not been run or published.

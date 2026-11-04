@@ -122,7 +122,7 @@ Select **Containers**, or **File → Open container...**, and choose a supported
 
 Select a live member and choose **Inspect selected member** to read decoded bytes, their SHA-256 and a hex prefix limited to 64 bytes. Member names never become extraction destinations; no package is written to disk. For an IoStore export bundle, choose **UE 5.3** or **UE 5.5** explicitly. An optional **Global script TOC** resolves script classes/references from its unique type-5 chunk. **Codec module** accepts an explicit host-provided decoder; it loads only for a member read. No engine or codec is discovered or launched automatically.
 
-The **Cooked objects** tab shows exports by name, with full-path tooltips and a typed inspector for class, references, offsets, sizes and body fingerprints. **Container diagnostics** exposes format/verification limitations. This desktop path currently inspects Zen object tables and opaque bodies; it does not bind USMAP mappings, reconstruct defaults, interpret Pak-contained packages, or render cooked Blueprints, textures or meshes. Explicit mapped reads remain available in the Core/CLI. The selected engine layout never implies unsupported native payload coverage.
+The **Cooked objects** tab shows exports by name, with full-path tooltips and a typed inspector for class, references, offsets, sizes and body fingerprints. **Container diagnostics** exposes format/verification limitations. Without an explicit schema context, this desktop path inspects Zen object tables and opaque bodies. It does not reconstruct defaults, interpret Pak-contained packages, or render cooked Blueprints, textures or meshes. Explicit mapped reads are available in the desktop, Core and CLI. The selected engine layout never implies unsupported native payload coverage.
 
 ```powershell
 build-native/Release/cyuediff_desktop.exe --container D:/Build/Content.pak
@@ -158,3 +158,19 @@ Container requests accept `--schema CONTEXT.json` and `--after-schema CONTEXT.js
 Indexing reads only manifest metadata and records its SHA-256 plus the declared mapping path/hash. It does not load the mapping or codec. Inspecting a selected package loads the explicitly supplied mapping, verifies its byte fingerprint and supplies the immutable bindings to the same Zen reader as the CLI. Desktop mapping limits are 16 MiB serialized/decoded/text bytes and 100,000 entries. The ordinary member/header/text limits still apply separately.
 
 Reports add `schemaContext` provenance on each side, including `mappingLoaded`, `contextSha256` and `mappingVerified:false`. A loaded mapping is not proof of compatibility with a particular build. Failed property regions retain their full opaque body hashes and decoding errors; limits and cancellation abort the request. Capture/report/preferences guards protect both manifests and both resolved mappings, including hard links, even during metadata-only indexing.
+
+## Property and schema inspection — 0.31
+
+Expand **Schema contexts (optional)** in the container sidebar. **Before schema** and **After schema** accept the context JSON files described above; native chooser buttons select existing JSON files without reading assets during drawing. Select explicit cooked profiles and global script TOCs as required by the build, then index/inspect the selected member. Selecting a file only changes the settings; the normal background request applies them. Context paths are not persisted in appearance preferences.
+
+In **Cooked objects**, **Decoded properties** displays the stored named values with types, search, change filtering and selected previews. Successfully mapped objects open this mode automatically. **Object details** shows class/reference metadata and complete opaque body fingerprints. Values are paired only when both present object regions decode, or when a missing export establishes a true one-sided object. If just one present side decodes, its properties appear as a single-value inspection with an explicit unknown-peer notice. Missing schemas and failed/unsupported regions never imply removed properties. Changing back to an index clears the previous object's property table.
+
+The **Schema context** tab shows each manifest's source/mapping paths and fingerprints, loaded state, context digest and selected property-region status, offsets/counts/errors. It does not duplicate all property values in the provenance view. `mappingVerified:false` and unresolved defaults remain explicit even after successful reads. A byte fingerprint certifies the selected mapping bytes, not their compatibility with a particular cooked build.
+
+`--container-tab schema` selects provenance when a schema is supplied. `--cooked-view properties|object` selects the initial object inspector mode. Smoke reports include `containerView.objectProperties` with the actual mode, availability, per-side decode status, comparison state and visible property rows. The original Core/CLI snapshot diff is retained in the comparison report, including changes caused by context/coverage differences; the property view indicates when peer values are unknown.
+
+```powershell
+cyuediff_desktop.exe --container Before.utoc --after-container After.utoc --container-entry CHUNK_ID --cooked-profile ue5.3 --after-cooked-profile ue5.3 --script-objects Before/global.utoc --after-script-objects After/global.utoc --schema Before/schema.json --after-schema After/schema.json
+```
+
+Mapped UI coverage currently uses synthetic fixtures. The supplied CyTrace build still has no matching USMAP; no real mapped-value or native cooked-payload coverage is implied.

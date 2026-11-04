@@ -26,7 +26,34 @@ cyui::Tone state_tone(const std::string &state) {
 } // namespace
 void ContainerView::register_translations() {
     PropertyView::register_translations();
-    cyui::registerTranslations("en", {{"container-diff", "Comparing decoded members"},
+    cyui::registerTranslations(
+        "fr", {{"Schema context", "Contexte de schéma"},
+               {"Schema contexts (optional)", "Contextes de schéma (facultatifs)"},
+               {"Before schema", "Schéma avant"},
+               {"After schema", "Schéma après"},
+               {"Choose before schema...", "Choisir le schéma avant..."},
+               {"Choose after schema...", "Choisir le schéma après..."},
+               {"Cooked schema context (*.json)", "Contexte de schéma cooked (*.json)"},
+               {"Choose schema context", "Choisir un contexte de schéma"},
+               {"Object details", "Détails de l'objet"},
+               {"Decoded properties", "Propriétés décodées"},
+               {"No decoded properties", "Aucune propriété décodée"},
+               {"Supply a matching schema context and inspect the member.",
+                "Fournissez un contexte de schéma compatible et inspectez le membre."},
+               {"Before properties only; after values are unknown.",
+                "Propriétés avant uniquement ; valeurs après inconnues."},
+               {"After properties only; before values are unknown.",
+                "Propriétés après uniquement ; valeurs avant inconnues."},
+               {"Explicit mappings do not verify cooked build compatibility or resolve defaults.",
+                "Les mappings explicites ne valident pas la compatibilité du build cooked ni les valeurs par "
+                "défaut."},
+               {"Cooked interpretation context differs.", "Le contexte d'interprétation cooked diffère."},
+               {"Object comparison requires explicit profiles on both present members.",
+                "La comparaison d'objets requiert un profil explicite pour chaque membre présent."},
+               {"schema-context", "Lecture du contexte de schéma"}});
+
+    cyui::registerTranslations("en", {{"schema-context", "Reading schema context"},
+                                      {"container-diff", "Comparing decoded members"},
                                       {"container-index", "Reading container index"},
                                       {"container-read", "Reading container member"},
                                       {"cooked-script-objects", "Reading script objects"},
@@ -166,14 +193,45 @@ bool ContainerView::select_object(std::size_t index) {
         std::find(objects_.begin(), objects_.end(), static_cast<int>(index)) == objects_.end())
         return false;
     object_ = static_cast<int>(index);
-    object_data_ = object_rows_[index].before;
-    after_object_data_ = object_rows_[index].after;
-    if (document_->after && !compare_objects_) {
+    const auto &row = object_rows_[index];
+    object_data_ = row.before;
+    after_object_data_ = row.after;
+    if (document_->after && !compare_objects_)
         properties_.set_values(object_data_.is_null() ? &after_object_data_ : &object_data_, nullptr, false);
-        return true;
-    }
-    properties_.set_values(object_data_.is_null() ? nullptr : &object_data_,
-                           after_object_data_.is_null() ? nullptr : &after_object_data_, compare_objects_);
+    else
+        properties_.set_values(object_data_.is_null() ? nullptr : &object_data_,
+                               after_object_data_.is_null() ? nullptr : &after_object_data_,
+                               compare_objects_);
+    property_available_ = !row.before_values.is_null() || !row.after_values.is_null();
+    properties_comparing_ = compare_objects_ && (row.before.is_null() || !row.before_values.is_null()) &&
+                            (row.after.is_null() || !row.after_values.is_null());
+    if (properties_comparing_)
+        values_.set_values(row.before_values.is_null() ? nullptr : &row.before_values,
+                           row.after_values.is_null() ? nullptr : &row.after_values, true);
+    else
+        values_.set_values(!row.before_values.is_null()
+                               ? &row.before_values
+                               : (!row.after_values.is_null() ? &row.after_values : nullptr),
+                           nullptr, false);
+    property_notice_.clear();
+    if (document_->after && property_available_ && !properties_comparing_)
+        property_notice_ = !row.before_values.is_null() ? "Before properties only; after values are unknown."
+                                                        : "After properties only; before values are unknown.";
+    property_mode_ = property_available_;
+    auto read_metadata = [](Json read) {
+        if (read.is_null())
+            return Json{{"status", "unbound"}};
+        if (read.contains("properties")) {
+            read["propertyCount"] = read.at("properties").size();
+            read.erase("properties");
+        }
+        return read;
+    };
+    schema_details_["selectedObject"] = {{"path", row.path},
+                                         {"before", read_metadata(row.before_read)},
+                                         {"after", read_metadata(row.after_read)},
+                                         {"propertiesComparable", properties_comparing_}};
+    schema_.set_values(&schema_details_, nullptr, false);
     return true;
 }
 void ContainerView::apply_object_selection() {
@@ -185,6 +243,12 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     document_ = std::move(value);
     member_ = object_ = pending_object_ = -1;
     compare_objects_ = false;
+    property_available_ = properties_comparing_ = property_mode_ = false;
+    property_notice_.clear();
+    object_data_ = after_object_data_ = schema_details_ = nullptr;
+    values_ = PropertyView{};
+    properties_ = PropertyView{};
+    schema_ = PropertyView{};
     member_rows_.clear();
     object_rows_.clear();
     diagnostics_.clear();
@@ -215,21 +279,22 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
         if (document_->after)
             diagnostics(*document_->after);
         if (document_->after) {
-            const auto before = document_->zen ? document_->zen->snapshot().at("objects") : Json::object();
-            const auto after =
-                document_->after->zen ? document_->after->zen->snapshot().at("objects") : Json::object();
             std::map<std::string, ObjectRow> pairs;
-            auto add = [&](const Json &objects, bool right) {
-                for (auto it = objects.begin(); it != objects.end(); ++it) {
-                    auto &row = pairs[it.key()];
-                    row.path = it.key();
-                    row.name = it.value().at("name").get<std::string>();
-                    row.search += " " + it.value().at("class").get<std::string>();
-                    (right ? row.after : row.before) = it.value();
+            auto add = [&](const std::optional<ZenPackage> &package, bool right) {
+                if (!package)
+                    return;
+                const auto objects = package->snapshot().at("objects");
+                for (const auto &entry : package->exports) {
+                    auto &row = pairs[entry.path];
+                    row.path = entry.path;
+                    row.name = entry.name;
+                    row.search += " " + entry.class_name;
+                    (right ? row.after : row.before) = objects.at(entry.path);
+                    (right ? row.after_read : row.before_read) = entry.property_read;
                 }
             };
-            add(before, false);
-            add(after, true);
+            add(document_->zen, false);
+            add(document_->after->zen, true);
             // A non-decoded peer is not evidence that an export was removed or added.
             const bool complete = (document_->inspection.is_null() || document_->zen) &&
                                   (document_->after->inspection.is_null() || document_->after->zen);
@@ -242,13 +307,47 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                                              : (row.after.is_null()
                                                     ? "removed"
                                                     : (row.before == row.after ? "unchanged" : "modified")));
+                if (!row.before_read.is_null() && row.before_read.at("status") == "decoded")
+                    row.before_values = row.before_read.at("properties");
+                if (!row.after_read.is_null() && row.after_read.at("status") == "decoded")
+                    row.after_values = row.after_read.at("properties");
+                // Do not display an undecoded peer as removed named properties.
+                if (!row.before.is_null()) {
+                    row.before.erase("properties");
+                    row.before.erase("propertyRead");
+                }
+                if (!row.after.is_null()) {
+                    row.after.erase("properties");
+                    row.after.erase("propertyRead");
+                }
                 row.search += " " + row.state;
                 object_rows_.push_back(std::move(row));
             }
         } else if (document_->zen) {
-            for (const auto &row : document_->zen->exports)
-                object_rows_.push_back({row.name, row.path, "", row.class_name, row.to_json(), nullptr});
+            for (const auto &entry : document_->zen->exports) {
+                ObjectRow row;
+                row.name = entry.name;
+                row.path = entry.path;
+                row.search = entry.class_name;
+                row.before = entry.to_json();
+                row.before.erase("propertyRead");
+                row.before_read = entry.property_read;
+                if (!row.before_read.is_null() && row.before_read.at("status") == "decoded")
+                    row.before_values = row.before_read.at("properties");
+                object_rows_.push_back(std::move(row));
+            }
         }
+        auto schema_source = [](const ContainerDocument &side) -> Json {
+            if (!side.schema_manifest)
+                return nullptr;
+            auto result = side.schema_manifest->to_json();
+            result["mappingLoaded"] = side.schema_loaded;
+            result["contextSha256"] = side.zen ? side.zen->schema_context_sha256 : std::string{};
+            return result;
+        };
+        schema_details_ = {{"before", schema_source(*document_)},
+                           {"after", document_->after ? schema_source(*document_->after) : Json(nullptr)}};
+        schema_.set_values(&schema_details_, nullptr, false);
         rebuild_members();
         rebuild_objects();
         if (!select_member(document_->source.entry) && !members_.empty())
@@ -282,12 +381,26 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 3 || (tab == 2 && object_rows_.empty()) ||
-        (tab == 3 && !document_->after))
+    if (!document_ || tab < 0 || tab > 4 || (tab == 2 && object_rows_.empty()) ||
+        (tab == 3 && !document_->after) ||
+        (tab == 4 && !document_->schema_manifest &&
+         (!document_->after || !document_->after->schema_manifest)))
         return false;
     initial_tab_ = tab;
     select_tab_ = true;
     return true;
+}
+Json ContainerView::property_report() const {
+    auto status = [](const Json &read) -> Json {
+        return read.is_null() ? Json("unbound") : read.at("status");
+    };
+    const auto *row = object_ >= 0 ? &object_rows_[object_] : nullptr;
+    return {{"available", row && property_available_},
+            {"comparing", row && properties_comparing_},
+            {"mode", property_mode_ ? "properties" : "object"},
+            {"beforeStatus", row ? status(row->before_read) : Json(nullptr)},
+            {"afterStatus", row ? status(row->after_read) : Json(nullptr)},
+            {"visibleProperties", row ? values_.visible_count() : 0}};
 }
 ContainerAction ContainerView::draw(bool busy) {
     if (!document_)
@@ -448,9 +561,24 @@ ContainerAction ContainerView::draw(bool busy) {
         ImGui::EndChild();
         ImGui::SameLine();
         if (ImGui::BeginChild("##cooked-object-properties", ImVec2(0, available.y))) {
-            if (object_ >= 0)
-                properties_.draw("##cooked-object");
-            else
+            if (object_ >= 0) {
+                const auto details = cyui::tr("Object details"), values = cyui::tr("Decoded properties");
+                const char *modes[] = {details.c_str(), values.c_str()};
+                int mode = property_mode_ ? 1 : 0;
+                if (cyui::segmented("##cooked-inspection-mode", modes, 2, &mode, -1))
+                    property_mode_ = mode == 1;
+                if (property_mode_) {
+                    if (!property_notice_.empty())
+                        cyui::callout(cyui::Tone::info, cyui::tr(property_notice_.c_str()).c_str());
+                    if (property_available_)
+                        values_.draw("##cooked-values");
+                    else
+                        cyui::emptyState(
+                            cyui::tr("No decoded properties").c_str(),
+                            cyui::tr("Supply a matching schema context and inspect the member.").c_str());
+                } else
+                    properties_.draw("##cooked-object");
+            } else
                 cyui::emptyState(cyui::tr("Select a cooked object.").c_str(), "");
         }
         ImGui::EndChild();
@@ -459,6 +587,16 @@ ContainerAction ContainerView::draw(bool busy) {
     if (document_->after && ImGui::BeginTabItem(cyui::trLabel("Comparison").c_str(), nullptr, flags(3))) {
         active_tab_ = 3;
         comparison_.draw("##container-comparison");
+        ImGui::EndTabItem();
+    }
+    if ((document_->schema_manifest || (document_->after && document_->after->schema_manifest)) &&
+        ImGui::BeginTabItem(cyui::trLabel("Schema context").c_str(), nullptr, flags(4))) {
+        active_tab_ = 4;
+        cyui::callout(
+            cyui::Tone::warning,
+            cyui::tr("Explicit mappings do not verify cooked build compatibility or resolve defaults.")
+                .c_str());
+        schema_.draw("##schema-provenance");
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

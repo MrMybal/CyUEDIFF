@@ -86,6 +86,7 @@ struct Options {
     bool theme_override = false, locale_override = false, previews_override = false, engine_override = false;
     std::string preferences_diagnostic;
     std::string browse_filter, browse_select, container_filter;
+    std::string cooked_view;
     int container_tab = -1;
     bool container_parameters = false, after_container_parameters = false, container_changes_only = false;
     bool history = false, history_parameters = false, history_compare = false;
@@ -122,6 +123,11 @@ Options parse(const std::vector<std::string> &args) {
         else if (argument == "--container") {
             options.settings.container_path = value();
             options.settings.source = 2;
+        } else if (argument == "--cooked-view") {
+            options.cooked_view = value();
+            options.container_parameters = true;
+            if (options.cooked_view != "properties" && options.cooked_view != "object")
+                throw Error("desktop-option", "Cooked views are properties or object");
         } else if (argument == "--container-tab") {
             const auto name = value();
             options.container_parameters = true;
@@ -131,6 +137,8 @@ Options parse(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "schema")
+                options.container_tab = 4;
             else if (name == "comparison") {
                 options.container_tab = 3;
                 options.after_container_parameters = true;
@@ -605,7 +613,9 @@ enum class Action {
     open_container,
     container_index,
     container_inspect,
-    container_object
+    container_object,
+    before_schema,
+    after_schema
 };
 class Shell {
     DocumentSession session_;
@@ -627,6 +637,7 @@ class Shell {
     AssetView view_;
     ContainerView container_view_;
     int container_tab_ = -1;
+    std::string cooked_view_;
     std::vector<ComPtr<ID3D11ShaderResourceView>> images_;
     std::vector<std::string> gpu_diagnostics_;
     std::string dialog_error_, context_details_, preferences_diagnostic_;
@@ -638,6 +649,7 @@ class Shell {
         : preferences_diagnostic_(options.preferences_diagnostic), settings_(options.settings),
           initial_tab_(tab(options.view)) {
         container_tab_ = options.container_tab;
+        cooked_view_ = options.cooked_view;
         container_view_.set_filter(options.container_filter);
         container_view_.set_changed_only(options.container_changes_only);
         if ((settings_.source == 2 || !settings_.before.empty()) && !options.history)
@@ -684,6 +696,7 @@ class Shell {
         return {{"visibleMembers", container_view_.visible_count()},
                 {"selectedMember", entry ? Json(entry->id) : Json(nullptr)},
                 {"selectedObject", container_view_.selected_object()},
+                {"objectProperties", container_view_.property_report()},
                 {"selectedKey", container_view_.selected_key()},
                 {"tab", container_view_.active_tab()}};
     }
@@ -846,6 +859,8 @@ class Shell {
             gpu_diagnostics_.clear();
             context_details_.clear();
             container_view_.set_document(displayed_->container);
+            if (!cooked_view_.empty())
+                container_view_.set_property_mode(cooked_view_ == "properties");
             if (container_tab_ >= 0 && !container_view_.select_tab(container_tab_))
                 throw Error("desktop-option", "Requested container tab is unavailable");
             return;
@@ -1045,6 +1060,25 @@ class Shell {
                     cyui::property(cyui::tr("Codec module").c_str());
                     field("##container-codec", settings_.codec);
                     cyui::endProperties();
+                }
+                if (cyui::beginSection(cyui::trLabel("Schema contexts (optional)").c_str(),
+                                       !settings_.container_schema.empty() ||
+                                           !settings_.after_container_schema.empty())) {
+                    if (cyui::beginProperties("##schema-input", 95)) {
+                        cyui::property(cyui::tr("Before schema").c_str());
+                        field("##schema-before", settings_.container_schema);
+                        cyui::property(cyui::tr("After schema").c_str());
+                        field("##schema-after", settings_.after_container_schema);
+                        cyui::endProperties();
+                    }
+                    if (cyui::button(cyui::trLabel("Choose before schema...").c_str()))
+                        action = Action::before_schema;
+                    {
+                        cyui::ScopedDisabled unavailable(settings_.after_container_path.empty());
+                        if (cyui::button(cyui::trLabel("Choose after schema...").c_str()))
+                            action = Action::after_schema;
+                    }
+                    cyui::endSection();
                 }
                 ImGui::TextWrapped(
                     "%s", cyui::tr("Choose an explicit UE profile for Zen object inspection.").c_str());
@@ -1402,6 +1436,13 @@ class Shell {
                 session_.request(settings_.request());
                 return;
             }
+            if (action == Action::before_schema || action == Action::after_schema) {
+                auto path = window.choose_file(false, false, true);
+                if (path)
+                    (action == Action::before_schema ? settings_.container_schema
+                                                     : settings_.after_container_schema) = path->u8string();
+                return;
+            }
             if (action == Action::container_object) {
                 container_view_.apply_object_selection();
                 return;
@@ -1478,7 +1519,8 @@ int run(Options options) {
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
-               "  [--container-tab members|inspection|objects|comparison]\n"
+               "  [--cooked-view properties|object] : select cooked object inspector\n"
+               "  [--container-tab members|inspection|objects|comparison|schema]\n"
                "  [--after-container FILE] [--compare-container-bytes] [--container-changes-only]\n"
                "  [--after-cooked-profile ue5.3|ue5.5] [--after-script-objects GLOBAL.utoc]\n"
                "  [--cooked-profile ue5.3|ue5.5] [--script-objects GLOBAL.utoc] : explicit Zen inspection\n"

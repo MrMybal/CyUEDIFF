@@ -1,7 +1,8 @@
 #include "../apps/desktop/container_view.hpp"
 #include "container_fixtures.hpp"
-#include "zen_fixture.hpp"
+#include "schema_fixture.hpp"
 #include <chrono>
+#include <algorithm>
 #include <iostream>
 using namespace cyuediff;
 using namespace cyuediff::desktop;
@@ -56,6 +57,42 @@ int main() {
         source.after_path = root / "test.utoc";
         source.compare_payloads = true;
         auto same = load_container_document(source, {});
+        schema_fixture().save(root / "test.usmap");
+        const Json context = {
+            {"format", "cyuediff.zen-schema/1"},
+            {"profile", "ue5.3"},
+            {"usmap", "test.usmap"},
+            {"sha256", sha256_file(root / "test.usmap")},
+            {"bindings", {{"/Script/Test.DemoAsset", {{"schema", "DemoAsset"}, {"offset", 0}}}}}};
+        std::ofstream(root / "schema.json", std::ios::binary) << context.dump();
+        auto mapped_payload = schema_zen_fixture();
+        mapped_payload.save(root / "mapped.ucas");
+        zen_toc(mapped_payload).save(root / "mapped.utoc");
+        mapped_payload = schema_zen_fixture(99);
+        mapped_payload.save(root / "mapped-after.ucas");
+        zen_toc(mapped_payload).save(root / "mapped-after.utoc");
+        auto scripts = script_fixture();
+        scripts.save(root / "global.ucas");
+        zen_toc(scripts, 5).save(root / "global.utoc");
+        source = {};
+        source.path = root / "mapped.utoc";
+        source.entry = "000000000000000000000001";
+        source.profile = ZenProfile::unreal_5_3;
+        source.schema = root / "schema.json";
+        source.script_objects = root / "global.utoc";
+        auto mapped = load_container_document(source, {});
+        source.after_path = root / "mapped-after.utoc";
+        source.after_profile = ZenProfile::unreal_5_3;
+        source.after_script_objects = root / "global.utoc";
+        source.after_schema = root / "schema.json";
+        auto mapped_pair = load_container_document(source, {});
+        source.after_schema.clear();
+        auto mapped_partial = load_container_document(source, {});
+        auto invalid = context;
+        invalid["bindings"]["/Script/Test.DemoAsset"]["offset"] = 99999;
+        std::ofstream(root / "bad.json", std::ios::binary) << invalid.dump();
+        source.schema = root / "bad.json";
+        auto mapped_failure = load_container_document(source, {});
         ContainerView view;
         view.set_document(index);
         if (view.visible_count() != 3 || !view.select_member("Content/B.bin"))
@@ -96,6 +133,33 @@ int main() {
         if (!view.select_member("id:000000000000000000000001") || !view.selected_member() ||
             view.visible_object_count() != 2)
             throw std::runtime_error("After-only member and cooked objects");
+        view.set_document(mapped);
+        if (!view.property_report()["available"] || view.property_report()["comparing"] ||
+            view.property_report()["mode"] != "properties")
+            throw std::runtime_error("Single-side mapped properties inspector");
+        view.set_document(mapped_pair);
+        const auto &rows = view.property_table().rows;
+        if (!view.property_report()["comparing"] ||
+            !std::any_of(rows.begin(), rows.end(), [](const PropertyRow &row) {
+                return row.path.find("DemoAsset.Health") != std::string::npos && row.before == "42" &&
+                       row.after == "99" && row.change == ChangeKind::modified;
+            }))
+            throw std::runtime_error("Named typed property difference");
+        view.set_document(mapped_partial);
+        if (view.property_report()["comparing"] || !view.property_report()["available"] ||
+            std::any_of(view.property_table().rows.begin(), view.property_table().rows.end(),
+                        [](const PropertyRow &row) { return row.change == ChangeKind::removed; }))
+            throw std::runtime_error("Unknown peer properties must not be removed values");
+        view.set_document(mapped_failure);
+        if (view.property_report()["available"] || view.property_report()["beforeStatus"] != "opaque")
+            throw std::runtime_error("Failed property regions retain explicit opaque status");
+        view.set_document(mapped);
+        if (!view.select_tab(4))
+            throw std::runtime_error("Schema provenance tab");
+        view.set_document(index);
+        if (!view.property_table().rows.empty() || view.property_report()["available"] ||
+            view.property_report()["visibleProperties"] != 0)
+            throw std::runtime_error("An index request clears the previous property inspector");
         ImGui::CreateContext();
         auto &io = ImGui::GetIO();
         io.DisplaySize = ImVec2(1280, 900);
@@ -107,6 +171,10 @@ int main() {
             cyui::tr("Hide unchanged") != "Masquer les inchang\u00e9s" ||
             cyui::tr("Decoded bytes") != "Octets d\u00e9cod\u00e9s")
             throw std::runtime_error("UTF-8 French container translations");
+        if (cyui::tr("Decoded properties") != "Propri\u00e9t\u00e9s d\u00e9cod\u00e9es" ||
+            cyui::tr("Schema context") != "Contexte de sch\u00e9ma" ||
+            cyui::tr("Before schema") != "Sch\u00e9ma avant")
+            throw std::runtime_error("French mapped property and provenance translations");
         int frames = 0;
         for (const auto &theme : cyui::builtInThemes())
             for (auto locale : {"en", "fr"}) {
@@ -118,17 +186,23 @@ int main() {
                 int width, height;
                 io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
                 for (const auto &scene :
-                     std::vector<std::pair<std::shared_ptr<const ContainerDocument>, int>>{{index, 0},
-                                                                                           {member, 1},
-                                                                                           {zen, 2},
-                                                                                           {pair, 2},
-                                                                                           {removed, 1},
-                                                                                           {added, 2},
-                                                                                           {same, 0},
-                                                                                           {incomplete, 2},
-                                                                                           {pair, 3},
-                                                                                           {pair, 0},
-                                                                                           {pair, 1}}) {
+                     std::vector<std::pair<std::shared_ptr<const ContainerDocument>, int>>{
+                         {index, 0},
+                         {member, 1},
+                         {zen, 2},
+                         {pair, 2},
+                         {removed, 1},
+                         {added, 2},
+                         {same, 0},
+                         {incomplete, 2},
+                         {pair, 3},
+                         {pair, 0},
+                         {pair, 1},
+                         {mapped, 2},
+                         {mapped_pair, 2},
+                         {mapped_partial, 2},
+                         {mapped_failure, 2},
+                         {mapped_pair, 4}}) {
                     const auto &document = scene.first;
                     view.set_document(document);
                     if (!view.select_tab(scene.second) || view.select_tab(99))

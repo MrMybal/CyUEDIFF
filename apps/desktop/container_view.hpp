@@ -13,7 +13,8 @@ class ContainerView {
     };
     struct ObjectRow {
         std::string name, path, state, search;
-        Json before = nullptr, after = nullptr;
+        Json before = nullptr, after = nullptr, before_read = nullptr, after_read = nullptr;
+        Json before_values = nullptr, after_values = nullptr;
     };
     std::vector<MemberRow> member_rows_;
     std::vector<ObjectRow> object_rows_;
@@ -21,8 +22,10 @@ class ContainerView {
     std::vector<std::string> diagnostics_;
     int member_ = -1, object_ = -1, pending_object_ = -1, initial_tab_ = 0, active_tab_ = 0;
     bool select_tab_ = false, packages_only_ = false, changed_only_ = false, compare_objects_ = false;
-    Json object_data_, after_object_data_;
-    PropertyView inspection_, properties_, comparison_;
+    bool property_mode_ = false, properties_comparing_ = false, property_available_ = false;
+    std::string property_notice_;
+    Json object_data_, after_object_data_, schema_details_;
+    PropertyView inspection_, properties_, values_, comparison_, schema_;
     void rebuild_members();
     void rebuild_objects();
 
@@ -35,6 +38,13 @@ class ContainerView {
     void set_object_filter(std::string);
     bool select_member(const std::string &);
     bool select_tab(int);
+    void set_property_mode(bool value) {
+        property_mode_ = value;
+    }
+    const PropertyTable &property_table() const {
+        return values_.table();
+    }
+    Json property_report() const;
     bool select_object(std::size_t);
     void apply_object_selection();
     const ContainerEntry *selected_member() const;
