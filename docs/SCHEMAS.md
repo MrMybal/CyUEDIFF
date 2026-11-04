@@ -35,19 +35,27 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Scalar values | Signed/unsigned integers at their declared widths, finite float/double, byte and boolean |
 | Enum | Declared integer storage and enum type identity; no inferred display label |
 | Name / string | Package FName index and numeric suffix, ASCII narrow FString and validated UTF-16 FString |
-| Object | Signed 32-bit package index through an explicit host resolver; null references need no resolver |
+| Object / interface | Signed 32-bit package index through an explicit host resolver; interface addresses are not reconstructed |
+| Lazy object | Four serialized GUID words, retained as an unresolved stable identifier |
+| Soft object | Explicit UE5 top-level-name layout: package FName, asset FName and subobject FString; no referenced asset is opened |
 | Array / static array | Bounded dynamic element counts; expanded static slots retain array indices |
 | Map / set | Stored removals and additions/replacements keyed by canonical JSON identity; explicit whole-container replacement state |
 | Reflected struct | Nested unversioned header only when explicitly listed in `reflected_structs` |
 | Unsupported/native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
 
-Schemas preserve descriptors for texts, delegates, soft/weak/lazy references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar/native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
+Schemas preserve descriptors for texts, delegates, weak/legacy asset references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar/native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
 
 Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
 `decode_unversioned(bytes, offset, size, schemas, schema_name, options)` returns properties, consumed bytes and work/text counters. It throws on unsupported or invalid input, with no partial result. The input window can include trailing native data: `consumed_bytes` describes only the property stream. Callers retain the original bytes and decide what follows.
 
 Default standalone limits are 100,000 value/fragment work units, depth 48 and 4 MiB decoded text. Header traversal, nested values and zero-masked values consume work. Optional `charge` callbacks let hosts enforce a shared enclosing-operation budget, including failed reads. Mapping input/expansion defaults to 64 MiB, one million combined slots/descriptors/enum entries and depth 48. Mapping names, resolved identities and expanded static-array type/name copies also consume a separate 64 MiB text budget (`max_text_bytes`); expanded type copies consume work units. Limits bound input/work, not total process heap use. Cancellation applies during file reading, parsing, hashing and property traversal; a decompression callback must implement its own interruption if needed during the call.
+
+## Cooked references
+
+Version 0.20 adds `InterfaceProperty`, `LazyObjectProperty` and the modern `SoftObjectProperty` layout. Interface values retain their resolved/null object reference; no native interface address is inferred. Lazy references retain four GUID words as `kind:lazy-object-guid` and a 32-digit hexadecimal `guid`; they are not resolved to an object. Soft paths retain `packageName`, `assetName` and `subPath` separately with `kind:soft-object-path`.
+
+Standalone readers must select `SoftPathLayout::ue5_top_level_names` for nonzero soft references. Zen's supported UE 5.3/5.5 profiles select that layout explicitly. Older combined-name/index-based soft paths, `AssetObjectProperty` and weak-pointer layouts remain unsupported. Zero references consume no payload and retain their explicit zero state. References never trigger package lookup, asset loading, path rewriting or archetype reconstruction. Modern layouts are tested with synthetic mappings and bounded package bytes; matching-build real schema coverage is still pending.
 
 ## Map and set values
 

@@ -52,6 +52,7 @@ class UnversionedSchemas {
     const Json &versioning() const;
     const std::string &sha256() const;
 };
+enum class SoftPathLayout { unspecified, ue5_top_level_names };
 struct UnversionedReadOptions {
     const std::vector<std::string> *names = nullptr;
     std::function<Json(std::int32_t)> reference;
@@ -61,6 +62,7 @@ struct UnversionedReadOptions {
     // Enables the -1 removed-key marker checked against the UE 5.5 map layout.
     // Zero-masked empty containers do not require this flag.
     bool allow_map_replacement = false;
+    SoftPathLayout soft_path_layout = SoftPathLayout::unspecified;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     OperationControl control;

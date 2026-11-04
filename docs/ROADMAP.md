@@ -1,11 +1,11 @@
-# Development status after 0.19
+# Development status after 0.20
 
 This tracks the full requested scope. A listed input or extension point does not imply that its data format has been implemented.
 
 | Area | Implemented and checked | Remaining |
 | --- | --- | --- |
 | Visual comparisons | Stable Blueprint/material node outlines, stored material parameter comparison, source geometry edge colors, LDR/HDR pixel masks, typed property inspector | Further interaction and correspondence refinements |
-| Unreal reading | Supported classic loose packages, tagged primitives/arrays/structs, stored map/set deltas, supported localized texts, native transforms/ticks, explicit C++ decoder registry, Pak 10/11 and IoStore TOC 3–5 container byte readers/diffs, cooked Zen names/classes/object tables, explicit USMAP mappings with PPTH/MODL/EATR/ENVP and qualified identities, supported unversioned values including stored map/set operations, opaque body diffs | Matching-build schema corpus validation and further extension/layout versions, remaining unversioned value types, broader plugin-native layouts, cooked native payload decoding, further container versions and encryption |
+| Unreal reading | Supported classic loose packages, tagged primitives/arrays/structs, stored map/set deltas, supported localized texts, native transforms/ticks, explicit C++ decoder registry, Pak 10/11 and IoStore TOC 3–5 container byte readers/diffs, cooked Zen names/classes/object tables, explicit USMAP mappings with PPTH/MODL/EATR/ENVP and qualified identities, supported unversioned values including stored map/set operations and soft/interface/lazy references, opaque body diffs | Matching-build schema corpus validation and further extension/layout versions, remaining unversioned value types, broader plugin-native layouts, cooked native payload decoding, further container versions and encryption |
 | Advanced textures/meshes | LDR sources, finite raw FP16/FP32/RGBE HDR sources and mip selection, modern static MeshDescription source geometry | Virtualized source resolution, skeletal data/skin/animations, collision structures and Nanite payload decoding |
 | Desktop | English/French, five themes, typed inspector, content browser, local Git/LFS comparisons, independent before/after contexts | Git history browser, multiple documents, persistent preferences and container browsing |
 | Runtime/reliability | Verified in-memory package LRU, cooperative cancellation/progress, bounded decoders, corruption tests, 150-package CyTrace corpus and real HDR sources | Additional backend-specific/cooked/virtualized corpora and performance work as those readers arrive |

@@ -526,6 +526,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     props.names = &p.names;
                     props.reflected_structs = context.reflected_structs;
                     props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
+                    props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
                     props.max_values = options.max_property_values;
                     props.charge = [&](std::uint32_t work, std::uint64_t text) {
                         if (work > options.max_property_values - property_work)

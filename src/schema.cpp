@@ -795,6 +795,36 @@ struct PropertyReader {
             measure(value);
             return value;
         }
+        case 12:
+            return {{"kind", "interface-reference"},
+                    {"object", read_value(SchemaType{4, {}, {}}, zero, nesting + 1)}};
+        case 15: {
+            text(32);
+            std::string guid;
+            static const char digits[] = "0123456789abcdef";
+            for (unsigned word = 0; word < 4; ++word) {
+                auto value = zero ? 0ull : r.number(4);
+                std::string part(8, '0');
+                for (unsigned j = 0; j < 8; ++j) {
+                    part[7 - j] = digits[value & 15];
+                    value >>= 4;
+                }
+                guid += part;
+            }
+            return {{"kind", "lazy-object-guid"}, {"guid", std::move(guid)}};
+        }
+        case 17: {
+            if (!zero && options.soft_path_layout != SoftPathLayout::ue5_top_level_names)
+                throw Error("schema-context", "Soft object paths require an explicit supported layout",
+                            r.pos);
+            auto package = read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
+            auto asset = read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
+            auto subpath = read_value(SchemaType{10, {}, {}}, zero, nesting + 1);
+            return {{"kind", "soft-object-path"},
+                    {"packageName", std::move(package)},
+                    {"assetName", std::move(asset)},
+                    {"subPath", std::move(subpath)}};
+        }
         case 5: {
             if (zero) {
                 text(4);
