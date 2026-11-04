@@ -73,9 +73,67 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-desktop-',dir=Path.
     for extra in [['--before','other.uasset'],['--repo','.'],['--browse'],['--view','textures'],['--cooked-profile','auto']]:
         run('--container',pak,*extra,code=2)
     run('--container-entry',entry,code=2)
+    # Pairing is metadata-only until an explicit decoded comparison or inspection.
+    pair_args=['--container',pak,'--after-container',pak]
+    report=run(*pair_args,'--codec',root/'not-loaded.dll','--container-changes-only')
+    pairs=report['document']['container']
+    assert len(pairs['members'])==2 and all(p['state']=='unchecked' for p in pairs['members'])
+    assert pairs['comparison'] is None and report['containerView']['visibleMembers']==2
+    checks+=1
+    report=run(*pair_args,'--compare-container-bytes','--container-changes-only')
+    pairs=report['document']['container']
+    assert pairs['comparison']['status']=='identical' and pairs['comparison']['unchanged']==2
+    assert report['containerView']['visibleMembers']==0
+    checks+=1
+    pair_args=['--container',pak,'--after-container',pak_dir/'test.utoc','--compare-container-bytes']
+    report=run(*pair_args)
+    comparison=report['document']['container']['comparison']
+    expected=subprocess.run([cli,'container-diff',str(pak),str(pak_dir/'test.utoc')],env=env,capture_output=True,timeout=30)
+    assert expected.returncode==1 and comparison==json.loads(expected.stdout)
+    assert all(p['state']=='modified' for p in report['document']['container']['members'])
+    checks+=1
+    pair_args=['--container',pak,'--after-container',zen_dir/'test.utoc']
+    report=run(*pair_args,'--container-entry','path:Content/A.bin')
+    assert report['document']['container']['selectedComparison']['state']=='removed'
+    assert report['document']['container']['after']['inspection'] is None
+    assert report['containerView']['selectedKey']=='path:Content/A.bin'
+    checks+=1
+    report=run(*pair_args,'--container-entry','id:'+entry,'--after-cooked-profile','ue5.3')
+    assert report['document']['container']['selectedComparison']['state']=='added'
+    assert report['document']['container']['inspection'] is None and report['containerView']['tab']==2
+    checks+=1
+    pair_args=[*base,'--after-container',zen_dir/'changed.utoc',*context,
+               '--after-cooked-profile','ue5.3','--after-script-objects',zen_dir/'global.utoc']
+    report=run(*pair_args)
+    comparison=report['document']['container']['selectedComparison']
+    expected=subprocess.run([cli,'zen-diff',str(zen_dir/'test.utoc'),entry,str(zen_dir/'changed.utoc'),entry,*map(str,context)],env=env,capture_output=True,timeout=30)
+    assert expected.returncode==1 and comparison['zen']==json.loads(expected.stdout) and comparison['state']=='modified'
+    checks+=1
+    report=run(*pair_args,'--container-tab','comparison')
+    assert report['containerView']['tab']==3
+    checks+=1
+    run('--container',pak,'--container-tab','objects',code=2)
+    run('--container',pak,'--container-tab','comparison',code=2)
+    run('--container',pak,'--container-tab','unknown',code=2)
+    # Equal bytes can have different interpretation contexts; preserve that evidence.
+    report=run(*base,'--after-container',zen_dir/'test.utoc',*context,
+               '--after-cooked-profile','ue5.3','--after-script-objects',zen_dir/'other-global.utoc')
+    comparison=report['document']['container']['selectedComparison']
+    assert comparison['state']=='unchanged' and comparison['zen']['contextChanged'] and comparison['zen']['status']=='changed'
+    checks+=1
+    report=run(*base,'--after-container',zen_dir/'changed.utoc','--cooked-profile','ue5.3')
+    assert report['document']['container']['after']['zen'] is None
+    assert report['document']['container']['selectedComparison']['zen'] is None
+    checks+=1
+    run(*base,'--after-container',zen_dir/'changed.utoc','--after-cooked-profile','ue5.5',code=2)
+    for extra in [['--compare-container-bytes'],['--container-changes-only'],['--after-cooked-profile','ue5.3'],['--after-script-objects',zen_dir/'global.utoc']]:
+        run('--container',pak,*extra,code=2)
+    run('--after-container',pak,code=2)
     # Protect source Pak, secondary IoStore partitions and global script payload aliases.
     for source,options in [(pak,['--container',pak]),(pak_dir/'test_s1.ucas',['--container',pak_dir/'test.utoc']),
-                           (zen_dir/'global.ucas',['--container',zen_dir/'test.utoc','--script-objects',zen_dir/'global.utoc'])]:
+                           (zen_dir/'global.ucas',['--container',zen_dir/'test.utoc','--script-objects',zen_dir/'global.utoc']),
+                           (pak_dir/'test_s1.ucas',['--container',pak,'--after-container',pak_dir/'test.utoc']),
+                           (zen_dir/'global.ucas',['--container',pak,'--after-container',zen_dir/'test.utoc','--after-script-objects',zen_dir/'global.utoc'])]:
         alias=root/'alias.json';alias.unlink(missing_ok=True);os.link(source,alias)
         p=subprocess.run([exe,'--smoke',*map(str,options),'--report',str(alias)],env=env,capture_output=True,timeout=30)
         assert p.returncode==2 and hashlib.sha256(source.read_bytes()).hexdigest()==originals[source]

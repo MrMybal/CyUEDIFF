@@ -22,8 +22,9 @@ namespace {
 struct Settings {
     std::string before, after, project, engine, codec, repository, lfs_objects, after_project, after_engine;
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
-    int source = 0, cooked_profile = 0;
-    std::string container_path, container_entry, script_objects;
+    int source = 0, cooked_profile = 0, after_cooked_profile = 0;
+    std::string container_path, container_entry, script_objects, after_container_path, after_script_objects;
+    bool compare_container_payloads = false;
     bool previews = true, discover_engine = true, include_engine = false;
     bool ready() const {
         if (source == 2)
@@ -50,6 +51,15 @@ struct Settings {
             input.profile = cooked_profile == 1
                                 ? ZenProfile::unreal_5_3
                                 : (cooked_profile == 2 ? ZenProfile::unreal_5_5 : ZenProfile::unspecified);
+            if (!after_container_path.empty()) {
+                input.after_path = fs::u8path(after_container_path);
+                input.after_script_objects = fs::u8path(after_script_objects);
+                input.after_profile =
+                    after_cooked_profile == 1
+                        ? ZenProfile::unreal_5_3
+                        : (after_cooked_profile == 2 ? ZenProfile::unreal_5_5 : ZenProfile::unspecified);
+                input.compare_payloads = compare_container_payloads;
+            }
             result.container = std::move(input);
             result.codec = fs::u8path(codec);
             result.previews = false;
@@ -73,7 +83,8 @@ struct Options {
     bool theme_override = false, locale_override = false, previews_override = false, engine_override = false;
     std::string preferences_diagnostic;
     std::string browse_filter, browse_select, container_filter;
-    bool container_parameters = false;
+    int container_tab = -1;
+    bool container_parameters = false, after_container_parameters = false, container_changes_only = false;
     bool history = false, history_parameters = false, history_compare = false;
     std::string history_revision = "HEAD", history_before, history_after, history_filter;
     std::string theme = "mid-grey", locale = "en", view = "properties";
@@ -108,6 +119,33 @@ Options parse(const std::vector<std::string> &args) {
         else if (argument == "--container") {
             options.settings.container_path = value();
             options.settings.source = 2;
+        } else if (argument == "--container-tab") {
+            const auto name = value();
+            options.container_parameters = true;
+            if (name == "members")
+                options.container_tab = 0;
+            else if (name == "inspection")
+                options.container_tab = 1;
+            else if (name == "objects")
+                options.container_tab = 2;
+            else if (name == "comparison") {
+                options.container_tab = 3;
+                options.after_container_parameters = true;
+            } else
+                throw Error("desktop-option", "Unknown container tab");
+        } else if (argument == "--after-container") {
+            options.settings.after_container_path = value();
+            options.container_parameters = true;
+        } else if (argument == "--compare-container-bytes" || argument == "--container-changes-only") {
+            options.container_parameters = true;
+            options.after_container_parameters = true;
+            if (argument == "--compare-container-bytes")
+                options.settings.compare_container_payloads = true;
+            else
+                options.container_changes_only = true;
+        } else if (argument == "--after-script-objects") {
+            options.settings.after_script_objects = value();
+            options.container_parameters = options.after_container_parameters = true;
         } else if (argument == "--container-entry" || argument == "--container-filter" ||
                    argument == "--script-objects") {
             auto text = value();
@@ -118,13 +156,17 @@ Options parse(const std::vector<std::string> &args) {
                 options.settings.script_objects = text;
             else
                 options.container_filter = text;
-        } else if (argument == "--cooked-profile") {
+        } else if (argument == "--cooked-profile" || argument == "--after-cooked-profile") {
             const auto profile = value();
             options.container_parameters = true;
+            auto &target = argument == "--after-cooked-profile" ? options.settings.after_cooked_profile
+                                                                : options.settings.cooked_profile;
+            if (argument == "--after-cooked-profile")
+                options.after_container_parameters = true;
             if (profile == "ue5.3")
-                options.settings.cooked_profile = 1;
+                target = 1;
             else if (profile == "ue5.5")
-                options.settings.cooked_profile = 2;
+                target = 2;
             else
                 throw Error("desktop-option", "Supported cooked profiles are ue5.3 and ue5.5");
         } else if (argument == "--history")
@@ -233,6 +275,8 @@ Options parse(const std::vector<std::string> &args) {
     if ((options.container_parameters || !options.settings.container_path.empty()) &&
         options.settings.source != 2)
         throw Error("desktop-option", "Container options require --container");
+    if (options.after_container_parameters && options.settings.after_container_path.empty())
+        throw Error("desktop-option", "After container options require --after-container");
     if (options.settings.source == 2 &&
         (options.settings.container_path.empty() || !options.settings.before.empty() ||
          !options.settings.after.empty() || !options.settings.repository.empty() ||
@@ -335,7 +379,8 @@ void register_translations() {
          {"Project context changes", "Changements du contexte projet"},
          {"Context changes: %zu", "Changements de contexte : %zu"},
          {"Choose a repository, two revisions and an asset path, then load them.",
-          "Choisissez un dépôt, deux révisions et un chemin d’asset, puis chargez-les."},
+          "Choisissez un dépôt, deux révisions et un chemin d’asset, "
+          "puis chargez-les."},
          {"File", "Fichier"},
          {"Open before...", "Ouvrir avant..."},
          {"Open after...", "Ouvrir après..."},
@@ -416,7 +461,9 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         return;
     std::vector<fs::path> inputs;
     if (options.settings.source == 2) {
-        for (const auto &path : {options.settings.container_path, options.settings.script_objects}) {
+        for (const auto &path :
+             {options.settings.container_path, options.settings.script_objects,
+              options.settings.after_container_path, options.settings.after_script_objects}) {
             if (path.empty())
                 continue;
             ContainerOptions limits;
@@ -555,6 +602,7 @@ class Shell {
     std::shared_ptr<const Document> displayed_;
     AssetView view_;
     ContainerView container_view_;
+    int container_tab_ = -1;
     std::vector<ComPtr<ID3D11ShaderResourceView>> images_;
     std::vector<std::string> gpu_diagnostics_;
     std::string dialog_error_, context_details_, preferences_diagnostic_;
@@ -565,7 +613,9 @@ class Shell {
     explicit Shell(const Options &options)
         : preferences_diagnostic_(options.preferences_diagnostic), settings_(options.settings),
           initial_tab_(tab(options.view)) {
+        container_tab_ = options.container_tab;
         container_view_.set_filter(options.container_filter);
+        container_view_.set_changed_only(options.container_changes_only);
         if ((settings_.source == 2 || !settings_.before.empty()) && !options.history)
             session_.request(settings_.request());
 #ifdef CYUEDIFF_HAS_GIT
@@ -610,6 +660,7 @@ class Shell {
         return {{"visibleMembers", container_view_.visible_count()},
                 {"selectedMember", entry ? Json(entry->id) : Json(nullptr)},
                 {"selectedObject", container_view_.selected_object()},
+                {"selectedKey", container_view_.selected_key()},
                 {"tab", container_view_.active_tab()}};
     }
     Json history_report() const {
@@ -771,6 +822,8 @@ class Shell {
             gpu_diagnostics_.clear();
             context_details_.clear();
             container_view_.set_document(displayed_->container);
+            if (container_tab_ >= 0 && !container_view_.select_tab(container_tab_))
+                throw Error("desktop-option", "Requested container tab is unavailable");
             return;
         }
         container_view_.set_document({});
@@ -959,14 +1012,30 @@ class Shell {
                     ImGui::Combo("##cooked-profile", &settings_.cooked_profile, profiles, 3);
                     cyui::property(cyui::tr("Global script TOC").c_str());
                     field("##script-toc", settings_.script_objects);
+                    cyui::property(cyui::tr("After container").c_str());
+                    field("##after-container-file", settings_.after_container_path);
+                    cyui::property(cyui::tr("After cooked profile").c_str());
+                    ImGui::Combo("##after-cooked-profile", &settings_.after_cooked_profile, profiles, 3);
+                    cyui::property(cyui::tr("After global script TOC").c_str());
+                    field("##after-script-toc", settings_.after_script_objects);
                     cyui::property(cyui::tr("Codec module").c_str());
                     field("##container-codec", settings_.codec);
                     cyui::endProperties();
                 }
                 ImGui::TextWrapped(
                     "%s", cyui::tr("Choose an explicit UE profile for Zen object inspection.").c_str());
+                {
+                    cyui::ScopedDisabled unavailable(settings_.after_container_path.empty());
+                    ImGui::Checkbox(cyui::trLabel("Compare all decoded members").c_str(),
+                                    &settings_.compare_container_payloads);
+                }
+                cyui::textDim("%s", cyui::tr("Up to 512 MiB total; 64 MiB per member.").c_str());
                 cyui::ScopedDisabled disabled(!settings_.ready());
-                if (cyui::primaryButton(cyui::trLabel("Index container").c_str(), cyui::dp(-1, 0)))
+                if (cyui::primaryButton(cyui::trLabel(settings_.after_container_path.empty()
+                                                          ? "Index container"
+                                                          : "Index comparison")
+                                            .c_str(),
+                                        cyui::dp(-1, 0)))
                     action = Action::container_index;
             } else {
                 if (settings_.source == 1) {
@@ -1300,6 +1369,10 @@ class Shell {
                 settings_.source = 2;
                 settings_.container_path = path->u8string();
                 settings_.container_entry.clear();
+                settings_.after_container_path.clear();
+                settings_.after_script_objects.clear();
+                settings_.after_cooked_profile = 0;
+                settings_.compare_container_payloads = false;
                 session_.request(settings_.request());
                 return;
             }
@@ -1318,7 +1391,8 @@ class Shell {
                     const auto &input = displayed_->container->source;
                     settings_.source = 2;
                     settings_.container_path = input.path.u8string();
-                    settings_.container_entry = selected->id;
+                    settings_.after_container_path = input.after_path.u8string();
+                    settings_.container_entry = container_view_.selected_key();
                 }
                 session_.request(settings_.request());
                 return;
@@ -1377,6 +1451,9 @@ int run(Options options) {
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
+               "  [--container-tab members|inspection|objects|comparison]\n"
+               "  [--after-container FILE] [--compare-container-bytes] [--container-changes-only]\n"
+               "  [--after-cooked-profile ue5.3|ue5.5] [--after-script-objects GLOBAL.utoc]\n"
                "  [--cooked-profile ue5.3|ue5.5] [--script-objects GLOBAL.utoc] : explicit Zen inspection\n"
                "  --repo DIR --history [--history-revision REF] : choose commits in local history\n"
                "  --history --smoke [--history-before ID --history-after ID --history-compare]\n"

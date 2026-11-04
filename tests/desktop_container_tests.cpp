@@ -37,7 +37,7 @@ int main() {
             fs::remove_all(resolved);
     };
     try {
-        auto pak = root / fs::u8path("exemple ÃƒÂ©.pak");
+        auto pak = root / fs::u8path("exemple é.pak");
         Bytes bytes;
         bytes.data = pak_plain();
         bytes.save(pak);
@@ -152,6 +152,14 @@ int main() {
                   std::find(pair->protected_files.begin(), pair->protected_files.end(), root / "test.ucas") !=
                       pair->protected_files.end(),
               "Both physical container payloads are protected");
+        bool scan_cancelled = false;
+        OperationControl scan_control;
+        scan_control.cancelled = [&] { return scan_cancelled; };
+        scan_control.progress = [&](const auto &progress) {
+            if (progress.phase == "container-diff")
+                scan_cancelled = true;
+        };
+        rejects([&] { load_container_document(source, {}, scan_control); }, "cancelled");
         source.max_comparison_bytes = 1;
         rejects([&] { load_container_document(source, {}); }, "container-limit");
         source.max_comparison_bytes = 0;

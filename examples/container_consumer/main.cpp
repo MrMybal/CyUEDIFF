@@ -12,6 +12,10 @@ int run(const std::vector<std::string> &arguments) {
         auto summary = container.metadata();
         if (summary.contains("entries") || summary.at("entryCount") != container.entries().size())
             throw std::runtime_error("Unexpected container summary");
+        auto pairs = cyuediff::pair_container_entries(container, container);
+        for (const auto &pair : pairs)
+            if (!pair.before || !pair.after || pair.before != pair.after)
+                throw std::runtime_error("Unexpected self-pairing");
         if (!container.entries().empty() && !container.entries()[0].deleted) {
             auto data = container.read(0); // This example selects uncompressed inputs.
             output["firstMemberSha256"] = cyuediff::sha256_bytes(data);
