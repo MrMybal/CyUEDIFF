@@ -321,3 +321,7 @@ Blueprint native pin friendly names and default texts now use the same bounded a
 ## Tagged native bounding volumes - 0.65
 
 Classic StructProperty reading now recognizes Box, Sphere and BoxSphereBounds and their 3f/3d serialized aliases. Generic and double types use the archive's LWC threshold (UE5 version 1004); explicit float aliases retain float components. Their min/max/validity, center/radius and origin/extents/radius JSON matches the corresponding explicit USMAP layouts. The validity byte remains raw. Bounded tagged windows, finite checks, shared native component work and cancellation prevent a damaged value from consuming the following property. No matching USMAP is needed for these tagged values. These native properties do not imply collision, skeletal or mesh payload decoding.
+
+## Native matrices and planes - 0.66
+
+Four additional explicit tokens, matrix4-f32/f64 and plane-f32/f64, bring the native layout count to 29. Matrices retain four rows of four components in serialized row-major order; planes retain normal XYZ and distance W without normalization. Zero-masked matrices remain zero rather than identity. Classic Matrix/Matrix44f/Matrix44d and Plane/Plane4f/Plane4d tags use the archive LWC threshold for generic/double aliases and fixed precision for float aliases. Finite checks, component budgets, exact windows and cancellation apply in both backends. Local read-only UE 5.5 Matrix.h and Plane.h establish wire order; no matrix inversion, decomposition or projection interpretation is performed.

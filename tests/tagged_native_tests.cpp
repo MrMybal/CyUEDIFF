@@ -23,7 +23,8 @@ int main() {
         const auto schemas = UnversionedSchemas::parse(collection_schema_fixture(collection_struct()).data);
         for (int version : {1000, 1009, 1013})
             for (const char *token : {"Box", "Box3f", "Box3d", "Sphere", "Sphere3f", "Sphere3d",
-                                      "BoxSphereBounds", "BoxSphereBounds3f", "BoxSphereBounds3d"}) {
+                                      "BoxSphereBounds", "BoxSphereBounds3f", "BoxSphereBounds3d", "Matrix",
+                                      "Matrix44f", "Matrix44d", "Plane", "Plane4f", "Plane4d"}) {
                 const std::string name = token;
                 const bool wide = version >= 1004 && name.back() != 'f';
                 auto payload = geometry_value(name, wide);
@@ -32,9 +33,11 @@ int main() {
                 const auto &prop = package.exports[0].properties["Native"];
                 check(prop.contains("value") && package.exports[0].properties["AfterNative"]["value"] == 987,
                       "Tagged native bounds preserve following fields");
-                const std::string layout = name.find("BoxSphereBounds") == 0 ? "box-sphere"
-                                           : name.find("Sphere") == 0        ? "sphere"
-                                                                             : "box3";
+                const std::string layout = name.find("Matrix") == 0            ? "matrix4"
+                                           : name.find("Plane") == 0           ? "plane"
+                                           : name.find("BoxSphereBounds") == 0 ? "box-sphere"
+                                           : name.find("Sphere") == 0          ? "sphere"
+                                                                               : "box3";
                 UnversionedReadOptions opt;
                 opt.native_structs["Record"] = parse_native_struct_layout(layout + (wide ? "-f64" : "-f32"));
                 const auto bytes = collection_single(payload);

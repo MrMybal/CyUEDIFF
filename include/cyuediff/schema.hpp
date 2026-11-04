@@ -78,7 +78,11 @@ enum class NativeStructLayout {
     sphere_f32,
     sphere_f64,
     box_sphere_f32,
-    box_sphere_f64
+    box_sphere_f64,
+    matrix4_f32,
+    matrix4_f64,
+    plane_f32,
+    plane_f64
 };
 const char *native_struct_layout_name(NativeStructLayout);
 NativeStructLayout parse_native_struct_layout(const std::string &);

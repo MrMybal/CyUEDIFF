@@ -8,7 +8,7 @@
 #include <fstream>
 namespace cyuediff {
 namespace {
-enum class NativeShape { array, transform, guid, ticks, box3, sphere, box_sphere };
+enum class NativeShape { array, transform, guid, ticks, box3, sphere, box_sphere, matrix4, plane };
 struct NativeLayoutInfo {
     NativeStructLayout layout;
     const char *name;
@@ -40,7 +40,11 @@ constexpr NativeLayoutInfo native_layouts[] = {
     {NativeStructLayout::sphere_f32, "sphere-f32", 3, 4, NativeShape::sphere},
     {NativeStructLayout::sphere_f64, "sphere-f64", 7, 4, NativeShape::sphere},
     {NativeStructLayout::box_sphere_f32, "box-sphere-f32", 3, 7, NativeShape::box_sphere},
-    {NativeStructLayout::box_sphere_f64, "box-sphere-f64", 7, 7, NativeShape::box_sphere}};
+    {NativeStructLayout::box_sphere_f64, "box-sphere-f64", 7, 7, NativeShape::box_sphere},
+    {NativeStructLayout::matrix4_f32, "matrix4-f32", 3, 16, NativeShape::matrix4},
+    {NativeStructLayout::matrix4_f64, "matrix4-f64", 7, 16, NativeShape::matrix4},
+    {NativeStructLayout::plane_f32, "plane-f32", 3, 4, NativeShape::plane},
+    {NativeStructLayout::plane_f64, "plane-f64", 7, 4, NativeShape::plane}};
 const NativeLayoutInfo &native_layout_info(NativeStructLayout layout) {
     for (const auto &info : native_layouts)
         if (info.layout == layout)
@@ -791,6 +795,16 @@ struct PropertyReader {
                     read_value(SchemaType{static_cast<std::uint8_t>(info.kind), {}, {}}, zero, nesting + 1));
             return result;
         };
+        if (info.shape == NativeShape::matrix4) {
+            Json rows = Json::array();
+            for (unsigned row = 0; row < 4; ++row)
+                rows.push_back(values(4));
+            return rows;
+        }
+        if (info.shape == NativeShape::plane) {
+            auto normal = values(3), distance = values(1);
+            return {{"normal", std::move(normal)}, {"distance", std::move(distance[0])}};
+        }
         if (info.shape == NativeShape::box3) {
             auto minimum = values(3), maximum = values(3);
             auto validity = read_value(SchemaType{0, {}, {}}, zero, nesting + 1);

@@ -295,8 +295,11 @@ class PropertyReader {
             const bool sphere = s == "Sphere" || s == "Sphere3f" || s == "Sphere3d";
             const bool bounds =
                 s == "BoxSphereBounds" || s == "BoxSphereBounds3f" || s == "BoxSphereBounds3d";
-            if (box || sphere || bounds) {
-                const bool narrow = s == "Box3f" || s == "Sphere3f" || s == "BoxSphereBounds3f";
+            const bool matrix = s == "Matrix" || s == "Matrix44f" || s == "Matrix44d";
+            const bool plane = s == "Plane" || s == "Plane4f" || s == "Plane4d";
+            if (box || sphere || bounds || matrix || plane) {
+                const bool narrow = s == "Box3f" || s == "Sphere3f" || s == "BoxSphereBounds3f" ||
+                                    s == "Matrix44f" || s == "Plane4f";
                 const bool doubles = !narrow && p.summary.ue5_version >= 1004;
                 auto component = [&]() {
                     depth_check(depth + 1);
@@ -314,6 +317,20 @@ class PropertyReader {
                         result.push_back(component());
                     return result;
                 };
+                if (matrix) {
+                    Json rows = Json::array();
+                    for (unsigned row = 0; row < 4; ++row) {
+                        Json columns = Json::array();
+                        for (unsigned column = 0; column < 4; ++column)
+                            columns.push_back(component());
+                        rows.push_back(std::move(columns));
+                    }
+                    return rows;
+                }
+                if (plane) {
+                    auto normal = vector(), distance = component();
+                    return {{"normal", std::move(normal)}, {"distance", std::move(distance)}};
+                }
                 if (box) {
                     auto minimum = vector(), maximum = vector();
                     if (++native_nodes_ > options.max_properties)
