@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/core.hpp>
+#include <optional>
 namespace cyuediff {
 // Virtual names are never used as extraction destinations.
 struct ContainerEntry {
@@ -24,6 +25,8 @@ struct ContainerReadOptions {
     std::uint32_t max_block_bytes = 16 * 1024 * 1024;
     ContainerBlockDecoder decoder;
     OperationControl control;
+    // Aggregate decoded bytes read by compare_containers, including both sides.
+    std::uint64_t max_comparison_bytes = 1024ull * 1024 * 1024;
 };
 // Adapt the explicit bulk codec ABI for Oodle and LZ4; other names fail closed.
 ContainerBlockDecoder container_block_decoder(BlockDecoder decoder);
@@ -43,6 +46,14 @@ class Container {
     Json metadata() const;
     Json to_json() const;
 };
+struct ContainerPair {
+    std::string key;
+    std::optional<std::size_t> before, after;
+};
+// Live members only, sorted by exact virtual path or unnamed chunk ID.
+// Duplicate keys are rejected rather than silently selecting an arbitrary member.
+std::vector<ContainerPair> pair_container_entries(const Container &, const Container &,
+                                                  const OperationControl & = {});
 // Decoded-byte comparison paired by virtual path or chunk ID if unnamed.
 // Does not interpret cooked UObject/Zen data.
 Json compare_containers(const Container &, const Container &, const ContainerReadOptions & = {});

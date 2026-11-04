@@ -75,6 +75,12 @@ python scripts/validate_containers.py --input D:/build/Game-Windows.pak --input 
 
 The script independently parses indexes and reconstructs every member through a Python byte reader, using the same explicitly supplied codec implementation for decompression. It compares all decoded SHA-256 values to Core, checks self-diffs and extracted samples, rejects writes onto original sources/truncated copies, and verifies original file hashes before/after. It is an independent container parser, not an independent codec implementation. Reports and sample bytes remain in an ignored workspace build directory; no proprietary input is distributed.
 
-## Summary API — 0.25
+## Summary API â€” 0.25
 
 `Container::metadata()` returns the format, version, mounts, source files, compression methods, diagnostics and `entryCount` without serializing the member table. `entries()` supplies typed rows to applications. The existing `to_json()` contract retains its full `entries` array. This avoids constructing a second large JSON catalogue for interactive browsing.
+
+## Comparison pairing and work budget — 0.27
+
+`pair_container_entries(before, after, control)` returns sorted live-member pairs with optional before/after entry indices. Exact virtual paths take precedence; unnamed entries use chunk IDs. Missing sides represent additions/removals, tombstones are omitted, and duplicate keys fail closed. Pairing reads no payload and does not establish equality for shared members.
+
+`ContainerReadOptions::max_comparison_bytes` bounds the sum of declared decoded member sizes across both sides of `compare_containers` (default 1 GiB). All declared sizes and per-member limits are checked before any payload decoding. The budget includes repeated reads of shared blocks, counts both sides, and does not reserve that much memory. Cancellation applies during pairing, preflight, member reads and hashing. The existing diff JSON contract is unchanged.

@@ -6,6 +6,10 @@ struct ContainerSource {
     fs::path path, script_objects;
     std::string entry;
     ZenProfile profile = ZenProfile::unspecified;
+    fs::path after_path, after_script_objects;
+    ZenProfile after_profile = ZenProfile::unspecified;
+    bool compare_payloads = false;
+    std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;
 };
 struct ContainerDocument {
@@ -13,6 +17,10 @@ struct ContainerDocument {
     std::shared_ptr<const Container> input;
     Json metadata, inspection = nullptr;
     std::optional<ZenPackage> zen;
+    std::shared_ptr<const ContainerDocument> after;
+    std::vector<ContainerPair> members;
+    std::vector<std::string> member_states;
+    Json comparison = nullptr, selected_comparison = nullptr;
     std::vector<fs::path> protected_files;
     Json report() const;
 };

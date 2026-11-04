@@ -766,38 +766,69 @@ std::vector<std::uint8_t> Container::read(std::size_t index, const ContainerRead
     options.control.checkpoint("container-read", e.size, e.size);
     return result;
 }
-Json compare_containers(const Container &before, const Container &after,
-                        const ContainerReadOptions &options) {
-    std::map<std::string, std::pair<std::size_t, std::size_t>> pairs;
-    constexpr auto absent = std::numeric_limits<std::size_t>::max();
+std::vector<ContainerPair> pair_container_entries(const Container &before, const Container &after,
+                                                  const OperationControl &control) {
+    std::map<std::string, ContainerPair> pairs;
     auto add = [&](const Container &c, bool right) {
         for (std::size_t j = 0; j < c.entries().size(); ++j) {
-            options.control.check();
+            control.check();
             const auto &e = c.entries()[j];
             if (e.deleted)
                 continue;
             auto key = e.path.empty() ? "id:" + e.id : "path:" + e.path;
-            auto it = pairs.emplace(key, std::make_pair(absent, absent)).first;
-            (right ? it->second.second : it->second.first) = j;
+            auto &pair = pairs[key];
+            pair.key = key;
+            auto &side = right ? pair.after : pair.before;
+            if (side)
+                throw Error("container-entry", "Duplicate container comparison key: " + key);
+            side = j;
         }
     };
     add(before, false);
     add(after, true);
+    std::vector<ContainerPair> result;
+    result.reserve(pairs.size());
+    for (auto &item : pairs) {
+        control.check();
+        result.push_back(std::move(item.second));
+    }
+    control.check();
+    return result;
+}
+Json compare_containers(const Container &before, const Container &after,
+                        const ContainerReadOptions &options) {
+    auto pairs = pair_container_entries(before, after, options.control);
+    std::uint64_t total = 0;
+    auto budget = [&](const Container &input, const std::optional<std::size_t> &entry) {
+        options.control.check();
+        if (!entry)
+            return;
+        const auto size = input.entries()[*entry].size;
+        if (size > options.max_payload_bytes || size > options.max_comparison_bytes - total)
+            throw Error("container-limit", "Container comparison decoded-byte budget exceeded");
+        total += size;
+    };
+    // Preflight all declared sizes before decoding any payload.
+    for (const auto &pair : pairs) {
+        budget(before, pair.before);
+        budget(after, pair.after);
+    }
     Json changes = Json::array();
     std::uint64_t unchanged = 0;
-    for (const auto &[key, pair] : pairs) {
+    for (const auto &pair : pairs) {
         options.control.check();
-        auto b = pair.first, a = pair.second;
+        const auto &key = pair.key;
+        auto b = pair.before, a = pair.after;
         std::string bh, ah;
-        if (b != absent)
-            bh = sha256_bytes(before.read(b, options), options.control);
-        if (a != absent)
-            ah = sha256_bytes(after.read(a, options), options.control);
-        if (b != absent && a != absent && bh == ah)
+        if (b)
+            bh = sha256_bytes(before.read(*b, options), options.control);
+        if (a)
+            ah = sha256_bytes(after.read(*a, options), options.control);
+        if (b && a && bh == ah)
             ++unchanged;
         else
             changes.push_back({{"key", key},
-                               {"change", b == absent ? "added" : (a == absent ? "removed" : "modified")},
+                               {"change", !b ? "added" : (!a ? "removed" : "modified")},
                                {"beforeSha256", bh},
                                {"afterSha256", ah}});
         options.control.checkpoint("container-diff", unchanged + changes.size(), pairs.size());

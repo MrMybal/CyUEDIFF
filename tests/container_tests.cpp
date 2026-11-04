@@ -129,6 +129,24 @@ int main(int argc, char **argv) {
         auto difference = compare_containers(container, Container::open(other));
         check(difference["status"] == "changed" && difference["changes"].size() == 3,
               "Added, removed and modified decoded members");
+        auto pairs = pair_container_entries(container, Container::open(other));
+        check(pairs.size() == 3 && pairs[0].key == "path:Content/A.bin" && pairs[0].before &&
+                  !pairs[0].after && pairs[1].before && pairs[1].after && !pairs[2].before && pairs[2].after,
+              "Stable pairing retains one-sided members and exact path identity");
+        ContainerReadOptions bounded;
+        bounded.max_comparison_bytes = 13;
+        bool payload_read = false;
+        bounded.control.progress = [&](const auto &progress) {
+            if (progress.phase == "container-read")
+                payload_read = true;
+        };
+        error([&] { compare_containers(container, container, bounded); }, "container-limit");
+        check(!payload_read, "Aggregate byte budget is checked before payload IO");
+        bounded.max_comparison_bytes = 14;
+        check(compare_containers(container, container, bounded)["unchanged"] == 2 && payload_read,
+              "Aggregate byte budget includes both sides at the exact boundary");
+        bounded.control.cancelled = [] { return true; };
+        error([&] { pair_container_entries(container, container, bounded.control); }, "cancelled");
         for (unsigned version : {3u, 4u}) {
             toc("A.bin", false, version).save(io);
             check(Container::open(io).read(0) == container.read(0), "Older supported TOC layout");
