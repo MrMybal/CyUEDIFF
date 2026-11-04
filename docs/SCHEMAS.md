@@ -317,3 +317,7 @@ History 12 retains the resolved generator FName and an opaque contents record co
 ## Structured Blueprint pin texts - 0.64
 
 Blueprint native pin friendly names and default texts now use the same bounded archive adapter as tagged FText properties, including recursive formats, calendar/numeric metadata and opaque generator identities. Shared text work and generator-byte budgets span all pin texts in one native export; depth limits, exact native windows, archived custom versions and cancellation remain enforced. Unsupported or damaged pin text discards the native pin result while retaining export fingerprints and tagged properties. Graph snapshots preserve the structured text beneath stable node/pin GUID paths, so stored argument, tick, culture or generator hash changes can highlight the owning node without evaluating or localizing the text.
+
+## Tagged native bounding volumes - 0.65
+
+Classic StructProperty reading now recognizes Box, Sphere and BoxSphereBounds and their 3f/3d serialized aliases. Generic and double types use the archive's LWC threshold (UE5 version 1004); explicit float aliases retain float components. Their min/max/validity, center/radius and origin/extents/radius JSON matches the corresponding explicit USMAP layouts. The validity byte remains raw. Bounded tagged windows, finite checks, shared native component work and cancellation prevent a damaged value from consuming the following property. No matching USMAP is needed for these tagged values. These native properties do not imply collision, skeletal or mesh payload decoding.

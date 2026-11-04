@@ -147,7 +147,7 @@ class PropertyReader {
     const Package &p;
     const ObjectExport &object;
     const ReadOptions &options;
-    std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0;
+    std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0, native_nodes_ = 0;
     std::uint64_t text_blob_bytes_ = 0;
     void depth_check(unsigned depth) const {
         if (depth > options.max_depth)
@@ -291,6 +291,45 @@ class PropertyReader {
                 return a.guid();
             if (s == "DateTime" || s == "Timespan")
                 return Json{{"ticks", a.get<std::int64_t>()}};
+            const bool box = s == "Box" || s == "Box3f" || s == "Box3d";
+            const bool sphere = s == "Sphere" || s == "Sphere3f" || s == "Sphere3d";
+            const bool bounds =
+                s == "BoxSphereBounds" || s == "BoxSphereBounds3f" || s == "BoxSphereBounds3d";
+            if (box || sphere || bounds) {
+                const bool narrow = s == "Box3f" || s == "Sphere3f" || s == "BoxSphereBounds3f";
+                const bool doubles = !narrow && p.summary.ue5_version >= 1004;
+                auto component = [&]() {
+                    depth_check(depth + 1);
+                    options.control.check();
+                    if (++native_nodes_ > options.max_properties)
+                        throw Error("limit", "Native struct work exceeds configured limit", a.tell());
+                    const double value = doubles ? a.get<double>() : a.get<float>();
+                    if (!std::isfinite(value))
+                        throw Error("native-value", "Non-finite native geometry component", a.tell());
+                    return Json(value);
+                };
+                auto vector = [&]() {
+                    Json result = Json::array();
+                    for (unsigned i = 0; i < 3; ++i)
+                        result.push_back(component());
+                    return result;
+                };
+                if (box) {
+                    auto minimum = vector(), maximum = vector();
+                    if (++native_nodes_ > options.max_properties)
+                        throw Error("limit", "Native struct work exceeds configured limit", a.tell());
+                    const auto validity = a.get<std::uint8_t>();
+                    return {{"min", std::move(minimum)}, {"max", std::move(maximum)}, {"isValid", validity}};
+                }
+                if (sphere) {
+                    auto center = vector(), radius = component();
+                    return {{"center", std::move(center)}, {"radius", std::move(radius)}};
+                }
+                auto origin = vector(), extent = vector(), radius = component();
+                return {{"origin", std::move(origin)},
+                        {"boxExtent", std::move(extent)},
+                        {"sphereRadius", std::move(radius)}};
+            }
             if (s == "Transform") {
                 auto vector = [&](unsigned count) {
                     Json values = Json::array();
