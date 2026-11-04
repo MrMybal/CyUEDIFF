@@ -173,6 +173,12 @@ int main() {
         graph_state["layout"] = {{"diagnostics", true}};
         blueprint.restore_view_state(graph_state);
         check(blueprint.view_state() == graph_state, "Blueprint camera uses graph identity");
+        check(blueprint.select_node(graph_key, std::string(32, 'a')), "Select Blueprint by graph/node GUID");
+        graph_state = blueprint.view_state();
+        blueprint.restore_view_state(graph_state);
+        check(graph_state["inspectors"][graph_key]["selected"] == std::string(32, 'a'),
+              "Blueprint selection is saved independently of numeric node IDs");
+        check(!blueprint.select_node(graph_key, "missing"), "Missing node selection is refused");
         auto changed_graphs = graphs;
         changed_graphs.exports.insert(changed_graphs.exports.begin(), ObjectExport{});
         changed_graphs.exports[2].outer_index = 2;
@@ -180,6 +186,19 @@ int main() {
         second_graph.set_package(changed_graphs);
         second_graph.restore_view_state(graph_state);
         check(second_graph.view_state() == graph_state, "Graph state survives export index movement");
+        auto peer_graphs = graphs;
+        peer_graphs.exports[1].properties["Power"] = {{"type", "IntProperty"}, {"value", 17}};
+        BlueprintView before_graph, after_graph;
+        before_graph.set_package(graphs, &peer_graphs);
+        after_graph.set_package(peer_graphs, &graphs, true);
+        check(before_graph.next_changed_node() && after_graph.next_changed_node(),
+              "Both comparison sides navigate changed Blueprint nodes");
+        check(before_graph.view_state()["inspectors"][graph_key]["selected"] ==
+                  after_graph.view_state()["inspectors"][graph_key]["selected"],
+              "Before and after use the same stable changed-node identity");
+        BlueprintView unchanged_graph;
+        unchanged_graph.set_package(graphs, &graphs);
+        check(!unchanged_graph.next_changed_node(), "Unchanged graph has no changed-node target");
         Package materials;
         ObjectExport material;
         material.path = material.name = "M";
@@ -243,8 +262,9 @@ int main() {
                         ++frames;
                     }
         }
-        check(blueprint.view_state() == graph_state && material_view.view_state() == material_state &&
-                  mesh_view.view_state() == camera,
+        check(blueprint.view_state()["views"] == graph_state["views"] &&
+                  blueprint.view_state()["inspectors"][graph_key]["selected"] == std::string(32, 'a') &&
+                  material_view.view_state() == material_state && mesh_view.view_state() == camera,
               "Drawing restored views does not auto-fit over saved navigation");
         check(package->to_json() == original_package, "Restoring views never modifies package data");
         ImGui::DestroyContext();

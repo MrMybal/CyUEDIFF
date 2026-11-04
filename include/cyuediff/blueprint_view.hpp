@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/view_layout.hpp>
+#include <cyuediff/graph_inspector.hpp>
 #include <cyuediff/view_state.hpp>
 #include <cyuediff/visual_diff.hpp>
 #include <cyui/modules/Nodes.h>
@@ -18,6 +19,7 @@ class BlueprintView {
         bool comparing = false;
         std::vector<cyui::NodeLink> links;
         cyui::NodeState state;
+        GraphInspector inspector;
         cyui::Point low{}, high{};
         std::size_t pins = 0;
     };
@@ -29,6 +31,8 @@ class BlueprintView {
     Json view_state() const;
     void restore_view_state(const Json &);
     void set_package(const Package &package, const Package *peer = nullptr, bool after = false);
+    bool select_node(const std::string &graph, const std::string &node);
+    bool next_changed_node(bool previous = false);
     bool empty() const {
         return graphs_.empty();
     }

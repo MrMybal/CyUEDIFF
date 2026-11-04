@@ -48,21 +48,24 @@ void BlueprintView::set_package(const Package &package, const Package *peer, boo
         prepared.complete = graph.value().at("complete");
         prepared.diagnostics = graph.value().at("diagnostics").get<std::vector<std::string>>();
         GraphChanges delta;
+        const Json *match =
+            peer && other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
         if (peer) {
-            const Json *match =
-                other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
             delta = after ? graph_changes(match, &graph.value()) : graph_changes(&graph.value(), match);
             prepared.counts = delta.node_counts;
             prepared.comparing = true;
         }
         cyui::ItemId next = 1;
         std::map<std::string, cyui::ItemId> pins;
+        std::vector<GraphInspectionItem> inspection;
         for (auto node = graph.value().at("nodes").begin(); node != graph.value().at("nodes").end(); ++node) {
             cyui::Node item;
             item.id = next++;
             if (peer)
                 prepared.changes[item.id] = delta.nodes.at(node.key());
             item.label = node_title(node.value());
+            inspection.push_back(
+                {item.id, node.key(), item.label, peer ? delta.nodes.at(node.key()) : ChangeKind::unchanged});
             item.position = {node.value().at("position").at("x").get<double>(),
                              node.value().at("position").at("y").get<double>()};
             for (const auto &pin_id : node.value().value("pinOrder", Json::array())) {
@@ -98,12 +101,30 @@ void BlueprintView::set_package(const Package &package, const Package *peer, boo
             if (a != pins.end() && b != pins.end() && link.at("validDirection") == true)
                 prepared.links.push_back({next++, a->second, b->second, 0});
         }
+        const auto *local_nodes = &graph.value().at("nodes");
+        const auto *peer_nodes = match ? &match->at("nodes") : nullptr;
+        prepared.inspector.set_nodes(after ? peer_nodes : local_nodes, after ? local_nodes : peer_nodes,
+                                     std::move(inspection), peer != nullptr);
         graphs_.push_back(std::move(prepared));
     }
 }
+bool BlueprintView::select_node(const std::string &graph, const std::string &node) {
+    for (std::size_t i = 0; i < graphs_.size(); ++i)
+        if (graphs_[i].id == graph && graphs_[i].inspector.select_node(node)) {
+            selected_ = i;
+            return true;
+        }
+    return false;
+}
+bool BlueprintView::next_changed_node(bool previous) {
+    return !graphs_.empty() && graphs_[selected_].inspector.next_change(previous);
+}
 Json BlueprintView::view_state() const {
-    Json views = Json::object();
+    Json views = Json::object(), inspectors = Json::object();
     auto add = [&](const auto &g) {
+        auto state = g.inspector.view_state();
+        if (!state.empty() && inspectors.size() < 128)
+            inspectors[g.id] = std::move(state);
         if (!g.needs_fit && views.size() < 128)
             views[g.id] = {{"pan", {g.state.canvas.view.origin.x, g.state.canvas.view.origin.y}},
                            {"zoom", g.state.canvas.view.zoom}};
@@ -114,6 +135,8 @@ Json BlueprintView::view_state() const {
         add(g);
     Json result = {{"selected", graphs_.empty() ? Json(nullptr) : Json(graphs_[selected_].id)},
                    {"views", views}};
+    if (!inspectors.empty())
+        result["inspectors"] = std::move(inspectors);
     if (!layout_.snapshot().empty())
         result["layout"] = layout_.snapshot();
     return result;
@@ -130,6 +153,12 @@ void BlueprintView::restore_view_state(const Json &state) {
                 break;
             }
     }
+    if (state.contains("inspectors"))
+        for (auto &g : graphs_) {
+            auto it = state["inspectors"].find(g.id);
+            if (it != state["inspectors"].end())
+                g.inspector.restore_view_state(*it);
+        }
     if (state.contains("views"))
         for (auto &g : graphs_) {
             auto it = state["views"].find(g.id);
@@ -175,19 +204,7 @@ void BlueprintView::draw(const char *id) {
             ImGui::TreePop();
         }
     }
-    auto available = ImGui::GetContentRegionAvail();
-    if (available.x <= 0 || available.y <= 0)
-        return;
-    if (graph.needs_fit && !graph.nodes.empty()) {
-        graph.state.canvas.view.fit(graph.low, graph.high, available, cyui::dp(24));
-        graph.needs_fit = false;
-    }
-    cyui::NodeOptions options;
-    options.readOnly = true;
-    options.revision = 1;
-    options.drawBody = [&](const cyui::Node &node, const cyui::Rect &rect) {
-        detail::node_marker(node, rect, graph.changes);
-    };
-    cyui::nodeEditor("##graph-canvas", graph.state, graph.nodes, graph.links, available, options);
+    graph.inspector.draw(graph.state, graph.nodes, graph.links, graph.changes, graph.needs_fit, graph.low,
+                         graph.high);
 }
 } // namespace cyuediff

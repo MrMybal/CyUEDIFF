@@ -244,3 +244,7 @@ Supported text generator histories expose the resolved generator name and opaque
 ## Shared graph inspection - 0.68
 
 The embeddable UI now has a shared read-only GraphInspector with stable snapshot identities, title/identity search, changed-node navigation, typed before/after node details and bounded validated state. Canvas identifiers are excluded from saved state. Node properties are prepared on selection and reused while drawing. This milestone supplies the component; Blueprint and Material hosts are integrated next.
+
+## Blueprint node navigation - 0.69
+
+Blueprint graphs now embed the shared inspector. Select a node on the canvas or in the searchable node list, navigate changed nodes and focus a selected node. The typed comparison includes stored pin text metadata, defaults, references and node properties. Search limits navigation results while retaining the complete graph and its connections. Selection, filters and property previews are saved by graph/node identity in explicit workspace files, independently for each side; restoring selection preserves saved pan/zoom.
