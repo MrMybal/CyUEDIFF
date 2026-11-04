@@ -133,6 +133,18 @@ if args.consumer:
  result=subprocess.run([str(cli),'usmap',str(mappings)],capture_output=True,check=True,env=env,timeout=20)
  report=json.loads(result.stdout)
  if report['extensions']!=['PPTH','EATR','ENVP'] or report['schemas'][0]['serializedPropertyFlagsHex']!=['8000000000000010']:raise RuntimeError('Installed extended USMAP metadata failed')
+ # Independent unversioned Map<int, Set<int16>> with stored removals/additions.
+ payload=u32(2)+bytes([8])+b'Consumer'+bytes([5])+b'Value'+u32(0)+u32(1)
+ payload+=u32(0)+struct.pack('<iHHHBi',-1,1,1,0,1,1)+bytes([24,2,25,22])
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ wire=struct.pack('<Hiiii',0x0300,1,7,2,9)+struct.pack('<ihihh',1,4,2,1,2)+struct.pack('<iii',11,0,0)
+ values.write_bytes(wire)
+ result=subprocess.run([str(executable),str(mappings),str(values)],capture_output=True,check=True,env=env,timeout=20)
+ collection=json.loads(result.stdout)['Consumer.Value']['value']
+ if collection['removed']!={'7':7} or collection['replace'] or collection['entries']['9']['value']['entries']!={'1':1,'2':2}:raise RuntimeError('Installed unversioned collection consumer failed')
+ if collection['entries']['9']['value']['removed']!={'4':4}:raise RuntimeError('Installed unversioned set removal failed')
+ if set(collection['entries'])!={'9','11'} or collection['entries']['11']['value']['entries']:raise RuntimeError('Installed unversioned collection tail failed')
+
 
 print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

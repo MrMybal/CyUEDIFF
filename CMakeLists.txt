@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.18.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.19.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -104,6 +104,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_schema_collection_tests tests/schema_collection_tests.cpp)
+    target_link_libraries(cyuediff_schema_collection_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME unversioned_collections COMMAND cyuediff_schema_collection_tests)
     add_executable(cyuediff_schema_extension_tests tests/schema_extension_tests.cpp)
     target_link_libraries(cyuediff_schema_extension_tests PRIVATE CyUEDiff::Core)
     add_test(NAME schema_extensions COMMAND cyuediff_schema_extension_tests)
@@ -119,6 +122,9 @@ if(BUILD_TESTING)
     if(CYUEDIFF_BUILD_CLI)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME schema_collection_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_collection_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_schema_collection_tests>")
             add_test(NAME schema_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_schema_tests>" "$<TARGET_FILE:cyuediff_schema_extension_tests>")

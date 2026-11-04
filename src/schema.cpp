@@ -625,6 +625,106 @@ struct PropertyReader {
         }
         return object;
     }
+    // Serialize canonical JSON incrementally so a large key cannot allocate an
+    // unbounded temporary string before the enclosing text budget is charged.
+    std::string identity(const Json &key) {
+        std::string output;
+        auto append = [&](const char *value, std::size_t size) {
+            text(size);
+            output.append(value, size);
+        };
+        auto string = [&](const std::string &value) {
+            std::uint64_t bytes = 2;
+            for (std::size_t j = 0; j < value.size(); ++j) {
+                if ((j & 4095) == 0)
+                    options.control.check();
+                auto c = static_cast<unsigned char>(value[j]);
+                bytes +=
+                    c == '"' || c == '\\' || c == '\b' || c == '\f' || c == '\n' || c == '\r' || c == '\t'
+                        ? 2
+                        : (c < 32 ? 6 : 1);
+            }
+            text(bytes);
+            output += Json(value).dump();
+        };
+        std::function<void(const Json &, unsigned)> write = [&](const Json &value, unsigned nesting) {
+            depth(nesting);
+            charge();
+            if (value.is_string())
+                string(value.get_ref<const std::string &>());
+            else if (value.is_array()) {
+                append("[", 1);
+                for (std::size_t j = 0; j < value.size(); ++j) {
+                    if (j)
+                        append(",", 1);
+                    write(value[j], nesting + 1);
+                }
+                append("]", 1);
+            } else if (value.is_object()) {
+                append("{", 1);
+                bool first = true;
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    if (!first)
+                        append(",", 1);
+                    first = false;
+                    string(it.key());
+                    append(":", 1);
+                    write(it.value(), nesting + 1);
+                }
+                append("}", 1);
+            } else {
+                if (value.is_binary() || value.is_discarded())
+                    throw Error("schema-type", "Unsupported map/set identity", r.pos);
+                if (value.is_number_float() && !std::isfinite(value.get<double>()))
+                    throw Error("schema-value", "Non-finite map/set identity", r.pos);
+                auto token = value.dump();
+                append(token.data(), token.size());
+            }
+        };
+        write(key, 0);
+        return output;
+    }
+    Json collection(const SchemaType &type, bool zero, unsigned nesting) {
+        const bool map = type.kind == 24;
+        Json removed = Json::object(), entries = Json::object();
+        bool replace = zero;
+        if (!zero) {
+            auto removed_count = r.i32();
+            if (map && removed_count == -1) {
+                if (!options.allow_map_replacement)
+                    throw Error("schema-type", "Map replacement marker requires an explicit supported layout",
+                                r.pos - 4);
+                replace = true;
+                removed_count = 0;
+            } else if (removed_count < 0)
+                throw Error("schema-value", "Invalid map/set removal count", r.pos - 4);
+            if (static_cast<std::uint32_t>(removed_count) > options.max_values - result.values_read)
+                throw Error("schema-limit", "Map/set removal count exceeds remaining work", r.pos - 4);
+            auto insert = [&](Json &target, Json key, bool pair) {
+                auto id = identity(key);
+                if (target.contains(id))
+                    throw Error("schema-identity", "Duplicate serialized map/set identity", r.pos);
+                if (pair) {
+                    auto value = read_value(type.arguments.at(1), false, nesting + 1);
+                    target[std::move(id)] = {{"key", std::move(key)}, {"value", std::move(value)}};
+                } else
+                    target[std::move(id)] = std::move(key);
+            };
+            for (std::int32_t j = 0; j < removed_count; ++j) {
+                insert(removed, read_value(type.arguments.at(0), false, nesting + 1), false);
+                options.control.checkpoint("unversioned-container-removals", j + 1, removed_count);
+            }
+            auto count = r.count(options.max_values - result.values_read);
+            for (std::uint32_t j = 0; j < count; ++j) {
+                insert(entries, read_value(type.arguments.at(0), false, nesting + 1), map);
+                options.control.checkpoint("unversioned-container-entries", j + 1, count);
+            }
+        }
+        return {{"kind", map ? "stored-map-delta" : "stored-set-delta"},
+                {"replace", replace},
+                {"removed", std::move(removed)},
+                {"entries", std::move(entries)}};
+    }
     Json read_value(const SchemaType &type, bool zero, unsigned nesting) {
         depth(nesting);
         charge();
@@ -754,6 +854,9 @@ struct PropertyReader {
                 values.push_back(read_value(type.arguments.at(0), false, nesting + 1));
             return values;
         }
+        case 24:
+        case 25:
+            return collection(type, zero, nesting);
         case 9: {
             const auto &definition = schemas.schema(type.name);
             bool allowed = options.reflected_structs.count(definition.path) != 0;
@@ -785,6 +888,7 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
     PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}};
     reader.result.properties = reader.structure(schema, false, 0);
     reader.result.consumed_bytes = reader.r.pos - offset;
+    options.control.check();
     return std::move(reader.result);
 }
 } // namespace cyuediff

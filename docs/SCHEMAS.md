@@ -37,16 +37,40 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Name / string | Package FName index and numeric suffix, ASCII narrow FString and validated UTF-16 FString |
 | Object | Signed 32-bit package index through an explicit host resolver; null references need no resolver |
 | Array / static array | Bounded dynamic element counts; expanded static slots retain array indices |
+| Map / set | Stored removals and additions/replacements keyed by canonical JSON identity; explicit whole-container replacement state |
 | Reflected struct | Nested unversioned header only when explicitly listed in `reflected_structs` |
 | Unsupported/native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
 
-Schemas preserve descriptors for maps, sets, texts, delegates, soft/weak/lazy references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported type also fails explicitly.
+Schemas preserve descriptors for texts, delegates, soft/weak/lazy references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar/native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
 
 Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
 `decode_unversioned(bytes, offset, size, schemas, schema_name, options)` returns properties, consumed bytes and work/text counters. It throws on unsupported or invalid input, with no partial result. The input window can include trailing native data: `consumed_bytes` describes only the property stream. Callers retain the original bytes and decide what follows.
 
 Default standalone limits are 100,000 value/fragment work units, depth 48 and 4 MiB decoded text. Header traversal, nested values and zero-masked values consume work. Optional `charge` callbacks let hosts enforce a shared enclosing-operation budget, including failed reads. Mapping input/expansion defaults to 64 MiB, one million combined slots/descriptors/enum entries and depth 48. Mapping names, resolved identities and expanded static-array type/name copies also consume a separate 64 MiB text budget (`max_text_bytes`); expanded type copies consume work units. Limits bound input/work, not total process heap use. Cancellation applies during file reading, parsing, hashing and property traversal; a decompression callback must implement its own interruption if needed during the call.
+
+## Map and set values
+
+Version 0.19 reads the ordinary unversioned Map/Set layout: a signed 32-bit removal count, removed keys/elements, an entry count and stored pairs/elements. Element types come from the explicit USMAP descriptor. Supported nested arrays, collections and explicitly bound reflected structs use the same bounded recursive reader.
+
+```json
+{
+  "kind": "stored-map-delta",
+  "replace": false,
+  "removed": {"\"OldKey\"": "OldKey"},
+  "entries": {"\"Count\"": {"key": "Count", "value": 42}}
+}
+```
+
+Set deltas use `kind:stored-set-delta`, and each `entries` value is the element itself. These are stored operations; the reader does not apply them to unknown inherited/default contents. Removal and re-addition of one identity are retained in separate buckets. A duplicate identity within either bucket fails with `schema-identity`, discarding the entire bound property read in Zen and retaining its full opaque body hash.
+
+A zero-masked map/set consumes no count or element bytes and reports `replace:true` with empty buckets: the explicitly serialized zero clears the container. An ordinary empty nonzero delta reports `replace:false`; it must not be confused with that clear operation. The UE 5.5 map layout also accepts a `-1` removed-key count to replace the whole map. Standalone hosts opt into this using `UnversionedReadOptions::allow_map_replacement`; it defaults to false. Zen enables it for the explicit `ue5.5` profile only. The marker is not certified for `ue5.3` and falls back to opaque there. Other negative counts and a negative set removal count are rejected.
+
+Canonical identities use compact, sorted-object JSON with exact string escaping and unchanged decoded values. This normalizes entry iteration order; it does not reproduce Unreal's runtime equality/hash rules for every type, normalize name case, coalesce floating-point signed zeros or reconstruct native struct defaults. Nested reflected keys preserve their serialized-property projection. Object keys use the host's resolved reference identity. No runtime container evaluation is performed.
+
+Identity construction charges its output text before allocating it and consumes shared work/depth budgets while traversing the key. Removal/entry counts, element decoding, nested containers, duplicate detection and identity construction are cancellable. Canonical key strings are included in the decoded-text budget. A failed read still consumes enclosing work/text budget.
+
+Unversioned collection values appear in the existing normalized property snapshots. A value edit produces a path under `/properties/.../value/entries/KEY/value`; JSON-pointer tokens are escaped. Reordering entries leaves this property projection unchanged, while the complete `/opaque/sha256` fingerprint still changes. Such a package remains `status:changed` because binary evidence is retained; it is not reported as identical.
 
 ## Explicit Zen context
 

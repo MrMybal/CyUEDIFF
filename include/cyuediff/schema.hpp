@@ -58,6 +58,9 @@ struct UnversionedReadOptions {
     // Only explicitly certified reflected structs use a nested unversioned header.
     // Native struct serializers are never guessed from a matching USMAP name.
     std::set<std::string> reflected_structs;
+    // Enables the -1 removed-key marker checked against the UE 5.5 map layout.
+    // Zero-masked empty containers do not require this flag.
+    bool allow_map_replacement = false;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     OperationControl control;
