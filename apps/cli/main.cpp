@@ -3,6 +3,7 @@
 #include <cyuediff/hdr.hpp>
 #include <cyuediff/container.hpp>
 #include <cyuediff/zen.hpp>
+#include <cyuediff/schema_context.hpp>
 #include <cmath>
 #include <locale>
 #include <sstream>
@@ -365,84 +366,12 @@ int run(const std::vector<std::string> &args) {
         auto schema_context = [&](const fs::path &path) -> std::shared_ptr<const ZenSchemaContext> {
             if (path.empty())
                 return {};
-            protected_files.push_back(path);
-            std::ifstream file(path, std::ios::binary | std::ios::ate);
-            if (!file)
-                throw Error("file-open", "Cannot open schema context: " + path.u8string());
-            auto bytes = file.tellg();
-            if (bytes < 0 || bytes > 2 * 1024 * 1024)
-                throw Error("schema-limit", "Schema context exceeds 2 MiB");
-            std::string text(static_cast<std::size_t>(bytes), '\0');
-            file.seekg(0);
-            if (!file.read(text.data(), static_cast<std::streamsize>(text.size())))
-                throw Error("file-read", "Cannot read schema context");
-            std::vector<std::set<std::string>> keys;
-            auto manifest = Json::parse(text, [&](int depth, Json::parse_event_t event, Json &value) {
-                if (depth > 48)
-                    throw Error("schema-limit", "Schema context nesting exceeds limit");
-                if (event == Json::parse_event_t::object_start)
-                    keys.emplace_back();
-                if (event == Json::parse_event_t::key && !keys.back().insert(value.get<std::string>()).second)
-                    throw Error("schema-context", "Duplicate schema context key");
-                if (event == Json::parse_event_t::object_end)
-                    keys.pop_back();
-                return true;
-            });
-            auto fields = [](const Json &object, const std::set<std::string> &allowed) {
-                if (!object.is_object())
-                    throw Error("schema-context", "Expected schema context object");
-                for (auto it = object.begin(); it != object.end(); ++it)
-                    if (!allowed.count(it.key()))
-                        throw Error("schema-context", "Unknown schema context field: " + it.key());
-            };
-            fields(manifest, {"format", "profile", "usmap", "sha256", "bindings", "reflectedStructs"});
-            if (manifest.at("format") != "cyuediff.zen-schema/1")
-                throw Error("schema-context", "Unsupported schema context format");
-            auto context = std::make_shared<ZenSchemaContext>();
-            auto selected = manifest.at("profile").get<std::string>();
-            if (selected == "ue5.3")
-                context->profile = ZenProfile::unreal_5_3;
-            else if (selected == "ue5.5")
-                context->profile = ZenProfile::unreal_5_5;
-            else
-                throw Error("schema-context", "Unsupported schema context profile");
-            auto mapping_path = fs::u8path(manifest.at("usmap").get<std::string>());
-            if (mapping_path.empty())
-                throw Error("schema-context", "Empty USMAP path");
-            if (mapping_path.is_relative())
-                mapping_path = path.parent_path() / mapping_path;
-            protected_files.push_back(mapping_path);
-            SchemaReadOptions schema_options;
-            schema_options.decoder = read_options.decoder;
-            context->schemas =
-                std::make_shared<UnversionedSchemas>(UnversionedSchemas::read(mapping_path, schema_options));
-            if (manifest.at("sha256").get<std::string>() != context->schemas->sha256())
-                throw Error("schema-context", "USMAP fingerprint disagrees with schema context");
-            const auto &bindings = manifest.at("bindings");
-            if (!bindings.is_object() || bindings.size() > 100'000)
-                throw Error("schema-context", "Invalid schema bindings");
-            for (auto it = bindings.begin(); it != bindings.end(); ++it) {
-                fields(it.value(), {"schema", "offset"});
-                if (it.key().empty() || it.key()[0] != '/' || it.key().find('.') == std::string::npos)
-                    throw Error("schema-context", "Bindings require exact qualified class paths");
-                auto name = it.value().at("schema").get<std::string>();
-                context->schemas->schema(name);
-                const auto &offset = it.value().at("offset");
-                if (!offset.is_number_unsigned())
-                    throw Error("schema-context", "Property offset must be an unsigned integer");
-                context->bindings.emplace(it.key(), ZenSchemaBinding{name, offset.get<std::uint64_t>()});
-            }
-            if (manifest.contains("reflectedStructs")) {
-                if (!manifest.at("reflectedStructs").is_array())
-                    throw Error("schema-context", "Expected reflectedStructs array");
-                for (const auto &value : manifest.at("reflectedStructs")) {
-                    auto name = value.get<std::string>();
-                    const auto &definition = context->schemas->schema(name);
-                    if (!context->reflected_structs.insert(definition.path).second)
-                        throw Error("schema-context", "Duplicate reflected struct binding");
-                }
-            }
-            return context;
+            auto manifest = ZenSchemaManifest::read(path);
+            protected_files.push_back(manifest.source_path());
+            protected_files.push_back(manifest.mapping_path());
+            SchemaReadOptions options;
+            options.decoder = read_options.decoder;
+            return manifest.load(options);
         };
         before_options.script_objects = scripts(path_option("--script-objects"));
         before_options.schema_context = schema_context(path_option("--schema"));

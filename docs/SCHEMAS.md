@@ -133,3 +133,22 @@ options.schema_context = context;
 ```
 
 The installed-SDK `examples/schema_consumer` reads a minimal `Consumer` mapping and a raw property buffer without Git/UI/Unreal. Schema/native-property coverage is validated using original synthetic fixtures, including independently generated SDK-consumer bytes with CEXT/PPTH/EATR/ENVP. The supplied CyTrace corpus has no matching USMAP; its 3,507 packages and 7,502 exports continue to validate object tables and opaque fallback, **not real mapped values**. Matching-build mapping and property-offset validation remain required before certifying any cooked class.
+
+## Reusable context manifests — 0.29
+
+`<cyuediff/schema_context.hpp>` exposes `ZenSchemaManifest::read(path, options)` and `manifest.load(schemaOptions)` in the Core. The first operation reads and validates only the JSON manifest, records its SHA-256, resolves the USMAP path relative to the manifest and exposes both absolute input paths. It does not open a USMAP or load a codec. This lets hosts protect inputs and show provenance before decoding.
+
+`load` reads the explicit mapping, verifies its expected fingerprint and resolves every schema/reflected-struct identity. It returns an immutable `ZenSchemaContext` usable by `ZenReadOptions`. Fingerprints certify selected bytes, not a matching cooked build. Contexts remain explicit per side. The CLI uses this shared implementation.
+
+Manifest defaults are 2 MiB serialized/text bytes, 64 KiB per string, depth 48 and 100,000 combined bindings/reflected-struct entries. Invalid JSON/UTF-8, duplicate/unknown fields, missing fields, embedded NUL strings, invalid profiles, non-unsigned offsets and malformed SHA-256 values fail explicitly. Reading and mapping loading accept cooperative cancellation; mapping decoder and bounds are supplied through `SchemaReadOptions`. `to_json()` describes manifest-only provenance and never claims verified build compatibility.
+
+```cpp
+#include <cyuediff/schema_context.hpp>
+auto manifest = cyuediff::ZenSchemaManifest::read("build/schema.json");
+// Protect manifest.source_path() and manifest.mapping_path() against output writes.
+cyuediff::SchemaReadOptions mappings;
+auto context = manifest.load(mappings);
+cyuediff::ZenReadOptions options;
+options.profile = manifest.profile();
+options.schema_context = context;
+```
