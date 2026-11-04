@@ -38,6 +38,8 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Object / interface | Signed 32-bit package index through an explicit host resolver; interface addresses are not reconstructed |
 | Text | Modern localized, empty/invariant and unresolved string-table histories; explicit standalone layout |
 | Delegate / multicast | Persistent object/function bindings; original order, duplicates and null targets |
+| Optional | Explicit binary presence marker and supported inner value; checked UE 5.5 profile |
+| Field path | Modern ordered FName segments plus persistent owner reference |
 | Weak object | Persistent package object reference; no runtime pointer validity |
 | Lazy object | Four serialized GUID words, retained as an unresolved stable identifier |
 | Soft object | Explicit UE5 top-level-name layout: package FName, asset FName and subobject FString; no referenced asset is opened |
@@ -249,3 +251,9 @@ The binary shape was checked against local UE 5.5 PropertyOptional.cpp and Binar
 Both supported Zen profiles select the modern owner/name layout. An explicitly recorded ReleaseObjectVersion below 30 or FortniteMainBranchObjectVersion below 33 disables it unless the other recorded version certifies the modern layout, matching the engine's OR condition. With neither custom version recorded, the explicit supported profile supplies the modern layout. Legacy full-object-path serialization remains opaque; standalone hosts must opt into the layout themselves. The contract was checked against local UE 5.5 FieldPath.cpp and FieldPathProperty.cpp.
 
 Segments, owner resolution, nested arrays/maps/optionals and canonical identities use the existing work/text/depth budgets and cancellation. A segment change appears under `/value/path/INDEX`; an owner change under `/value/owner`. Missing maps/resolvers, invalid counts/names/owners, legacy versions and truncation discard the complete bound property read, retaining the opaque export hash.
+
+## Optional/field path application integration - 0.52
+
+Existing CLI and desktop schema contexts forward these profile-selected layouts; no new manifest version is required. Typed snapshots retain optional presence and nested field/owner identity. The property inspector unwraps only property metadata, so an optional's own `value` stays in the selection path. Search, changed-only filtering and workspace persistence use those stable paths. Invalid bindings/values never publish a partial decoded property tree.
+
+The installed schema consumer forwards the modern field-path layout and enables the binary optional layout for a UE 5.5 context. Its standalone buffers have no name table or object resolver: distribution validation uses empty/null field paths, set/unset optional integers and an optional empty field path. A host reading nonempty paths must supply the matching package names and owner resolver. Neither schema bytes nor engine headers are distributed with the SDK.

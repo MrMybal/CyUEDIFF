@@ -201,6 +201,27 @@ if args.consumer:
  result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
  if json.loads(result.stdout)['Consumer.Value']['value']['source']!=source:raise RuntimeError('Installed invariant Unicode text consumer failed')
  print('Installed cooked text and persistent reference consumer validated')
+ # Independent optional integers, empty field paths and a set optional field path.
+ names=[b'Consumer',b'Value',b'Path',b'Nested']
+ payload=u32(len(names))+b''.join(bytes([len(n)])+n for n in names)+u32(0)+u32(1)
+ payload+=u32(0)+struct.pack('<iHH',-1,3,3)
+ for index,descriptor in enumerate((bytes([28,2]),bytes([27]),bytes([28,27]))):
+  payload+=struct.pack('<HBi',index,1,index+1)+descriptor
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ context_path.write_text(json.dumps({'format':'cyuediff.zen-schema/2','profile':'ue5.5',
+     'usmap':mappings.name,'sha256':hashlib.sha256(mappings.read_bytes()).hexdigest(),
+     'bindings':{'/Script/Consumer.Consumer':{'schema':'Consumer','offset':0}},'nativeStructs':{}}),encoding='utf-8')
+ values.write_bytes(struct.pack('<HIiIIIII',0x0700,1,-73,0,0,1,0,0))
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ typed=json.loads(result.stdout)
+ if typed['Consumer.Value']['value']!={'kind':'optional','isSet':True,'value':-73}:raise RuntimeError('Installed set optional consumer failed')
+ if typed['Consumer.Path']['value']!={'kind':'field-path','path':[],'owner':None}:raise RuntimeError('Installed field path consumer failed')
+ if typed['Consumer.Nested']['value']['value']!=typed['Consumer.Path']['value']:raise RuntimeError('Installed optional field path consumer failed')
+ values.write_bytes(struct.pack('<HIIII',0x0700,0,0,0,0))
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ typed=json.loads(result.stdout)
+ if typed['Consumer.Value']['value']!={'kind':'optional','isSet':False} or typed['Consumer.Nested']['value']!={'kind':'optional','isSet':False}:raise RuntimeError('Installed unset optional consumer failed')
+ print('Installed optional and field path SDK consumer validated')
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]

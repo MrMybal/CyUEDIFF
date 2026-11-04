@@ -21,8 +21,12 @@ template <class F> void rejects(F f, const char *code) {
     throw std::runtime_error("Expected field path refusal");
 }
 } // namespace
-int main() {
+int main(int argc, char **argv) {
     try {
+        if (argc == 3 && std::string(argv[1]) == "--write-fixtures") {
+            write_path_fixtures(fs::u8path(argv[2]));
+            return 0;
+        }
         const std::string field = "/Script/Test.Collections.Lookup";
         auto schemas = UnversionedSchemas::parse(collection_schema_fixture(collection_type(27)).data);
         UnversionedReadOptions options;

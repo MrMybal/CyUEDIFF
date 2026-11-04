@@ -22,6 +22,9 @@ int run(const std::vector<std::string> &args) {
             options.native_structs = context->native_structs;
             options.text_layout = cyuediff::TextLayout::ue5_history;
             options.script_reference_layout = cyuediff::ScriptReferenceLayout::package_indices;
+            options.field_path_layout = cyuediff::FieldPathLayout::owner_and_names;
+            if (context->profile == cyuediff::ZenProfile::unreal_5_5)
+                options.optional_layout = cyuediff::OptionalLayout::bool32_value;
         }
         std::ifstream file(cyuediff::fs::u8path(args[1]), std::ios::binary | std::ios::ate);
         if (!file || file.tellg() < 0 || file.tellg() > 1024 * 1024)

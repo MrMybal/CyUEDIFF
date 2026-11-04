@@ -1,4 +1,4 @@
-# Desktop application — 0.49
+# Desktop application — 0.52
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -222,3 +222,7 @@ A version-two schema context can explicitly bind native math/color/GUID structs 
 ## Cooked text and persistent reference values - 0.49
 
 Supported modern text histories, delegates and weak package references appear under **Cooked objects > Decoded properties** when an explicit matching schema binds the export. Compare stored text sources or namespace/key/table identities, multicast functions and object targets; search and select a leaf for its full before/after preview. Delegate order and duplicate/null bindings remain visible. A workspace preserves the selected path and filter through reopening in either language. Histories or malformed values outside the supported layout leave the complete property read opaque; details remain in the object report. These views do not perform localization, invoke functions or reconstruct live pointers. See [schema contracts](SCHEMAS.md).
+
+## Optional values and field paths - 0.52
+
+The cooked property inspector shows supported optional values as `kind`, `isSet` and a `value` only when set. An unset option has no invented inner value; a set null or zero remains distinct. Modern field paths show the original `path` segments and `owner` reference. Compare a presence marker, segment or owner, then select a leaf to view its complete before/after text. Filters and selections persist through workspace save/reopen in both languages. UE 5.5 enables the checked optional format; both supported profiles enable modern field paths subject to recorded custom versions. No reflected field lookup or runtime pointer resolution occurs. See [schema contracts](SCHEMAS.md).
