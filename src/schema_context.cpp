@@ -62,9 +62,15 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
                 keys.pop_back();
             return true;
         });
-        fields(manifest, {"format", "profile", "usmap", "sha256", "bindings", "reflectedStructs"});
-        if (manifest.at("format") != "cyuediff.zen-schema/1")
+        result.format_ = string_value(manifest.at("format"));
+        const bool native_format = result.format_ == "cyuediff.zen-schema/2";
+        if (!native_format && result.format_ != "cyuediff.zen-schema/1")
             throw Error("schema-context", "Unsupported schema context format");
+        auto allowed =
+            std::set<std::string>{"format", "profile", "usmap", "sha256", "bindings", "reflectedStructs"};
+        if (native_format)
+            allowed.insert("nativeStructs");
+        fields(manifest, allowed);
         const auto profile = string_value(manifest.at("profile"));
         if (profile == "ue5.3")
             result.profile_ = ZenProfile::unreal_5_3;
@@ -111,6 +117,22 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
                 result.reflected_structs_.push_back(std::move(name));
             }
         }
+        if (native_format) {
+            const auto &values = manifest.at("nativeStructs");
+            if (!values.is_object())
+                throw Error("schema-context", "Expected nativeStructs object");
+            if (values.size() > options.max_entries - bindings.size() - result.reflected_structs_.size())
+                throw Error("schema-limit", "Schema context entry limit exceeded");
+            for (auto it = values.begin(); it != values.end(); ++it) {
+                options.control.check();
+                auto name = string_value(it.key());
+                if (std::find(result.reflected_structs_.begin(), result.reflected_structs_.end(), name) !=
+                    result.reflected_structs_.end())
+                    throw Error("schema-context", "Conflicting native/reflected struct binding");
+                result.native_structs_.emplace(std::move(name),
+                                               parse_native_struct_layout(string_value(it.value())));
+            }
+        }
     } catch (const Json::exception &) {
         throw Error("schema-context", "Malformed schema context JSON or missing required field");
     } catch (const fs::filesystem_error &) {
@@ -138,11 +160,24 @@ std::shared_ptr<const ZenSchemaContext> ZenSchemaManifest::load(const SchemaRead
         if (!result->reflected_structs.insert(definition.path).second)
             throw Error("schema-context", "Duplicate reflected struct binding");
     }
+    for (const auto &binding : native_structs_) {
+        options.control.check();
+        const auto &definition = result->schemas->schema(binding.first);
+        if (result->reflected_structs.count(definition.path) ||
+            !result->native_structs.emplace(definition.path, binding.second).second)
+            throw Error("schema-context", "Conflicting native/reflected struct binding: " + definition.path);
+    }
     options.control.check();
     return result;
 }
 Json ZenSchemaManifest::to_json() const {
+    Json native = Json::object();
+    for (const auto &binding : native_structs_)
+        native[binding.first] = native_struct_layout_name(binding.second);
     return {{"schema", "cyuediff.zen-schema-manifest/1"},
+            {"format", format_},
+            {"nativeStructCount", native_structs_.size()},
+            {"nativeStructs", native},
             {"coverage", "manifest-only"},
             {"source", source_.u8string()},
             {"manifestSha256", sha256_},

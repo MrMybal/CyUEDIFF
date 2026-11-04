@@ -8,11 +8,17 @@ std::string ZenSchemaContext::fingerprint() const {
     Json bindings_json = Json::object();
     for (const auto &pair : bindings)
         bindings_json[pair.first] = {{"schema", pair.second.schema}, {"offset", pair.second.property_offset}};
-    auto text = Json{{"profile", static_cast<unsigned>(profile)},
-                     {"usmap", schemas ? schemas->sha256() : std::string{}},
-                     {"bindings", bindings_json},
-                     {"reflectedStructs", reflected_structs}}
-                    .dump();
+    Json state = {{"profile", static_cast<unsigned>(profile)},
+                  {"usmap", schemas ? schemas->sha256() : std::string{}},
+                  {"bindings", bindings_json},
+                  {"reflectedStructs", reflected_structs}};
+    // Preserve fingerprints for existing contexts without native bindings.
+    if (!native_structs.empty()) {
+        state["nativeStructs"] = Json::object();
+        for (const auto &binding : native_structs)
+            state["nativeStructs"][binding.first] = native_struct_layout_name(binding.second);
+    }
+    auto text = state.dump();
     return sha256_bytes(std::vector<std::uint8_t>(text.begin(), text.end()));
 }
 namespace {
@@ -525,6 +531,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     UnversionedReadOptions props;
                     props.names = &p.names;
                     props.reflected_structs = context.reflected_structs;
+                    props.native_structs = context.native_structs;
                     props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
                     props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
                     props.max_values = options.max_property_values;

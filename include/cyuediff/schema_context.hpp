@@ -14,6 +14,8 @@ class ZenSchemaManifest {
     std::string sha256_, expected_sha256_;
     std::map<std::string, ZenSchemaBinding> bindings_;
     std::vector<std::string> reflected_structs_;
+    std::map<std::string, NativeStructLayout> native_structs_;
+    std::string format_ = "cyuediff.zen-schema/1";
     ZenSchemaManifest() = default;
 
   public:

@@ -1,4 +1,5 @@
 #include <cyuediff/schema.hpp>
+#include <cyuediff/zen.hpp>
 #include "schema_collection_fixture.hpp"
 #include <iostream>
 #include <limits>
@@ -162,6 +163,58 @@ int main() {
         auto list = decode_unversioned(body.data, 0, body.data.size(), nested, "Collections", options);
         check(list.properties[field]["value"].size() == 2 && list.consumed_bytes == body.data.size(),
               "Native layouts work inside bounded arrays");
+        auto context = std::make_shared<ZenSchemaContext>();
+        context->profile = ZenProfile::unreal_5_3;
+        context->schemas = std::make_shared<UnversionedSchemas>(schemas);
+        context->bindings["/Script/Test.DemoAsset"] = {"Collections", 0};
+        context->native_structs = options.native_structs;
+        ZenReadOptions zen;
+        zen.profile = context->profile;
+        zen.schema_context = context;
+        zen.script_objects = std::make_shared<ScriptObjects>(ScriptObjects::parse(script_fixture().data));
+        const auto package = ZenPackage::parse(collection_zen_fixture(wire).data, zen);
+        check(package.property_exports_decoded == 2 &&
+                  package.exports[0].property_read["properties"][field]["value"]["translation"][1] == 5.25,
+              "Zen context reads explicit native transform components");
+        auto changed_numbers = numbers;
+        double changed_component = 99.5;
+        std::memcpy(changed_numbers.data.data() + 5 * 8, &changed_component, 8);
+        auto changed =
+            ZenPackage::parse(collection_zen_fixture(collection_single(changed_numbers)).data, zen);
+        auto diff = compare_zen_packages(package, changed);
+        bool precise = false;
+        for (const auto &change : diff["changes"])
+            if (change["path"] == "/objects/~1Game~1Example.Example/properties/"
+                                  "~1Script~1Test.Collections.Lookup/value/translation/1")
+                precise = change["before"] == 5.25 && change["after"] == 99.5;
+        check(precise && diff["binaryChanged"] == true,
+              "Native transform diff identifies its changed component and retains binary evidence");
+        const auto original_fingerprint = context->fingerprint();
+        context->native_structs["Record"] = NativeStructLayout::transform_f32;
+        auto other = ZenPackage::parse(collection_zen_fixture(wire).data, zen);
+        check(context->fingerprint() != original_fingerprint &&
+                  compare_zen_packages(package, other)["contextChanged"] == true,
+              "Native wire layout participates in context identity");
+        context->native_structs.clear();
+        auto opaque = ZenPackage::parse(collection_zen_fixture(wire).data, zen);
+        check(opaque.exports[0].property_read["status"] == "opaque" &&
+                  !opaque.exports[0].property_read.contains("properties") &&
+                  opaque.exports[0].sha256 == package.exports[0].sha256,
+              "Unbound native value remains wholly opaque with its original hash");
+        context->native_structs = options.native_structs;
+        auto short_wire = wire;
+        short_wire.data.pop_back();
+        opaque = ZenPackage::parse(collection_zen_fixture(short_wire).data, zen);
+        check(opaque.exports[0].property_read["status"] == "opaque" &&
+                  !opaque.exports[0].property_read.contains("properties"),
+              "Truncated native body discards partial property values");
+        zen.max_property_values = 8;
+        rejects([&] { ZenPackage::parse(collection_zen_fixture(wire).data, zen); }, "schema-limit");
+        zen.max_property_values = 100000;
+        context->profile = ZenProfile::unreal_5_5;
+        zen.profile = context->profile;
+        check(ZenPackage::parse(collection_zen_fixture(wire, true).data, zen).property_exports_decoded == 2,
+              "Explicit native layout works with UE5.5 Zen profile");
         std::cout << checks << " native struct checks passed\n";
         return 0;
     } catch (const std::exception &e) {

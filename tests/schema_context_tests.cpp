@@ -72,6 +72,45 @@ int main() {
         check(package.property_exports_decoded == 2 &&
                   package.exports[0].property_read["properties"]["DemoAsset.Health"]["value"] == 42,
               "Manifest context decodes named Zen values");
+        auto native_json = json;
+        native_json["format"] = "cyuediff.zen-schema/2";
+        native_json["nativeStructs"] = {{"Record", "vector3-f64"}};
+        const auto native_manifest = read(native_json);
+        const auto native_context = native_manifest.load();
+        check(native_context->native_structs.at("Record") == NativeStructLayout::vector3_f64 &&
+                  native_manifest.to_json()["nativeStructs"]["Record"] == "vector3-f64",
+              "Version two native bindings and manifest provenance");
+        auto legacy_native = native_json;
+        legacy_native["format"] = "cyuediff.zen-schema/1";
+        rejects([&] { read(legacy_native); }, "schema-context");
+        auto missing_native = native_json;
+        missing_native.erase("nativeStructs");
+        rejects([&] { read(missing_native); }, "schema-context");
+        auto invalid_native = native_json;
+        invalid_native["nativeStructs"]["Record"] = "guess";
+        rejects([&] { read(invalid_native); }, "schema-context");
+        for (const auto &value : {Json(nullptr), Json::array(), Json(1), Json("vector3-f64")}) {
+            invalid_native = native_json;
+            invalid_native["nativeStructs"] = value;
+            rejects([&] { read(invalid_native); }, "schema-context");
+        }
+        invalid_native = native_json;
+        invalid_native["reflectedStructs"].push_back("Record");
+        rejects([&] { read(invalid_native); }, "schema-context");
+        invalid_native = native_json;
+        invalid_native["nativeStructs"] = {{"MissingNativeSchema", "guid"}};
+        rejects([&] { read(invalid_native).load(); }, "schema-missing");
+        auto native_limits = ZenSchemaManifestOptions{};
+        native_limits.max_entries = 2;
+        save(path, native_json.dump());
+        rejects([&] { ZenSchemaManifest::read(path, native_limits); }, "schema-limit");
+        auto empty_native = json;
+        empty_native["format"] = "cyuediff.zen-schema/2";
+        empty_native["nativeStructs"] = Json::object();
+        check(read(empty_native).load()->fingerprint() == context->fingerprint(),
+              "Version one fingerprints remain stable without native bindings");
+        check(native_context->fingerprint() != context->fingerprint(),
+              "Native bindings change context fingerprint");
         auto other = json;
         other["profile"] = "ue5.5";
         check(read(other).load()->profile == ZenProfile::unreal_5_5, "Manifest profile stays explicit");

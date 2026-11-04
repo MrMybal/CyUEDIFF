@@ -162,7 +162,7 @@ Bindings resolve exact qualified identities or unique short mapping names. Dupli
 
 Vectors/quaternions/rotators return component arrays (XY[ZW], quaternion XYZW, rotator pitch/yaw/roll). A transform returns `rotation`, `translation` and `scale` arrays, in that serialized order, without SIMD padding. Linear colors retain RGBA float values; `color-bgra8` retains wire BGRA bytes. Integer points/vectors retain signed 32-bit components. GUIDs retain four serialized words as 32 lowercase hexadecimal digits. Property metadata records `nativeLayout` and resolved `typeName`.
 
-No quaternion normalization, transform evaluation, color conversion or default reconstruction occurs. A zero-masked transform returns zero components, including zero scale and quaternion, rather than identity. Non-finite components and truncated windows fail the complete property read. Nested arrays/maps/sets use the same decoder, shared work/text/depth bounds and cancellation. Source ordering was checked against the local UE 5.5 Core math serializers; these original synthetic fixtures do not certify a matching real cooked build. Zen/context integration follows separately.
+No quaternion normalization, transform evaluation, color conversion or default reconstruction occurs. A zero-masked transform returns zero components, including zero scale and quaternion, rather than identity. Non-finite components and truncated windows fail the complete property read. Nested arrays/maps/sets use the same decoder, shared work/text/depth bounds and cancellation. Source ordering was checked against the local UE 5.5 Core math serializers; these original synthetic fixtures do not certify a matching real cooked build. Zen/context integration is available through the version-two context below.
 
 ```cpp
 cyuediff::UnversionedReadOptions options;
@@ -170,3 +170,29 @@ options.native_structs["/Script/CoreUObject.Vector"] = cyuediff::NativeStructLay
 options.native_structs["/Script/CoreUObject.Transform"] = cyuediff::NativeStructLayout::transform_f64;
 auto decoded = cyuediff::decode_unversioned(bytes, offset, size, schemas, "MyAsset", options);
 ```
+
+
+## Native Zen schema contexts - 0.45
+
+Manifest format `cyuediff.zen-schema/2` adds a required `nativeStructs` object mapping schema identities to the explicit layout tokens above. Format one remains supported and rejects this new field. Existing contexts without native bindings retain their context fingerprint. Native layout choices participate in fingerprints and `contextChanged`; changing precision cannot silently produce an identical semantic comparison.
+
+```json
+{
+  "format": "cyuediff.zen-schema/2",
+  "profile": "ue5.3",
+  "usmap": "build.usmap",
+  "sha256": "REPLACE_WITH_THE_USMAP_SHA256",
+  "bindings": {
+    "/Script/Example.ExampleAsset": {"schema": "/Script/Example.ExampleAsset", "offset": 0}
+  },
+  "reflectedStructs": [],
+  "nativeStructs": {
+    "/Script/CoreUObject.Vector": "vector3-f64",
+    "/Script/CoreUObject.Transform": "transform-f64"
+  }
+}
+```
+
+Every native binding must exist in the supplied mapping. Reading the manifest validates token/type/entry limits without opening a USMAP; loading it canonicalizes identities and rejects duplicate aliases or reflected/native conflicts before publishing the immutable context. Native entries share the existing combined entry budget with class/reflected bindings. Provenance includes declared bindings and the input format. A mapping fingerprint still certifies only selected bytes, not cooked-build compatibility.
+
+C++ hosts set `ZenSchemaContext::native_structs` directly. Both supported Zen profiles forward these bindings to the bounded property reader. A decoded native property is compared at component paths such as `/value/translation/1`. The entire export hash remains part of the comparison. Missing layouts, malformed values and truncated native components retain the whole opaque export with a reason; no partial property values are published. Cancellation and shared budget exhaustion still fail the enclosing operation.

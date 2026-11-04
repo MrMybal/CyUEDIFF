@@ -14,6 +14,7 @@ struct ZenSchemaContext {
     std::shared_ptr<const UnversionedSchemas> schemas;
     std::map<std::string, ZenSchemaBinding> bindings;
     std::set<std::string> reflected_structs;
+    std::map<std::string, NativeStructLayout> native_structs;
     std::string fingerprint() const;
 };
 struct ZenReadOptions {
