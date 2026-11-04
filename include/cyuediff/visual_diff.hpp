@@ -24,6 +24,7 @@ struct PropertyRow {
     ChangeKind change = ChangeKind::unchanged;
     unsigned depth = 0;
     bool before_present = false, after_present = false;
+    std::string label;
 };
 struct PropertyTableOptions {
     std::size_t max_rows = 20000, max_text_bytes = 2048;

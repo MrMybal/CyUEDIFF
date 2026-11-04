@@ -198,3 +198,7 @@ The extracted 0.19 archive is exercised by four external Core consumers. The sch
 ## 0.20 milestone: cooked references
 
 The Core-only configuration passes 22 suites. A new reference suite checks soft package/asset/subpath separation, numbered FNames, UTF-16 subpaths, exact windows and every truncated soft payload, null/interface indices, four-word GUID order, serialized zeros, limits/cancellation, and member-level Zen diffs for the explicit UE 5.3/5.5 profiles. These tests use original synthetic mappings; no matching USMAP has become available for the CyTrace build. Full desktop and distribution validation is performed after the following milestones.
+
+## 0.21 milestone: property inspection
+
+Windows Release passes all 29 CTest suites. Model checks cover unversioned type unwrapping, retained tag metadata and single-pass JSON pointer decoding. UI checks exercise value search, valid/invalid selection and filtered selection across 30 frames in five themes and both languages. Native Direct3D11/WARP captures of the supplied loose NewDataAsset package were inspected in English/mid-grey and French/light-grey; the property table, selected preview and copy actions fit their panel. The source asset was opened read-only.

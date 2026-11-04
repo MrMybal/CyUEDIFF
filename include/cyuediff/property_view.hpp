@@ -6,10 +6,21 @@ class PropertyView {
     PropertyTable table_;
     cyui::TextFilter filter_;
     std::vector<int> visible_;
+    int selected_ = -1;
     bool comparing_ = false, changed_only_ = false;
     void rebuild();
 
   public:
+    static void register_translations();
+    void set_filter(std::string);
+    void set_changed_only(bool);
+    bool select_row(std::size_t);
+    std::size_t visible_count() const {
+        return visible_.size();
+    }
+    const PropertyRow *selected_row() const {
+        return selected_ < 0 ? nullptr : &table_.rows[static_cast<std::size_t>(selected_)];
+    }
     void set_values(const Json *before, const Json *after, bool comparing);
     const PropertyTable &table() const {
         return table_;

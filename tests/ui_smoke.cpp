@@ -35,6 +35,15 @@ int main() {
     catalog_view.set_filter("");
     if (catalog_view.visible_count() != catalogue_items->size())
         return 16;
+    cyuediff::PropertyView property_view;
+    cyuediff::Json property_before = {{"/Script/Test.Asset.Health", {{"type", "IntProperty"}, {"value", 73}}}};
+    auto property_after = property_before; property_after["/Script/Test.Asset.Health"]["value"] = 91;
+    property_view.set_values(&property_before, &property_after, true);
+    property_view.set_filter("91");
+    if (property_view.visible_count() != 1 || !property_view.select_row(1) || property_view.select_row(999999)) return 18;
+    property_view.set_filter("nothing-matches");
+    if (property_view.visible_count() || property_view.selected_row()) return 19;
+    property_view.set_filter(""); property_view.set_changed_only(false); property_view.select_row(1);
     auto before = std::make_shared<cyuediff::Package>();
     before->source = "Sample.uasset";
     cyuediff::ObjectExport object;
@@ -251,6 +260,7 @@ int main() {
                 ImGui::Begin("Catalogue host");
                 catalog_view.draw();
                 ImGui::End();
+                ImGui::Begin("Typed properties host"); property_view.draw(); ImGui::End();
                 cyui::renderNotifications();
                 ImGui::Render();
                 if (frame == 2 && (!ImGui::GetDrawData() || ImGui::GetDrawData()->CmdListsCount == 0))

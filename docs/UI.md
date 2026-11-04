@@ -73,3 +73,9 @@ L’hôte peut charger un `GitComparison` via `CyUEDiff::Git`, puis fournir ses 
 `CatalogView` dans `<cyuediff/catalog_view.hpp>` reste indépendant de l’hôte Windows et de Git. L’hôte fournit un `shared_ptr<const vector<CatalogItem>>`, construit avec `merge_catalogs`, via `set_items(items, revisions)`. La vue conserve la recherche, le filtre asset/carte et la sélection. `draw` renvoie une intention `CatalogAction` (`open`, `use_before`, `use_after`) ; l’hôte charge les fichiers hors du rendu. Aucun parcours de dossiers ou appel Git ne se produit dans `draw`.
 
 `set_filter` prépare une recherche et `select` choisit un indice du catalogue non filtré. `selected` indique cet indice, ou `numeric_limits<size_t>::max()` en l’absence de sélection. Une recherche qui masque l’élément sélectionné efface la sélection. Les correspondances sont mises en cache et seules les lignes visibles sont rendues. `register_translations` fournit les contrôles en français avec anglais par défaut. Le desktop l’utilise dans son navigateur asynchrone. Voir [CATALOG.md](CATALOG.md).
+
+## Property inspector — 0.21
+
+`PropertyView` displays tagged and unversioned property types, decoded leaf labels and stable escaped paths. Search includes the path, type and displayed before/after previews. Selecting a visible row opens a wrapped preview panel with clipboard actions for its path and displayed values. Previews retain the model's text limits; copying a preview does not export the complete serialized value.
+
+Independent hosts call `PropertyView::register_translations()` once. `set_filter`, `set_changed_only`, `select_row`, `visible_count` and `selected_row` expose the prepared state. Selection is cleared when its row is filtered out. JSON traversal occurs when values change, filtering when the filter changes, and clipboard writes only on explicit clicks.

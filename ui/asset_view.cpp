@@ -2,6 +2,7 @@
 #include "diff_style.hpp"
 namespace cyuediff {
 void AssetView::register_translations() {
+    PropertyView::register_translations();
     cyui::registerTranslations(
         "fr",
         {{"Source diagnostics", "Diagnostics de la source"},

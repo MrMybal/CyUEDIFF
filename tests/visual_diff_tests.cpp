@@ -72,10 +72,26 @@ int main() {
         Json unicode = "ééé";
         auto text = property_table(&unicode, &unicode, limits);
         check(text.rows[0].after == "\"é\"...", "UTF-8 truncation keeps valid boundary");
-        Json tagged={{"type",{{"name","IntProperty"}}},{"value",1},{"serializationFlags",8}};
-        auto changed_tag=tagged; changed_tag["serializationFlags"]=40;
-        auto tag_table=property_table(&tagged,&changed_tag);
-        check(row(tag_table,"/@tag/serializationFlags").change==ChangeKind::modified,"Tag metadata changes remain visible");
+        Json tagged = {{"type", {{"name", "IntProperty"}}}, {"value", 1}, {"serializationFlags", 8}};
+        auto changed_tag = tagged;
+        changed_tag["serializationFlags"] = 40;
+        auto tag_table = property_table(&tagged, &changed_tag);
+        check(row(tag_table, "/@tag/serializationFlags").change == ChangeKind::modified,
+              "Tag metadata changes remain visible");
+        Json cooked = {{"/Script/Test.Asset.a/b~c",
+                        {{"type", "IntProperty"}, {"value", 12}, {"serializedZero", false}}}};
+        auto cooked_after = cooked;
+        cooked_after["/Script/Test.Asset.a/b~c"]["value"] = 34;
+        auto cooked_table = property_table(&cooked, &cooked_after);
+        const auto &cooked_row = row(cooked_table, "/~1Script~1Test.Asset.a~1b~0c");
+        check(cooked_row.type == "IntProperty" && cooked_row.before == "12" && cooked_row.after == "34",
+              "Unversioned type strings unwrap values");
+        check(cooked_row.label == "/Script/Test.Asset.a/b~c", "Display labels decode JSON pointer tokens");
+        check(row(cooked_table, "/~1Script~1Test.Asset.a~1b~0c/@tag/serializedZero").after == "false",
+              "Unversioned serialization metadata retained");
+        Json literal = {{"a~1b", 1}};
+        auto literal_table = property_table(&literal, &literal);
+        check(row(literal_table, "/a~01b").label == "a~1b", "Display labels unescape once");
         check(before == saved, "Input snapshots remain immutable");
         limits.max_rows = 0;
         try {

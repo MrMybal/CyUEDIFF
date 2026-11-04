@@ -79,7 +79,10 @@ std::string text(const Json *v, std::size_t limit) {
     return result;
 }
 std::string type(const Json *v) {
-    auto name = field(field(v, "type"), "name");
+    auto descriptor = field(v, "type");
+    if (descriptor && descriptor->is_string())
+        return descriptor->get<std::string>();
+    auto name = field(descriptor, "name");
     return name && name->is_string() ? name->get<std::string>() : std::string{};
 }
 } // namespace
@@ -134,17 +137,32 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
         result.rows.push_back({path, label_type, text(x, options.max_text_bytes),
                                text(y, options.max_text_bytes), classify_change(a, b), depth, bool(a),
                                bool(b)});
+        auto &display = result.rows.back().label;
+        auto slash = path.find_last_of('/');
+        auto token =
+            path.empty() ? std::string("/") : path.substr(slash == std::string::npos ? 0 : slash + 1);
+        for (std::size_t j = 0; j < token.size(); ++j) {
+            if (token[j] == '~' && j + 1 < token.size() && (token[j + 1] == '0' || token[j + 1] == '1'))
+                display += token[++j] == '0' ? '~' : '/';
+            else
+                display += token[j];
+        }
         if (unwrap) {
-            Json am=Json::object(),bm=Json::object();
-            bool type_changed=classify_change(field(a,"type"),field(b,"type"))!=ChangeKind::unchanged;
-            auto metadata=[&](const Json *source,Json &target) {
-                if (source) for (auto i=source->begin();i!=source->end();++i)
-                    if (i.key()!="value" && (i.key()!="type" || type_changed)) target[i.key()]=i.value();
+            Json am = Json::object(), bm = Json::object();
+            bool type_changed = classify_change(field(a, "type"), field(b, "type")) != ChangeKind::unchanged;
+            auto metadata = [&](const Json *source, Json &target) {
+                if (source)
+                    for (auto i = source->begin(); i != source->end(); ++i)
+                        if (i.key() != "value" && (i.key() != "type" || type_changed))
+                            target[i.key()] = i.value();
             };
-            metadata(a,am); metadata(b,bm);
+            metadata(a, am);
+            metadata(b, bm);
             if (!am.empty() || !bm.empty()) {
-                if (depth>=options.max_depth) result.truncated=true;
-                else visit(a?&am:nullptr,b?&bm:nullptr,path+"/@tag",depth+1);
+                if (depth >= options.max_depth)
+                    result.truncated = true;
+                else
+                    visit(a ? &am : nullptr, b ? &bm : nullptr, path + "/@tag", depth + 1);
             }
         }
         bool object = (!x || x->is_object()) && (!y || y->is_object());
