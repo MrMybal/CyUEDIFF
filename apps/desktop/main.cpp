@@ -1,5 +1,6 @@
 #include "document.hpp"
 #include "browser.hpp"
+#include "preferences.hpp"
 #include <cyuediff/catalog_view.hpp>
 #include <cyuediff/asset_view.hpp>
 #include "platform_win32.hpp"
@@ -44,7 +45,10 @@ struct Settings {
 struct Options {
     Settings settings;
     bool smoke = false, help = false, browse = false;
-    fs::path capture, report;
+    fs::path capture, report, preferences;
+    bool no_preferences = false, save_preferences = false, preference_write = false;
+    bool theme_override = false, locale_override = false, previews_override = false, engine_override = false;
+    std::string preferences_diagnostic;
     std::string browse_filter, browse_select;
     std::string theme = "mid-grey", locale = "en", view = "properties";
 };
@@ -81,9 +85,10 @@ Options parse(const std::vector<std::string> &args) {
             options.browse_filter = value();
         else if (argument == "--browse-select")
             options.browse_select = value();
-        else if (argument == "--include-engine")
-            options.settings.include_engine = true;
-        else if (argument == "--help" || argument == "-h")
+        else if (argument == "--include-engine" || argument == "--exclude-engine") {
+            options.settings.include_engine = argument == "--include-engine";
+            options.engine_override = true;
+        } else if (argument == "--help" || argument == "-h")
             options.help = true;
         else if (argument == "--before")
             options.settings.before = value();
@@ -114,17 +119,26 @@ Options parse(const std::vector<std::string> &args) {
             options.settings.after_engine = value();
         else if (argument == "--codec")
             options.settings.codec = value();
-        else if (argument == "--no-previews")
-            options.settings.previews = false;
+        else if (argument == "--no-previews" || argument == "--previews") {
+            options.settings.previews = argument == "--previews";
+            options.previews_override = true;
+        } else if (argument == "--preferences")
+            options.preferences = fs::u8path(value());
+        else if (argument == "--no-preferences")
+            options.no_preferences = true;
+        else if (argument == "--save-preferences")
+            options.save_preferences = true;
         else if (argument == "--capture")
             options.capture = fs::u8path(value());
         else if (argument == "--report")
             options.report = fs::u8path(value());
-        else if (argument == "--theme")
+        else if (argument == "--theme") {
             options.theme = value();
-        else if (argument == "--locale")
+            options.theme_override = true;
+        } else if (argument == "--locale") {
             options.locale = value();
-        else if (argument == "--view")
+            options.locale_override = true;
+        } else if (argument == "--view")
             options.view = value();
         else if (argument.rfind("--", 0) == 0)
             throw Error("desktop-option", "Unknown option: " + argument);
@@ -135,6 +149,12 @@ Options parse(const std::vector<std::string> &args) {
         else
             throw Error("desktop-option", "Too many package paths");
     }
+    if (options.no_preferences && (!options.preferences.empty() || options.save_preferences))
+        throw Error("desktop-option", "--no-preferences conflicts with preference file options");
+    if (!options.preferences.empty() && options.preferences.extension() != ".json")
+        throw Error("desktop-option", "Preferences require a .json path");
+    if (options.save_preferences && (!options.smoke || options.preferences.empty()))
+        throw Error("desktop-option", "--save-preferences requires --smoke and --preferences");
     tab(options.view);
     if ((!options.browse_filter.empty() || options.settings.include_engine ||
          !options.browse_select.empty()) &&
@@ -167,7 +187,9 @@ void register_translations() {
     CatalogView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"Cancelled", "Annulé"},
+        {{"CyUEDiff preferences", "Préférences CyUEDiff"},
+         {"Preferences could not be loaded.", "Les préférences n'ont pas pu être chargées."},
+         {"Cancelled", "Annulé"},
          {"Cancel loading", "Annuler le chargement"},
          {"Opening document", "Ouverture du document"},
          {"Reading file", "Lecture du fichier"},
@@ -289,7 +311,16 @@ bool same_path(const fs::path &a, const fs::path &b) {
 }
 void protect_outputs(const Options &options, const std::shared_ptr<const Document> &document,
                      const std::shared_ptr<const BrowseDocument> &browser = {}) {
-    if (options.capture.empty() && options.report.empty())
+    std::vector<fs::path> outputs;
+    for (const auto &path : {options.capture, options.report})
+        if (!path.empty()) {
+            if (!options.preferences.empty() && same_path(path, options.preferences))
+                throw Error("desktop-output", "Output overlaps preferences input");
+            outputs.push_back(path);
+        }
+    if (options.preference_write && !options.preferences.empty())
+        outputs.push_back(options.preferences);
+    if (outputs.empty())
         return;
     std::vector<fs::path> inputs;
     auto package = [&](const fs::path &path) {
@@ -353,7 +384,7 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
     for (const auto &engine : {options.settings.engine, options.settings.after_engine})
         if (!engine.empty())
             inputs.push_back(fs::u8path(engine) / "Engine/Build/Build.version");
-    for (const auto &output : {options.capture, options.report})
+    for (const auto &output : outputs)
         if (!output.empty())
             for (const auto &input : inputs)
                 if (same_path(input, output))
@@ -363,7 +394,7 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         std::transform(name.begin(), name.end(), name.begin(), [](wchar_t c) { return std::towlower(c); });
         return name;
     };
-    for (const auto &output : {options.capture, options.report})
+    for (const auto &output : outputs)
         if (!output.empty()) {
             auto name = normalized(output);
             for (const auto &directory : directories) {
@@ -375,8 +406,10 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
                                 "Output overlaps source content, Git storage or engine context");
             }
         }
-    if (!options.capture.empty() && !options.report.empty() && same_path(options.capture, options.report))
-        throw Error("desktop-output", "Outputs overlap");
+    for (std::size_t i = 0; i < outputs.size(); ++i)
+        for (std::size_t j = i + 1; j < outputs.size(); ++j)
+            if (same_path(outputs[i], outputs[j]))
+                throw Error("desktop-output", "Outputs overlap");
 }
 enum class Action {
     none,
@@ -402,12 +435,14 @@ class Shell {
     AssetView view_;
     std::vector<ComPtr<ID3D11ShaderResourceView>> images_;
     std::vector<std::string> gpu_diagnostics_;
-    std::string dialog_error_, context_details_;
+    std::string dialog_error_, context_details_, preferences_diagnostic_;
     Settings settings_;
     AssetTab initial_tab_;
 
   public:
-    explicit Shell(const Options &options) : settings_(options.settings), initial_tab_(tab(options.view)) {
+    explicit Shell(const Options &options)
+        : preferences_diagnostic_(options.preferences_diagnostic), settings_(options.settings),
+          initial_tab_(tab(options.view)) {
         if (!settings_.before.empty())
             session_.request(settings_.request());
         catalog_view_.set_filter(options.browse_filter);
@@ -418,6 +453,9 @@ class Shell {
     ~Shell() {
         view_.set_packages({});
         images_.clear();
+    }
+    DesktopPreferences preferences() const {
+        return {cyui::currentThemeKey(), cyui::locale(), settings_.previews, settings_.include_engine};
     }
     const DocumentSession &session() const {
         return session_;
@@ -645,6 +683,10 @@ class Shell {
         }
         cyui::endStatusBar();
         if (cyui::beginSidebar("##inputs", 310)) {
+            if (!preferences_diagnostic_.empty()) {
+                cyui::callout(cyui::Tone::warning, cyui::tr("Preferences could not be loaded.").c_str());
+                ImGui::TextWrapped("%s", preferences_diagnostic_.c_str());
+            }
             cyui::heading(cyui::tr("Compare packages").c_str(), 3);
 #ifdef CYUEDIFF_HAS_GIT
             const auto local_label = cyui::tr("Local files"), git_label = cyui::tr("Git revisions");
@@ -935,7 +977,7 @@ struct ImGuiContextOwner {
         ImGui::DestroyContext();
     }
 };
-int run(const Options &options) {
+int run(Options options) {
     if (options.help) {
         std::cout
             << "CyUEDiff desktop [BEFORE.uasset [AFTER.uasset]] [--project FILE] [--engine-root DIR]\n"
@@ -946,8 +988,34 @@ int run(const Options &options) {
                "  --browse [--include-engine] [--browse-filter TEXT] : browse project or revision content\n"
                "  [--codec DLL] [--no-previews] [--locale en|fr] [--theme KEY]\n"
                "  [--view properties|blueprint|materials|textures|meshes|comparison]\n"
+               "  [--preferences FILE.json | --no-preferences] : appearance and preview preferences\n"
+               "  [--previews] [--exclude-engine] : override saved display options\n"
+               "  --smoke --preferences FILE.json --save-preferences : explicit preference test write\n"
                "  --smoke [--capture FILE.png] [--report FILE.json] : hidden DX11/WARP validation\n";
         return 0;
+    }
+    PreferencesRead saved;
+    if (!options.no_preferences) {
+        if (options.preferences.empty() && !options.smoke) {
+            options.preferences = default_preferences_path();
+            if (options.preferences.empty())
+                options.preferences_diagnostic = "Local application data folder is unavailable";
+        }
+        if (!options.preferences.empty()) {
+            saved = read_preferences(options.preferences);
+            options.preferences_diagnostic = saved.diagnostic;
+            if (saved.loaded) {
+                if (!options.theme_override)
+                    options.theme = saved.value.theme;
+                if (!options.locale_override)
+                    options.locale = saved.value.locale;
+                if (!options.previews_override)
+                    options.settings.previews = saved.value.previews;
+                if (!options.engine_override)
+                    options.settings.include_engine = saved.value.include_engine;
+            }
+            options.preference_write = saved.writable && (!options.smoke || options.save_preferences);
+        }
     }
     protect_outputs(options, {});
     NativeWindow window(options.smoke);
@@ -965,6 +1033,18 @@ int run(const Options &options) {
         throw Error("desktop-option", "Unknown theme or locale");
     Renderer renderer(window.handle, options.smoke);
     Shell shell(options);
+    bool preferences_saved = false;
+    auto persist = [&]() {
+        if (!options.preference_write)
+            return;
+        try {
+            protect_outputs(options, shell.session().document(), shell.browser_document());
+            desktop::save_preferences(options.preferences, shell.preferences());
+            preferences_saved = true;
+        } catch (const std::exception &error) {
+            options.preferences_diagnostic = error.what();
+        }
+    };
     int frames = 0, settled = 0;
     auto started = std::chrono::steady_clock::now();
     for (;;) {
@@ -990,6 +1070,7 @@ int run(const Options &options) {
         if (options.smoke && std::chrono::steady_clock::now() - started > std::chrono::seconds(30))
             throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");
         if (finished) {
+            persist();
             protect_outputs(options, shell.session().document(), shell.browser_document());
             if (!options.capture.empty())
                 write_png(options.capture, renderer.capture());
@@ -1002,6 +1083,12 @@ int run(const Options &options) {
                            {"theme", cyui::currentThemeKey()},
                            {"locale", cyui::locale()},
                            {"view", options.view},
+                           {"preferences",
+                            {{"enabled", !options.preferences.empty()},
+                             {"loaded", saved.loaded},
+                             {"saved", preferences_saved},
+                             {"diagnostic", options.preferences_diagnostic},
+                             {"values", shell.preferences().to_json()}}},
                            {"uploadedPreviews", shell.images()},
                            {"browser", shell.browser_report()},
                            {"document", shell.session().document() ? shell.session().document()->report()
@@ -1019,6 +1106,10 @@ int run(const Options &options) {
         if (options.smoke)
             Sleep(2);
     }
+    persist();
+    if (!options.preferences_diagnostic.empty() && options.preference_write && !preferences_saved)
+        MessageBoxW(window.handle, wide(options.preferences_diagnostic).c_str(),
+                    wide(cyui::tr("CyUEDiff preferences")).c_str(), MB_OK | MB_ICONWARNING);
     return 0;
 }
 } // namespace

@@ -202,3 +202,9 @@ The Core-only configuration passes 22 suites. A new reference suite checks soft 
 ## 0.21 milestone: property inspection
 
 Windows Release passes all 29 CTest suites. Model checks cover unversioned type unwrapping, retained tag metadata and single-pass JSON pointer decoding. UI checks exercise value search, valid/invalid selection and filtered selection across 30 frames in five themes and both languages. Native Direct3D11/WARP captures of the supplied loose NewDataAsset package were inspected in English/mid-grey and French/light-grey; the property table, selected preview and copy actions fit their panel. The source asset was opened read-only.
+
+## 0.22 milestone: preferences and combined release
+
+Windows Release passes 31 CTest suites with 1,439 reported checks, plus 30 renderer-free UI frames. The Core-only configuration passes 22 suites without Git/UI/Desktop/Oodle; desktop without Git passes 28. Preference coverage adds 39 model checks and 24 native CLI checks: Unicode filenames, all built-in themes, missing-file defaults, restart restoration, explicit overrides, malformed/future/duplicate/oversized/deep input, unrelated-file preservation, atomic replacement and input/report hard-link protection. Hidden smoke tests use isolated preference files and leave the real user profile untouched.
+
+Ten additional native DX11/WARP captures check preferences restored in each of the five themes in English and French, including the filtered empty property state for an identical comparison. Representative captures in all five themes were visually inspected. The two 0.21 captures separately check the populated table and selected preview. Original source asset hashes remain unchanged. Soft/interface/lazy reference support remains validated with synthetic mapped fixtures, without a matching real CyTrace USMAP.

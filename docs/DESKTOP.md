@@ -1,4 +1,4 @@
-# Desktop application — 0.11
+# Desktop application — 0.22
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -85,3 +85,18 @@ The Windows Release configuration passes nineteen CTest suites with 914 checks, 
 `scripts/validate_browser.py` adds 21 native captures and five output refusals. It checks both languages and all themes, local/engine/plugin content, repository-wide Git presence, filtering, local opening and Git comparison, missing LFS content, error states and CLI parity. Browser-only capture is available with `--smoke --browse`; `--browse-filter TEXT` presets search. The controlled `--browse-select PATH` option requires smoke mode and opens an entry through the same selection path for validation. Reports include the complete browser metadata, filtered count and document if opened. Captures and generated repositories are ignored.
 
 HDR previews and difference masks retain floating-point source comparisons; see [HDR.md](HDR.md). A successfully loaded preview keeps source diagnostic details in a collapsible section.
+
+## Persistent preferences — 0.22
+
+The desktop restores its theme, language, **Load previews** and **Include engine content** options from `%LOCALAPPDATA%/CyUEDiff/preferences.json`, then saves them at normal shutdown. The first launch defaults to English and mid-grey. Asset/project/repository paths, revisions, codec paths and document contents are not stored. Opening an application does not reopen previous assets or scan a previous project.
+
+`--preferences FILE.json` selects an explicit preferences file. `--no-preferences` disables both reads and writes. Explicit `--locale`, `--theme`, `--previews`/`--no-previews` and `--include-engine`/`--exclude-engine` override saved values. `--include-engine` retains its existing requirement for `--browse` when supplied on the command line. The include-engine preference applies to the next local content scan.
+
+Preferences use the flat `cyuediff.preferences/1` JSON schema. Reads are bounded to 64 KiB and reject duplicate fields, unsupported versions/keys, unknown themes/locales and invalid types. A malformed or future file produces a warning and English/default settings, and remains unchanged. Saves validate existing contents, flush a new file in the same directory and atomically rename it over recognized preferences. Asset/companion/context/Git-storage protections also apply to preference outputs. A save failure is reported separately from document errors.
+
+Hidden `--smoke` validation never accesses default user preferences. An explicit `--preferences FILE.json` loads only that file; adding `--save-preferences` also exercises the save path. The JSON smoke report includes active values, loaded/saved flags and a separate diagnostic. These test options can validate restart behavior in an isolated directory:
+
+```powershell
+build-native/Release/cyuediff_desktop.exe --smoke --preferences build-native/test-preferences.json --save-preferences --theme violet --locale fr
+build-native/Release/cyuediff_desktop.exe --smoke --preferences build-native/test-preferences.json --report build-native/preferences-restart.json
+```

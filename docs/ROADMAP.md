@@ -1,4 +1,4 @@
-# Development status after 0.21
+# Development status after 0.22
 
 This tracks the full requested scope. A listed input or extension point does not imply that its data format has been implemented.
 
@@ -7,7 +7,7 @@ This tracks the full requested scope. A listed input or extension point does not
 | Visual comparisons | Stable Blueprint/material node outlines, stored material parameter comparison, source geometry edge colors, LDR/HDR pixel masks, typed property inspector | Further interaction and correspondence refinements |
 | Unreal reading | Supported classic loose packages, tagged primitives/arrays/structs, stored map/set deltas, supported localized texts, native transforms/ticks, explicit C++ decoder registry, Pak 10/11 and IoStore TOC 3–5 container byte readers/diffs, cooked Zen names/classes/object tables, explicit USMAP mappings with PPTH/MODL/EATR/ENVP and qualified identities, supported unversioned values including stored map/set operations and soft/interface/lazy references, opaque body diffs | Matching-build schema corpus validation and further extension/layout versions, remaining unversioned value types, broader plugin-native layouts, cooked native payload decoding, further container versions and encryption |
 | Advanced textures/meshes | LDR sources, finite raw FP16/FP32/RGBE HDR sources and mip selection, modern static MeshDescription source geometry | Virtualized source resolution, skeletal data/skin/animations, collision structures and Nanite payload decoding |
-| Desktop | English/French, five themes, searchable typed inspector with selected previews, content browser, local Git/LFS comparisons, independent before/after contexts | Git history browser, multiple documents, persistent preferences and container browsing |
+| Desktop | English/French, five themes, searchable typed inspector with selected previews, persistent theme/language/preview options, content browser, local Git/LFS comparisons, independent before/after contexts | Git history browser, multiple documents and container browsing |
 | Runtime/reliability | Verified in-memory package LRU, cooperative cancellation/progress, bounded decoders, corruption tests, 150-package CyTrace corpus and real HDR sources | Additional backend-specific/cooked/virtualized corpora and performance work as those readers arrive |
 | Distribution | MIT license, selected dependency notices, CPack CLI/desktop/SDK archives tested after extraction, prepared Windows/Linux CI with Gitleaks | Hosted CI execution after an explicit push; release publication/signing/installer if selected later |
 
