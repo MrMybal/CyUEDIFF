@@ -150,3 +150,11 @@ cyuediff_desktop.exe --container Before.utoc --after-container After.utoc --cont
 ```
 
 `--container-tab members|inspection|objects|comparison` selects an available tab. `--container-changes-only` initially hides verified unchanged rows and requires an after container. Smoke reports add `after`, paired member identities/states, `comparison` and `selectedComparison` under `document.container`; the original single-container fields remain available. `containerView.selectedKey` identifies a canonical pair, while `selectedMember` retains a displayed member ID. Both workflows are available without the Git adapter.
+
+## Explicit desktop schema contexts — 0.30
+
+Container requests accept `--schema CONTEXT.json` and `--after-schema CONTEXT.json`. Each side requires its own explicit cooked profile. An empty after schema selects object/opaque inspection on that side; it does not inherit the before schema. A manifest must match the selected profile and applies only to IoStore Zen export bundles.
+
+Indexing reads only manifest metadata and records its SHA-256 plus the declared mapping path/hash. It does not load the mapping or codec. Inspecting a selected package loads the explicitly supplied mapping, verifies its byte fingerprint and supplies the immutable bindings to the same Zen reader as the CLI. Desktop mapping limits are 16 MiB serialized/decoded/text bytes and 100,000 entries. The ordinary member/header/text limits still apply separately.
+
+Reports add `schemaContext` provenance on each side, including `mappingLoaded`, `contextSha256` and `mappingVerified:false`. A loaded mapping is not proof of compatibility with a particular build. Failed property regions retain their full opaque body hashes and decoding errors; limits and cancellation abort the request. Capture/report/preferences guards protect both manifests and both resolved mappings, including hard links, even during metadata-only indexing.

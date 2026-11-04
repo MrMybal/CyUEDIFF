@@ -24,6 +24,7 @@ struct Settings {
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
     int source = 0, cooked_profile = 0, after_cooked_profile = 0;
     std::string container_path, container_entry, script_objects, after_container_path, after_script_objects;
+    std::string container_schema, after_container_schema;
     bool compare_container_payloads = false;
     bool previews = true, discover_engine = true, include_engine = false;
     bool ready() const {
@@ -47,6 +48,7 @@ struct Settings {
             ContainerSource input;
             input.path = fs::u8path(container_path);
             input.script_objects = fs::u8path(script_objects);
+            input.schema = fs::u8path(container_schema);
             input.entry = container_entry;
             input.profile = cooked_profile == 1
                                 ? ZenProfile::unreal_5_3
@@ -54,6 +56,7 @@ struct Settings {
             if (!after_container_path.empty()) {
                 input.after_path = fs::u8path(after_container_path);
                 input.after_script_objects = fs::u8path(after_script_objects);
+                input.after_schema = fs::u8path(after_container_schema);
                 input.after_profile =
                     after_cooked_profile == 1
                         ? ZenProfile::unreal_5_3
@@ -143,6 +146,15 @@ Options parse(const std::vector<std::string> &args) {
                 options.settings.compare_container_payloads = true;
             else
                 options.container_changes_only = true;
+        } else if (argument == "--schema" || argument == "--after-schema") {
+            auto text = value();
+            options.container_parameters = true;
+            if (argument == "--schema")
+                options.settings.container_schema = text;
+            else {
+                options.settings.after_container_schema = text;
+                options.after_container_parameters = true;
+            }
         } else if (argument == "--after-script-objects") {
             options.settings.after_script_objects = value();
             options.container_parameters = options.after_container_parameters = true;
@@ -284,6 +296,9 @@ Options parse(const std::vector<std::string> &args) {
          !options.settings.after_project.empty() || !options.settings.after_engine.empty() ||
          options.browse || options.history))
         throw Error("desktop-option", "Choose a container without loose, project or Git source options");
+    if ((!options.settings.container_schema.empty() && !options.settings.cooked_profile) ||
+        (!options.settings.after_container_schema.empty() && !options.settings.after_cooked_profile))
+        throw Error("desktop-option", "Schema contexts require an explicit cooked profile on that side");
     if (options.settings.source == 2 && options.view != "properties")
         throw Error("desktop-option", "Asset view options do not apply to container browsing");
     tab(options.view);
@@ -473,6 +488,15 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
             inputs.insert(inputs.end(), input.files().begin(), input.files().end());
         }
     }
+    if (options.settings.source == 2)
+        for (const auto &path :
+             {options.settings.container_schema, options.settings.after_container_schema}) {
+            if (path.empty())
+                continue;
+            auto manifest = ZenSchemaManifest::read(fs::u8path(path));
+            inputs.push_back(manifest.source_path());
+            inputs.push_back(manifest.mapping_path());
+        }
     auto package = [&](const fs::path &path) {
         if (path.empty())
             return;
@@ -1371,6 +1395,8 @@ class Shell {
                 settings_.container_entry.clear();
                 settings_.after_container_path.clear();
                 settings_.after_script_objects.clear();
+                settings_.container_schema.clear();
+                settings_.after_container_schema.clear();
                 settings_.after_cooked_profile = 0;
                 settings_.compare_container_payloads = false;
                 session_.request(settings_.request());
@@ -1451,6 +1477,7 @@ int run(Options options) {
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
+               "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--container-tab members|inspection|objects|comparison]\n"
                "  [--after-container FILE] [--compare-container-bytes] [--container-changes-only]\n"
                "  [--after-cooked-profile ue5.3|ue5.5] [--after-script-objects GLOBAL.utoc]\n"

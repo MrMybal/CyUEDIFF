@@ -1,6 +1,6 @@
 #include "../apps/desktop/document.hpp"
 #include "container_fixtures.hpp"
-#include "zen_fixture.hpp"
+#include "schema_fixture.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -187,6 +187,101 @@ int main() {
         source.after_path.clear();
         source.compare_payloads = true;
         rejects([&] { load_container_document(source, {}); }, "desktop-container");
+        auto mappings = schema_fixture();
+        mappings.save(root / "test.usmap");
+        auto mapped_payload = schema_zen_fixture();
+        mapped_payload.save(root / "mapped.ucas");
+        zen_toc(mapped_payload).save(root / "mapped.utoc");
+        auto mapped_after = schema_zen_fixture(99);
+        mapped_after.save(root / "mapped-after.ucas");
+        zen_toc(mapped_after).save(root / "mapped-after.utoc");
+        const Json manifest = {
+            {"format", "cyuediff.zen-schema/1"},
+            {"profile", "ue5.3"},
+            {"usmap", "test.usmap"},
+            {"sha256", sha256_file(root / "test.usmap")},
+            {"bindings", {{"/Script/Test.DemoAsset", {{"schema", "DemoAsset"}, {"offset", 0}}}}}};
+        auto save_manifest = [&](const char *name, const Json &value) {
+            std::ofstream file(root / name, std::ios::binary);
+            file << value.dump();
+        };
+        save_manifest("schema.json", manifest);
+        source = {};
+        source.path = root / "mapped.utoc";
+        source.profile = ZenProfile::unreal_5_3;
+        source.script_objects = root / "global.utoc";
+        source.schema = root / "schema.json";
+        auto mapped_index = load_container_document(source, root / "not-loaded.dll");
+        check(mapped_index->schema_manifest && !mapped_index->schema_loaded &&
+                  mapped_index->report()["schemaContext"]["mappingLoaded"] == false,
+              "Index validates only manifest metadata without loading mappings or codec");
+        source.entry = "000000000000000000000001";
+        auto mapped = load_container_document(source, {});
+        check(mapped->schema_loaded && mapped->zen->property_exports_decoded == 2 &&
+                  mapped->zen->exports[0].property_read["properties"]["DemoAsset.Health"]["value"] == 42,
+              "Desktop decodes explicitly bound named properties");
+        check(mapped->report()["schemaContext"]["contextSha256"] == mapped->zen->schema_context_sha256 &&
+                  mapped->report()["schemaContext"]["mappingVerified"] == false,
+              "Loaded schema provenance never certifies cooked build compatibility");
+        check(std::find(mapped->protected_files.begin(), mapped->protected_files.end(),
+                        root / "schema.json") != mapped->protected_files.end() &&
+                  std::find(mapped->protected_files.begin(), mapped->protected_files.end(),
+                            root / "test.usmap") != mapped->protected_files.end(),
+              "Manifest and resolved mapping inputs protected");
+        source.after_path = root / "mapped-after.utoc";
+        source.after_script_objects = root / "global.utoc";
+        source.after_profile = ZenProfile::unreal_5_3;
+        source.after_schema = root / "schema.json";
+        mapped = load_container_document(source, {});
+        const auto &diffs = mapped->selected_comparison.at("zen").at("changes");
+        check(std::any_of(diffs.begin(), diffs.end(),
+                          [](const Json &change) {
+                              return change["path"].get<std::string>().find("DemoAsset.Health/value") !=
+                                         std::string::npos &&
+                                     change["before"] == 42 && change["after"] == 99;
+                          }),
+              "Desktop selected diff retains precise named before/after values");
+        check(mapped->schema_loaded && mapped->after->schema_loaded,
+              "Both independently selected mappings are loaded");
+        source.after_schema.clear();
+        mapped = load_container_document(source, {});
+        check(mapped->zen->property_exports_decoded == 2 && mapped->after->zen->property_exports_decoded == 0,
+              "An empty after schema does not inherit the before mapping");
+        auto invalid = manifest;
+        invalid["sha256"] = std::string(64, '0');
+        save_manifest("bad.json", invalid);
+        source.after_schema = root / "bad.json";
+        rejects([&] { load_container_document(source, {}); }, "schema-context");
+        invalid = manifest;
+        invalid["profile"] = "ue5.5";
+        save_manifest("bad.json", invalid);
+        rejects([&] { load_container_document(source, {}); }, "schema-context");
+        source.after_schema = root / "schema.json";
+        source.after_profile = ZenProfile::unspecified;
+        rejects([&] { load_container_document(source, {}); }, "desktop-container");
+        source.after_profile = ZenProfile::unreal_5_3;
+        source.after_path.clear();
+        rejects([&] { load_container_document(source, {}); }, "desktop-container");
+        source = {};
+        source.path = pak;
+        source.schema = root / "schema.json";
+        source.profile = ZenProfile::unreal_5_3;
+        rejects([&] { load_container_document(source, {}); }, "desktop-container");
+        source = {};
+        source.path = root / "mapped.utoc";
+        source.entry = "000000000000000000000001";
+        source.profile = ZenProfile::unreal_5_3;
+        source.schema = root / "schema.json";
+        source.script_objects = root / "global.utoc";
+        invalid = manifest;
+        invalid["bindings"]["/Script/Test.DemoAsset"]["offset"] = 99999;
+        save_manifest("bad.json", invalid);
+        source.schema = root / "bad.json";
+        mapped = load_container_document(source, {});
+        check(mapped->schema_loaded && mapped->zen->property_exports_failed == 2 &&
+                  !mapped->zen->property_exports_decoded &&
+                  mapped->zen->sha256 == sha256_bytes(mapped_payload.data),
+              "Failed mapped regions retain whole opaque export fingerprints");
         cleanup();
         std::cout << checks << " desktop container checks passed\n";
         return 0;

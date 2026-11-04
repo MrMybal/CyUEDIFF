@@ -248,3 +248,7 @@ The installed container SDK consumer additionally exercises the reusable pairing
 ## 0.29 milestone: reusable context manifests
 
 Core without Git/UI/Desktop/Oodle passes 23 suites. New native context checks cover manifest-only loading, Unicode relative paths, provenance, explicit profiles, resolved named Zen properties, wrong mappings, missing/invalid/duplicate fields, unsigned offsets, missing schemas, reflected binding duplicates, malformed UTF-8, text/depth/entry/byte bounds, cancellation and unchanged mapping hashes. Existing schema CLI suites pass after replacing their manifest parser with the Core API. Combined desktop and distribution validation follows the next milestones.
+
+## 0.30 milestone: desktop mapped-property requests
+
+Desktop model and native CLI checks exercise metadata-only manifest reads without codec loading, named before/after property values, CLI parity, independent/empty after bindings, schema/profile mismatches, absent mappings, invalid offsets with whole-body fallback and manifest/USMAP hard-link protection on both sides. Combined view and distribution checks follow the dedicated inspection milestone.

@@ -12,10 +12,16 @@ Json ContainerDocument::report() const {
              {"beforeId", row.before ? Json(input->entries()[*row.before].id) : Json(nullptr)},
              {"afterId", row.after ? Json(after->input->entries()[*row.after].id) : Json(nullptr)}});
     }
+    Json schema = schema_manifest ? schema_manifest->to_json() : Json(nullptr);
+    if (schema_manifest) {
+        schema["mappingLoaded"] = schema_loaded;
+        schema["contextSha256"] = zen ? zen->schema_context_sha256 : std::string{};
+    }
     return {{"schema", "cyuediff.desktop-container/1"},
             {"metadata", metadata},
             {"inspection", inspection},
             {"zen", zen ? zen->to_json() : Json(nullptr)},
+            {"schemaContext", std::move(schema)},
             {"after", after ? after->report() : Json(nullptr)},
             {"members", std::move(pairs)},
             {"comparison", comparison},
@@ -46,6 +52,18 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
         document->protected_files.insert(document->protected_files.end(), global->files().begin(),
                                          global->files().end());
     }
+    if (!source.schema.empty()) {
+        if (source.profile == ZenProfile::unspecified || document->metadata["kind"] != "iostore")
+            throw Error("desktop-container", "Schema contexts require an explicit IoStore cooked profile");
+        ZenSchemaManifestOptions limits;
+        limits.control = control;
+        document->schema_manifest = ZenSchemaManifest::read(source.schema, limits);
+        if (document->schema_manifest->profile() != source.profile)
+            throw Error("schema-context",
+                        "Schema context profile disagrees with the selected cooked profile");
+        document->protected_files.push_back(document->schema_manifest->source_path());
+        document->protected_files.push_back(document->schema_manifest->mapping_path());
+    }
     if (source.entry.empty()) {
         control.check();
         return document;
@@ -64,6 +82,8 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
         throw Error("container-entry", "No matching container member");
     if (entries[found].deleted || entries[found].encrypted)
         throw Error("desktop-container", "Deleted or encrypted members cannot be inspected");
+    if (document->schema_manifest && entries[found].chunk_type != 1)
+        throw Error("desktop-container", "Schema contexts require a Zen export-bundle member");
     ContainerReadOptions read;
     read.control = control;
     read.max_payload_bytes = source.max_payload_bytes;
@@ -106,6 +126,15 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
             zen.script_objects =
                 std::make_shared<ScriptObjects>(ScriptObjects::parse(global->read(scripts, read), zen));
         }
+        if (document->schema_manifest) {
+            SchemaReadOptions mappings;
+            mappings.control = control;
+            mappings.decoder = read.decoder;
+            mappings.max_bytes = mappings.max_text_bytes = 16ull * 1024 * 1024;
+            mappings.max_entries = 100'000;
+            zen.schema_context = document->schema_manifest->load(mappings);
+            document->schema_loaded = true;
+        }
         document->zen = ZenPackage::parse(bytes, zen);
     }
     control.checkpoint("Document ready");
@@ -117,7 +146,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
                                                                  const OperationControl &control) {
     if (source.after_path.empty()) {
         if (source.compare_payloads || !source.after_script_objects.empty() ||
-            source.after_profile != ZenProfile::unspecified)
+            source.after_profile != ZenProfile::unspecified || !source.after_schema.empty())
             throw Error("desktop-container", "After container options require an after container");
         return load_single(source, codec, control);
     }
@@ -126,12 +155,14 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     auto left = source;
     left.after_path.clear();
     left.after_script_objects.clear();
+    left.after_schema.clear();
     left.after_profile = ZenProfile::unspecified;
     left.compare_payloads = false;
     left.entry.clear();
     auto right = left;
     right.path = source.after_path;
     right.script_objects = source.after_script_objects;
+    right.schema = source.after_schema;
     right.profile = source.after_profile;
     auto document = std::make_shared<ContainerDocument>(*load_single(left, codec, control));
     document->after = load_single(right, codec, control);
@@ -162,6 +193,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             const auto loaded = load_single(left, codec, control);
             document->inspection = loaded->inspection;
             document->zen = loaded->zen;
+            document->schema_loaded = loaded->schema_loaded;
         }
         if (pair.after) {
             right.entry = document->after->input->entries()[*pair.after].id;

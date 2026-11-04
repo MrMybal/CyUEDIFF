@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-exe, cli, container_fixture, zen_fixture = [str(Path(p).resolve()) for p in sys.argv[1:]]
+exe, cli, container_fixture, zen_fixture, schema_fixture = [str(Path(p).resolve()) for p in sys.argv[1:]]
 env = {key.upper() if os.name == 'nt' else key:value for key,value in os.environ.items()}
 checks = 0
 with tempfile.TemporaryDirectory(prefix='.test-tmp-container-desktop-',dir=Path.cwd()) as tmp:
@@ -14,8 +14,13 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-desktop-',dir=Path.
     pak_dir=root/'pak';zen_dir=root/'cooked'
     subprocess.run([container_fixture,'--write-fixtures',str(pak_dir)],env=env,check=True,capture_output=True,timeout=20)
     subprocess.run([zen_fixture,'--write-fixtures',str(zen_dir)],env=env,check=True,capture_output=True,timeout=20)
+    schema_dir=root/'schema'
+    subprocess.run([schema_fixture,'--write-fixtures',str(schema_dir)],env=env,check=True,capture_output=True,timeout=20)
+    (schema_dir/'after.usmap').write_bytes((schema_dir/'test.usmap').read_bytes())
+    manifest=json.loads((schema_dir/'schema.json').read_text(encoding='utf-8'))
+    (schema_dir/'after.json').write_text(json.dumps(dict(manifest,usmap='after.usmap')),encoding='utf-8')
     unicode_dir=root/'conteneurs é';pak_dir.rename(unicode_dir);pak_dir=unicode_dir
-    originals={p:hashlib.sha256(p.read_bytes()).hexdigest() for folder in (pak_dir,zen_dir) for p in folder.iterdir()}
+    originals={p:hashlib.sha256(p.read_bytes()).hexdigest() for folder in (pak_dir,zen_dir,schema_dir) for p in folder.iterdir()}
     def run(*args,code=0):
         global checks
         report=root/'report.json';report.unlink(missing_ok=True)
@@ -129,6 +134,55 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-desktop-',dir=Path.
     for extra in [['--compare-container-bytes'],['--container-changes-only'],['--after-cooked-profile','ue5.3'],['--after-script-objects',zen_dir/'global.utoc']]:
         run('--container',pak,*extra,code=2)
     run('--after-container',pak,code=2)
+    mapped_base=['--container',schema_dir/'schema.utoc','--cooked-profile','ue5.3',
+                 '--script-objects',schema_dir/'global.utoc','--schema',schema_dir/'schema.json']
+    report=run(*mapped_base,'--codec',root/'not-loaded.dll')
+    assert report['document']['container']['schemaContext']['mappingLoaded'] is False
+    checks+=1
+    report=run(*mapped_base,'--container-entry',entry)
+    mapped=report['document']['container']
+    assert mapped['zen']['exports'][0]['propertyRead']['properties']['DemoAsset.Health']['value']==42
+    assert mapped['schemaContext']['mappingLoaded'] and not mapped['schemaContext']['mappingVerified']
+    expected=subprocess.run([cli,'zen-inspect',str(schema_dir/'schema.utoc'),entry,'--cooked-profile','ue5.3',
+                             '--script-objects',str(schema_dir/'global.utoc'),'--schema',str(schema_dir/'schema.json')],
+                            env=env,capture_output=True,timeout=30,check=True)
+    assert mapped['zen']==json.loads(expected.stdout)
+    checks+=1
+    mapped_pair=[*mapped_base,'--container-entry',entry,'--after-container',schema_dir/'changed.utoc',
+                 '--after-cooked-profile','ue5.3','--after-script-objects',schema_dir/'global.utoc',
+                 '--after-schema',schema_dir/'after.json']
+    report=run(*mapped_pair)
+    mapped=report['document']['container']
+    expected=subprocess.run([cli,'zen-diff',str(schema_dir/'schema.utoc'),entry,str(schema_dir/'changed.utoc'),entry,
+                             '--cooked-profile','ue5.3','--script-objects',str(schema_dir/'global.utoc'),
+                             '--schema',str(schema_dir/'schema.json'),'--after-schema',str(schema_dir/'after.json')],
+                            env=env,capture_output=True,timeout=30)
+    assert expected.returncode==1 and mapped['selectedComparison']['zen']==json.loads(expected.stdout)
+    assert mapped['zen']['propertyExportsDecoded']==mapped['after']['zen']['propertyExportsDecoded']==2
+    checks+=1
+    report=run(*mapped_pair[:-2])
+    assert report['document']['container']['after']['zen']['propertyExportsDecoded']==0
+    assert report['document']['container']['after']['schemaContext'] is None
+    checks+=1
+    missing=root/'missing-mapping.json'
+    missing.write_text(json.dumps(dict(manifest,usmap='absent.usmap')),encoding='utf-8')
+    report=run(*mapped_base,'--schema',missing)
+    assert not report['document']['container']['schemaContext']['mappingLoaded']
+    checks+=1
+    run(*mapped_base,'--schema',missing,'--container-entry',entry,code=2)
+    invalid=root/'invalid-context.json'
+    invalid.write_text(json.dumps(dict(manifest,usmap=str(schema_dir/'test.usmap'),sha256='0'*64)),encoding='utf-8')
+    report=run(*mapped_base,'--schema',invalid,'--container-entry',entry,code=2)
+    assert 'schema-context' in report['error']
+    checks+=1
+    run('--container',schema_dir/'schema.utoc','--schema',schema_dir/'schema.json',code=2)
+    run(*mapped_base,'--after-container',schema_dir/'changed.utoc','--after-schema',schema_dir/'after.json',code=2)
+    run('--schema',schema_dir/'schema.json',code=2)
+    for source in [schema_dir/'schema.json',schema_dir/'test.usmap',schema_dir/'after.json',schema_dir/'after.usmap']:
+        alias=root/'schema-alias.json';alias.unlink(missing_ok=True);os.link(source,alias)
+        process=subprocess.run([exe,'--smoke',*map(str,mapped_pair),'--report',str(alias)],env=env,capture_output=True,timeout=30)
+        assert process.returncode==2 and hashlib.sha256(source.read_bytes()).hexdigest()==originals[source]
+        checks+=1
     # Protect source Pak, secondary IoStore partitions and global script payload aliases.
     for source,options in [(pak,['--container',pak]),(pak_dir/'test_s1.ucas',['--container',pak_dir/'test.utoc']),
                            (zen_dir/'global.ucas',['--container',zen_dir/'test.utoc','--script-objects',zen_dir/'global.utoc']),
