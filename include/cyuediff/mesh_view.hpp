@@ -5,6 +5,7 @@
 #include <memory>
 namespace cyuediff {
 // CPU wireframe with CyUI orbit navigation. Geometry is prepared outside draw().
+enum class MeshCameraView { perspective, front, right, top };
 class MeshView {
     std::shared_ptr<const MeshGeometry> mesh_;
     struct Edge {
@@ -15,11 +16,13 @@ class MeshView {
     ChangeCounts counts_;
     bool comparing_ = false;
     cyui::ViewportState state_;
-    cyui::Vec3 center_{};
+    cyui::Vec3 center_{}, changed_center_{};
+    double changed_radius_ = 1;
+    bool changed_only_ = false, fit_changes_pending_ = false;
     std::size_t rendered_edges_ = 0;
     double radius_ = 1;
     bool fit_pending_ = true, truncated_ = false;
-    void fit(float aspect);
+    void fit(float aspect, bool changes = false);
 
   public:
     // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
@@ -27,6 +30,10 @@ class MeshView {
     void restore_view_state(const Json &);
     void set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_ptr<const MeshGeometry> peer = {},
                   bool after = false, bool comparing = false);
+    void set_changed_only(bool);
+    bool focus_changes();
+    bool set_camera_view(MeshCameraView);
+    std::size_t visible_edge_count() const;
     const ChangeCounts &changes() const {
         return counts_;
     }

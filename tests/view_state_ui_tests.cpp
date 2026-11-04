@@ -149,6 +149,41 @@ int main() {
         MeshView absent_mesh;
         absent_mesh.restore_view_state(camera);
         check(absent_mesh.view_state().empty(), "Missing geometry cannot receive a camera");
+        auto large_mesh = std::make_shared<MeshGeometry>(*mesh);
+        for (std::uint32_t i = 0; i < 3; ++i) {
+            auto vertex = mesh->vertices[i];
+            vertex.id += 3;
+            vertex.position[0] += 1000;
+            large_mesh->vertices.push_back(vertex);
+            MeshInstance instance;
+            instance.id = instance.vertex = i + 3;
+            large_mesh->instances.push_back(instance);
+        }
+        large_mesh->triangles.push_back({1, 0, 0, {3, 4, 5}});
+        auto peer_mesh = std::make_shared<MeshGeometry>(*large_mesh);
+        peer_mesh->vertices[0].position[2] = .25;
+        MeshView focused_mesh;
+        focused_mesh.set_mesh(large_mesh, peer_mesh);
+        check(focused_mesh.visible_edge_count() == 6, "Full mesh contains both disconnected triangles");
+        focused_mesh.set_changed_only(true);
+        check(focused_mesh.visible_edge_count() == 2 && focused_mesh.focus_changes(),
+              "Changed-only mesh targets the affected triangle");
+        check(focused_mesh.set_camera_view(MeshCameraView::right), "Select standard mesh orientation");
+        Json changed_camera = focused_mesh.view_state();
+        check(changed_camera["changedOnly"] == true && changed_camera["pitch"] == 0,
+              "Changed mesh display state and camera can be saved");
+        MeshView resumed_mesh;
+        resumed_mesh.set_mesh(large_mesh, peer_mesh);
+        resumed_mesh.restore_view_state(changed_camera);
+        check(resumed_mesh.view_state() == changed_camera && resumed_mesh.visible_edge_count() == 2,
+              "Changed-only camera round trip");
+        MeshView stable_mesh;
+        stable_mesh.set_mesh(mesh, mesh);
+        check(!stable_mesh.focus_changes(), "Unchanged mesh has no focus target");
+        stable_mesh.set_changed_only(true);
+        check(stable_mesh.visible_edge_count() == 0, "Unchanged comparison has an empty filtered view");
+        check(!absent_mesh.focus_changes() && !absent_mesh.set_camera_view(MeshCameraView::top),
+              "Missing mesh refuses camera actions");
         Package graphs;
         ObjectExport graph;
         graph.path = graph.name = "Graph";
@@ -219,7 +254,8 @@ int main() {
         material_view.restore_view_state(material_state);
         check(material_view.view_state() == material_state, "Material graph camera round trip");
         auto material_peer = materials;
-        material_peer.exports[1].properties["DefaultValue"] = {{"type", {{"name", "FloatProperty"}}}, {"value", 0.75}};
+        material_peer.exports[1].properties["DefaultValue"] = {{"type", {{"name", "FloatProperty"}}},
+                                                               {"value", 0.75}};
         MaterialView compared_material;
         compared_material.set_package(materials, &material_peer);
         check(compared_material.next_changed_node(), "Navigate changed material expression");
@@ -277,7 +313,7 @@ int main() {
             int w, h;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
             for (const auto *locale : {"en", "fr"})
-                for (int scene = 0; scene < 6; ++scene)
+                for (int scene = 0; scene < 8; ++scene)
                     for (int n = 0; n < 2; ++n) {
                         cyui::setLocale(locale);
                         ImGui::NewFrame();
@@ -303,6 +339,12 @@ int main() {
                         case 5:
                             mesh_view.draw();
                             break;
+                        case 6:
+                            focused_mesh.draw("Changed mesh");
+                            break;
+                        case 7:
+                            stable_mesh.draw("Unchanged mesh");
+                            break;
                         }
                         ImGui::End();
                         ImGui::Render();
@@ -316,6 +358,10 @@ int main() {
                   material_view.view_state()["inspectors"]["M"]["selected"] == selected_expression &&
                   mesh_view.view_state() == camera,
               "Drawing restored views does not auto-fit over saved navigation");
+        check(focused_mesh.view_state()["target"][0].get<double>() < 2 &&
+                  focused_mesh.view_state()["distance"].get<double>() < 10,
+              "Fit changed geometry excludes distant unchanged geometry");
+        check(focused_mesh.view_state()["pitch"] == 0, "Fitting changes retains the selected camera orientation");
         check(package->to_json() == original_package, "Restoring views never modifies package data");
         ImGui::DestroyContext();
         std::cout << checks << " view state UI checks passed\n"

@@ -252,3 +252,7 @@ Blueprint graphs now embed the shared inspector. Select a node on the canvas or 
 ## Material expression and override navigation - 0.70
 
 Material expression graphs now use the searchable node inspector, including typed expression properties, saved inputs/outputs and before/after values. Changed-expression navigation uses snapshot identity and retains the full read-only graph. Stored material-instance overrides support name/kind/value/association search and a changed-only filter, separately per instance. These states survive explicit workspace save/restore. This inspects saved serialization only; parent materials and shader execution are not evaluated.
+
+## Changed mesh focus - 0.71
+
+Wireframe comparisons can hide unchanged edges and frame the bounds of changed geometry. Changed bounds are prepared with the bounded edge cache rather than recomputed while drawing; the existing 100,000-edge display cap remains explicit. Perspective/front/right/near-top camera presets complement orbit navigation. The changed-only preference and camera are saved per side. Empty filtered comparisons explain how to recover the full mesh; absent/unchanged geometry has no changed-focus target.

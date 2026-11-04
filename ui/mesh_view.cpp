@@ -4,13 +4,11 @@
 #include <cmath>
 #include <set>
 namespace cyuediff {
-void MeshView::fit(float aspect) {
-    state_.camera.target = center_;
-    state_.camera.distance = radius_ * 3 / std::max(0.1f, std::min(1.f, aspect));
-    state_.camera.up = {0, 0, 1};
-    state_.camera.yaw = .7;
-    state_.camera.pitch = .35;
-    fit_pending_ = false;
+void MeshView::fit(float aspect, bool changes) {
+    state_.camera.target = changes ? changed_center_ : center_;
+    state_.camera.distance =
+        (changes ? changed_radius_ : radius_) * 3 / std::max(0.1f, std::min(1.f, aspect));
+    fit_pending_ = fit_changes_pending_ = false;
 }
 void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_ptr<const MeshGeometry> peer,
                         bool after, bool comparing) {
@@ -101,29 +99,95 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
     }
     for (const auto &edge : edges)
         counts_.add(edge.change);
+    cyui::Vec3 low{}, high{};
+    bool first_change = true;
+    for (const auto &edge : edges)
+        if (edge.change != ChangeKind::unchanged)
+            for (const auto &p : edge.points) {
+                if (first_change) {
+                    low = high = p;
+                    first_change = false;
+                }
+                low = {std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z)};
+                high = {std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z)};
+            }
+    changed_center_ = {(low.x + high.x) * .5, (low.y + high.y) * .5, (low.z + high.z) * .5};
+    changed_radius_ =
+        std::max(1e-5, std::hypot(std::hypot(high.x - low.x, high.y - low.y), high.z - low.z) * .5);
+    changed_only_ = fit_changes_pending_ = false;
     rendered_edges_ = 0;
     mesh_ = std::move(mesh);
     edges_ = std::move(edges);
     truncated_ = truncated;
     state_ = {};
+    state_.camera.up = {0, 0, 1};
+    state_.camera.yaw = .7;
+    state_.camera.pitch = .35;
     fit_pending_ = true;
 }
+void MeshView::set_changed_only(bool value) {
+    changed_only_ = comparing_ && value;
+}
+std::size_t MeshView::visible_edge_count() const {
+    return comparing_ && changed_only_ ? counts_.changed() : edges_.size();
+}
+bool MeshView::focus_changes() {
+    if (!mesh_ || !comparing_ || !counts_.changed())
+        return false;
+    fit_changes_pending_ = true;
+    return true;
+}
+bool MeshView::set_camera_view(MeshCameraView view) {
+    if (!mesh_)
+        return false;
+    if (fit_pending_)
+        fit(1, fit_changes_pending_);
+    switch (view) {
+    case MeshCameraView::perspective:
+        state_.camera.yaw = .7;
+        state_.camera.pitch = .35;
+        break;
+    case MeshCameraView::front:
+        state_.camera.yaw = 0;
+        state_.camera.pitch = 0;
+        break;
+    case MeshCameraView::right:
+        state_.camera.yaw = 1.5707963267948966;
+        state_.camera.pitch = 0;
+        break;
+    case MeshCameraView::top:
+        state_.camera.yaw = 0;
+        state_.camera.pitch = 1.55;
+        break;
+    default:
+        return false;
+    }
+    state_.camera.up = {0, 0, 1};
+    return true;
+}
 Json MeshView::view_state() const {
+    Json result = changed_only_ ? Json{{"changedOnly", true}} : Json::object();
     if (fit_pending_ || !mesh_)
-        return Json::object();
+        return result;
     const auto &c = state_.camera;
-    return {{"target", {c.target.x, c.target.y, c.target.z}},
-            {"up", {c.up.x, c.up.y, c.up.z}},
-            {"yaw", c.yaw},
-            {"pitch", c.pitch},
-            {"distance", c.distance}};
+    result.update({{"target", {c.target.x, c.target.y, c.target.z}},
+                   {"up", {c.up.x, c.up.y, c.up.z}},
+                   {"yaw", c.yaw},
+                   {"pitch", c.pitch},
+                   {"distance", c.distance}});
+    return result;
 }
 void MeshView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "mesh");
     if (!mesh_ || state.empty())
         return;
+    if (state.contains("changedOnly"))
+        changed_only_ = comparing_ && state["changedOnly"].get<bool>();
+    if (state.size() == 1 && state.contains("changedOnly"))
+        return;
     if (fit_pending_)
         fit(1);
+    fit_changes_pending_ = false;
     auto &c = state_.camera;
     auto vector = [&](const char *key, cyui::Vec3 &out) {
         if (state.contains(key))
@@ -150,20 +214,41 @@ void MeshView::draw(const char *id) {
     }
     cyui::textDim(cyui::tr("%zu vertices / %zu triangles / %zu material groups").c_str(),
                   mesh_->vertices.size(), mesh_->triangles.size(), mesh_->material_slots.size());
-    if (comparing_)
+    if (comparing_) {
         detail::change_legend(counts_);
+        ImGui::Checkbox(cyui::trLabel("Changed edges only").c_str(), &changed_only_);
+        ImGui::SameLine();
+        cyui::ScopedDisabled disabled(!counts_.changed());
+        if (cyui::button(cyui::trLabel("Fit changed geometry").c_str()))
+            focus_changes();
+    }
     if (ImGui::Button(cyui::trLabel("Fit mesh").c_str()))
         fit_pending_ = true;
     ImGui::SameLine();
+    if (ImGui::BeginCombo(cyui::trLabel("Camera view").c_str(), cyui::tr("Choose view").c_str())) {
+        unsigned index = 0;
+        for (const auto *label : {"Perspective", "Front", "Right", "Top"}) {
+            if (ImGui::Selectable(cyui::trLabel(label).c_str()))
+                set_camera_view(static_cast<MeshCameraView>(index));
+            ++index;
+        }
+        ImGui::EndCombo();
+    }
     cyui::textDim("%s", cyui::tr("Alt + drag: orbit | Middle drag: pan | Wheel: zoom").c_str());
     if (truncated_)
         cyui::callout(cyui::Tone::warning, cyui::tr("Preview is limited to 100,000 edges.").c_str());
+    if (changed_only_ && !counts_.changed()) {
+        cyui::emptyState(cyui::tr("No changed edges").c_str(),
+                         cyui::tr("Show unchanged edges to inspect the complete mesh.").c_str(),
+                         cyui::icon::filter);
+        return;
+    }
     auto size = ImGui::GetContentRegionAvail();
     if (size.x <= 0 || size.y <= 0)
         return;
     auto origin = ImGui::GetCursorScreenPos();
-    if (fit_pending_)
-        fit(size.x / size.y);
+    if (fit_pending_ || fit_changes_pending_)
+        fit(size.x / size.y, fit_changes_pending_);
     cyui::viewport("##mesh", state_, {}, size);
     auto view = cyui::cameraViewMatrix(state_.camera);
     auto *draw = ImGui::GetWindowDrawList();
@@ -172,7 +257,7 @@ void MeshView::draw(const char *id) {
         double x = view[0] * p.x + view[4] * p.y + view[8] * p.z + view[12],
                y = view[1] * p.x + view[5] * p.y + view[9] * p.z + view[13],
                z = view[2] * p.x + view[6] * p.y + view[10] * p.z + view[14];
-        if (z >= -radius_ * 1e-4)
+        if (z >= -std::max(1e-12, state_.camera.distance * 1e-6))
             return false;
         auto sx = x / (-z * .41421356237) * (size.y / size.x), sy = y / (-z * .41421356237);
         if (!std::isfinite(sx) || !std::isfinite(sy) || std::abs(sx) > 1e5 || std::abs(sy) > 1e5)
@@ -181,6 +266,8 @@ void MeshView::draw(const char *id) {
         return true;
     };
     for (const auto &edge : edges_) {
+        if (changed_only_ && edge.change == ChangeKind::unchanged)
+            continue;
         ImVec2 a, b;
         if (project(edge.points[0], a) && project(edge.points[1], b)) {
             draw->AddLine(a, b, comparing_ ? detail::change_color(edge.change) : cyui::palette().accent,

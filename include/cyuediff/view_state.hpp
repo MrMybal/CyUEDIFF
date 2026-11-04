@@ -130,6 +130,7 @@ inline void validate(const Json &v, std::string_view kind) {
             entries("inspectors", "graph-inspection");
             entries("parameterFilters", "list-filter");
         } else if (kind == "mesh") {
+            flag({"changedOnly"});
             if (key == "target" || key == "up") {
                 vector(x, 3);
                 known = true;
