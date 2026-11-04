@@ -1,6 +1,7 @@
 #include <cyuediff/core.hpp>
 #include <cyuediff/catalog.hpp>
 #include <cyuediff/hdr.hpp>
+#include <cyuediff/container.hpp>
 #include <cmath>
 #include <locale>
 #include <sstream>
@@ -48,6 +49,11 @@ int run(const std::vector<std::string> &args) {
                "--before-engine-root/--after-engine-root.\n"
                "  --no-engine skips engine discovery for Git project contexts.\n"
 #endif
+               "  cyuediff container INPUT.pak|INPUT.utoc [--out REPORT.json]\n"
+               "  cyuediff container-read INPUT ENTRY_PATH_OR_ID --out BYTES.bin [--codec MODULE.dll]\n"
+               "  cyuediff container-hash INPUT [--codec MODULE.dll] [--out REPORT.json]\n"
+               "  cyuediff container-diff BEFORE AFTER [--codec MODULE.dll] [--out REPORT.json]\n"
+               "  Container comparisons cover decoded bytes, not cooked object semantics.\n"
                "  cyuediff textconv ASSET\n"
                "  cyuediff catalog PROJECT [--include-engine] [--max-assets N] [--max-entries N] [--out "
                "FILE]\n"
@@ -94,11 +100,14 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "mesh-diff" || command == "material-diff" || command == "hdr-diff")
+                     command == "mesh-diff" || command == "material-diff" || command == "hdr-diff" ||
+                     command == "container-read" || command == "container-diff")
                         ? 2u
                         : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog";
+    const bool container_command = command == "container" || command == "container-read" ||
+                                   command == "container-hash" || command == "container-diff";
     const bool catalog_command = command == "catalog" || command == "git-catalog";
     if (git_command)
         required = command == "git-diff" ? 4u : (command == "git-catalog" ? 2u : 3u);
@@ -108,6 +117,11 @@ int run(const std::vector<std::string> &args) {
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (container_command) {
+            if (key != "--out" && !(key == "--codec" && command != "container"))
+                throw Error("arguments", "Unsupported container option: " + key);
+            continue;
+        }
         const bool side_context = key == "--before-project" || key == "--after-project" ||
                                   key == "--before-engine-root" || key == "--after-engine-root";
         if ((key == "--max-assets" || key == "--max-entries") && !catalog_command)
@@ -225,13 +239,61 @@ int run(const std::vector<std::string> &args) {
     MeshDecodeOptions mesh_options;
     mesh_options.decoder = decoder;
     Json output;
+    std::vector<std::uint8_t> raw_bytes;
+    fs::path raw_destination;
     MeshGeometry obj;
     fs::path obj_destination;
     ImageRgba8 png;
     fs::path png_destination;
     int exit_code = 0;
     ReadOptions options;
-    if (git_command) {
+    if (container_command) {
+        auto input = Container::open(fs::u8path(positional[0]));
+        for (const auto &file : input.files())
+            protected_files.push_back(file);
+        ContainerReadOptions decode_options;
+        if (decoder)
+            decode_options.decoder = container_block_decoder(decoder);
+        if (command == "container-diff") {
+            auto after = Container::open(fs::u8path(positional[1]));
+            for (const auto &file : after.files())
+                protected_files.push_back(file);
+            output = compare_containers(input, after, decode_options);
+            exit_code = output.at("status") == "identical" ? 0 : 1;
+        } else if (command == "container-read") {
+            raw_destination = path_option("--out");
+            if (raw_destination.empty())
+                throw Error("arguments", "container-read requires --out");
+            std::size_t found = input.entries().size();
+            for (std::size_t j = 0; j < input.entries().size(); ++j) {
+                const auto &e = input.entries()[j];
+                if (e.id == positional[1] || (!e.path.empty() && e.path == positional[1])) {
+                    if (found != input.entries().size())
+                        throw Error("container-entry", "Ambiguous member name");
+                    found = j;
+                }
+            }
+            if (found == input.entries().size())
+                throw Error("container-entry", "No matching container member");
+            raw_bytes = input.read(found, decode_options);
+            output = {{"schema", "cyuediff.container-read/1"},
+                      {"entry", input.entries()[found].to_json()},
+                      {"size", raw_bytes.size()},
+                      {"sha256", sha256_bytes(raw_bytes)},
+                      {"coverage", "decoded-bytes"}};
+        } else {
+            output = input.to_json();
+            if (command == "container-hash") {
+                output["decodedSha256"] = Json::array();
+                for (std::size_t j = 0; j < input.entries().size(); ++j) {
+                    const auto &e = input.entries()[j];
+                    if (!e.deleted)
+                        output["decodedSha256"].push_back(
+                            {{"id", e.id}, {"sha256", sha256_bytes(input.read(j, decode_options))}});
+                }
+            }
+        }
+    } else if (git_command) {
 #ifdef CYUEDIFF_HAS_GIT
         GitOptions git_options;
         git_options.temporary_root = path_option("--git-temp");
@@ -502,12 +564,14 @@ int run(const std::vector<std::string> &args) {
     } else
         throw Error("arguments", "Unknown command " + command);
     auto text = output.dump(2, ' ', false, Json::error_handler_t::replace) + "\n";
-    auto destination = (command == "preview" || command == "export-mesh") ? fs::path{} : path_option("--out");
+    auto destination = (command == "preview" || command == "export-mesh" || command == "container-read")
+                           ? fs::path{}
+                           : path_option("--out");
     auto same_file = [](const fs::path &a, const fs::path &b) {
         return fs::weakly_canonical(fs::absolute(a)) == fs::weakly_canonical(fs::absolute(b)) ||
                (fs::exists(a) && fs::exists(b) && fs::equivalent(a, b));
     };
-    for (const auto &target : {destination, png_destination, obj_destination}) {
+    for (const auto &target : {destination, png_destination, obj_destination, raw_destination}) {
         if (target.empty())
             continue;
         for (const auto &directory : protected_directories) {
@@ -534,6 +598,15 @@ int run(const std::vector<std::string> &args) {
     }
     if (!destination.empty() && !png_destination.empty() && same_file(destination, png_destination))
         throw Error("output-path", "Report and image must have distinct destinations");
+    if (!raw_destination.empty()) {
+        std::ofstream stream(raw_destination, std::ios::binary);
+        if (!stream)
+            throw Error("io", "Cannot create member output");
+        stream.write(reinterpret_cast<const char *>(raw_bytes.data()),
+                     static_cast<std::streamsize>(raw_bytes.size()));
+        if (!stream)
+            throw Error("io", "Cannot write member output");
+    }
     if (!obj_destination.empty())
         write_obj(obj_destination, obj);
     if (!png_destination.empty())

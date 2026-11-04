@@ -64,5 +64,22 @@ if args.consumer:
  result=subprocess.run([str(executable),str(project/'Example.uproject')],capture_output=True,check=True,env=env,timeout=20)
  data=json.loads(result.stdout)
  if not data.get('assets'):raise RuntimeError('Installed Core consumer did not list fixture')
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed Core consumer' if args.consumer else '')+' validated')
+ if not (prefix/'include/cyuediff/container.hpp').is_file():raise RuntimeError('Missing container API in SDK')
+ container_build=target/'container-consumer'
+ configure=[cmake,'-S',str(root/'examples/container_consumer'),'-B',str(container_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(container_build),'--config','Release','--parallel','2'],check=True,env=env)
+ # Original, uncompressed one-chunk TOC fixture, independent of the source checkout at runtime.
+ import struct
+ header=bytearray(144);header[:16]=b'-==--==--==--==-';header[16]=5
+ struct.pack_into('<9I',header,20,144,1,1,12,0,32,4,0,1)
+ struct.pack_into('<Q',header,88,0xffffffffffffffff)
+ chunk=bytes(11)+bytes([2])+bytes(5)+(4).to_bytes(5,'big')
+ block=bytes(5)+(4).to_bytes(3,'little')+(4).to_bytes(3,'little')+bytes(1)
+ toc=target/'consumer.utoc';toc.write_bytes(header+chunk+block+bytes(33));toc.with_suffix('.ucas').write_bytes(b'core')
+ executable=container_build/'Release'/('container_consumer'+suffix) if os.name=='nt' else container_build/'container_consumer'
+ result=subprocess.run([str(executable),str(toc)],capture_output=True,check=True,env=env,timeout=20)
+ if json.loads(result.stdout).get('firstMemberSha256')!=hashlib.sha256(b'core').hexdigest():raise RuntimeError('Installed container consumer failed')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

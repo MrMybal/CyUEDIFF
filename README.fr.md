@@ -154,3 +154,7 @@ Les diffs visuels surlignent les nœuds Blueprint/matériau, les paramètres enr
 Les sources HDR FP16/FP32/RGBE se comparent en flottants avant conversion d'aperçu. La lecture des textes localisés, Maps/Sets et transformations natives est étendue. Le corpus CyTrace fourni ajoute 150 packages sources vérifiés ; les exports partiels restent signalés. Voir les guides anglais [HDR](docs/HDR.md), [propriétés](docs/PROPERTIES.md), [exécution](docs/RUNTIME.md) et [distribution](docs/DISTRIBUTION.md).
 
 La CI Windows/Linux est préparée et les archives exécutables/SDK se construisent avec CPack. Les fichiers restent locaux tant qu'aucun push n'est demandé. La lecture cooked/Pak/IoStore complète, les ressources virtualisées, meshes squelettiques, collisions et données Nanite, ainsi que l'historique Git et les documents multiples de l'interface restent à réaliser.
+
+## Ajouts 0.15 : conteneurs Pak / IoStore
+
+Le Core lit les conteneurs Pak 10/11 avec index de répertoires complet et IoStore TOC 3–5 avec leurs partitions UCAS. La CLI fournit l’inventaire, la lecture d’un membre, les empreintes des contenus décompressés et leur comparaison. Un codec reste explicite pour les blocs compressés. Le build CyTrace fourni valide 6 219 membres, avec un second lecteur indépendant et des sources inchangées. Le décodage sémantique des objets cooked/Zen reste à implémenter ; les empreintes BLAKE3 stockées dans IoStore et les signatures ne sont pas vérifiées. Contrats et exemples dans [CONTAINERS.md](docs/CONTAINERS.md).

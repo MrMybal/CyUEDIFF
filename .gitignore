@@ -36,4 +36,7 @@ __pycache__/
 *.ubulk
 *.uptnl
 *.upayload
+*.pak
+*.utoc
+*.ucas
 /gitleaks-report.*
