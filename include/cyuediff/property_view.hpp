@@ -1,9 +1,11 @@
 #pragma once
+#include <cyuediff/view_layout.hpp>
 #include <cyuediff/view_state.hpp>
 #include <cyuediff/visual_diff.hpp>
 #include <cyui/Core.h>
 namespace cyuediff {
 class PropertyView {
+    ViewLayout layout_;
     PropertyTable table_;
     cyui::TextFilter filter_;
     std::vector<int> visible_;

@@ -43,6 +43,7 @@ void PropertyView::rebuild() {
         selected_ = -1;
 }
 void PropertyView::set_values(const Json *before, const Json *after, bool comparing) {
+    layout_.restore(Json::object(), "property-layout");
     comparing_ = comparing;
     if (!comparing) {
         if (before)
@@ -59,12 +60,17 @@ void PropertyView::set_values(const Json *before, const Json *after, bool compar
         selected_ = visible_.front();
 }
 Json PropertyView::view_state() const {
-    return {{"filter", filter_.query},
-            {"changedOnly", changed_only_},
-            {"selected", selected_row() ? Json(selected_row()->path) : Json(nullptr)}};
+    Json result = {{"filter", filter_.query},
+                   {"changedOnly", changed_only_},
+                   {"selected", selected_row() ? Json(selected_row()->path) : Json(nullptr)}};
+    if (!layout_.snapshot().empty())
+        result["layout"] = layout_.snapshot();
+    return result;
 }
 void PropertyView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "property");
+    if (state.contains("layout"))
+        layout_.restore(state["layout"], "property-layout");
     if (state.contains("filter"))
         filter_.query = state["filter"].get<std::string>();
     if (state.contains("changedOnly"))
@@ -95,17 +101,20 @@ void PropertyView::draw(const char *id) {
         return;
     }
     auto remaining = ImGui::GetContentRegionAvail();
-    auto detail_height = std::min(cyui::dp(180), remaining.y * .4f);
-    if (ImGui::BeginTable(
-            "##typed-properties", comparing_ ? 5 : 3,
-            ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg,
-            ImVec2(remaining.x, std::max(ImGui::GetFrameHeight() * 2,
-                                         remaining.y - detail_height - ImGui::GetStyle().ItemSpacing.y)))) {
+    const auto fraction = layout_.preview_fraction(std::min(cyui::dp(180) / std::max(1.f, remaining.y), .4f));
+    auto detail_height = std::max(1.f, remaining.y) * fraction;
+    if (layout_.begin_table("##typed-properties", comparing_ ? "comparisonColumns" : "singleColumns",
+                            comparing_ ? 5 : 3,
+                            ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg,
+                            ImVec2(remaining.x, std::max(ImGui::GetFrameHeight() * 2,
+                                                         remaining.y - detail_height - cyui::dp(6) -
+                                                             ImGui::GetStyle().ItemSpacing.y * 2)))) {
+        int column = 0;
         for (auto label : {"Property", "Type", comparing_ ? "Before" : "Value"})
-            ImGui::TableSetupColumn(cyui::tr(label).c_str());
+            layout_.column(label, column++);
         if (comparing_) {
-            ImGui::TableSetupColumn(cyui::tr("After").c_str());
-            ImGui::TableSetupColumn(cyui::tr("Change").c_str());
+            layout_.column("After", 3);
+            layout_.column("Change", 4);
         }
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
@@ -142,8 +151,9 @@ void PropertyView::draw(const char *id) {
                     ImGui::PopStyleColor();
                 }
             }
-        ImGui::EndTable();
+        layout_.end_table();
     }
+    layout_.resize_preview(remaining.y);
     if (ImGui::BeginChild("##property-preview", ImVec2(0, 0), ImGuiChildFlags_Borders)) {
         if (const auto *row = selected_row()) {
             cyui::sectionTitle(cyui::tr("Property preview").c_str());

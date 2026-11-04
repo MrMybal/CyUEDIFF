@@ -1,4 +1,5 @@
 #pragma once
+#include <cyuediff/view_layout.hpp>
 #include <cyuediff/view_state.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/blueprint_view.hpp>
@@ -14,6 +15,7 @@ namespace cyuediff {
 // No platform window, Unreal dependency or file I/O is introduced by draw().
 enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison };
 class AssetView {
+    ViewLayout layout_;
     std::shared_ptr<const Package> before_, after_;
     cyui::DiffDocument document_;
     cyui::DiffState diff_state_;

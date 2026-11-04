@@ -4,6 +4,7 @@
 #include <map>
 namespace cyuediff {
 void MaterialView::set_package(const Package &package, const Package *peer, bool after) {
+    layout_.restore(Json::object(), "graph-layout");
     documents_.clear();
     selected_ = 0;
     auto model = package.material_snapshot();
@@ -146,11 +147,16 @@ Json MaterialView::view_state() const {
         add(documents_[selected_]);
     for (const auto &g : documents_)
         add(g);
-    return {{"selected", documents_.empty() ? Json(nullptr) : Json(documents_[selected_].path)},
-            {"views", views}};
+    Json result = {{"selected", documents_.empty() ? Json(nullptr) : Json(documents_[selected_].path)},
+                   {"views", views}};
+    if (!layout_.snapshot().empty())
+        result["layout"] = layout_.snapshot();
+    return result;
 }
 void MaterialView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "graphs");
+    if (state.contains("layout"))
+        layout_.restore(state["layout"], "graph-layout");
     if (state.contains("selected")) {
         selected_ = 0;
         for (std::size_t i = 0; i < documents_.size(); ++i)
@@ -190,7 +196,7 @@ void MaterialView::draw(const char *id) {
     auto &document = documents_[selected_];
     if (!document.complete)
         cyui::callout(cyui::Tone::warning, cyui::tr("Some material data could not be resolved.").c_str());
-    if (!document.diagnostics.empty() && ImGui::TreeNode(cyui::trLabel("Graph diagnostics").c_str())) {
+    if (!document.diagnostics.empty() && layout_.section("diagnostics", "Graph diagnostics", false, true)) {
         for (const auto &message : document.diagnostics)
             ImGui::TextUnformatted(message.c_str());
         ImGui::TreePop();
@@ -203,14 +209,16 @@ void MaterialView::draw(const char *id) {
             ImGui::TextUnformatted(cyui::tr("Changes").c_str());
             detail::change_legend(document.counts);
         }
-        if (ImGui::BeginTable("##parameters", document.comparing ? 5 : 3,
-                              ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg,
-                              ImGui::GetContentRegionAvail())) {
+        if (layout_.begin_table("##parameters", document.comparing ? "comparisonColumns" : "singleColumns",
+                                document.comparing ? 5 : 3,
+                                ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg,
+                                ImGui::GetContentRegionAvail())) {
+            int column = 0;
             for (const auto *label : {"Parameter", "Kind", document.comparing ? "Before" : "Value"})
-                ImGui::TableSetupColumn(cyui::tr(label).c_str());
+                layout_.column(label, column++);
             if (document.comparing) {
-                ImGui::TableSetupColumn(cyui::tr("After").c_str());
-                ImGui::TableSetupColumn(cyui::tr("Change").c_str());
+                layout_.column("After", 3);
+                layout_.column("Change", 4);
             }
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
@@ -237,7 +245,7 @@ void MaterialView::draw(const char *id) {
                         ImGui::PopStyleColor();
                     }
                 }
-            ImGui::EndTable();
+            layout_.end_table();
         }
         return;
     }

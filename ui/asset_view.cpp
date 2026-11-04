@@ -100,6 +100,7 @@ void AssetView::register_translations() {
 }
 void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after,
                              bool compare_missing_side) {
+    layout_.restore(Json::object(), "asset-layout");
     before_ = std::move(before);
     after_ = std::move(after);
     selected_ = 0;
@@ -268,12 +269,16 @@ Json AssetView::view_state() const {
                     {"textures", textures},
                     {"mesh", (after ? after_mesh_ : before_mesh_).view_state()}};
     };
+    if (!layout_.snapshot().empty())
+        result["layout"] = layout_.snapshot();
     result["before"] = side(false);
     result["after"] = side(true);
     return result;
 }
 void AssetView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "asset");
+    if (state.contains("layout"))
+        layout_.restore(state["layout"], "asset-layout");
     auto flag = [&](const char *key, bool &out) {
         if (state.contains(key))
             out = state[key].get<bool>();
@@ -402,9 +407,9 @@ void AssetView::draw(const char *id, bool show_language) {
                 cyui::emptyState(cyui::tr("Empty package").c_str(),
                                  cyui::tr("This package has no exported objects.").c_str(),
                                  cyui::icon::document);
-            else if (ImGui::BeginTable("##inspection", 2, ImGuiTableFlags_Resizable)) {
-                ImGui::TableSetupColumn("##objects", ImGuiTableColumnFlags_WidthFixed, cyui::dp(300));
-                ImGui::TableSetupColumn("##properties");
+            else if (layout_.begin_table("##inspection", "objectColumns", 2)) {
+                layout_.column("##objects", 0, 1);
+                layout_.column("##properties", 1, 2);
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 if (ImGui::BeginChild("##objects"))
@@ -437,7 +442,7 @@ void AssetView::draw(const char *id, bool show_language) {
                     ImGui::EndChild();
                 } else
                     (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
-                ImGui::EndTable();
+                layout_.end_table();
             }
             ImGui::EndTabItem();
         }

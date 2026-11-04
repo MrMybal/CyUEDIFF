@@ -44,3 +44,10 @@ This is bounded presentation restoration, not a complete ImGui layout dump. Tabl
 ## Layout contract - 0.41
 
 Version three accepts bounded layout metadata inside `viewState.layout` and each view's `layout` object. Version-one and version-two files remain readable; an explicit save writes version three. Earlier applications reject the newer format. Sidebar widths use logical units (180-640), preview heights use fractions (0.1-0.7), and table columns use positive finite weights with an exact count for each table. Diagnostic/context sections use named boolean fields. No ImGui INI text, window identifiers, arbitrary section names or native handles are accepted. Validation remains data-only and runs before replacing a workspace or applying any view state.
+
+
+## Reusable layout views - 0.42
+
+The asset object/property split, typed property columns, material parameter columns, container member columns and cooked object/property split now use resizable stretch proportions. Single-value and comparison tables keep separate column configurations. Property previews have a draggable horizontal divider; double-click it to restore the default height. Blueprint/material/container diagnostic expansion is part of each view's snapshot. Locale changes do not change table identities.
+
+Restore validated layout state after binding data. A restore also resets the corresponding live table instance so saved proportions replace any previous interactive resize. The implementation reads ImGui's resulting stretch weights in one isolated UI adapter; only numeric proportions are serialized. Core and the installed Core SDK do not depend on this adapter or CyUI. Native sidebar integration follows separately.

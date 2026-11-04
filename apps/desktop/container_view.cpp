@@ -240,6 +240,7 @@ void ContainerView::apply_object_selection() {
     pending_object_ = -1;
 }
 void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value) {
+    layout_.restore(Json::object(), "container-layout");
     document_ = std::move(value);
     member_ = object_ = pending_object_ = -1;
     compare_objects_ = false;
@@ -403,21 +404,26 @@ Json ContainerView::property_report() const {
             {"visibleProperties", row ? values_.visible_count() : 0}};
 }
 Json ContainerView::view_state() const {
-    return {{"filter", filter_.query},
-            {"objectFilter", object_filter_.query},
-            {"packagesOnly", packages_only_},
-            {"changedOnly", changed_only_},
-            {"member", member_ >= 0 ? Json(selected_key()) : Json(nullptr)},
-            {"object", object_ >= 0 ? Json(object_rows_[object_].path) : Json(nullptr)},
-            {"propertyMode", property_mode_},
-            {"inspection", inspection_.view_state()},
-            {"properties", properties_.view_state()},
-            {"values", values_.view_state()},
-            {"comparison", comparison_.view_state()},
-            {"schema", schema_.view_state()}};
+    Json result = {{"filter", filter_.query},
+                   {"objectFilter", object_filter_.query},
+                   {"packagesOnly", packages_only_},
+                   {"changedOnly", changed_only_},
+                   {"member", member_ >= 0 ? Json(selected_key()) : Json(nullptr)},
+                   {"object", object_ >= 0 ? Json(object_rows_[object_].path) : Json(nullptr)},
+                   {"propertyMode", property_mode_},
+                   {"inspection", inspection_.view_state()},
+                   {"properties", properties_.view_state()},
+                   {"values", values_.view_state()},
+                   {"comparison", comparison_.view_state()},
+                   {"schema", schema_.view_state()}};
+    if (!layout_.snapshot().empty())
+        result["layout"] = layout_.snapshot();
+    return result;
 }
 void ContainerView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "container");
+    if (state.contains("layout"))
+        layout_.restore(state["layout"], "container-layout");
     if (state.contains("filter"))
         filter_.query = state["filter"].get<std::string>();
     if (state.contains("objectFilter"))
@@ -480,7 +486,7 @@ ContainerAction ContainerView::draw(bool busy) {
             rebuild_objects();
         }
     }
-    if (!diagnostics_.empty() && cyui::beginSection(cyui::trLabel("Container diagnostics").c_str(), false)) {
+    if (!diagnostics_.empty() && layout_.section("diagnostics", "Container diagnostics")) {
         for (const auto &message : diagnostics_)
             ImGui::TextWrapped("%s", message.c_str());
         cyui::endSection();
@@ -506,18 +512,14 @@ ContainerAction ContainerView::draw(bool busy) {
                     cyui::tr("No matching member").c_str(),
                     cyui::tr("Change the search or filters, or show unchanged members.").c_str());
             ImGui::EndChild();
-        } else if (ImGui::BeginTable("##container-members", 4,
-                                     ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
-                                         ImGuiTableFlags_ScrollY,
-                                     ImVec2(0, height))) {
-            ImGui::TableSetupColumn(cyui::tr("Virtual path / chunk ID").c_str(),
-                                    ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn(cyui::tr("Decoded bytes").c_str(), ImGuiTableColumnFlags_WidthFixed,
-                                    cyui::dp(110));
-            ImGui::TableSetupColumn(cyui::tr("Chunk type").c_str(), ImGuiTableColumnFlags_WidthFixed,
-                                    cyui::dp(90));
-            ImGui::TableSetupColumn(cyui::tr("State").c_str(), ImGuiTableColumnFlags_WidthFixed,
-                                    cyui::dp(90));
+        } else if (layout_.begin_table("##container-members", "memberColumns", 4,
+                                       ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
+                                           ImGuiTableFlags_ScrollY,
+                                       ImVec2(0, height))) {
+            layout_.column("Virtual path / chunk ID", 0, 5);
+            layout_.column("Decoded bytes", 1, 1.2f);
+            layout_.column("Chunk type", 2);
+            layout_.column("State", 3);
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
             ImGuiListClipper clipper;
@@ -549,7 +551,7 @@ ContainerAction ContainerView::draw(bool busy) {
                             cyui::tr(row.deleted ? "Deleted" : (row.encrypted ? "Encrypted" : "Live"))
                                 .c_str());
                 }
-            ImGui::EndTable();
+            layout_.end_table();
         }
         const auto *member = selected_member();
         {
@@ -597,51 +599,58 @@ ContainerAction ContainerView::draw(bool busy) {
         if (cyui::filterBox("##cooked-object-search", object_filter_))
             rebuild_objects();
         const auto available = ImGui::GetContentRegionAvail();
-        if (ImGui::BeginChild("##cooked-objects", ImVec2(available.x * .35f, available.y))) {
-            ImGuiListClipper clipper;
-            clipper.Begin(static_cast<int>(objects_.size()));
-            while (clipper.Step())
-                for (int at = clipper.DisplayStart; at < clipper.DisplayEnd; ++at) {
-                    const auto index = objects_[at];
-                    const auto &row = object_rows_[index];
-                    cyui::ScopedID scope(index);
-                    const auto x = ImGui::GetCursorPosX();
-                    if (ImGui::Selectable("##object", object_ == index)) {
-                        pending_object_ = index;
-                        action = ContainerAction::select_object;
+        if (layout_.begin_table("##cooked-split", "objectColumns", 2)) {
+            layout_.column("##objects", 0, 1);
+            layout_.column("##properties", 1, 2);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            if (ImGui::BeginChild("##cooked-objects", ImVec2(0, available.y))) {
+                ImGuiListClipper clipper;
+                clipper.Begin(static_cast<int>(objects_.size()));
+                while (clipper.Step())
+                    for (int at = clipper.DisplayStart; at < clipper.DisplayEnd; ++at) {
+                        const auto index = objects_[at];
+                        const auto &row = object_rows_[index];
+                        cyui::ScopedID scope(index);
+                        const auto x = ImGui::GetCursorPosX();
+                        if (ImGui::Selectable("##object", object_ == index)) {
+                            pending_object_ = index;
+                            action = ContainerAction::select_object;
+                        }
+                        ImGui::SameLine();
+                        ImGui::SetCursorPosX(x);
+                        ImGui::TextUnformatted(row.name.c_str());
+                        cyui::tooltip(row.path.c_str());
+                        if (!row.state.empty())
+                            cyui::badge(cyui::tr(state_label(row.state)).c_str(), state_tone(row.state));
                     }
-                    ImGui::SameLine();
-                    ImGui::SetCursorPosX(x);
-                    ImGui::TextUnformatted(row.name.c_str());
-                    cyui::tooltip(row.path.c_str());
-                    if (!row.state.empty())
-                        cyui::badge(cyui::tr(state_label(row.state)).c_str(), state_tone(row.state));
-                }
-        }
-        ImGui::EndChild();
-        ImGui::SameLine();
-        if (ImGui::BeginChild("##cooked-object-properties", ImVec2(0, available.y))) {
-            if (object_ >= 0) {
-                const auto details = cyui::tr("Object details"), values = cyui::tr("Decoded properties");
-                const char *modes[] = {details.c_str(), values.c_str()};
-                int mode = property_mode_ ? 1 : 0;
-                if (cyui::segmented("##cooked-inspection-mode", modes, 2, &mode, -1))
-                    property_mode_ = mode == 1;
-                if (property_mode_) {
-                    if (!property_notice_.empty())
-                        cyui::callout(cyui::Tone::info, cyui::tr(property_notice_.c_str()).c_str());
-                    if (property_available_)
-                        values_.draw("##cooked-values");
-                    else
-                        cyui::emptyState(
-                            cyui::tr("No decoded properties").c_str(),
-                            cyui::tr("Supply a matching schema context and inspect the member.").c_str());
+            }
+            ImGui::EndChild();
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::BeginChild("##cooked-object-properties", ImVec2(0, available.y))) {
+                if (object_ >= 0) {
+                    const auto details = cyui::tr("Object details"), values = cyui::tr("Decoded properties");
+                    const char *modes[] = {details.c_str(), values.c_str()};
+                    int mode = property_mode_ ? 1 : 0;
+                    if (cyui::segmented("##cooked-inspection-mode", modes, 2, &mode, -1))
+                        property_mode_ = mode == 1;
+                    if (property_mode_) {
+                        if (!property_notice_.empty())
+                            cyui::callout(cyui::Tone::info, cyui::tr(property_notice_.c_str()).c_str());
+                        if (property_available_)
+                            values_.draw("##cooked-values");
+                        else
+                            cyui::emptyState(
+                                cyui::tr("No decoded properties").c_str(),
+                                cyui::tr("Supply a matching schema context and inspect the member.").c_str());
+                    } else
+                        properties_.draw("##cooked-object");
                 } else
-                    properties_.draw("##cooked-object");
-            } else
-                cyui::emptyState(cyui::tr("Select a cooked object.").c_str(), "");
+                    cyui::emptyState(cyui::tr("Select a cooked object.").c_str(), "");
+            }
+            ImGui::EndChild();
+            layout_.end_table();
         }
-        ImGui::EndChild();
         ImGui::EndTabItem();
     }
     if (document_->after && ImGui::BeginTabItem(cyui::trLabel("Comparison").c_str(), nullptr, flags(3))) {

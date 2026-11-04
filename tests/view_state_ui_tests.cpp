@@ -170,6 +170,7 @@ int main() {
         auto graph_key = blueprint.view_state()["selected"].get<std::string>();
         Json graph_state = {{"selected", graph_key},
                             {"views", {{graph_key, {{"pan", {150, 80}}, {"zoom", .8}}}}}};
+        graph_state["layout"] = {{"diagnostics", true}};
         blueprint.restore_view_state(graph_state);
         check(blueprint.view_state() == graph_state, "Blueprint camera uses graph identity");
         auto changed_graphs = graphs;
@@ -195,6 +196,7 @@ int main() {
         material_view.set_package(materials);
         check(!material_view.empty(), "Material fixture prepared");
         Json material_state = {{"selected", "M"}, {"views", {{"M", {{"pan", {40, 60}}, {"zoom", 1.2}}}}}};
+        material_state["layout"] = {{"diagnostics", true}};
         material_view.restore_view_state(material_state);
         check(material_view.view_state() == material_state, "Material graph camera round trip");
         const auto original_package = package->to_json();

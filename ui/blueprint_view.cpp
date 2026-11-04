@@ -36,6 +36,7 @@ int pin_color(const Json &pin) {
 }
 } // namespace
 void BlueprintView::set_package(const Package &package, const Package *peer, bool after) {
+    layout_.restore(Json::object(), "graph-layout");
     graphs_.clear();
     selected_ = 0;
     auto model = package.blueprint_snapshot();
@@ -111,10 +112,16 @@ Json BlueprintView::view_state() const {
         add(graphs_[selected_]);
     for (const auto &g : graphs_)
         add(g);
-    return {{"selected", graphs_.empty() ? Json(nullptr) : Json(graphs_[selected_].id)}, {"views", views}};
+    Json result = {{"selected", graphs_.empty() ? Json(nullptr) : Json(graphs_[selected_].id)},
+                   {"views", views}};
+    if (!layout_.snapshot().empty())
+        result["layout"] = layout_.snapshot();
+    return result;
 }
 void BlueprintView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "graphs");
+    if (state.contains("layout"))
+        layout_.restore(state["layout"], "graph-layout");
     if (state.contains("selected")) {
         selected_ = 0;
         for (std::size_t i = 0; i < graphs_.size(); ++i)
@@ -162,7 +169,7 @@ void BlueprintView::draw(const char *id) {
         cyui::callout(
             cyui::Tone::warning,
             cyui::tr("This graph is incomplete. Some pins or connections could not be resolved.").c_str());
-        if (ImGui::TreeNode(cyui::trLabel("Graph diagnostics").c_str())) {
+        if (layout_.section("diagnostics", "Graph diagnostics", false, true)) {
             for (const auto &message : graph.diagnostics)
                 ImGui::TextUnformatted(message.c_str());
             ImGui::TreePop();

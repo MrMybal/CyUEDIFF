@@ -1,10 +1,12 @@
 #pragma once
+#include <cyuediff/view_layout.hpp>
 #include <cyuediff/view_state.hpp>
 #include <cyuediff/visual_diff.hpp>
 #include <cyui/modules/Nodes.h>
 namespace cyuediff {
 // Serialized material graphs and instance overrides, prepared outside the render loop.
 class MaterialView {
+    ViewLayout layout_;
     struct Document {
         std::string path, parent;
         bool instance = false, complete = false, outputs_known = false, needs_fit = true;

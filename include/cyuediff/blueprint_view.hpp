@@ -1,4 +1,5 @@
 #pragma once
+#include <cyuediff/view_layout.hpp>
 #include <cyuediff/view_state.hpp>
 #include <cyuediff/visual_diff.hpp>
 #include <cyui/modules/Nodes.h>
@@ -6,6 +7,7 @@ namespace cyuediff {
 // Prepared read-only graph view. set_package performs all model conversion;
 // draw only navigates the cached CyUI model and never reads files.
 class BlueprintView {
+    ViewLayout layout_;
     struct Graph {
         std::string id, path;
         bool complete = false, needs_fit = true;

@@ -4,6 +4,7 @@
 namespace cyuediff::desktop {
 enum class ContainerAction { none, inspect, select_object };
 class ContainerView {
+    ViewLayout layout_;
     std::shared_ptr<const ContainerDocument> document_;
     cyui::TextFilter filter_, object_filter_;
     struct MemberRow {
