@@ -75,6 +75,8 @@ enum class NativeStructLayout {
 const char *native_struct_layout_name(NativeStructLayout);
 NativeStructLayout parse_native_struct_layout(const std::string &);
 enum class SoftPathLayout { unspecified, ue5_top_level_names };
+// Flags + history tag; None includes the modern uint32 invariant-source marker.
+enum class TextLayout { unspecified, ue5_history };
 struct UnversionedReadOptions {
     const std::vector<std::string> *names = nullptr;
     std::function<Json(std::int32_t)> reference;
@@ -87,6 +89,7 @@ struct UnversionedReadOptions {
     // Schema identity -> wire layout. No basename inference; cannot also be reflected.
     std::map<std::string, NativeStructLayout> native_structs;
     SoftPathLayout soft_path_layout = SoftPathLayout::unspecified;
+    TextLayout text_layout = TextLayout::unspecified;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     OperationControl control;

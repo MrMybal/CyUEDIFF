@@ -282,7 +282,7 @@ int main(int argc, char **argv) {
         unsupported.i(0);
         unsupported.i(1);
         unsupported.i(9);
-        error([&] { decode(collection_single(unsupported), unsupported_schema, options); }, "schema-type");
+        error([&] { decode(collection_single(unsupported), unsupported_schema, options); }, "schema-context");
         Bytes empty;
         empty.i(0);
         empty.i(0);

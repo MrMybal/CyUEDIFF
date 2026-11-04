@@ -874,6 +874,33 @@ struct PropertyReader {
             measure(value);
             return value;
         }
+        case 11: {
+            if (!zero && options.text_layout != TextLayout::ue5_history)
+                throw Error("schema-context", "Text property requires an explicit supported history layout",
+                            r.pos);
+            const auto flags = zero ? 0ull : r.number(4);
+            const int history = zero ? -1 : static_cast<std::int8_t>(r.number(1));
+            Json value = {{"flags", flags}, {"history", history}};
+            auto string = [&] { return read_value(SchemaType{10, {}, {}}, false, nesting + 1); };
+            if (history == -1) {
+                auto present = zero ? 0ull : r.number(4);
+                if (present > 1)
+                    throw Error("schema-value", "Invalid culture-invariant text marker", r.pos - 4);
+                value["kind"] = present ? "culture-invariant" : "none";
+                value["source"] = present ? string() : Json("");
+            } else if (history == 0) {
+                value["kind"] = "localized";
+                value["namespace"] = string();
+                value["key"] = string();
+                value["source"] = string();
+            } else if (history == 11) {
+                value["kind"] = "string-table";
+                value["table"] = read_value(SchemaType{5, {}, {}}, false, nesting + 1);
+                value["key"] = string();
+            } else
+                throw Error("schema-type", "Unsupported text history: " + std::to_string(history), r.pos - 1);
+            return value;
+        }
         case 12:
             return {{"kind", "interface-reference"},
                     {"object", read_value(SchemaType{4, {}, {}}, zero, nesting + 1)}};
@@ -909,9 +936,10 @@ struct PropertyReader {
                 text(4);
                 return "None";
             }
-            auto index = r.number(4), number = r.number(4);
-            if (!options.names || index >= options.names->size())
-                throw Error("schema-context", "Name property index exceeds package map", r.pos - 8);
+            auto index = r.i32(), number = r.i32();
+            if (!options.names || index < 0 || number < 0 ||
+                static_cast<std::size_t>(index) >= options.names->size())
+                throw Error("schema-context", "Invalid package name index or number", r.pos - 8);
             const auto &base = (*options.names)[static_cast<std::size_t>(index)];
             text(base.size() + 12);
             return number ? base + "_" + std::to_string(number - 1) : base;

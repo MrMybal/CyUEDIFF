@@ -44,7 +44,7 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Explicit native struct | Host-bound math/color/GUID wire layouts; component values and layout provenance |
 | Unsupported/unbound native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
 
-Schemas preserve descriptors for texts, delegates, weak/legacy asset references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
+Schemas also preserve descriptors for delegates, weak/legacy asset references, field paths, optionals and newer string types whose unversioned values require additional readers. Supported text histories are described below. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
 
 Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
@@ -204,3 +204,12 @@ C++ hosts set `ZenSchemaContext::native_structs` directly. Both supported Zen pr
 The existing `--schema` / `--after-schema` options accept version-two contexts in both the CLI and desktop. No additional reader mode or automatic native type detection is required. The cooked property inspector presents decoded native components through the existing typed table, change filtering and selected before/after preview. The schema tab exposes each declared native layout and its manifest/context fingerprints. Unsupported or truncated values still show opaque/unavailable properties; general export native payloads remain opaque.
 
 The installed `examples/schema_consumer` forwards native/reflected bindings from an optional context to `UnversionedReadOptions`. Distribution validation independently encodes a mapping, version-two context and double-precision transform and runs the extracted SDK consumer, including an explicitly zero-masked transform. Source projects and local engine headers are never dependencies of this consumer.
+
+
+## Cooked text histories - 0.47
+
+`TextProperty` reads the modern flags/history layout when standalone hosts select `TextLayout::ue5_history`. It retains localized namespace/key/source (history 0), the modern empty/culture-invariant source marker (history -1), and unresolved string-table FName/key (history 11). Values use the same `flags`, signed `history`, `kind`, `source`, `namespace`, `key` and `table` fields as the classic tagged reader. ASCII narrow and validated UTF-16 strings share existing decoded-text/work/depth bounds and cancellation. Package names require nonnegative indices and suffix numbers.
+
+Both supported Zen profiles select this modern layout. If an explicit cooked EditorObjectVersion is older than the invariant marker layout, text decoding remains opaque. No source lookup, namespace/key rewriting, string-table loading, culture selection or formatted text evaluation runs. Text namespace/key serialization was checked against the local UE 5.5 Text.cpp, TextHistory.cpp and TextKey.cpp serializers; [Epic's serialization entry point](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/Core/FText/SerializeText) documents the relevant engine API.
+
+A zero-masked text is empty, with no payload bytes. Missing standalone layout, unsupported histories, invalid boolean markers, malformed UTF-16 and truncation fail the complete property read. Zen publishes no partial text properties and keeps its full export fingerprint. Supported source edits produce diffs at `/value/source`; namespace/key and table identity changes remain distinct. Mapping/build compatibility still requires the host's matching schema.

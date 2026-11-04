@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
               "Explicit reflected struct uses nested header");
         error(
             [&] { decode_unversioned(nested.data, 0, nested.data.size(), mappings, "Unsupported", options); },
-            "schema-type");
+            "schema-context");
         for (std::size_t end = 0; end < body.data.size(); ++end)
             error([&] { decode_unversioned(body.data, 0, end, mappings, "DemoAsset", options); }, "bounds");
         auto wrong = body;
@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
                 decode_unversioned(nested.data, 0, nested.data.size(), mappings, "Unsupported",
                                    charged_options);
             },
-            "schema-type");
+            "schema-context");
         check(failed_work > 0, "Enclosing work budget includes discarded failed reads");
         auto context = std::make_shared<ZenSchemaContext>();
         context->profile = ZenProfile::unreal_5_3;

@@ -116,8 +116,8 @@ inline Bytes collection_single(Bytes payload, bool set = false) {
     body.append(payload);
     return body;
 }
-inline Bytes collection_zen_fixture(const Bytes &values, bool modern = false) {
-    auto b = zen_fixture(modern);
+inline Bytes collection_zen_fixture(const Bytes &values, bool modern = false, bool versioned = false) {
+    auto b = zen_fixture(modern, versioned);
     auto u32 = [&](std::size_t pos) {
         unsigned n;
         std::memcpy(&n, b.data.data() + pos, 4);
