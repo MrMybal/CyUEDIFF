@@ -8,7 +8,7 @@ struct TextWireReader {
     std::function<void(unsigned)> check;
     std::function<std::uint64_t()> position;
     std::function<std::uint32_t()> remaining;
-    bool invariant_marker = true;
+    bool invariant_marker = true, always_sign = true;
     const char *type_error = "text-history", *value_error = "text-value", *limit_error = "limit",
                *identity_error = "text-identity";
     std::uint32_t count(unsigned depth) {
@@ -18,6 +18,27 @@ struct TextWireReader {
         if (static_cast<std::uint32_t>(n) > remaining())
             throw Error(limit_error, "Text arguments exceed remaining work", position());
         return static_cast<std::uint32_t>(n);
+    }
+    bool boolean(unsigned depth) {
+        const auto value = scalar(TextScalar::uint32, depth + 1).get<std::uint32_t>();
+        if (value > 1)
+            throw Error(value_error, "Invalid text formatting boolean", position());
+        return value != 0;
+    }
+    Json number_options(unsigned depth) {
+        check(depth);
+        Json value = Json::object();
+        if (always_sign)
+            value["alwaysSign"] = boolean(depth);
+        value["useGrouping"] = boolean(depth);
+        const auto mode = scalar(TextScalar::int8, depth + 1).get<int>();
+        if (mode < 0 || mode > 6)
+            throw Error(value_error, "Unsupported text rounding mode", position());
+        value["roundingMode"] = mode;
+        for (const char *key : {"minimumIntegralDigits", "maximumIntegralDigits", "minimumFractionalDigits",
+                                "maximumFractionalDigits"})
+            value[key] = scalar(TextScalar::int32, depth + 1);
+        return value;
     }
     Json argument(unsigned depth) {
         check(depth);
@@ -80,6 +101,14 @@ struct TextWireReader {
                 }
             }
             value["arguments"] = std::move(arguments);
+        } else if (history >= 4 && history <= 6) {
+            value["kind"] = history == 4 ? "number" : history == 5 ? "percent" : "currency";
+            if (history == 6)
+                value["currencyCode"] = read(TextScalar::string);
+            value["source"] = argument(depth + 1);
+            const auto has_options = boolean(depth);
+            value["formatOptions"] = has_options ? number_options(depth + 1) : Json(nullptr);
+            value["culture"] = read(TextScalar::string);
         } else if (history == 11) {
             value["kind"] = "string-table";
             value["table"] = read(TextScalar::name);

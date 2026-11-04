@@ -77,4 +77,31 @@ inline Bytes named_text_value(const std::vector<std::pair<std::string, Bytes>> &
     }
     return value;
 }
+inline Bytes number_format_options(bool modern = true, int rounding = 0) {
+    Bytes options;
+    if (modern)
+        options.i(1);
+    options.i(0);
+    options.put<std::int8_t>(static_cast<std::int8_t>(rounding));
+    for (int value : {1, 324, 2, 4})
+        options.i(value);
+    return options;
+}
+inline Bytes numeric_text_value(unsigned history = 4, bool with_options = true,
+                                const std::string &culture = "fr-FR", bool modern = true, int rounding = 0,
+                                double number = 1000000000000.125) {
+    Bytes value;
+    value.i(0);
+    value.put<std::int8_t>(static_cast<std::int8_t>(history));
+    if (history == 6)
+        value.string("EUR");
+    Bytes source;
+    source.put<double>(number);
+    value.append(text_argument(3, source));
+    value.i(with_options ? 1 : 0);
+    if (with_options)
+        value.append(number_format_options(modern, rounding));
+    value.string(culture);
+    return value;
+}
 } // namespace cyuediff::test

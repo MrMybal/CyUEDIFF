@@ -271,6 +271,8 @@ class PropertyReader {
             detail::TextWireReader reader;
             reader.invariant_marker =
                 p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 32;
+            reader.always_sign =
+                p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 21;
             reader.position = [&] { return a.tell(); };
             reader.remaining = [&] { return options.max_properties - text_nodes_; };
             reader.check = [&](unsigned level) {
