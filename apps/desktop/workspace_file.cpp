@@ -76,7 +76,7 @@ void normalize(Settings &s, const fs::path &base) {
 WorkspaceFile parse_bytes(const std::string &bytes) {
     std::vector<std::set<std::string>> keys;
     auto value = Json::parse(bytes, [&](int depth, Json::parse_event_t event, Json &j) {
-        require(depth <= 12, "Workspace nesting exceeds limit");
+        require(depth <= 24, "Workspace nesting exceeds limit");
         if (event == Json::parse_event_t::object_start)
             keys.emplace_back();
         else if (event == Json::parse_event_t::key)
@@ -108,14 +108,16 @@ Json WorkspaceFile::to_json() const {
         docs.push_back({{"settings", s},
                         {"view", d.view},
                         {"containerTab", d.container_tab},
-                        {"cookedView", d.cooked_view}});
+                        {"cookedView", d.cooked_view},
+                        {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/1"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/2"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
 WorkspaceFile WorkspaceFile::from_json(const Json &j) {
-    require(j.is_object() && j.size() == 3 && j.contains("schema") && j["schema"] == "cyuediff.workspace/1" &&
+    require(j.is_object() && j.size() == 3 && j.contains("schema") &&
+                (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2") &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];
@@ -125,10 +127,16 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
     result.documents.clear();
     result.active = number(j["active"], 0, static_cast<int>(docs.size() - 1));
     for (const auto &d : docs) {
-        require(d.is_object() && d.size() == 4 && d.contains("settings") && d.contains("view") &&
-                    d.contains("containerTab") && d.contains("cookedView"),
+        const bool legacy = j["schema"] == "cyuediff.workspace/1";
+        require(d.is_object() && d.size() == (legacy ? 4 : 5) && (legacy || d.contains("viewState")) &&
+                    d.contains("settings") && d.contains("view") && d.contains("containerTab") &&
+                    d.contains("cookedView"),
                 "Invalid workspace document");
         SavedDocument saved;
+        if (!legacy) {
+            view_state::validate(d["viewState"]);
+            saved.view_state = d["viewState"];
+        }
         saved.view = text(d["view"]);
         saved.cooked_view = text(d["cookedView"]);
         const std::set<std::string> views = {"properties", "blueprint", "materials",

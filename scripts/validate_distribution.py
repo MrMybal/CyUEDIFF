@@ -49,7 +49,7 @@ if desktop.is_file():
  workspace_file=target/'workspace.json';workspace_report=target/'workspace-report.json'
  subprocess.run([str(desktop),'--smoke','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  saved_workspace=json.loads(workspace_file.read_text(encoding='utf-8'))
- assert saved_workspace['schema']=='cyuediff.workspace/1' and len(saved_workspace['documents'])==1
+ assert saved_workspace['schema']=='cyuediff.workspace/2' and len(saved_workspace['documents'])==1
  original_workspace=workspace_file.read_bytes()
  subprocess.run([str(desktop),'--smoke','--workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  restored=json.loads(workspace_report.read_text(encoding='utf-8'))

@@ -74,6 +74,13 @@ int main() {
         cooked.settings.compare_container_payloads = true;
         cooked.container_tab = 4;
         cooked.cooked_view = "properties";
+        value.documents[0].view_state = {
+            {"asset",
+             {{"filter", "Health"},
+              {"selected", "TestAsset"},
+              {"before",
+               {{"properties",
+                 {{"TestAsset", {{"filter", "Value"}, {"selected", "/Value"}, {"changedOnly", true}}}}}}}}}};
         value.documents.push_back(git);
         value.documents.push_back(cooked);
         value.active = 2;
@@ -103,6 +110,17 @@ int main() {
                   read.documents[2].container_tab == 4 && read.documents[2].cooked_view == "properties" &&
                   read.documents[2].settings.compare_container_payloads,
               "Container identities, contexts and view round trip");
+        check(read.documents[0].view_state == value.documents[0].view_state, "Presentation data round trip");
+        auto legacy = value.to_json();
+        legacy["schema"] = "cyuediff.workspace/1";
+        for (auto &d : legacy["documents"])
+            d.erase("viewState");
+        write(path, legacy.dump());
+        auto migrated = read_workspace(path);
+        check(migrated.documents[0].view_state.empty() &&
+                  migrated.to_json()["schema"] == "cyuediff.workspace/2",
+              "Version-one inputs migrate without invented view state");
+        save_workspace(path, read);
         auto first = bytes(path);
         save_workspace(path, read);
         check(bytes(path) == first, "Repeated save is stable and atomic");
@@ -124,10 +142,10 @@ int main() {
         invalid("{");
         invalid("[]");
         invalid(std::string(1024 * 1024 + 1, ' '));
-        invalid(std::string(14, '[') + "0" + std::string(14, ']'));
+        invalid(std::string(26, '[') + "0" + std::string(26, ']'));
         invalid("{\"active\":0," + relative.dump().substr(1));
         auto bad = relative;
-        bad["schema"] = "cyuediff.workspace/2";
+        bad["schema"] = "cyuediff.workspace/3";
         invalid(bad.dump());
         bad = relative;
         bad["extra"] = true;
@@ -181,6 +199,16 @@ int main() {
         bad["documents"][0]["cookedView"] = "unsupported";
         invalid(bad.dump());
         invalid("{\"bad\":\"" + std::string(1, char(0xff)) + "\"}");
+        bad = relative;
+        bad["documents"][0]["viewState"] = {{"unexpected", true}};
+        invalid(bad.dump());
+        bad = relative;
+        bad["documents"][0]["viewState"] = {{"asset", {{"filter", std::string(4097, 'x')}}}};
+        invalid(bad.dump());
+        bad = relative;
+        bad["documents"][0]["viewState"] = {
+            {"asset", {{"before", {{"blueprint", {{"views", {{"Graph", {{"zoom", 0}}}}}}}}}}}};
+        invalid(bad.dump());
         rejects([&] { read_workspace(root / "missing.json"); });
         check(!fs::exists(root / "missing.json"), "Read does not create missing files");
         auto empty = WorkspaceFile{};

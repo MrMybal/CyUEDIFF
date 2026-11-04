@@ -1,11 +1,13 @@
 #pragma once
 #include "context.hpp"
+#include <cyuediff/view_state.hpp>
 namespace cyuediff::desktop {
 // Explicit data-only file. Codecs, decoded assets, callbacks and closed history are not serialized.
 struct SavedDocument {
     Settings settings;
     std::string view = "properties", cooked_view;
     int container_tab = -1;
+    Json view_state = Json::object();
 };
 struct WorkspaceFile {
     std::vector<SavedDocument> documents{SavedDocument{}};
