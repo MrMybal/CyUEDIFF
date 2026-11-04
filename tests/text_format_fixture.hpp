@@ -8,7 +8,7 @@ inline Bytes byte_string_value(const std::string &value) {
     return bytes;
 }
 inline Fixture text_property_fixture(const Bytes &value, const std::string &type = "TextProperty",
-                                     int version = 1013, int editor = 32) {
+                                     int version = 1013, int editor = 32, int release = -1) {
     return fixture(
         version, 1, false, 0, {"Formatted", type, "AfterFormat"},
         [&](Bytes &out, const NameWriter &name) {
@@ -37,7 +37,7 @@ inline Fixture text_property_fixture(const Bytes &value, const std::string &type
             }
             out.i(876);
         },
-        editor);
+        editor, release);
 }
 inline Bytes transform_text_value(const Bytes &source = text_value(), unsigned operation = 0) {
     Bytes value;
@@ -121,6 +121,19 @@ inline Bytes calendar_text_value(unsigned history = 9, std::int64_t ticks = 6389
         value.string(pattern);
     value.string(zone);
     value.string(culture);
+    return value;
+}
+inline Bytes data_text_value(const std::vector<std::pair<std::string, Bytes>> &arguments,
+                             const Bytes &format = text_value("{Count}: {Label}")) {
+    Bytes value;
+    value.i(0);
+    value.put<std::int8_t>(3);
+    value.append(format);
+    value.i(static_cast<int>(arguments.size()));
+    for (const auto &argument : arguments) {
+        value.string(argument.first);
+        value.append(argument.second);
+    }
     return value;
 }
 inline Bytes format_text_payload(const std::string &mode) {

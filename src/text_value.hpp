@@ -9,6 +9,7 @@ struct TextWireReader {
     std::function<std::uint64_t()> position;
     std::function<std::uint32_t()> remaining;
     bool invariant_marker = true, always_sign = true;
+    bool argument_data_enabled = false, argument_data_variant = true, argument_data_int64 = true;
     const char *type_error = "text-history", *value_error = "text-value", *limit_error = "limit",
                *identity_error = "text-identity";
     std::uint32_t count(unsigned depth) {
@@ -67,6 +68,38 @@ struct TextWireReader {
         }
         return {{"argumentType", tokens[id]}, {"value", std::move(value)}};
     }
+    Json argument_data(unsigned depth) {
+        check(depth);
+        auto name = scalar(TextScalar::string, depth + 1);
+        const auto id = argument_data_variant ? scalar(TextScalar::uint8, depth + 1).get<unsigned>() : 4u;
+        Json value;
+        const char *token = nullptr;
+        switch (id) {
+        case 0:
+            token = argument_data_int64 ? "int64" : "int32";
+            value = scalar(argument_data_int64 ? TextScalar::int64 : TextScalar::int32, depth + 1);
+            break;
+        case 2:
+            token = "float32";
+            value = scalar(TextScalar::float32, depth + 1);
+            break;
+        case 3:
+            token = "float64";
+            value = scalar(TextScalar::float64, depth + 1);
+            break;
+        case 4:
+            token = "text";
+            value = text(depth + 1);
+            break;
+        case 5:
+            token = "gender";
+            value = scalar(TextScalar::uint8, depth + 1);
+            break;
+        default:
+            throw Error(type_error, "Unsupported text argument-data type", position());
+        }
+        return {{"name", std::move(name)}, {"argumentType", token}, {"value", std::move(value)}};
+    }
     Json text(unsigned depth, bool account = true) {
         if (account)
             check(depth);
@@ -100,6 +133,17 @@ struct TextWireReader {
                     arguments.push_back(argument(depth + 2));
                 }
             }
+            value["arguments"] = std::move(arguments);
+        } else if (history == 3) {
+            if (!argument_data_enabled)
+                throw Error(type_error, "Text argument-data requires an explicit supported layout",
+                            position());
+            value["kind"] = "argument-data-format";
+            value["format"] = text(depth + 1);
+            const auto size = count(depth);
+            Json arguments = Json::array();
+            for (std::uint32_t i = 0; i < size; ++i)
+                arguments.push_back(argument_data(depth + 2));
             value["arguments"] = std::move(arguments);
         } else if (history >= 4 && history <= 6) {
             value["kind"] = history == 4 ? "number" : history == 5 ? "percent" : "currency";

@@ -901,6 +901,10 @@ struct PropertyReader {
             if (zero)
                 return {{"flags", 0}, {"history", -1}, {"kind", "none"}, {"source", ""}};
             detail::TextWireReader reader;
+            reader.argument_data_enabled =
+                options.text_argument_data_layout != TextArgumentDataLayout::unspecified;
+            reader.argument_data_int64 =
+                options.text_argument_data_layout == TextArgumentDataLayout::variant_int64;
             reader.type_error = "schema-type";
             reader.value_error = "schema-value";
             reader.limit_error = "schema-limit";

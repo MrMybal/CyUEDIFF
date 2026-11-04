@@ -41,7 +41,7 @@ using NameWriter = std::function<void(Bytes &, const std::string &)>;
 using ExtraScript = std::function<void(Bytes &, const NameWriter &)>;
 Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0,
                 const std::vector<std::string> &extra_names = {}, const ExtraScript &extra = {},
-                int editor_version = -1) {
+                int editor_version = -1, int release_version = -1) {
     std::vector<std::string> names = {
         "None",        "TestAsset",   "DataAsset",     "/Script/CoreUObject", "Class",
         "Value",       "IntProperty", "Enabled",       "BoolProperty",        "Text",
@@ -126,11 +126,16 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
         b.i(version);
     b.i(0);
     auto custom_versions = [&] {
-        b.i(editor_version < 0 ? 0 : 1);
+        b.i((editor_version < 0 ? 0 : 1) + (release_version < 0 ? 0 : 1));
         if (editor_version >= 0) {
             for (auto word : {0xe4b068edu, 0xf49442e9u, 0xa231da0bu, 0x2e46bb41u})
                 b.put<std::uint32_t>(word);
             b.i(editor_version);
+        }
+        if (release_version >= 0) {
+            for (auto word : {0xd89b5e42u, 0x24bd4d46u, 0x8412aca8u, 0xdf641779u})
+                b.put<std::uint32_t>(word);
+            b.i(release_version);
         }
     };
     std::size_t size_pos;

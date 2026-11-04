@@ -77,6 +77,8 @@ NativeStructLayout parse_native_struct_layout(const std::string &);
 enum class SoftPathLayout { unspecified, ue5_top_level_names };
 // Flags + history tag; None includes the modern uint32 invariant-source marker.
 enum class TextLayout { unspecified, ue5_history };
+// FFormatArgumentData stores a byte gender and version-dependent signed integer width.
+enum class TextArgumentDataLayout { unspecified, variant_int32, variant_int64 };
 // Persistent package object indices; never the in-memory weak index/serial pair.
 enum class ScriptReferenceLayout { unspecified, package_indices };
 // Binary structured-archive presence bool (uint32), followed by an untagged value.
@@ -98,6 +100,7 @@ struct UnversionedReadOptions {
     std::map<std::string, NativeStructLayout> native_structs;
     SoftPathLayout soft_path_layout = SoftPathLayout::unspecified;
     TextLayout text_layout = TextLayout::unspecified;
+    TextArgumentDataLayout text_argument_data_layout = TextArgumentDataLayout::unspecified;
     ScriptReferenceLayout script_reference_layout = ScriptReferenceLayout::unspecified;
     OptionalLayout optional_layout = OptionalLayout::unspecified;
     FieldPathLayout field_path_layout = FieldPathLayout::unspecified;

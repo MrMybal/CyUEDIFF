@@ -273,6 +273,11 @@ class PropertyReader {
                 p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 32;
             reader.always_sign =
                 p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 21;
+            reader.argument_data_enabled = true;
+            reader.argument_data_variant =
+                p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 5;
+            reader.argument_data_int64 =
+                p.summary.custom_versions.value("d89b5e4224bd4d468412aca8df641779", -1) >= 12;
             reader.position = [&] { return a.tell(); };
             reader.remaining = [&] { return options.max_properties - text_nodes_; };
             reader.check = [&](unsigned level) {

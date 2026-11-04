@@ -535,6 +535,11 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
                     props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
                     props.text_layout = TextLayout::ue5_history;
+                    props.text_argument_data_layout =
+                        !p.versioning.is_null() && p.versioning["customVersions"].value(
+                                                       "d89b5e4224bd4d468412aca8df641779", 12) < 12
+                            ? TextArgumentDataLayout::variant_int32
+                            : TextArgumentDataLayout::variant_int64;
                     props.script_reference_layout = ScriptReferenceLayout::package_indices;
                     props.field_path_layout = FieldPathLayout::owner_and_names;
                     if (!p.versioning.is_null()) {
