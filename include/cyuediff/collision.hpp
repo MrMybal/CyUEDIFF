@@ -3,6 +3,7 @@
 namespace cyuediff {
 struct CollisionOptions {
     std::size_t max_bodies = 4096, max_shapes = 20000, max_nodes = 1000000, max_text_bytes = 16 * 1024 * 1024;
+    std::size_t max_vertices = 1000000, max_indices = 3000000;
     unsigned max_depth = 48;
     OperationControl control;
 };

@@ -99,6 +99,70 @@ int main() {
         CollisionOptions shallow;
         shallow.max_depth = 0;
         rejects(package, shallow, "limit");
+        auto extended = package;
+        Json tapered = collision_shape("capsule", "Taper");
+        tapered.erase("Radius");
+        tapered["Radius0"] = collision_property(2.);
+        tapered["Radius1"] = collision_property(4.);
+        Json convex = {{"Name", collision_property("Hull", "NameProperty")},
+                       {"VertexData",
+                        collision_property(Json::array({Json::array({0., 0., 0.}), Json::array({1., 0., 0.}),
+                                                        Json::array({0., 1., 0.})}),
+                                           "ArrayProperty")},
+                       {"IndexData", collision_property(Json::array({0, 1, 2}), "ArrayProperty")},
+                       {"Transform", collision_property({{"rotation", {0., 0., 0., 1.}},
+                                                         {"translation", {2., 3., 4.}},
+                                                         {"scale", {1., 2., 3.}}},
+                                                        "StructProperty")}};
+        auto &agg = extended.exports[0].properties["AggGeom"]["value"];
+        agg["TaperedCapsuleElems"] = collision_property(Json::array({tapered}), "ArrayProperty");
+        agg["ConvexElems"] = collision_property(Json::array({convex}), "ArrayProperty");
+        auto extended_model = extended.collision_snapshot();
+        const auto &extra = extended_model["bodies"]["SM.Body"]["shapes"];
+        check(extended_model["complete"] && extra.size() == 5,
+              "Tapered capsules and convex source data projected");
+        check(extra["tapered-capsule:name:Taper"]["geometry"]["radius1"] == 4., "Unequal radii preserved");
+        check(extra["convex:name:Hull"]["geometry"]["indices"] == Json::array({0, 1, 2}),
+              "Stored topology preserved");
+        for (const auto &invalid : {Json::array({0, 1}), Json::array({0, -1, 2}), Json::array({0, 1, 3}),
+                                    Json::array({0, 1, 1.5}), Json::array({0, 1, std::uint64_t(-1)})}) {
+            auto wrong = extended;
+            wrong.exports[0].properties["AggGeom"]["value"]["ConvexElems"]["value"][0]["IndexData"]["value"] =
+                invalid;
+            auto model = wrong.collision_snapshot();
+            check(
+                !model["complete"] &&
+                    model["bodies"]["SM.Body"]["shapes"]["convex:name:Hull"]["unresolvedProperties"].contains(
+                        "IndexData"),
+                "Invalid convex topology is retained without a guessed hull");
+        }
+        for (bool index_budget : {false, true}) {
+            CollisionOptions bound;
+            if (index_budget)
+                bound.max_indices = 2;
+            else
+                bound.max_vertices = 2;
+            rejects(extended, bound, "limit");
+        }
+        ObjectExport owner;
+        owner.path = "SM";
+        owner.class_name = "/Script/Engine.StaticMesh";
+        owner.properties = {{"BodySetup", collision_property("SM.Body", "ObjectProperty")}};
+        extended.exports.push_back(owner);
+        auto associated = extended.collision_snapshot();
+        check(associated["owners"]["SM"]["bodyReferences"][0]["resolved"],
+              "Static mesh body reference resolves locally");
+        extended.exports.back().properties["BodySetup"]["value"] = "/Other/External.Body";
+        check(!extended.collision_snapshot()["complete"],
+              "External body is reported without reading another asset");
+        extended.exports.back().class_name = "/Script/Engine.PhysicsAsset";
+        extended.exports.back().properties = {
+            {"SkeletalBodySetups", collision_property(Json::array({"SM.Body", nullptr}), "ArrayProperty")}};
+        check(extended.collision_snapshot()["owners"]["SM"]["bodyReferences"].size() == 2,
+              "Physics-asset body references retained");
+        extended.exports[0].properties["AggGeom"]["value"]["LevelSetElems"] = {
+            {"opaque", {{"bytes", 64}, {"sha256", "opaque-native-levelset"}}}};
+        check(!extended.collision_snapshot()["complete"], "Native level sets stay explicitly unsupported");
         check(package.to_json() == original, "Projection never mutates source package");
         check(!Package{}.collision_snapshot()["complete"],
               "Absent bodies cannot establish collision equality");

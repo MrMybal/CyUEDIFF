@@ -12,7 +12,7 @@ const Json *value(const Json &properties, const std::string &name) {
 }
 struct Projection {
     const CollisionOptions &options;
-    std::size_t nodes = 0, text_bytes = 0, shapes = 0;
+    std::size_t nodes = 0, text_bytes = 0, shapes = 0, vertices = 0, indices = 0;
     void text(std::size_t count) {
         if (count > options.max_text_bytes - std::min(text_bytes, options.max_text_bytes))
             throw Error("limit", "Collision projection exceeds text budget");
@@ -108,17 +108,92 @@ struct Projection {
                     out["unresolvedProperties"][field] = copy(properties.at(field));
             }
         };
-        geometry("Center", "center", true);
-        if (kind != "sphere")
-            geometry("Rotation", "rotation", true);
-        if (kind == "box") {
-            geometry("X", "x", false, true);
-            geometry("Y", "y", false, true);
-            geometry("Z", "z", false, true);
+        if (kind == "convex") {
+            handled.insert("VertexData");
+            handled.insert("IndexData");
+            handled.insert("Transform");
+            const auto *points = value(properties, "VertexData"), *faces = value(properties, "IndexData"),
+                       *transform = value(properties, "Transform");
+            auto unresolved = [&](const char *field) {
+                out["complete"] = false;
+                out["diagnostics"].push_back(std::string("Missing or unresolved convex field: ") + field);
+                if (properties.contains(field))
+                    out["unresolvedProperties"][field] = copy(properties.at(field));
+            };
+            bool valid_points = points && points->is_array();
+            Json decoded = Json::array();
+            if (valid_points) {
+                if (points->size() > options.max_vertices - std::min(vertices, options.max_vertices))
+                    throw Error("limit", "Collision projection exceeds convex vertex budget");
+                vertices += points->size();
+                for (const auto &point : *points) {
+                    options.control.check();
+                    auto v = vector(point, false);
+                    if (v.is_null()) {
+                        valid_points = false;
+                        break;
+                    }
+                    decoded.push_back(copy(v));
+                }
+            }
+            if (valid_points)
+                out["geometry"]["vertices"] = std::move(decoded);
+            else
+                unresolved("VertexData");
+            bool valid_indices = valid_points && faces && faces->is_array() && faces->size() % 3 == 0;
+            if (faces && faces->is_array()) {
+                if (faces->size() > options.max_indices - std::min(indices, options.max_indices))
+                    throw Error("limit", "Collision projection exceeds convex index budget");
+                indices += faces->size();
+            }
+            if (valid_indices)
+                for (const auto &index : *faces) {
+                    options.control.check();
+                    bool valid = index.is_number_unsigned()
+                                     ? index.get<std::uint64_t>() < points->size()
+                                     : index.is_number_integer() && index.get<std::int64_t>() >= 0 &&
+                                           std::uint64_t(index.get<std::int64_t>()) < points->size();
+                    if (!valid) {
+                        valid_indices = false;
+                        break;
+                    }
+                }
+            if (valid_indices)
+                out["geometry"]["indices"] = copy(*faces);
+            else
+                unresolved("IndexData");
+            bool valid_transform = transform && transform->is_object();
+            if (valid_transform)
+                for (const auto &component :
+                     {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
+                      std::make_pair("scale", 3u)}) {
+                    auto v = transform->find(component.first);
+                    valid_transform =
+                        valid_transform && v != transform->end() && v->is_array() &&
+                        v->size() == component.second &&
+                        std::all_of(v->begin(), v->end(), [](const auto &x) { return number(x); });
+                }
+            if (valid_transform)
+                out["geometry"]["transform"] = copy(*transform);
+            else
+                unresolved("Transform");
         } else {
-            geometry("Radius", "radius", false, true);
-            if (kind == "capsule")
+            geometry("Center", "center", true);
+            if (kind != "sphere")
+                geometry("Rotation", "rotation", true);
+            if (kind == "box") {
+                geometry("X", "x", false, true);
+                geometry("Y", "y", false, true);
+                geometry("Z", "z", false, true);
+            } else if (kind == "tapered-capsule") {
+                geometry("Radius0", "radius0", false, true);
+                geometry("Radius1", "radius1", false, true);
                 geometry("Length", "length", false, true);
+            } else {
+                geometry("Radius", "radius", false, true);
+                if (kind == "capsule")
+                    geometry("Length", "length", false, true);
+            }
         }
         for (const char *field : {"RestOffset", "bContributeToMass", "CollisionEnabled", "bIsGenerated"}) {
             handled.insert(field);
@@ -174,8 +249,11 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
             if (entry.properties.contains("AggGeom"))
                 body["unresolvedCollections"]["AggGeom"] = projection.copy(entry.properties.at("AggGeom"));
         } else {
-            const std::map<std::string, std::string> supported = {
-                {"SphereElems", "sphere"}, {"BoxElems", "box"}, {"SphylElems", "capsule"}};
+            const std::map<std::string, std::string> supported = {{"SphereElems", "sphere"},
+                                                                  {"BoxElems", "box"},
+                                                                  {"SphylElems", "capsule"},
+                                                                  {"TaperedCapsuleElems", "tapered-capsule"},
+                                                                  {"ConvexElems", "convex"}};
             for (auto collection = aggregate->begin(); collection != aggregate->end(); ++collection) {
                 const auto kind = supported.find(collection.key());
                 const auto *array = value(*aggregate, collection.key());
@@ -221,12 +299,55 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
             complete = false;
         bodies[entry.path] = std::move(body);
     }
+    Json owners = Json::object();
+    for (const auto &entry : package.exports) {
+        options.control.check();
+        const char *field = entry.class_name == "/Script/Engine.StaticMesh"     ? "BodySetup"
+                            : entry.class_name == "/Script/Engine.PhysicsAsset" ? "SkeletalBodySetups"
+                                                                                : nullptr;
+        if (!field)
+            continue;
+        if (owners.size() >= options.max_bodies)
+            throw Error("limit", "Collision projection exceeds owner budget");
+        if (owners.contains(entry.path))
+            throw Error("collision-identity", "Duplicate collision owner path");
+        const auto *references = value(entry.properties, field);
+        Json owner = {{"class", entry.class_name},
+                      {"bodyReferences", Json::array()},
+                      {"complete", true},
+                      {"diagnostics", Json::array()}};
+        if (entry.properties.contains(field))
+            owner["property"] = projection.copy(entry.properties.at(field));
+        auto reference = [&](const Json &ref) {
+            options.control.check();
+            const bool resolved = ref.is_string() && bodies.contains(ref.get<std::string>());
+            owner["bodyReferences"].push_back({{"path", projection.copy(ref)}, {"resolved", resolved}});
+            if (!resolved && !ref.is_null()) {
+                owner["complete"] = false;
+                owner["diagnostics"].push_back("Collision body reference is external, missing or unresolved");
+            }
+        };
+        if (!references || (std::string(field) == "SkeletalBodySetups" && !references->is_array())) {
+            owner["complete"] = false;
+            owner["diagnostics"].push_back("Stored collision body references are unavailable");
+        } else if (references->is_array()) {
+            if (references->size() > options.max_bodies)
+                throw Error("limit", "Collision owner exceeds reference budget");
+            for (const auto &ref : *references)
+                reference(ref);
+        } else
+            reference(*references);
+        if (!owner["complete"].get<bool>())
+            complete = false;
+        owners[entry.path] = std::move(owner);
+    }
     if (bodies.empty())
         complete = false;
     return {{"schema", "cyuediff.collision/1"},
             {"scope", "stored reflected collision properties; no physics cooking or default reconstruction"},
             {"complete", complete},
-            {"bodies", std::move(bodies)}};
+            {"bodies", std::move(bodies)},
+            {"owners", std::move(owners)}};
 }
 Json Package::collision_snapshot() const {
     return cyuediff::collision_snapshot(*this);
