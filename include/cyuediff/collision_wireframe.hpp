@@ -5,15 +5,16 @@ using CollisionPoint = std::array<double, 3>;
 struct CollisionLine {
     CollisionPoint a{}, b{};
 };
+struct CollisionBounds {
+    CollisionPoint low{}, high{};
+    bool valid = false;
+};
 struct CollisionWireShape {
     std::string body, identity, kind;
     std::vector<CollisionLine> lines;
     std::vector<std::string> diagnostics;
+    CollisionBounds bounds;
     bool ready() const { return !lines.empty(); }
-};
-struct CollisionBounds {
-    CollisionPoint low{}, high{};
-    bool valid = false;
 };
 struct CollisionWireframeOptions {
     CollisionOptions collision;

@@ -42,3 +42,7 @@ Export outer containment is reported separately from bodyReferences. A child Bod
 ## Bounded body-local primitive wireframes - 0.78
 
 The Core exposes collision_wireframe and a dependency-free line/bounds model for stored spheres, boxes, capsules and tapered capsules. Box dimensions are halved before the stored Unreal pitch/yaw/roll rotation; capsule length excludes the end caps. Tapered previews sample the convex envelope of the two stored end spheres, including containing-sphere degeneracy. Sampling and edge budgets are explicit; missing geometry is diagnosed, and cancellation or coordinate overflow aborts without returning partial geometry. No bone, component, archetype or world placement is inferred. Convex preview is still unavailable in this milestone.
+
+## Transformed convex source wireframes - 0.79
+
+Convex previews deduplicate the edges of stored triangles and apply signed scale, a stored unit quaternion and translation in that order. Missing indices or transforms remain unavailable; no hull or identity transform is generated. Quaternions outside a 1e-4 unit-length tolerance are diagnosed rather than repaired; accepted rounding error is normalized for display. Per-shape bounds allow independent framing, while aggregate bounds remain body-local. Tests cover tetrahedral edges, negative scale, rotated bounds, missing topology/transforms, zero quaternions, cancellation and per-shape progress.

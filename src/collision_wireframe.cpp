@@ -1,6 +1,7 @@
 #include <cyuediff/collision_wireframe.hpp>
 #include <algorithm>
 #include <cmath>
+#include <set>
 namespace cyuediff {
 namespace {
 constexpr double pi = 3.14159265358979323846;
@@ -103,6 +104,59 @@ struct Builder {
             line(shape, {r0 * x, r0 * y, half + r0 * slope}, {r1 * x, r1 * y, -half + r1 * slope});
         }
     }
+    void convex(CollisionWireShape &shape, const Json &g) {
+        for (const auto *field : {"vertices", "indices", "transform"})
+            if (!g.contains(field)) {
+                shape.diagnostics.push_back(std::string("Missing stored convex geometry: ") + field);
+                return;
+            }
+        const auto &transform = g.at("transform");
+        auto q = transform.at("rotation").get<std::array<double, 4>>();
+        const double norm = std::hypot(std::hypot(q[0], q[1]), std::hypot(q[2], q[3]));
+        if (!std::isfinite(norm) || std::abs(norm - 1.) > 1e-4) {
+            shape.diagnostics.push_back("Stored convex quaternion is not unit length");
+            return;
+        }
+        // Remove only bounded floating-point unit-length error, never repair an arbitrary quaternion.
+        for (auto &component : q)
+            component /= norm;
+        const auto translation = point(transform.at("translation")), scale = point(transform.at("scale"));
+        std::vector<CollisionPoint> vertices;
+        vertices.reserve(g.at("vertices").size());
+        for (const auto &value : g.at("vertices")) {
+            options.collision.control.check();
+            auto p = point(value);
+            for (unsigned k = 0; k < 3; ++k)
+                p[k] *= scale[k];
+            const CollisionPoint u{q[0], q[1], q[2]};
+            const auto cross = [](CollisionPoint a, CollisionPoint b) -> CollisionPoint {
+                return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+            };
+            auto c = cross(u, p), d = cross(u, c);
+            for (unsigned k = 0; k < 3; ++k) {
+                p[k] += 2 * (q[3] * c[k] + d[k]) + translation[k];
+                if (!std::isfinite(p[k]))
+                    throw Error("collision-preview-value", "Convex coordinate overflow");
+            }
+            vertices.push_back(p);
+        }
+        center = {};
+        rotation = {};
+        std::set<std::pair<std::size_t, std::size_t>> unique;
+        const auto &indices = g.at("indices");
+        for (std::size_t i = 0; i < indices.size(); i += 3)
+            for (unsigned side = 0; side < 3; ++side) {
+                const auto a = indices[i + side].get<std::size_t>(),
+                           b = indices[i + (side + 1) % 3].get<std::size_t>();
+                if (a == b)
+                    continue;
+                auto key = std::minmax(a, b);
+                if (unique.insert(key).second)
+                    line(shape, vertices.at(a), vertices.at(b));
+            }
+        if (shape.lines.empty())
+            shape.diagnostics.push_back("Stored convex topology has no non-degenerate edges");
+    }
     void build(CollisionWireShape &shape, const Json &source) {
         const auto &g = source.at("geometry");
         auto need = [&](std::initializer_list<const char *> names) {
@@ -114,7 +168,7 @@ struct Builder {
             return true;
         };
         if (shape.kind == "convex") {
-            shape.diagnostics.push_back("Convex preview is unavailable");
+            convex(shape, g);
             return;
         }
         if (!need({"center"}))
@@ -198,6 +252,8 @@ CollisionWireframe collision_wireframe(const Package &package, const CollisionWi
             shape.kind = it->at("kind");
             builder.build(shape, *it);
             for (const auto &line : shape.lines) {
+                extend(shape.bounds, line.a);
+                extend(shape.bounds, line.b);
                 extend(result.bounds, line.a);
                 extend(result.bounds, line.b);
             }
