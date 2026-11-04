@@ -4,7 +4,7 @@
 
 A reusable C++17 engine for inspecting Unreal Engine packages and comparing serialized asset data **without launching Unreal Editor**. A separate [CyUI](https://github.com/MrMybal/CyUI) library and an optional Windows desktop app provide inspection, graph, image, mesh and diff views.
 
-Version **0.10** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes local Git/LFS revision reading, project/engine contexts and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
+Version **0.11** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes project/Git asset catalogues, local Git/LFS revision reading, project/engine contexts and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
 
 This is an asset reader and comparison engine. Format coverage is explicit; it is not a universal Unreal serializer or an asset writer.
 
@@ -12,11 +12,11 @@ This is an asset reader and comparison engine. Format coverage is explicit; it i
 
 | Target | Purpose |
 | --- | --- |
-| `CyUEDiff::Core` | Package reading, project/engine context, snapshots, decoders and diffs. No Unreal, ImGui, CyUI or Git dependency. |
+| `CyUEDiff::Core` | Package reading, project/engine context, asset catalogues, snapshots, decoders and diffs. No Unreal, ImGui, CyUI or Git dependency. |
 | `CyUEDiff::Git` | Optional local Git/LFS adapter: revisions, companion files, verified LFS content and temporary-file ownership. |
 | `CyUEDiff::UI` | Embeddable CyUI views for objects, properties, Blueprint/material graphs, images, wireframe meshes and side-by-side diffs. |
 | `cyuediff` | JSON command-line interface for inspection, specialized diffs, project resolution and Git revisions. |
-| `cyuediff_desktop` | Optional Windows application using Win32, Direct3D 11 and CyUI, with background loading and local Git/LFS revision comparisons. |
+| `cyuediff_desktop` | Optional Windows application using Win32, Direct3D 11 and CyUI, with background loading, a content browser and local Git/LFS revision comparisons. |
 
 The Core vendors nlohmann/json 3.12.0 and stb under their MIT licenses. Builds do not download dependencies. UI builds use a host-provided CyUI checkout. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
@@ -62,6 +62,8 @@ An optional Oodle adapter can be built with `--oodle-sdk <host-owned SDK directo
 ## Inspect and compare
 
 ```powershell
+build-native/Release/cyuediff.exe catalog MyGame.uproject
+build-native/Release/cyuediff.exe git-catalog D:/Projects/MyGame HEAD
 build-native/Release/cyuediff.exe inspect Content/BP_Player.uasset
 build-native/Release/cyuediff.exe inspect Content/BP_Player.uasset --metadata
 build-native/Release/cyuediff.exe diff before/BP_Player.uasset after/BP_Player.uasset
@@ -103,7 +105,7 @@ auto diff = cyuediff::compare(before, after);
 std::cout << diff.to_json().dump(2);
 ```
 
-Installed SDKs also support `find_package(CyUEDiff CONFIG REQUIRED)`. See [the Core consumer](examples/consumer/), [the Git consumer](examples/git_consumer/) and [the custom-decoder consumer](examples/decoder_consumer/).
+Installed SDKs also support `find_package(CyUEDiff CONFIG REQUIRED)`. See [the catalogue consumer](examples/catalog_consumer/), [the Core consumer](examples/consumer/), [the Git consumer](examples/git_consumer/) and [the custom-decoder consumer](examples/decoder_consumer/).
 
 Application-specific native structs and export tails can be decoded with `SerializationProfile`, `AssetDecoder` and `DecoderRegistry` from `<cyuediff/decoders.hpp>`. Callbacks receive bounded input, match explicit type/version requirements, and produce schema-identified JSON. Ambiguity or failure preserves the original opaque range and fingerprint. The same `ReadOptions` can be used by Git revision reads.
 
@@ -160,13 +162,15 @@ build-native/Release/cyuediff_desktop.exe --repo D:/Projects/MyGame --before-rev
 
 The Windows app provides file selection, background loading, a shared optional project/engine context, inspection, graph views, images, wireframe navigation and JSON comparison focused on the first change. It prepares the first texture source and the first mesh source/LOD of each side. Select **Git revisions** to enter a local repository, two commit-ish references and repository-relative asset paths. An empty after path reuses the before path. Historical project descriptors enable `/Game/...` resolution; additions/removals, resolved commits and context-only changes are displayed explicitly. LFS content must already be available locally. See the English [desktop guide](docs/DESKTOP.md) for the controls, CLI options and limits.
 
-The app does not yet include a content browser, commit history browser, multi-document workspace or cancellation inside an active decoder.
+Select **Browse content...** (`Ctrl+B`) after choosing a project, or from Git mode after entering a repository and references. Search the metadata catalogue, filter assets/maps and open a package or compare its revisions. Git presence indicates whether a path exists on each side; semantic changes are computed when opened. Scanning runs in the background and does not decode packages or require LFS content. See [asset catalogues](docs/CATALOG.md) for the reusable Core/Git API, limits and embeddable `CatalogView`.
+
+The app does not yet include a commit history browser, multi-document workspace or cancellation inside an active package decoder.
 
 The embeddable `CyUEDiff::UI` remains separate. Hosts own their window, graphics backend, asynchronous loading and GPU resources. Five CyUI themes and English/French controls are supported.
 
 ## Validation and documentation
 
-The verified Windows Release build passes **13 CTest suites**, with **571 checks**, 30 renderer-free UI frames and a native DX11/WARP smoke test. A separate run verified **21 native captures**, seven rejected invocations/output overlaps, matching desktop/CLI diff results and unchanged input assets. A separate Git/LFS run verified **22 native captures**, six output/option refusals, desktop/CLI Git diff parity and an unchanged checkout. The desktop configuration also passes with Git disabled. The Core-only configuration is also tested without Git, UI, Desktop or Oodle. Proprietary assets, codec binaries, generated captures and build outputs are excluded from the repository.
+The verified Windows Release build passes **15 CTest suites**, with **625 checks**, 30 renderer-free UI frames and a native DX11/WARP smoke test. A separate run verified **21 native captures**, seven rejected invocations/output overlaps, matching desktop/CLI diff results and unchanged input assets. A separate Git/LFS run verified **22 native captures**, six output/option refusals, desktop/CLI Git diff parity and an unchanged checkout. Content-browser validation adds **21 native captures**, five output refusals, CLI catalogue parity, local/Git selection and unchanged source/checkout fingerprints. The desktop configuration also passes with Git disabled (12 suites), and an external consumer compiles and runs against the installed Core-only catalogue SDK. The Core-only configuration is also tested without Git, UI, Desktop or Oodle. Proprietary assets, codec binaries, generated captures and build outputs are excluded from the repository.
 
 Detailed implementation notes are currently available in French:
 

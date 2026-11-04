@@ -1,4 +1,4 @@
-# Desktop application — 0.10
+# Desktop application — 0.11
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -42,7 +42,20 @@ The sidebar displays the resolved commit IDs. Added or removed assets keep the m
 
 Git/LFS reads run on the document worker. Each side owns its matching companion files and materializations for as long as the document uses their payloads. Locally available LFS objects are verified by size and SHA-256. The **LFS cache** section or `--lfs-objects DIR` selects an explicit objects directory; otherwise repository LFS settings apply. Missing objects produce an error. Reads never fetch, check out revisions, run filters or change the repository. Git 2.45+ must be available in PATH.
 
-The Git controls are present when `CYUEDIFF_BUILD_GIT=ON`. A desktop build with Git disabled remains functional for loose files and rejects Git requests explicitly. References and paths are entered as text; there is no commit history or asset browser yet.
+The Git controls are present when `CYUEDIFF_BUILD_GIT=ON`. A desktop build with Git disabled remains functional for loose files and rejects Git requests explicitly. References and paths are entered as text; the content browser below can supply asset paths. A commit history browser is not implemented.
+
+## Content browser
+
+After choosing a project, select **Browse content...** or press `Ctrl+B`. In Git mode, a repository and both references are sufficient. The modal scans in the background, filters package names/paths and provides an asset/map selector. Double-click or choose **Open package** to inspect a local asset; **Compare revisions** loads the selected Git path on both sides. **Use before** and **Use after** fill one side while retaining the other. The default action starts a fresh single-asset inspection/comparison; the one-side actions preserve the other path.
+
+Local scans include mounted project/plugin content and exclude local engine/engine-plugin content by default. Toggle **Include engine content** and refresh to include it. Git scans list repository-wide package paths in both commits, independently of historical plugin activation. Presence labels describe exact path existence. Catalogues use filenames, file sizes and Git tree metadata; assets, maps, LFS pointers and invalid/unreadable package contents are not decoded or validated until opened. A catalogue can be browsed while LFS content is unavailable.
+
+```powershell
+build-native/Release/cyuediff_desktop.exe --browse --project D:/Game/Game.uproject
+build-native/Release/cyuediff_desktop.exe --browse --repo D:/Game --before-revision HEAD~1 --after-revision HEAD
+```
+
+Search filtering is cached between edits and list rendering clips off-screen rows. Closing or refreshing a scan signals cancellation; only the newest requested catalogue can publish. Pending work is bounded to one request. A failure retains the previous catalogue while disabling selection until a successful refresh. A selection pins the resolved commit IDs from its catalogue. See [CATALOG.md](CATALOG.md) for budgets and cancellation limits.
 
 ## Views and document lifetime
 
@@ -54,7 +67,7 @@ The main thread prepares the views and uploads images before the next frame. Rep
 
 The host prepares the first texture source and first mesh source/LOD 0 per side. Texture budgets are 16 million pixels and 128 MiB for payload/decoder data; mesh payloads are limited to 128 MiB with the Core's element limits. **Load previews** can be disabled. An optional codec must be supplied explicitly with `--codec DLL`; it is trusted host code and is never discovered from an asset or engine directory. No Oodle SDK or binary is distributed. See [CODECS.md](CODECS.md).
 
-Content browsing, commit history, multiple documents, configurable decoder profiles, persistent preferences and independent desktop contexts per side remain future work. Material evaluation, skinned mesh rendering and Nanite rendering retain the Core's documented limitations.
+Commit history, multiple documents, configurable decoder profiles, persistent preferences and independent desktop contexts per side remain future work. Material evaluation, skinned mesh rendering and Nanite rendering retain the Core's documented limitations.
 
 ## Native validation
 
@@ -65,6 +78,8 @@ python scripts/validate_desktop_git.py --asset D:/Owned/BP_Player.uasset --after
 
 `--smoke` renders at least twelve settled frames in a hidden DX11/WARP window. `--view` accepts `properties`, `blueprint`, `materials`, `textures`, `meshes` and `comparison`. Capture/report require smoke mode. Outputs overlapping input assets, companions, Git metadata, LFS storage or selected engine context are rejected. Exit code `0` means the document loaded, even when changed; `2` means loading/capture failed. The document report exposes `status`, the package `diff` and the optional complete `git` comparison, including project contexts and immutable commit IDs.
 
-The Windows Release configuration passes thirteen CTest suites with 571 checks, thirty renderer-free UI frames and a native renderer smoke test. `desktop_git` covers 27 integration checks; the UI frames also exercise additions/removals. The desktop configuration without Git passes ten suites.
+The Windows Release configuration passes fifteen CTest suites with 625 checks, thirty renderer-free UI frames and a native renderer smoke test. `catalog` covers 21 checks, `desktop_browser` covers 25 checks and `desktop_git` covers 35 integration checks; the UI frames also exercise additions/removals. The desktop configuration without Git passes twelve suites. The Core-only configuration passes eight suites.
 
 `scripts/validate_desktop_git.py` produced 22 native captures, six option/output refusals, desktop/CLI Git diff parity and unchanged index/checkout/source fingerprints. It uses a fresh owned repository with generated local LFS pointers and copies of explicitly selected UE 5.5.4/5.3.2 assets. Captures were reviewed in all five themes, both languages and the relevant views. The existing loose-file validator also covers 21 captures and seven refusals. Generated assets, repositories, reports and images are ignored and never committed.
+
+`scripts/validate_browser.py` adds 21 native captures and five output refusals. It checks both languages and all themes, local/engine/plugin content, repository-wide Git presence, filtering, local opening and Git comparison, missing LFS content, error states and CLI parity. Browser-only capture is available with `--smoke --browse`; `--browse-filter TEXT` presets search. The controlled `--browse-select PATH` option requires smoke mode and opens an entry through the same selection path for validation. Reports include the complete browser metadata, filtered count and document if opened. Captures and generated repositories are ignored.

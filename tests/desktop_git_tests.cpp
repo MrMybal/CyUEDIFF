@@ -1,4 +1,5 @@
 #include "../apps/desktop/document.hpp"
+#include "../apps/desktop/browser.hpp"
 #include "../src/git_process.hpp"
 #include "package_fixture.hpp"
 #include <chrono>
@@ -144,6 +145,30 @@ int main(int argc, char **argv) {
         document.reset();
         check(!fs::exists(materialized) && !fs::exists(owned_bulk),
               "Document releases owned materializations");
+        auto repository = GitRepository::open(repo_path);
+        auto catalog = repository.catalog(before);
+        check(catalog.complete && catalog.assets.size() == 1 && catalog.revision == before &&
+                  !catalog.assets[0].blob_oid.empty(),
+              "Git metadata catalogue pins revision and blob ID");
+        CatalogOptions limits;
+        limits.max_entries = 1;
+        check(!repository.catalog(after, limits).complete, "Git tree entry limit is explicit");
+        limits = {};
+        limits.max_path_bytes = 1;
+        check(!repository.catalog(before, limits).complete, "Git catalogue path memory budget");
+        limits = {};
+        limits.max_listing_bytes = 1;
+        rejects([&] { repository.catalog(before, limits); }, "git-output");
+        limits = {};
+        limits.cancelled = [] { return true; };
+        check(repository.catalog(before, limits).cancelled, "Git catalogue cancellation");
+        BrowseRequest browse;
+        browse.git = request.git;
+        auto browsed = load_browser(browse, [] { return false; });
+        check(browsed->assets.size() == 1 && browsed->assets[0].before && browsed->assets[0].after,
+              "Git browser merges both revision catalogues");
+        check(load_document(browsed->select(0, false, true))->diff->to_json() == direct.diff.to_json(),
+              "Git catalogue selection matches direct comparison");
         auto equal = request;
         equal.git->after_revision = before;
         check(load_document(equal)->status() == "identical", "Identical revisions");
@@ -206,6 +231,9 @@ int main(int argc, char **argv) {
         auto unavailable = root / "held-lfs-object";
         fs::rename(cached, unavailable);
         rejects([&] { load_document(request); }, "lfs-missing");
+        check(repository.catalog(after).assets.size() == 1 &&
+                  load_browser(browse, [] { return false; })->assets.size() == 1,
+              "Git catalogue and browser work with missing LFS content");
         fs::rename(unavailable, cached);
         DocumentSession session;
         session.request(request);

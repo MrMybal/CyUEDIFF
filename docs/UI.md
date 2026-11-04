@@ -67,3 +67,9 @@ L’hôte peut charger un `GitComparison` via `CyUEDiff::Git`, puis fournir ses 
 ## Navigation depuis l’hôte
 
 `AssetView::select_tab(AssetTab::comparison)` demande la sélection de l’onglet à la prochaine frame. Les valeurs sont `properties`, `blueprint`, `materials`, `textures`, `meshes` et `comparison` ; ce dernier exige deux packages ou `compare_missing_side=true` avec un seul côté présent. À chaque nouveau document comparé, le diff est positionné sur le premier changement. `draw("document-1", false)` masque le sélecteur de langue de la vue si l’hôte le fournit déjà dans son menu. Les appels existants à `draw()` gardent leur comportement. Les textes d’inspection, y compris les données natives des extensions, sont préparés dans `set_packages`.
+
+## Catalogue de contenus — 0.11
+
+`CatalogView` dans `<cyuediff/catalog_view.hpp>` reste indépendant de l’hôte Windows et de Git. L’hôte fournit un `shared_ptr<const vector<CatalogItem>>`, construit avec `merge_catalogs`, via `set_items(items, revisions)`. La vue conserve la recherche, le filtre asset/carte et la sélection. `draw` renvoie une intention `CatalogAction` (`open`, `use_before`, `use_after`) ; l’hôte charge les fichiers hors du rendu. Aucun parcours de dossiers ou appel Git ne se produit dans `draw`.
+
+`set_filter` prépare une recherche et `select` choisit un indice du catalogue non filtré. `selected` indique cet indice, ou `numeric_limits<size_t>::max()` en l’absence de sélection. Une recherche qui masque l’élément sélectionné efface la sélection. Les correspondances sont mises en cache et seules les lignes visibles sont rendues. `register_translations` fournit les contrôles en français avec anglais par défaut. Le desktop l’utilise dans son navigateur asynchrone. Voir [CATALOG.md](CATALOG.md).

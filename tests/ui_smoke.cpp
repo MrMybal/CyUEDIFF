@@ -1,4 +1,5 @@
 #include <cyuediff/asset_view.hpp>
+#include <cyuediff/catalog_view.hpp>
 #include <iostream>
 int main() {
     ImGui::CreateContext();
@@ -16,6 +17,24 @@ int main() {
         return 13;
     if (!cyui::setLocale("en") || cyui::tr("Before") != "Before")
         return 14;
+    cyuediff::CatalogView::register_translations();
+    auto catalogue_items = std::make_shared<std::vector<cyuediff::CatalogItem>>();
+    catalogue_items->push_back({"Content/Sword.uasset", "/Game/Épée", ".uasset", true, true});
+    catalogue_items->push_back({"Content/World.umap", "/Game/World", ".umap", false, true});
+    for (int i = 0; i < 2500; ++i)
+        catalogue_items->push_back({"Content/Item" + std::to_string(i) + ".uasset",
+                                    "Item" + std::to_string(i), ".uasset", true, false});
+    cyuediff::CatalogView catalog_view;
+    catalog_view.set_items(catalogue_items, true);
+    catalog_view.set_filter("epee");
+    if (catalog_view.visible_count() != 1 || !catalog_view.select(0) || catalog_view.select(99999))
+        return 15;
+    catalog_view.set_filter("nothing-matches");
+    if (catalog_view.visible_count() != 0 || catalog_view.selected() == 0)
+        return 17;
+    catalog_view.set_filter("");
+    if (catalog_view.visible_count() != catalogue_items->size())
+        return 16;
     auto before = std::make_shared<cyuediff::Package>();
     before->source = "Sample.uasset";
     cyuediff::ObjectExport object;
@@ -187,6 +206,11 @@ int main() {
                 ImGui::Begin("Removal host");
                 removal.select_tab(tabs[frames % 6]);
                 removal.draw();
+                ImGui::End();
+                ImGui::SetNextWindowPos(ImVec2(0, 0));
+                ImGui::SetNextWindowSize(io.DisplaySize);
+                ImGui::Begin("Catalogue host");
+                catalog_view.draw();
                 ImGui::End();
                 cyui::renderNotifications();
                 ImGui::Render();

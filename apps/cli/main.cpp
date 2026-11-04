@@ -1,4 +1,5 @@
 #include <cyuediff/core.hpp>
+#include <cyuediff/catalog.hpp>
 #ifdef CYUEDIFF_HAS_GIT
 #include <cyuediff/git.hpp>
 #endif
@@ -11,7 +12,7 @@ namespace {
 int run(const std::vector<std::string> &args) {
     if (args.empty() || args[0] == "--help" || args[0] == "help") {
         std::cout
-            << "CyUEDiff 0.7 - standalone Unreal package reader\n"
+            << "CyUEDiff " CYUEDIFF_VERSION " - standalone Unreal package reader\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "
                "ROOT] [--out FILE]\n"
                "  cyuediff diff BEFORE AFTER [--project PROJECT] [--before-project PROJECT] "
@@ -30,6 +31,7 @@ int run(const std::vector<std::string> &args) {
                "FILE]\n"
                "  preview and image-diff also accept --codec MODULE.dll\n"
 #ifdef CYUEDIFF_HAS_GIT
+               "  cyuediff git-catalog REPO REV [--max-assets N] [--max-entries N] [--out FILE]\n"
                "  cyuediff git-project REPO REV PROJECT [--engine-root ROOT] [--out FILE]\n"
                "  cyuediff git-inspect REPO REV PATH [--out FILE] [--lfs-objects DIR]\n"
                "  cyuediff git-diff REPO BEFORE AFTER PATH [--after-path PATH] [--out FILE]\n"
@@ -40,6 +42,8 @@ int run(const std::vector<std::string> &args) {
                "  --no-engine skips engine discovery for Git project contexts.\n"
 #endif
                "  cyuediff textconv ASSET\n"
+               "  cyuediff catalog PROJECT [--include-engine] [--max-assets N] [--max-entries N] [--out "
+               "FILE]\n"
                "  cyuediff project PROJECT [--engine-root ROOT]\n"
                "  cyuediff resolve PROJECT /Game/Package [--engine-root ROOT]\n"
                "Diff exit codes: 0 identical, 1 changes, 2 error/incomplete/unverified.\n";
@@ -47,7 +51,9 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--project",
+    const std::set<std::string> valued = {"--max-assets",
+                                          "--max-entries",
+                                          "--project",
                                           "--before-project",
                                           "--after-project",
                                           "--engine-root",
@@ -69,7 +75,8 @@ int run(const std::vector<std::string> &args) {
             if (i + 1 == args.size())
                 throw Error("arguments", "Missing value for " + arg);
             flags[arg] = args[++i];
-        } else if (arg == "--metadata" || arg == "--snapshot" || arg == "--no-engine")
+        } else if (arg == "--metadata" || arg == "--snapshot" || arg == "--no-engine" ||
+                   arg == "--include-engine")
             flags[arg] = true;
         else if (arg.compare(0, 2, "--") == 0)
             throw Error("arguments", "Unknown option " + arg);
@@ -82,9 +89,11 @@ int run(const std::vector<std::string> &args) {
                      command == "mesh-diff" || command == "material-diff")
                         ? 2u
                         : 1u;
-    const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project";
+    const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
+                             command == "git-catalog";
+    const bool catalog_command = command == "catalog" || command == "git-catalog";
     if (git_command)
-        required = command == "git-diff" ? 4u : 3u;
+        required = command == "git-diff" ? 4u : (command == "git-catalog" ? 2u : 3u);
     if (positional.size() != required)
         throw Error("arguments", "Wrong number of arguments; use --help");
     const bool image_command = command == "preview" || command == "image-diff";
@@ -93,8 +102,16 @@ int run(const std::vector<std::string> &args) {
         const auto &key = it.key();
         const bool side_context = key == "--before-project" || key == "--after-project" ||
                                   key == "--before-engine-root" || key == "--after-engine-root";
-        if (git_command && key != "--out" && key != "--lfs-objects" && key != "--git-temp" &&
-            key != "--engine-root" && key != "--no-engine" &&
+        if ((key == "--max-assets" || key == "--max-entries") && !catalog_command)
+            throw Error("arguments", key + " requires a catalogue command");
+        if (key == "--include-engine" && command != "catalog")
+            throw Error("arguments", "--include-engine requires catalog");
+        if (catalog_command && key != "--out" && key != "--max-assets" && key != "--max-entries" &&
+            !(command == "catalog" && (key == "--engine-root" || key == "--include-engine")) &&
+            !(command == "git-catalog" && key == "--git-temp"))
+            throw Error("arguments", "Unsupported catalogue option: " + key);
+        if (git_command && !catalog_command && key != "--out" && key != "--lfs-objects" &&
+            key != "--git-temp" && key != "--engine-root" && key != "--no-engine" &&
             !(key == "--project" && command != "git-project") &&
             !(command == "git-diff" && (side_context || key == "--after-path")))
             throw Error("arguments", "Unsupported option for Git inspection: " + key);
@@ -127,6 +144,15 @@ int run(const std::vector<std::string> &args) {
         if (value > limit)
             throw Error("arguments", "Out of range value for " + key);
         return static_cast<std::uint32_t>(value);
+    };
+    auto catalog_options = [&] {
+        CatalogOptions result;
+        result.include_engine = flags.contains("--include-engine");
+        if (flags.contains("--max-assets"))
+            result.max_assets = integer_option("--max-assets", 1'000'000);
+        if (flags.contains("--max-entries"))
+            result.max_entries = integer_option("--max-entries", 10'000'000);
+        return result;
     };
     auto select_texture = [&](const Package &package) -> const TextureSource & {
         auto name = flags.value("--object", std::string{});
@@ -226,7 +252,14 @@ int run(const std::vector<std::string> &args) {
                 for (const auto &file : revision.files)
                     protected_files.push_back(fs::u8path(file.path));
         };
-        if (command == "git-project") {
+        if (command == "git-catalog") {
+            auto catalog = repo.catalog(positional[1], catalog_options());
+            for (const auto &asset : catalog.assets)
+                protect(asset.path);
+            output = catalog.to_json();
+            if (!catalog.complete)
+                exit_code = 2;
+        } else if (command == "git-project") {
             auto context = repo.project(positional[1], positional[2], project_options("--engine-root"));
             protect_context(context);
             output = context.to_json();
@@ -388,6 +421,27 @@ int run(const std::vector<std::string> &args) {
         exit_code = result.status() == "identical"
                         ? 0
                         : ((result.status() == "incomplete" || result.status() == "unverified") ? 2 : 1);
+    } else if (command == "catalog") {
+        auto context = ProjectContext::open(fs::u8path(positional[0]), root);
+        auto catalog = catalog_assets(context, catalog_options());
+        protected_files.push_back(context.project_file);
+        for (const auto &mount : context.mounts)
+            protected_directories.push_back(mount.directory);
+        protected_directories.push_back(context.project_file.parent_path() / "Plugins");
+        if (!context.engine.root.empty())
+            protected_directories.push_back(context.engine.root / "Engine");
+        for (const auto &asset : catalog.assets) {
+            auto path = fs::u8path(asset.path);
+            protected_files.push_back(path);
+            for (const auto *extension : {".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload"}) {
+                auto companion = path;
+                companion.replace_extension(extension);
+                protected_files.push_back(companion);
+            }
+        }
+        output = catalog.to_json();
+        if (!catalog.complete)
+            exit_code = 2;
     } else if (command == "project" || command == "resolve") {
         auto context = ProjectContext::open(fs::u8path(positional[0]), root);
         protected_files.push_back(context.project_file);
@@ -418,7 +472,8 @@ int run(const std::vector<std::string> &args) {
                 parent = next;
             }
             if (within)
-                throw Error("output-path", "Output must not overwrite Git metadata or LFS storage");
+                throw Error("output-path",
+                            "Output must not overwrite protected content, Git metadata or LFS storage");
         }
         for (const auto &input : protected_files)
             if (same_file(input, target))

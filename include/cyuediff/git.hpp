@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/core.hpp>
+#include <cyuediff/catalog.hpp>
 #include <memory>
 namespace cyuediff {
 namespace detail {
@@ -80,6 +81,8 @@ class GitRepository {
         return common_directory_;
     }
     fs::path lfs_objects() const;
+    // Repository-wide metadata listing. Does not materialize blobs or inspect LFS content.
+    AssetCatalog catalog(const std::string &revision, const CatalogOptions &options = {}) const;
     // Commit-ish resolves once to an immutable commit. No checkout, filters or fetch.
     GitRevision materialize(const std::string &revision, const std::string &repository_path) const;
     GitProjectContext project(const std::string &revision, const std::string &project_path,

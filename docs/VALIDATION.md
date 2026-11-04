@@ -16,11 +16,13 @@ Environnement vérifié : Windows x64, MSVC 19.40, CMake 3.31.6, configuration R
 - `git` : **57 vérifications** de révisions, compagnons, LFS local, durée de vie, chemins, contextes Git et limites ; nécessite Git 2.45+ pour être exécuté.
 - `git_project` : **56 vérifications** des contextes historiques, plugins et moteurs sélectionnés par côté.
 - `desktop_model` : **28 vérifications** du chargement, contexte, erreurs, reprise et priorité des demandes asynchrones.
-- `desktop_git` : **27 vérifications** du chargement de révisions, LFS local/externe, compagnons, ajouts/suppressions, renommage, contexte historique, durée de vie et conservation du document après erreur.
+- `catalog` : **21 vérifications** des montages, métadonnées, budgets, annulation et union avant/après.
+- `desktop_browser` : **25 vérifications** du chargement, sélection, annulation, priorité des demandes et erreurs du catalogue.
+- `desktop_git` : **35 vérifications** du chargement de révisions, LFS local/externe, compagnons, ajouts/suppressions, renommage, contexte historique, durée de vie et conservation du document après erreur.
 - `desktop_renderer` : fenêtre cachée rendue avec le backend Direct3D 11/WARP réel.
 - `ui_smoke` : **30 frames ImGui**, cinq thèmes et langues anglais/français, avec inspecteur, comparaison, graphes Blueprint et matériau, tableau d’instance, image et filaire mesh préparés. Test sans renderer : production des commandes de dessin, sans revue visuelle native.
 
-Les treize tests passent (571 vérifications, 30 frames UI sans renderer et un test de rendu natif). Les fixtures binaires synthétiques sont générées pendant le test et supprimées après réussite. Aucun asset propriétaire n'est inclus dans les sources.
+Les quinze tests passent (625 vérifications, 30 frames UI sans renderer et un test de rendu natif). Les fixtures binaires synthétiques sont générées pendant le test et supprimées après réussite. Aucun asset propriétaire n'est inclus dans les sources.
 
 ## Essais sur six fichiers réels locaux
 
@@ -128,3 +130,9 @@ Cette validation concerne le renderer WARP et les fichiers indiqués. L’intera
 `scripts/validate_desktop_git.py` crée un dépôt jetable à partir de copies d’assets explicitement fournis, sans remote. Les 22 captures natives couvrent les cinq thèmes et deux langues, les propriétés et comparaisons d’ajouts/suppressions, l’égalité, un changement de contexte seul, un cache LFS externe, les aperçus texture/mesh et une erreur LFS. Six refus couvrent les options invalides et les sorties vers les métadonnées Git, le cache LFS ou des liens physiques vers les entrées. Le résultat Git correspond à la CLI ; l’index, le checkout et les assets sources restent inchangés. Rapports/captures ignorés dans `build-native/desktop-git-validation/`.
 
 La configuration desktop sans Git passe dix suites, dont le rejet explicite d’une demande Git non prise en charge. Les vues embarquées restent utilisables indépendamment de l’adaptateur Git et de l’hôte Windows.
+
+## Catalogue et navigateur 0.11 — 4 novembre 2026
+
+Le build natif passe quinze suites et 625 vérifications. Le desktop sans Git passe douze suites ; le Core seul passe huit suites, sans UI/Desktop/Git/Oodle. Un consommateur externe `examples/catalog_consumer` a été compilé avec `find_package` contre le SDK Core installé et exécuté sur le projet local. Le SDK n’installe ni les vues CyUI ni Git dans cette configuration.
+
+`scripts/validate_browser.py` produit 21 captures natives et vérifie cinq refus de sorties, dont un catalogue CLI partiel qui tente d’écrire dans les sources. Les essais couvrent contenus projet/plugins/moteur, cinq thèmes et deux langues, recherche avec ou sans résultat, présences Git, sélection locale/Git, erreur de projet/révision/sélection et LFS manquant. Les catalogues correspondent à la CLI et les empreintes des entrées, de l’index et du checkout restent inchangées. Rapports dans `build-native/browser-validation/`, ignoré. La présence de fichiers volontairement vides dans les fixtures montre que l’index n’essaie pas de décoder les packages ; leur validité n’est vérifiée qu’à l’ouverture.

@@ -334,6 +334,87 @@ GitRevision GitRepository::materialize(const std::string &revision,
     }
     return result;
 }
+AssetCatalog GitRepository::catalog(const std::string &revision, const CatalogOptions &options) const {
+    if (!options.max_assets || !options.max_entries || !options.max_path_bytes ||
+        !options.max_listing_bytes || options.max_depth > 256)
+        throw Error("catalog-options", "Catalogue budgets must be nonzero; depth must not exceed 256");
+    AssetCatalog result;
+    result.storage = "git";
+    auto issue = [&](const std::string &message) {
+        result.complete = false;
+        if (result.diagnostics.size() < 128)
+            result.diagnostics.push_back(message);
+    };
+    auto cancelled = [&] {
+        if (!options.cancelled || !options.cancelled())
+            return false;
+        result.cancelled = true;
+        issue("Catalogue scan cancelled");
+        return true;
+    };
+    if (cancelled())
+        return result;
+    detail::GitWorkspace workspace(options_.temporary_root);
+    result.revision = resolve_commit(options_, root_, revision, workspace);
+    auto output = workspace.directory / "catalog";
+    if (detail::git_process(options_, root_, {"ls-tree", "--full-tree", "-r", "-l", "-z", result.revision},
+                            output, workspace.directory / "stderr", options.max_listing_bytes))
+        throw Error("git-catalog", "Cannot enumerate revision assets");
+    std::ifstream stream(output, std::ios::binary);
+    std::string record;
+    while (std::getline(stream, record, '\0')) {
+        if (cancelled())
+            break;
+        if (stream.eof())
+            throw Error("git-format", "Unterminated Git tree entry");
+        if (result.visited_entries >= options.max_entries) {
+            issue("Catalogue entry limit reached");
+            break;
+        }
+        ++result.visited_entries;
+        auto tab = record.find('\t');
+        if (tab == std::string::npos)
+            throw Error("git-format", "Invalid Git tree entry");
+        auto name = record.substr(tab + 1);
+        if (name.size() > options.max_path_bytes - result.visited_path_bytes) {
+            issue("Catalogue path byte limit reached");
+            break;
+        }
+        result.visited_path_bytes += name.size();
+        auto extension = fs::u8path(name).extension().u8string();
+        if (extension != ".uasset" && extension != ".umap")
+            continue;
+        std::istringstream fields(record.substr(0, tab));
+        std::string mode, type, oid, bytes, extra;
+        fields >> mode >> type >> oid >> bytes;
+        if (!fields || fields >> extra || (!hex(oid, 40) && !hex(oid, 64)))
+            throw Error("git-format", "Invalid Git tree metadata");
+        if (type != "blob" || (mode != "100644" && mode != "100755")) {
+            issue("Non-regular package skipped: " + name);
+            continue;
+        }
+        try {
+            valid_path(name);
+        } catch (const Error &) {
+            issue("Non-portable package path skipped: " + name);
+            continue;
+        }
+        if (static_cast<std::uint32_t>(std::count(name.begin(), name.end(), '/')) > options.max_depth) {
+            issue("Catalogue depth limit reached: " + name);
+            continue;
+        }
+        if (result.assets.size() >= options.max_assets) {
+            issue("Catalogue asset limit reached");
+            break;
+        }
+        result.assets.push_back({name, {}, {}, extension, oid, integer(bytes)});
+    }
+    if (stream.bad())
+        throw Error("git-io", "Cannot read Git asset listing");
+    std::sort(result.assets.begin(), result.assets.end(),
+              [](const auto &a, const auto &b) { return a.path < b.path; });
+    return result;
+}
 GitProjectContext GitRepository::project(const std::string &revision, const std::string &project_path,
                                          const GitProjectOptions &project_options) const {
     auto path = valid_repository_path(project_path);

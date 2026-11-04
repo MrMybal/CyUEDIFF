@@ -1,4 +1,6 @@
 #include "document.hpp"
+#include "browser.hpp"
+#include <cyuediff/catalog_view.hpp>
 #include <cyuediff/asset_view.hpp>
 #include "platform_win32.hpp"
 #include <shellapi.h>
@@ -16,10 +18,17 @@ struct Settings {
     std::string before, after, project, engine, codec, repository, lfs_objects;
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
     int source = 0;
-    bool previews = true, discover_engine = true;
+    bool previews = true, discover_engine = true, include_engine = false;
     bool ready() const {
         return !before.empty() &&
                (source == 0 || (!repository.empty() && !before_revision.empty() && !after_revision.empty()));
+    }
+    bool browse_ready() const {
+        return source == 0 ? !project.empty()
+                           : (!repository.empty() && !before_revision.empty() && !after_revision.empty());
+    }
+    BrowseRequest browse_request() const {
+        return {fs::u8path(project), fs::u8path(engine), include_engine, request().git};
     }
     LoadRequest request() const {
         LoadRequest result{before,  after, fs::u8path(project), fs::u8path(engine), fs::u8path(codec),
@@ -32,8 +41,9 @@ struct Settings {
 };
 struct Options {
     Settings settings;
-    bool smoke = false, help = false;
+    bool smoke = false, help = false, browse = false;
     fs::path capture, report;
+    std::string browse_filter, browse_select;
     std::string theme = "mid-grey", locale = "en", view = "properties";
 };
 AssetTab tab(const std::string &name) {
@@ -63,6 +73,14 @@ Options parse(const std::vector<std::string> &args) {
         };
         if (argument == "--smoke")
             options.smoke = true;
+        else if (argument == "--browse")
+            options.browse = true;
+        else if (argument == "--browse-filter")
+            options.browse_filter = value();
+        else if (argument == "--browse-select")
+            options.browse_select = value();
+        else if (argument == "--include-engine")
+            options.settings.include_engine = true;
         else if (argument == "--help" || argument == "-h")
             options.help = true;
         else if (argument == "--before")
@@ -112,6 +130,12 @@ Options parse(const std::vector<std::string> &args) {
             throw Error("desktop-option", "Too many package paths");
     }
     tab(options.view);
+    if ((!options.browse_filter.empty() || options.settings.include_engine ||
+         !options.browse_select.empty()) &&
+        !options.browse)
+        throw Error("desktop-option", "Catalogue options require --browse");
+    if (!options.browse_select.empty() && !options.smoke)
+        throw Error("desktop-option", "--browse-select requires --smoke");
     if (git_options && options.settings.source != 1)
         throw Error("desktop-option", "Git options require --repo");
 #ifndef CYUEDIFF_HAS_GIT
@@ -134,68 +158,80 @@ Options parse(const std::vector<std::string> &args) {
 }
 void register_translations() {
     AssetView::register_translations();
+    CatalogView::register_translations();
     cyui::registerTranslations(
-        "fr", {{"Local files", "Fichiers locaux"},
-               {"Git revisions", "Révisions Git"},
-               {"Repository", "Dépôt"},
-               {"Before ref", "Rév. avant"},
-               {"After ref", "Rév. après"},
-               {"Before path", "Chemin avant"},
-               {"After path", "Chemin après"},
-               {"Same path when empty", "Même chemin si vide"},
-               {"Use paths relative to the repository, or /Game/... with a historical project.",
-                "Utilisez des chemins relatifs au dépôt, ou /Game/... avec un projet historique."},
-               {"Historical project (optional)", "Projet historique (facultatif)"},
-               {"Project path", "Chemin projet"},
-               {"Discover engine", "Détecter le moteur"},
-               {"LFS cache (optional)", "Cache LFS (facultatif)"},
-               {"LFS objects", "Objets LFS"},
-               {"Swap revisions", "Inverser les révisions"},
-               {"Added", "Ajouté"},
-               {"Removed", "Supprimé"},
-               {"Project context changes", "Changements du contexte projet"},
-               {"Context changes: %zu", "Changements de contexte : %zu"},
-               {"Choose a repository, two revisions and an asset path, then load them.",
-                "Choisissez un dépôt, deux révisions et un chemin d’asset, puis chargez-les."},
-               {"File", "Fichier"},
-               {"Open before...", "Ouvrir avant..."},
-               {"Open after...", "Ouvrir après..."},
-               {"Choose project", "Choisir le projet"},
-               {"Choose package", "Choisir un package"},
-               {"Unreal project (*.uproject)", "Projet Unreal (*.uproject)"},
-               {"Unreal package (*.uasset;*.umap)", "Package Unreal (*.uasset;*.umap)"},
-               {"Exit", "Quitter"},
-               {"View", "Affichage"},
-               {"Theme", "Thème"},
-               {"Compare packages", "Comparer des packages"},
-               {"Project file", "Fichier projet"},
-               {"Engine root", "Racine moteur"},
-               {"Read only", "Lecture seule"},
-               {"Project (optional)", "Projet (facultatif)"},
-               {"Engine root (optional)", "Racine moteur (facultative)"},
-               {"Load previews", "Charger les aperçus"},
-               {"Load", "Charger"},
-               {"Swap files", "Inverser les fichiers"},
-               {"Loading...", "Chargement..."},
-               {"Ready", "Prêt"},
-               {"Load failed", "Échec du chargement"},
-               {"Changed", "Modifié"},
-               {"Identical", "Identique"},
-               {"Binary changes", "Changements binaires"},
-               {"Incomplete input", "Entrée incomplète"},
-               {"Unverified", "Non vérifié"},
-               {"Diagnostics", "Diagnostics"},
-               {"No package loaded", "Aucun package chargé"},
-               {"Choose a package on the left, then load it. Add a second package to compare versions.",
-                "Choisissez un package à gauche, puis chargez-le. Ajoutez un second package pour comparer "
-                "les versions."},
-               {"Open before (Ctrl+O)", "Ouvrir avant (Ctrl+O)"},
-               {"Open after (Ctrl+Shift+O)", "Ouvrir après (Ctrl+Maj+O)"},
-               {"Reload (Ctrl+R)", "Recharger (Ctrl+R)"},
-               {"%zu exported objects", "%zu objets exportés"},
-               {"Preview diagnostics", "Diagnostics des aperçus"},
-               {"Additional diagnostics are available.", "Des diagnostics supplémentaires sont disponibles."},
-               {"The previous document remains displayed.", "Le document précédent reste affiché."}});
+        "fr",
+        {{"Browse content...", "Parcourir les contenus..."},
+         {"Browse content (Ctrl+B)", "Parcourir les contenus (Ctrl+B)"},
+         {"Content browser", "Navigateur de contenus"},
+         {"Scanning content...", "Analyse des contenus..."},
+         {"Refresh catalogue", "Actualiser le catalogue"},
+         {"Include engine content", "Inclure les contenus du moteur"},
+         {"Catalogue is partial. See scan diagnostics.",
+          "Le catalogue est partiel. Consultez les diagnostics."},
+         {"Scan diagnostics", "Diagnostics du parcours"},
+         {"Choose a project to browse its content.", "Choisissez un projet pour parcourir ses contenus."},
+         {"Local files", "Fichiers locaux"},
+         {"Git revisions", "Révisions Git"},
+         {"Repository", "Dépôt"},
+         {"Before ref", "Rév. avant"},
+         {"After ref", "Rév. après"},
+         {"Before path", "Chemin avant"},
+         {"After path", "Chemin après"},
+         {"Same path when empty", "Même chemin si vide"},
+         {"Use paths relative to the repository, or /Game/... with a historical project.",
+          "Utilisez des chemins relatifs au dépôt, ou /Game/... avec un projet historique."},
+         {"Historical project (optional)", "Projet historique (facultatif)"},
+         {"Project path", "Chemin projet"},
+         {"Discover engine", "Détecter le moteur"},
+         {"LFS cache (optional)", "Cache LFS (facultatif)"},
+         {"LFS objects", "Objets LFS"},
+         {"Swap revisions", "Inverser les révisions"},
+         {"Added", "Ajouté"},
+         {"Removed", "Supprimé"},
+         {"Project context changes", "Changements du contexte projet"},
+         {"Context changes: %zu", "Changements de contexte : %zu"},
+         {"Choose a repository, two revisions and an asset path, then load them.",
+          "Choisissez un dépôt, deux révisions et un chemin d’asset, puis chargez-les."},
+         {"File", "Fichier"},
+         {"Open before...", "Ouvrir avant..."},
+         {"Open after...", "Ouvrir après..."},
+         {"Choose project", "Choisir le projet"},
+         {"Choose package", "Choisir un package"},
+         {"Unreal project (*.uproject)", "Projet Unreal (*.uproject)"},
+         {"Unreal package (*.uasset;*.umap)", "Package Unreal (*.uasset;*.umap)"},
+         {"Exit", "Quitter"},
+         {"View", "Affichage"},
+         {"Theme", "Thème"},
+         {"Compare packages", "Comparer des packages"},
+         {"Project file", "Fichier projet"},
+         {"Engine root", "Racine moteur"},
+         {"Read only", "Lecture seule"},
+         {"Project (optional)", "Projet (facultatif)"},
+         {"Engine root (optional)", "Racine moteur (facultative)"},
+         {"Load previews", "Charger les aperçus"},
+         {"Load", "Charger"},
+         {"Swap files", "Inverser les fichiers"},
+         {"Loading...", "Chargement..."},
+         {"Ready", "Prêt"},
+         {"Load failed", "Échec du chargement"},
+         {"Changed", "Modifié"},
+         {"Identical", "Identique"},
+         {"Binary changes", "Changements binaires"},
+         {"Incomplete input", "Entrée incomplète"},
+         {"Unverified", "Non vérifié"},
+         {"Diagnostics", "Diagnostics"},
+         {"No package loaded", "Aucun package chargé"},
+         {"Choose a package on the left, then load it. Add a second package to compare versions.",
+          "Choisissez un package à gauche, puis chargez-le. Ajoutez un second package pour comparer "
+          "les versions."},
+         {"Open before (Ctrl+O)", "Ouvrir avant (Ctrl+O)"},
+         {"Open after (Ctrl+Shift+O)", "Ouvrir après (Ctrl+Maj+O)"},
+         {"Reload (Ctrl+R)", "Recharger (Ctrl+R)"},
+         {"%zu exported objects", "%zu objets exportés"},
+         {"Preview diagnostics", "Diagnostics des aperçus"},
+         {"Additional diagnostics are available.", "Des diagnostics supplémentaires sont disponibles."},
+         {"The previous document remains displayed.", "Le document précédent reste affiché."}});
 }
 int resize_text(ImGuiInputTextCallbackData *data) {
     if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
@@ -221,7 +257,8 @@ bool same_path(const fs::path &a, const fs::path &b) {
     std::transform(right.begin(), right.end(), right.begin(), [](wchar_t c) { return std::towlower(c); });
     return left == right;
 }
-void protect_outputs(const Options &options, const std::shared_ptr<const Document> &document) {
+void protect_outputs(const Options &options, const std::shared_ptr<const Document> &document,
+                     const std::shared_ptr<const BrowseDocument> &browser = {}) {
     if (options.capture.empty() && options.report.empty())
         return;
     std::vector<fs::path> inputs;
@@ -272,6 +309,12 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         if (document->after)
             package(document->after->source);
     }
+    if (browser) {
+        for (const auto &file : browser->protected_files)
+            package(file);
+        directories.insert(directories.end(), browser->protected_directories.begin(),
+                           browser->protected_directories.end());
+    }
     for (auto path : {options.settings.project, options.settings.codec})
         if (!path.empty())
             inputs.push_back(fs::u8path(path));
@@ -295,15 +338,32 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
                 if (!prefix.empty() && prefix.back() != L'\\')
                     prefix += L'\\';
                 if (same_path(output, directory) || name.rfind(prefix, 0) == 0)
-                    throw Error("desktop-output", "Output overlaps Git storage or engine context");
+                    throw Error("desktop-output",
+                                "Output overlaps source content, Git storage or engine context");
             }
         }
     if (!options.capture.empty() && !options.report.empty() && same_path(options.capture, options.report))
         throw Error("desktop-output", "Outputs overlap");
 }
-enum class Action { none, open_before, open_after, project, load, swap };
+enum class Action {
+    none,
+    open_before,
+    open_after,
+    project,
+    load,
+    swap,
+    browse,
+    browser_open,
+    browser_before,
+    browser_after
+};
 class Shell {
     DocumentSession session_;
+    BrowserSession browser_;
+    std::shared_ptr<const BrowseDocument> browsed_;
+    CatalogView catalog_view_;
+    bool browser_open_ = false, close_browser_ = false;
+    std::string browse_select_;
     std::shared_ptr<const Document> displayed_;
     AssetView view_;
     std::vector<ComPtr<ID3D11ShaderResourceView>> images_;
@@ -316,14 +376,91 @@ class Shell {
     explicit Shell(const Options &options) : settings_(options.settings), initial_tab_(tab(options.view)) {
         if (!settings_.before.empty())
             session_.request(settings_.request());
+        catalog_view_.set_filter(options.browse_filter);
+        browse_select_ = options.browse_select;
+        if (options.browse)
+            start_browser();
     }
     ~Shell() {
         view_.set_packages({});
         images_.clear();
     }
-    const DocumentSession &session() const { return session_; }
-    std::size_t images() const { return images_.size(); }
+    const DocumentSession &session() const {
+        return session_;
+    }
+    const std::shared_ptr<const BrowseDocument> &browser_document() const {
+        return browsed_;
+    }
+    Json browser_report() {
+        if (!browsed_)
+            return nullptr;
+        auto result = browsed_->report();
+        result["visiblePackages"] = catalog_view_.visible_count();
+        result["open"] = browser_open_;
+        return result;
+    }
+    bool busy() const {
+        return session_.busy() || browser_.busy();
+    }
+    std::string error() const {
+        if (!dialog_error_.empty())
+            return dialog_error_;
+        return !browser_.error().empty() ? browser_.error() : session_.error();
+    }
+    void start_browser() {
+        browser_open_ = true;
+        close_browser_ = false;
+        browser_.request(settings_.browse_request());
+    }
+    void select_browser(CatalogAction action) {
+        if (!browsed_ || browser_.busy() || !browser_.error().empty())
+            return;
+        const bool open = action == CatalogAction::open;
+        auto selection = browsed_->select(catalog_view_.selected(), action == CatalogAction::use_after,
+                                          open && browsed_->request.git.has_value());
+        settings_.project = selection.project.u8string();
+        settings_.engine = selection.engine_root.u8string();
+        if (selection.git) {
+            settings_.before_revision = selection.git->before_revision;
+            settings_.after_revision = selection.git->after_revision;
+        }
+        if (open) {
+            settings_.before = selection.before;
+            settings_.after.clear();
+        } else if (action == CatalogAction::use_after)
+            settings_.after = selection.after;
+        else
+            settings_.before = selection.before;
+        if (!settings_.before.empty())
+            session_.request(settings_.request());
+    }
+    std::size_t images() const {
+        return images_.size();
+    }
     void poll(Renderer &renderer) {
+        browser_.poll();
+        if (browser_.document() != browsed_) {
+            browsed_ = browser_.document();
+            catalog_view_.set_items(
+                std::shared_ptr<const std::vector<CatalogItem>>(browsed_, &browsed_->assets),
+                browsed_->request.git.has_value());
+            if (!browse_select_.empty()) {
+                try {
+                    auto found = std::find_if(
+                        browsed_->assets.begin(), browsed_->assets.end(), [&](const auto &asset) {
+                            return asset.path == browse_select_ || asset.label == browse_select_;
+                        });
+                    if (found == browsed_->assets.end())
+                        throw Error("browser-selection", "Requested package is not in the catalogue");
+                    catalog_view_.select(static_cast<std::size_t>(found - browsed_->assets.begin()));
+                    select_browser(CatalogAction::open);
+                    close_browser_ = true;
+                } catch (const std::exception &e) {
+                    dialog_error_ = e.what();
+                }
+                browse_select_.clear();
+            }
+        }
         session_.poll();
         if (session_.document() == displayed_)
             return;
@@ -353,9 +490,11 @@ class Shell {
         }
     }
     std::string status() const {
+        if (browser_.busy())
+            return "Scanning content...";
         if (session_.busy())
             return "Loading...";
-        if (!session_.error().empty() || !dialog_error_.empty())
+        if (!error().empty())
             return "Load failed";
         if (!displayed_)
             return "Ready";
@@ -388,6 +527,9 @@ class Shell {
                     if (ImGui::MenuItem(cyui::trLabel("Choose project").c_str()))
                         action = Action::project;
                 }
+                if (ImGui::MenuItem(cyui::trLabel("Browse content...").c_str(), "Ctrl+B", false,
+                                    settings_.browse_ready()))
+                    action = Action::browse;
                 ImGui::Separator();
                 if (ImGui::MenuItem(cyui::trLabel("Exit").c_str()))
                     quit = true;
@@ -426,13 +568,19 @@ class Shell {
             if (cyui::iconButton(cyui::icon::refresh, cyui::tr("Reload (Ctrl+R)").c_str()))
                 action = Action::load;
             ImGui::SameLine();
+            {
+                cyui::ScopedDisabled disabled(!settings_.browse_ready());
+                if (cyui::iconButton(cyui::icon::library, cyui::tr("Browse content (Ctrl+B)").c_str()))
+                    action = Action::browse;
+            }
+            ImGui::SameLine();
             cyui::badge(cyui::tr("Read only").c_str());
         }
         cyui::endTopBar();
         if (cyui::beginStatusBar("##status")) {
-            cyui::statusText(session_.error().empty() ? cyui::Tone::neutral : cyui::Tone::error, "%s",
+            cyui::statusText(error().empty() ? cyui::Tone::neutral : cyui::Tone::error, "%s",
                              cyui::tr(status().c_str()).c_str());
-            if (session_.busy()) {
+            if (busy()) {
                 ImGui::SameLine();
                 cyui::spinner("##loading");
             }
@@ -496,6 +644,14 @@ class Shell {
                 }
                 cyui::endSection();
             }
+            {
+                cyui::ScopedDisabled disabled(!settings_.browse_ready());
+                if (cyui::button(cyui::trLabel("Browse content...").c_str(), cyui::Variant::secondary,
+                                 cyui::dp(-1, 0)))
+                    action = Action::browse;
+            }
+            if (settings_.source == 0 && settings_.project.empty())
+                ImGui::TextWrapped("%s", cyui::tr("Choose a project to browse its content.").c_str());
             cyui::toggleSwitch(cyui::trLabel("Load previews").c_str(), &settings_.previews);
             {
                 cyui::ScopedDisabled disabled(!settings_.ready());
@@ -553,9 +709,9 @@ class Shell {
         if (ImGui::Begin("##document", nullptr,
                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoSavedSettings)) {
-            const auto &error = dialog_error_.empty() ? session_.error() : dialog_error_;
-            if (!error.empty()) {
-                cyui::callout(cyui::Tone::error, error.c_str());
+            auto message = error();
+            if (!message.empty()) {
+                cyui::callout(cyui::Tone::error, message.c_str());
                 if (displayed_)
                     cyui::textDim("%s", cyui::tr("The previous document remains displayed.").c_str());
             }
@@ -580,11 +736,62 @@ class Shell {
                     cyui::icon::document);
         }
         ImGui::End();
-        if (!ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl) {
+        if (browser_open_) {
+            const auto title = cyui::trLabel("Content browser");
+            const auto width = std::min(980.0f, ImGui::GetMainViewport()->WorkSize.x / cyui::dpi() - 40.0f);
+            if (cyui::beginModal(title.c_str(), &browser_open_, width)) {
+                if (close_browser_) {
+                    ImGui::CloseCurrentPopup();
+                    browser_open_ = false;
+                    close_browser_ = false;
+                } else {
+                    if (settings_.source == 0)
+                        cyui::toggleSwitch(cyui::trLabel("Include engine content").c_str(),
+                                           &settings_.include_engine);
+                    if (cyui::button(cyui::trLabel("Refresh catalogue").c_str()))
+                        action = Action::browse;
+                    if (browser_.busy()) {
+                        ImGui::SameLine();
+                        cyui::spinner("##scan");
+                        cyui::textDim("%s", cyui::tr("Scanning content...").c_str());
+                    }
+                    if (!browser_.error().empty())
+                        cyui::callout(cyui::Tone::error, browser_.error().c_str());
+                    if (browsed_ &&
+                        (!browsed_->before.complete || (browsed_->request.git && !browsed_->after.complete)))
+                        cyui::callout(cyui::Tone::warning,
+                                      cyui::tr("Catalogue is partial. See scan diagnostics.").c_str());
+                    {
+                        cyui::ScopedDisabled disabled(browser_.busy() || !browser_.error().empty());
+                        auto selected = catalog_view_.draw("##catalog");
+                        if (selected != CatalogAction::none) {
+                            action = selected == CatalogAction::open
+                                         ? Action::browser_open
+                                         : (selected == CatalogAction::use_before ? Action::browser_before
+                                                                                  : Action::browser_after);
+                            ImGui::CloseCurrentPopup();
+                            browser_open_ = false;
+                        }
+                    }
+                    if (browsed_ && cyui::beginSection(cyui::trLabel("Scan diagnostics").c_str(), false)) {
+                        for (const auto *catalog : {&browsed_->before, &browsed_->after})
+                            for (const auto &message : catalog->diagnostics)
+                                ImGui::TextWrapped("%s", message.c_str());
+                        cyui::endSection();
+                    }
+                }
+                cyui::endModal();
+            }
+            if (!browser_open_)
+                browser_.cancel();
+        }
+        if (!browser_open_ && !ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl) {
             if (ImGui::IsKeyPressed(ImGuiKey_O, false))
                 action = ImGui::GetIO().KeyShift ? Action::open_after : Action::open_before;
             if (ImGui::IsKeyPressed(ImGuiKey_R, false))
                 action = Action::load;
+            if (ImGui::IsKeyPressed(ImGuiKey_B, false) && settings_.browse_ready())
+                action = Action::browse;
         }
         cyui::renderNotifications();
         return action;
@@ -594,6 +801,18 @@ class Shell {
             if (action == Action::none)
                 return;
             dialog_error_.clear();
+            if (action == Action::browse) {
+                start_browser();
+                return;
+            }
+            if (action == Action::browser_open || action == Action::browser_before ||
+                action == Action::browser_after) {
+                select_browser(action == Action::browser_open
+                                   ? CatalogAction::open
+                                   : (action == Action::browser_before ? CatalogAction::use_before
+                                                                       : CatalogAction::use_after));
+                return;
+            }
             if (settings_.source == 1 &&
                 (action == Action::open_before || action == Action::open_after || action == Action::project))
                 return;
@@ -626,7 +845,9 @@ struct ImGuiContextOwner {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
     }
-    ~ImGuiContextOwner() { ImGui::DestroyContext(); }
+    ~ImGuiContextOwner() {
+        ImGui::DestroyContext();
+    }
 };
 int run(const Options &options) {
     if (options.help) {
@@ -635,6 +856,7 @@ int run(const Options &options) {
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
+               "  --browse [--include-engine] [--browse-filter TEXT] : browse project or revision content\n"
                "  [--codec DLL] [--no-previews] [--locale en|fr] [--theme KEY]\n"
                "  [--view properties|blueprint|materials|textures|meshes|comparison]\n"
                "  --smoke [--capture FILE.png] [--report FILE.json] : hidden DX11/WARP validation\n";
@@ -675,16 +897,18 @@ int run(const Options &options) {
         ImGui::Render();
         renderer.draw();
         ++frames;
-        bool finished = options.smoke && !shell.session().busy() && ++settled >= 12;
+        if (shell.busy())
+            settled = 0;
+        bool finished = options.smoke && !shell.busy() && ++settled >= 12;
         if (options.smoke && std::chrono::steady_clock::now() - started > std::chrono::seconds(30))
             throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");
         if (finished) {
-            protect_outputs(options, shell.session().document());
+            protect_outputs(options, shell.session().document(), shell.browser_document());
             if (!options.capture.empty())
                 write_png(options.capture, renderer.capture());
             Json report = {{"schema", "cyuediff.desktop/1"},
-                           {"status", shell.session().error().empty() ? "ready" : "failed"},
-                           {"error", shell.session().error()},
+                           {"status", shell.error().empty() ? "ready" : "failed"},
+                           {"error", shell.error()},
                            {"frames", frames},
                            {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
                            {"renderer", "Direct3D11 WARP"},
@@ -692,6 +916,7 @@ int run(const Options &options) {
                            {"locale", cyui::locale()},
                            {"view", options.view},
                            {"uploadedPreviews", shell.images()},
+                           {"browser", shell.browser_report()},
                            {"document", shell.session().document() ? shell.session().document()->report()
                                                                    : Json(nullptr)}};
             if (!options.report.empty()) {
@@ -700,7 +925,7 @@ int run(const Options &options) {
                 if (!file)
                     throw Error("desktop-output", "Cannot write report");
             }
-            return shell.session().error().empty() ? 0 : 2;
+            return shell.error().empty() ? 0 : 2;
         }
         renderer.present(!options.smoke);
         shell.perform(action, window);
