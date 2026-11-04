@@ -147,6 +147,29 @@ std::optional<fs::path> NativeWindow::choose_file(bool project, bool container, 
         throw Error("desktop-dialog", "The file dialog failed");
     return std::nullopt;
 }
+std::optional<fs::path> NativeWindow::choose_workspace(bool save) {
+    std::vector<wchar_t> buffer(32768, 0);
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = handle;
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    auto filter = wide(cyui::tr("CyUEDiff workspace (*.json)"));
+    filter.push_back(L'\0');
+    filter += L"*.json";
+    filter.append(2, L'\0');
+    auto title = wide(cyui::tr(save ? "Save workspace as..." : "Choose workspace"));
+    dialog.lpstrFilter = filter.c_str();
+    dialog.lpstrTitle = title.c_str();
+    dialog.lpstrDefExt = L"json";
+    dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_DONTADDTORECENT |
+                   (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+    if (save ? GetSaveFileNameW(&dialog) : GetOpenFileNameW(&dialog))
+        return fs::path(buffer.data());
+    if (CommDlgExtendedError())
+        throw Error("desktop-dialog", "The workspace file dialog failed");
+    return std::nullopt;
+}
 void Renderer::target() {
     ComPtr<ID3D11Texture2D> buffer;
     require(swap_->GetBuffer(0, IID_PPV_ARGS(buffer.GetAddressOf())), "Get back buffer");

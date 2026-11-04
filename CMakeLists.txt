@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.35.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.36.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -223,6 +223,11 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_workspace_tests>"
                 "$<TARGET_FILE:cyuediff_container_tests>" "$<TARGET_FILE:cyuediff_schema_tests>")
             set_tests_properties(desktop_workspace_cli PROPERTIES TIMEOUT 90)
+            add_test(NAME desktop_workspace_persistence_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/workspace_persistence_cli_tests.py"
+                "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_workspace_tests>"
+                "$<TARGET_FILE:cyuediff_container_tests>" "$<TARGET_FILE:cyuediff_schema_tests>" "${CYUEDIFF_BUILD_GIT}")
+            set_tests_properties(desktop_workspace_persistence_cli PROPERTIES TIMEOUT 120)
         endif()
         add_executable(cyuediff_workspace_file_tests tests/workspace_file_tests.cpp)
         target_link_libraries(cyuediff_workspace_file_tests PRIVATE cyuediff_desktop_model)

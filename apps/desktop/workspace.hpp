@@ -33,6 +33,7 @@ class DocumentWorkspace {
 
   public:
     explicit DocumentWorkspace(DocumentSession::Loader = load_document, std::size_t maximum = 8);
+    void clear();
     DocumentId create();
     DocumentId open(LoadRequest);
     bool select(DocumentId);

@@ -19,6 +19,14 @@ WorkspaceDocument &DocumentWorkspace::require(DocumentId id) {
         throw Error("desktop-document", "Unknown document tab");
     return const_cast<WorkspaceDocument &>(*entry);
 }
+void DocumentWorkspace::clear() {
+    worker_.cancel();
+    running_ = active_ = 0;
+    queue_.clear();
+    pending_.clear();
+    documents_.clear();
+    closed_.clear();
+}
 DocumentId DocumentWorkspace::create() {
     if (documents_.size() >= maximum_ || next_ == std::numeric_limits<DocumentId>::max())
         throw Error("document-limit", "Too many open documents");

@@ -284,3 +284,10 @@ The extracted 0.34 archive is checked with its CLI and WARP host, four separatel
 ## 0.35 milestone: bounded workspace file model
 
 A dedicated desktop model suite passes 84 checks for loose/Git/container context round trips, independent after contexts, mounted names, Unicode filenames, relative path resolution, stable atomic saves, data-only codec exclusion, format/type/version validation, duplicate fields, UTF-8/control characters, read/write/depth/document/string budgets and preservation of unrelated or invalid files. The other 35 desktop-without-Git suites pass after extracting the shared settings type; a Windows separator mismatch in one new assertion was corrected and the complete new suite rerun. Native workspace commands and restart validation follow in the next milestones.
+
+
+## 0.36 milestone: native workspace commands
+
+Desktop without Git passes 37 suites, including 48 native persistence CLI checks. Three-source workspaces round-trip across separate processes and a different working directory with matching loose/Pak/mapped-Zen reports. Tests verify active tab/view restoration, per-document preview options and explicit overrides, fresh reads after fixture edits, isolated missing-package failures, empty workspaces, action-based save/import and retention of existing views after failed imports.
+
+Workspace output guards reject hard-link aliases to packages, schema contexts, mappings, global UCAS and secondary partitions. Reports/preferences cannot overwrite a workspace input; workspace saves can replace that valid file explicitly. A clear operation releases snapshots/closed history, preserves unique IDs and rejects pre-import worker results. The full Git build and native capture/distribution checks follow the next milestone.

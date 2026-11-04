@@ -1,6 +1,6 @@
 #include "document.hpp"
 #include "workspace.hpp"
-#include "context.hpp"
+#include "workspace_file.hpp"
 #include "document_tabs.hpp"
 #include "browser.hpp"
 #include "preferences.hpp"
@@ -19,6 +19,7 @@
 #include <chrono>
 #include <algorithm>
 #include <map>
+#include <set>
 
 using namespace cyuediff;
 using namespace cyuediff::desktop;
@@ -29,7 +30,8 @@ struct Options {
     std::optional<std::size_t> selected_document;
     std::vector<std::string> document_actions;
     bool smoke = false, help = false, browse = false;
-    fs::path capture, report, preferences;
+    fs::path capture, report, preferences, workspace_input, workspace_output;
+    bool document_parameters = false;
     bool no_preferences = false, save_preferences = false, preference_write = false;
     bool theme_override = false, locale_override = false, previews_override = false, engine_override = false;
     std::string preferences_diagnostic;
@@ -61,12 +63,35 @@ Options parse_one(const std::vector<std::string> &args) {
     bool git_options = false;
     for (std::size_t i = 1; i < args.size(); ++i) {
         const auto &argument = args[i];
+        const std::set<std::string> global_options = {"--workspace",
+                                                      "--save-workspace",
+                                                      "--smoke",
+                                                      "--capture",
+                                                      "--report",
+                                                      "--locale",
+                                                      "--theme",
+                                                      "--preferences",
+                                                      "--no-preferences",
+                                                      "--save-preferences",
+                                                      "--document-action",
+                                                      "--document-index",
+                                                      "--codec",
+                                                      "--previews",
+                                                      "--no-previews",
+                                                      "--help",
+                                                      "-h"};
+        if (!global_options.count(argument))
+            options.document_parameters = true;
         auto value = [&]() {
             if (++i >= args.size())
                 throw Error("desktop-option", "Missing value for " + argument);
             return args[i];
         };
-        if (argument == "--document-action") {
+        if (argument == "--workspace")
+            options.workspace_input = fs::u8path(value());
+        else if (argument == "--save-workspace")
+            options.workspace_output = fs::u8path(value());
+        else if (argument == "--document-action") {
             auto action = value();
             if (action.empty() || action.size() > 1024 || options.document_actions.size() >= 64)
                 throw Error("desktop-option", "Document action limit exceeded");
@@ -234,6 +259,11 @@ Options parse_one(const std::vector<std::string> &args) {
         else
             throw Error("desktop-option", "Too many package paths");
     }
+    if (!options.workspace_output.empty() && !options.smoke)
+        throw Error("desktop-option", "--save-workspace requires --smoke; use the File menu interactively");
+    for (const auto &path : {options.workspace_input, options.workspace_output})
+        if (!path.empty() && path.extension() != ".json")
+            throw Error("desktop-option", "Workspace requires a .json path");
     if (!options.document_actions.empty() && !options.smoke)
         throw Error("desktop-option", "Document action sequences require --smoke");
     if (options.no_preferences && (!options.preferences.empty() || options.save_preferences))
@@ -311,6 +341,7 @@ Options parse(const std::vector<std::string> &args) {
         auto entry = parse_one(groups[i]);
         if (entry.smoke || entry.help || entry.history || entry.browse || !entry.capture.empty() ||
             !entry.report.empty() || !entry.preferences.empty() || entry.no_preferences ||
+            !entry.workspace_input.empty() || !entry.workspace_output.empty() ||
             !entry.document_actions.empty() || entry.save_preferences || entry.theme_override ||
             entry.locale_override || entry.selected_document)
             throw Error("desktop-option", "Global options must precede --new-document");
@@ -318,9 +349,48 @@ Options parse(const std::vector<std::string> &args) {
     }
     if (!result.additional_documents.empty() && (result.history || result.browse))
         throw Error("desktop-option", "Automatic history/browser launch requires a single document");
-    if (result.selected_document && *result.selected_document >= groups.size())
+    if (!result.workspace_input.empty() &&
+        (result.document_parameters || !result.additional_documents.empty()))
+        throw Error("desktop-option", "Workspace launch conflicts with document source options");
+    if (result.workspace_input.empty() && result.selected_document &&
+        *result.selected_document >= groups.size())
         throw Error("desktop-option", "Selected document index is not open");
     return result;
+}
+void validate_workspace_host(const WorkspaceFile &file) {
+#ifndef CYUEDIFF_HAS_GIT
+    for (const auto &doc : file.documents)
+        if (doc.settings.source == 1)
+            throw Error("desktop-option", "This desktop build does not include the Git adapter");
+#endif
+}
+Options workspace_options(Options options, const WorkspaceFile &file) {
+    validate_workspace_host(file);
+    const auto codec = options.settings.codec;
+    const auto previews = options.settings.previews;
+    const bool override_previews = options.previews_override;
+    auto apply = [&](Options &entry, const SavedDocument &doc) {
+        entry.settings = doc.settings;
+        entry.settings.codec = codec;
+        if (override_previews)
+            entry.settings.previews = previews;
+        entry.previews_override = entry.engine_override = true;
+        entry.view = doc.view;
+        entry.container_tab = doc.container_tab;
+        entry.cooked_view = doc.cooked_view;
+    };
+    options.additional_documents.clear();
+    apply(options, file.documents.front());
+    for (std::size_t i = 1; i < file.documents.size(); ++i) {
+        Options entry;
+        apply(entry, file.documents[i]);
+        options.additional_documents.push_back(std::move(entry));
+    }
+    if (!options.selected_document)
+        options.selected_document = file.active;
+    if (*options.selected_document >= file.documents.size())
+        throw Error("desktop-option", "Selected document index is not open");
+    return options;
 }
 void register_translations() {
 #ifdef CYUEDIFF_HAS_GIT
@@ -334,6 +404,12 @@ void register_translations() {
         "fr",
         {{"CyUEDiff preferences", "Préférences CyUEDiff"},
          {"Preferences could not be loaded.", "Les préférences n'ont pas pu être chargées."},
+         {"Open workspace...", "Ouvrir un espace de travail..."},
+         {"Save workspace", "Enregistrer l'espace de travail"},
+         {"Save workspace as...", "Enregistrer l'espace de travail sous..."},
+         {"Choose workspace", "Choisir un espace de travail"},
+         {"CyUEDiff workspace (*.json)", "Espace de travail CyUEDiff (*.json)"},
+         {"Workspace saved", "Espace de travail enregistr\u00e9"},
          {"Cancelled", "Annulé"},
          {"Cancel loading", "Annuler le chargement"},
          {"Opening document", "Ouverture du document"},
@@ -459,20 +535,28 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
                      const std::shared_ptr<const BrowseDocument> &browser = {},
                      const fs::path &history_storage = {}) {
     std::vector<fs::path> outputs;
-    for (const auto &path : {options.capture, options.report})
+    for (const auto &path : {options.capture, options.report, options.workspace_output})
         if (!path.empty()) {
             if (!options.preferences.empty() && same_path(path, options.preferences))
                 throw Error("desktop-output", "Output overlaps preferences input");
+            if (!options.workspace_input.empty() && same_path(path, options.workspace_input) &&
+                (options.workspace_output.empty() || !same_path(path, options.workspace_output)))
+                throw Error("desktop-output", "Output overlaps workspace input");
             outputs.push_back(path);
         }
-    if (options.preference_write && !options.preferences.empty())
+    if (options.preference_write && !options.preferences.empty()) {
+        if (!options.workspace_input.empty() && same_path(options.preferences, options.workspace_input))
+            throw Error("desktop-output", "Preferences overlap workspace input");
         outputs.push_back(options.preferences);
+    }
     if (outputs.empty())
         return;
     for (const auto &entry : options.additional_documents) {
         auto other = entry;
         other.capture = options.capture;
         other.report = options.report;
+        other.workspace_input = options.workspace_input;
+        other.workspace_output = options.workspace_output;
         other.preferences = options.preferences;
         other.preference_write = options.preference_write;
         protect_outputs(other, {}, {}, {});
@@ -619,7 +703,10 @@ enum class Action {
     reopen_document,
     close_other_documents,
     next_document,
-    previous_document
+    previous_document,
+    open_workspace,
+    save_workspace,
+    save_workspace_as
 };
 struct DocumentContext {
     Settings settings;
@@ -647,6 +734,9 @@ class Shell {
     std::map<DocumentId, DocumentContext> closed_contexts_;
     std::deque<std::string> smoke_actions_;
     Json action_results_ = Json::array();
+    Options protections_;
+    fs::path workspace_path_;
+    bool workspace_loaded_ = false, workspace_saved_ = false;
     DocumentPresentation &current() {
         return *presentations_.at(session_.active_id());
     }
@@ -670,7 +760,10 @@ class Shell {
     std::string preferences_diagnostic_;
 
   public:
-    explicit Shell(const Options &options) : preferences_diagnostic_(options.preferences_diagnostic) {
+    explicit Shell(const Options &options)
+        : protections_(options), workspace_path_(options.workspace_input),
+          workspace_loaded_(!options.workspace_input.empty()),
+          preferences_diagnostic_(options.preferences_diagnostic) {
         auto initialize = [&](DocumentId id, const Options &entry) {
             auto state = std::make_unique<DocumentPresentation>();
             state->settings = entry.settings;
@@ -684,7 +777,7 @@ class Shell {
             state->container_view.set_filter(entry.container_filter);
             state->container_view.set_changed_only(entry.container_changes_only);
             presentations_[id] = std::move(state);
-            if ((entry.settings.source == 2 || !entry.settings.before.empty()) && !entry.history)
+            if (presentations_.at(id)->settings.ready() && !entry.history)
                 session_.request(id, presentations_.at(id)->settings.request());
         };
         smoke_actions_.assign(options.document_actions.begin(), options.document_actions.end());
@@ -883,6 +976,68 @@ class Shell {
             presentations_[empty] = std::move(state);
         }
     }
+    WorkspaceFile saved_workspace() const {
+        WorkspaceFile result;
+        result.documents.clear();
+        const char *views[] = {"properties", "blueprint", "materials", "textures", "meshes", "comparison"};
+        for (const auto &entry : session_.documents()) {
+            const auto &p = *presentations_.at(entry.id);
+            SavedDocument d;
+            d.settings = p.settings;
+            d.view = views[static_cast<int>(p.displayed ? p.view.active_tab() : p.initial_tab)];
+            d.container_tab =
+                p.displayed && p.displayed->container ? p.container_view.active_tab() : p.container_tab;
+            d.cooked_view = p.displayed && p.displayed->container
+                                ? p.container_view.property_report()["mode"].get<std::string>()
+                                : p.cooked_view;
+            if (entry.id == session_.active_id())
+                result.active = result.documents.size();
+            result.documents.push_back(std::move(d));
+        }
+        return result;
+    }
+    void write_workspace(const fs::path &path) {
+        auto guard = protections_;
+        guard.workspace_output = path;
+        guard.workspace_input = workspace_path_;
+        protect(guard);
+        desktop::save_workspace(path, saved_workspace());
+        workspace_path_ = fs::absolute(path);
+        workspace_saved_ = true;
+    }
+    void open_workspace(const fs::path &path) {
+        auto file = desktop::read_workspace(path);
+        auto guard = protections_;
+        guard.workspace_input = path;
+        guard.selected_document.reset();
+        guard = workspace_options(std::move(guard), file);
+        protect_outputs(guard, {});
+        reset_navigation();
+        session_.clear();
+        presentations_.clear();
+        closed_contexts_.clear();
+        for (const auto &d : file.documents) {
+            const auto id = session_.create();
+            auto state = std::make_unique<DocumentPresentation>();
+            state->settings = d.settings;
+            state->initial_tab = tab(d.view);
+            state->container_tab = d.container_tab;
+            state->cooked_view = d.cooked_view;
+            presentations_[id] = std::move(state);
+            if (d.settings.ready())
+                session_.request(id, d.settings.request());
+        }
+        session_.select(session_.documents()[file.active].id);
+        workspace_path_ = fs::absolute(path);
+        workspace_loaded_ = true;
+        workspace_saved_ = false;
+    }
+    Json workspace_file_report() const {
+        return {{"path", workspace_path_.u8string()},
+                {"loaded", workspace_loaded_},
+                {"saved", workspace_saved_},
+                {"context", saved_workspace().to_json()}};
+    }
     void prune_closed_contexts() {
         for (auto it = closed_contexts_.begin(); it != closed_contexts_.end();) {
             const auto id = it->first;
@@ -974,6 +1129,10 @@ class Shell {
                 cycle_document(false);
             else if (command == "previous" && argument.empty())
                 cycle_document(true);
+            else if (command == "workspace-save" && !argument.empty())
+                write_workspace(fs::u8path(argument));
+            else if (command == "workspace-open" && !argument.empty())
+                open_workspace(fs::u8path(argument));
             else if (command == "reload" && argument.empty()) {
                 if (!current().settings.ready())
                     throw Error("desktop-document", "No document context to reload");
@@ -996,7 +1155,9 @@ class Shell {
         return true;
     }
     void protect(const Options &options) const {
-        protect_outputs(options, {}, browsed_, history_storage());
+        auto workspace_guard = options;
+        workspace_guard.workspace_input = workspace_path_;
+        protect_outputs(workspace_guard, {}, browsed_, history_storage());
         for (const auto &closed : closed_contexts_) {
             auto local = options;
             local.additional_documents.clear();
@@ -1226,6 +1387,12 @@ class Shell {
                     if (ImGui::MenuItem(cyui::trLabel("Choose project").c_str()))
                         action = Action::project;
                 }
+                if (ImGui::MenuItem(cyui::trLabel("Open workspace...").c_str(), "Ctrl+Alt+O"))
+                    action = Action::open_workspace;
+                if (ImGui::MenuItem(cyui::trLabel("Save workspace").c_str(), "Ctrl+S"))
+                    action = Action::save_workspace;
+                if (ImGui::MenuItem(cyui::trLabel("Save workspace as...").c_str(), "Ctrl+Shift+S"))
+                    action = Action::save_workspace_as;
                 if (ImGui::MenuItem(cyui::trLabel("New document").c_str(), "Ctrl+N", false,
                                     session_.documents().size() < session_.maximum()))
                     action = Action::new_document;
@@ -1664,7 +1831,11 @@ class Shell {
 #endif
         if (!modal_open && !ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl) {
             if (ImGui::IsKeyPressed(ImGuiKey_O, false))
-                action = ImGui::GetIO().KeyShift ? Action::open_after : Action::open_before;
+                action = ImGui::GetIO().KeyAlt
+                             ? Action::open_workspace
+                             : (ImGui::GetIO().KeyShift ? Action::open_after : Action::open_before);
+            if (ImGui::IsKeyPressed(ImGuiKey_S, false))
+                action = ImGui::GetIO().KeyShift ? Action::save_workspace_as : Action::save_workspace;
             if (ImGui::IsKeyPressed(ImGuiKey_N, false))
                 action = Action::new_document;
             if (ImGui::IsKeyPressed(ImGuiKey_D, false))
@@ -1687,6 +1858,21 @@ class Shell {
         try {
             if (action == Action::none)
                 return;
+            if (action == Action::open_workspace) {
+                if (auto path = window.choose_workspace(false))
+                    open_workspace(*path);
+                return;
+            }
+            if (action == Action::save_workspace || action == Action::save_workspace_as) {
+                auto path = workspace_path_.empty() || action == Action::save_workspace_as
+                                ? window.choose_workspace(true)
+                                : std::optional<fs::path>(workspace_path_);
+                if (path) {
+                    write_workspace(*path);
+                    cyui::notify(cyui::tr("Workspace saved").c_str(), cyui::Tone::success);
+                }
+                return;
+            }
             if (action == Action::document_tab) {
                 if (tab_action_.operation == DocumentTabOperation::create)
                     create_document();
@@ -1877,6 +2063,8 @@ int run(Options options) {
                "  [--document-action select:N|close|duplicate|reopen|close-others|next|previous|reload] : "
                "smoke only\n"
                "  [--new-document SOURCE_OPTIONS ...] [--document-index 0..7]\n"
+               "  --workspace FILE.json : restore documents and contexts\n"
+               "  --smoke --save-workspace FILE.json : explicit workspace test write\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
                "  [--container-tab members|inspection|objects|comparison|schema]\n"
@@ -1916,6 +2104,11 @@ int run(Options options) {
             }
             options.preference_write = saved.writable && (!options.smoke || options.save_preferences);
         }
+    }
+    if (!options.workspace_input.empty()) {
+        options.workspace_input = fs::absolute(options.workspace_input);
+        const auto file = desktop::read_workspace(options.workspace_input);
+        options = workspace_options(std::move(options), file);
     }
     protect_outputs(options, {});
     NativeWindow window(options.smoke);
@@ -1972,6 +2165,8 @@ int run(Options options) {
         if (options.smoke && std::chrono::steady_clock::now() - started > std::chrono::seconds(30))
             throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");
         if (finished) {
+            if (!options.workspace_output.empty())
+                shell.write_workspace(options.workspace_output);
             persist();
             shell.protect(options);
             if (!options.capture.empty())
@@ -1995,6 +2190,7 @@ int run(Options options) {
                            {"browser", shell.browser_report()},
                            {"history", shell.history_report()},
                            {"workspace", shell.workspace_report()},
+                           {"workspaceFile", shell.workspace_file_report()},
                            {"containerView", shell.container_view_report()},
                            {"document", shell.session().document() ? shell.session().document()->report()
                                                                    : Json(nullptr)}};

@@ -259,6 +259,7 @@ void AssetView::draw(const char *id, bool show_language) {
             return requested == tab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
         };
         if (ImGui::BeginTabItem(cyui::trLabel("Properties").c_str(), nullptr, flags(AssetTab::properties))) {
+            active_tab_ = AssetTab::properties;
             if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !properties_after_)) {
                     properties_after_ = false;
@@ -318,6 +319,7 @@ void AssetView::draw(const char *id, bool show_language) {
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Blueprint graphs").c_str(), nullptr,
                                 flags(AssetTab::blueprint))) {
+            active_tab_ = AssetTab::blueprint;
             if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !graph_after_))
                     graph_after_ = false;
@@ -329,6 +331,7 @@ void AssetView::draw(const char *id, bool show_language) {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Materials").c_str(), nullptr, flags(AssetTab::materials))) {
+            active_tab_ = AssetTab::materials;
             if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !material_after_))
                     material_after_ = false;
@@ -340,6 +343,7 @@ void AssetView::draw(const char *id, bool show_language) {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Textures").c_str(), nullptr, flags(AssetTab::textures))) {
+            active_tab_ = AssetTab::textures;
             if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !texture_after_)) {
                     texture_after_ = false;
@@ -367,6 +371,7 @@ void AssetView::draw(const char *id, bool show_language) {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Meshes").c_str(), nullptr, flags(AssetTab::meshes))) {
+            active_tab_ = AssetTab::meshes;
             if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !mesh_after_))
                     mesh_after_ = false;
@@ -379,6 +384,7 @@ void AssetView::draw(const char *id, bool show_language) {
         }
         if (comparison_ &&
             ImGui::BeginTabItem(cyui::trLabel("Comparison").c_str(), nullptr, flags(AssetTab::comparison))) {
+            active_tab_ = AssetTab::comparison;
             cyui::diffViewer("##semantic-diff", diff_state_, document_, ImGui::GetContentRegionAvail());
             ImGui::EndTabItem();
         }

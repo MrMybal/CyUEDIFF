@@ -208,6 +208,21 @@ int main(int argc, char **argv) {
         }
         check(lifecycle.closed().size() == 8, "Closed context history stays bounded without snapshots");
         check(!lifecycle.close_others(999), "Invalid close-others ID is inert");
+        DocumentWorkspace reset(result);
+        reset.request({"retained"});
+        settle(reset);
+        std::weak_ptr<const Document> released = reset.document();
+        auto previous = reset.active_id();
+        reset.open({"superseded"});
+        reset.clear();
+        check(reset.documents().empty() && reset.closed().empty() && !reset.busy() && released.expired(),
+              "Clear releases documents and closes history without starting queued work");
+        auto fresh = reset.create();
+        check(fresh > previous, "Clear preserves non-reused document IDs");
+        reset.request({"fresh"});
+        settle(reset);
+        check(reset.document()->request.before == "fresh",
+              "Pre-clear results cannot publish in restored workspace");
         std::cout << checks << " document workspace checks passed\n";
         return 0;
     } catch (const std::exception &error) {

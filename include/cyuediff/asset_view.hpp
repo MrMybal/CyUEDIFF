@@ -23,6 +23,7 @@ class AssetView {
     std::shared_ptr<const MeshGeometry> before_geometry_, after_geometry_;
     std::vector<std::string> before_properties_, after_properties_;
     std::optional<AssetTab> requested_tab_;
+    AssetTab active_tab_ = AssetTab::properties;
     BlueprintView before_graph_, after_graph_;
     MaterialView before_material_, after_material_;
     bool material_after_ = false;
@@ -44,6 +45,9 @@ class AssetView {
                                 const cyui::ImageData &, const HdrImageComparison &);
     bool clear_texture_preview(const std::string &object_path, bool after = false);
     void set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after = false);
+    AssetTab active_tab() const {
+        return requested_tab_.value_or(active_tab_);
+    }
     void select_tab(AssetTab tab) {
         requested_tab_ = tab;
     }
