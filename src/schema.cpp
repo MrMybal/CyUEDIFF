@@ -7,7 +7,7 @@
 #include <fstream>
 namespace cyuediff {
 namespace {
-enum class NativeShape { array, transform, guid };
+enum class NativeShape { array, transform, guid, ticks };
 struct NativeLayoutInfo {
     NativeStructLayout layout;
     const char *name;
@@ -31,7 +31,9 @@ constexpr NativeLayoutInfo native_layouts[] = {
     {NativeStructLayout::linear_color_f32, "linear-color-f32", 3, 4},
     {NativeStructLayout::color_bgra8, "color-bgra8", 0, 4},
     {NativeStructLayout::int_point, "int-point", 2, 2},
-    {NativeStructLayout::int_vector, "int-vector", 2, 3}};
+    {NativeStructLayout::int_vector, "int-vector", 2, 3},
+    {NativeStructLayout::date_time_i64, "date-time-i64", 21, 1, NativeShape::ticks},
+    {NativeStructLayout::timespan_i64, "timespan-i64", 21, 1, NativeShape::ticks}};
 const NativeLayoutInfo &native_layout_info(NativeStructLayout layout) {
     for (const auto &info : native_layouts)
         if (info.layout == layout)
@@ -782,6 +784,8 @@ struct PropertyReader {
                     read_value(SchemaType{static_cast<std::uint8_t>(info.kind), {}, {}}, zero, nesting + 1));
             return result;
         };
+        if (info.shape == NativeShape::ticks)
+            return {{"ticks", read_value(SchemaType{21, {}, {}}, zero, nesting + 1)}};
         if (info.shape == NativeShape::transform) {
             // Serialized quaternion, translation, scale; no in-memory SIMD padding.
             auto rotation = values(4), translation = values(3), scale = values(3);

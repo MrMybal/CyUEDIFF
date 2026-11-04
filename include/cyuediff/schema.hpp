@@ -70,7 +70,9 @@ enum class NativeStructLayout {
     linear_color_f32,
     color_bgra8,
     int_point,
-    int_vector
+    int_vector,
+    date_time_i64,
+    timespan_i64
 };
 const char *native_struct_layout_name(NativeStructLayout);
 NativeStructLayout parse_native_struct_layout(const std::string &);

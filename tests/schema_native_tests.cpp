@@ -39,12 +39,13 @@ int main(int argc, char **argv) {
             bool integral = false;
         };
         const Case cases[] = {
-            {"vector2-f32", 4, 2},     {"vector2-f64", 8, 2},      {"vector3-f32", 4, 3},
-            {"vector3-f64", 8, 3},     {"vector4-f32", 4, 4},      {"vector4-f64", 8, 4},
-            {"quat-f32", 4, 4},        {"quat-f64", 8, 4},         {"rotator-f32", 4, 3},
-            {"rotator-f64", 8, 3},     {"transform-f32", 4, 10},   {"transform-f64", 8, 10},
-            {"guid", 4, 4, true},      {"linear-color-f32", 4, 4}, {"color-bgra8", 1, 4, true},
-            {"int-point", 4, 2, true}, {"int-vector", 4, 3, true}};
+            {"vector2-f32", 4, 2},       {"vector2-f64", 8, 2},      {"vector3-f32", 4, 3},
+            {"vector3-f64", 8, 3},       {"vector4-f32", 4, 4},      {"vector4-f64", 8, 4},
+            {"quat-f32", 4, 4},          {"quat-f64", 8, 4},         {"rotator-f32", 4, 3},
+            {"rotator-f64", 8, 3},       {"transform-f32", 4, 10},   {"transform-f64", 8, 10},
+            {"guid", 4, 4, true},        {"linear-color-f32", 4, 4}, {"color-bgra8", 1, 4, true},
+            {"int-point", 4, 2, true},   {"int-vector", 4, 3, true}, {"date-time-i64", 8, 1, true},
+            {"timespan-i64", 8, 1, true}};
         for (const auto &c : cases) {
             auto layout = parse_native_struct_layout(c.name);
             check(std::string(native_struct_layout_name(layout)) == c.name, "Native layout name round trip");
@@ -54,7 +55,10 @@ int main(int argc, char **argv) {
             Json expected = Json::array();
             for (unsigned i = 0; i < c.count; ++i) {
                 if (c.integral) {
-                    if (c.width == 1) {
+                    if (c.width == 8) {
+                        values.put<std::int64_t>(-9007199254740993LL);
+                        expected.push_back(-9007199254740993LL);
+                    } else if (c.width == 1) {
                         values.put<std::uint8_t>(11 + i * 11);
                         expected.push_back(11 + i * 11);
                     } else if (std::string(c.name) == "guid")
@@ -78,6 +82,8 @@ int main(int argc, char **argv) {
                 expected = {{"rotation", {.125, 1.125, 2.125, 3.125}},
                             {"translation", {4.125, 5.125, 6.125}},
                             {"scale", {7.125, 8.125, 9.125}}};
+            if (c.width == 8 && c.integral)
+                expected = {{"ticks", expected[0]}};
             auto wire = collection_single(values);
             rejects([&] { decode(wire, {}); }, "schema-type");
             auto result = decode(wire, options);
@@ -110,6 +116,8 @@ int main(int argc, char **argv) {
                 check(value["rotation"] == Json::array({0, 0, 0, 0}) &&
                           value["scale"] == Json::array({0, 0, 0}),
                       "Zero transform is not synthesized as identity");
+            else if (c.width == 8 && c.integral)
+                check(value == Json{{"ticks", 0}}, "Zero ticks do not acquire the current time");
             else
                 check(value == Json(std::vector<int>(c.count, 0)), "Zero scalar components remain zero");
             if (!c.integral) {
@@ -122,6 +130,43 @@ int main(int argc, char **argv) {
                     std::memcpy(bad.data.data() + 2, &v, 8);
                 }
                 rejects([&] { decode(bad, options); }, "schema-value");
+            }
+        }
+        for (auto layout : {NativeStructLayout::date_time_i64, NativeStructLayout::timespan_i64}) {
+            UnversionedReadOptions temporal;
+            temporal.native_structs["/Script/Test.Record"] = layout;
+            for (auto ticks : {std::numeric_limits<std::int64_t>::min(), std::int64_t(-1), std::int64_t(0),
+                               std::numeric_limits<std::int64_t>::max()}) {
+                Bytes payload;
+                payload.put<std::int64_t>(ticks);
+                const auto wire = collection_single(payload);
+                check(decode(wire, temporal).properties[field]["value"] == Json{{"ticks", ticks}},
+                      "Temporal native values retain every signed 64-bit boundary");
+            }
+            auto context = std::make_shared<ZenSchemaContext>();
+            context->schemas = std::make_shared<UnversionedSchemas>(schemas);
+            context->bindings["/Script/Test.DemoAsset"] = {"Collections", 0};
+            context->native_structs = temporal.native_structs;
+            ZenReadOptions zen;
+            zen.schema_context = context;
+            zen.script_objects = std::make_shared<ScriptObjects>(ScriptObjects::parse(script_fixture().data));
+            for (bool modern : {false, true}) {
+                context->profile = modern ? ZenProfile::unreal_5_5 : ZenProfile::unreal_5_3;
+                zen.profile = context->profile;
+                auto package = [&](std::int64_t ticks) {
+                    Bytes payload;
+                    payload.put<std::int64_t>(ticks);
+                    return ZenPackage::parse(collection_zen_fixture(collection_single(payload), modern).data,
+                                             zen);
+                };
+                const auto before = package(9007199254740992LL), after = package(9007199254740993LL);
+                const auto diff = compare_zen_packages(before, after);
+                bool precise = false;
+                for (const auto &change : diff["changes"])
+                    precise |= change["path"].get<std::string>().find("/value/ticks") != std::string::npos &&
+                               change["before"] == 9007199254740992LL &&
+                               change["after"] == 9007199254740993LL;
+                check(precise, "Native tick diff retains changes smaller than floating point resolution");
             }
         }
         rejects([&] { parse_native_struct_layout("Vector"); }, "schema-context");
