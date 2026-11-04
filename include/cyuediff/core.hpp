@@ -18,6 +18,26 @@ class Error : public std::runtime_error {
     const std::string code;
     const std::uint64_t offset;
 };
+struct OperationProgress {
+    std::string phase;
+    std::uint64_t completed = 0, total = 0;
+};
+// Callbacks execute on the calling worker. They must be thread-safe and must not throw.
+// Cancellation propagates as Error("cancelled"); it is never converted into opaque data.
+struct OperationControl {
+    std::function<bool()> cancelled;
+    std::function<void(const OperationProgress &)> progress;
+    void check() const {
+        if (cancelled && cancelled())
+            throw Error("cancelled", "Operation cancelled");
+    }
+    void checkpoint(const char *phase, std::uint64_t completed = 0, std::uint64_t total = 0) const {
+        check();
+        if (progress)
+            progress({phase, completed, total});
+        check();
+    }
+};
 class DecoderRegistry;
 struct ReadOptions {
     bool properties = true, fingerprints = true, native_graphs = true, native_textures = true,
@@ -26,6 +46,7 @@ struct ReadOptions {
     std::uint64_t max_property_bytes = 32 * 1024 * 1024;
     std::uint32_t max_properties = 100'000, max_depth = 48;
     std::shared_ptr<const DecoderRegistry> decoders;
+    OperationControl control;
 };
 struct EngineInfo {
     fs::path root;
@@ -86,6 +107,7 @@ using BlockDecoder =
 struct BulkDecodeOptions {
     std::uint64_t max_payload_bytes = 256ull * 1024 * 1024;
     BlockDecoder decoder;
+    OperationControl control;
 };
 // Loading is explicit; the Core never discovers or executes an engine automatically.
 BlockDecoder load_block_decoder(const fs::path &module);
@@ -197,7 +219,7 @@ struct DiffResult {
     std::string status() const;
     Json to_json() const;
 };
-DiffResult compare(const Package &before, const Package &after);
+DiffResult compare(const Package &before, const Package &after, const OperationControl &control = {});
 struct MaterialComparison {
     Json changes = Json::array();
     bool complete = false;
@@ -206,6 +228,6 @@ struct MaterialComparison {
 };
 // Compares the serialized graph/parameter projection; no parent or shader evaluation.
 MaterialComparison compare_materials(const Package &before, const Package &after);
-std::string sha256_file(const fs::path &path);
-std::string sha256_bytes(const std::vector<std::uint8_t> &bytes);
+std::string sha256_file(const fs::path &path, const OperationControl &control = {});
+std::string sha256_bytes(const std::vector<std::uint8_t> &bytes, const OperationControl &control = {});
 } // namespace cyuediff

@@ -13,6 +13,7 @@ struct GitOptions {
     std::uint64_t max_file_bytes = 2ull * 1024 * 1024 * 1024;
     std::uint64_t max_total_bytes = 4ull * 1024 * 1024 * 1024;
     std::uint32_t timeout_ms = 30'000; // Per Git process.
+    OperationControl control;
 };
 struct GitFile {
     std::string path, blob_oid, lfs_oid;

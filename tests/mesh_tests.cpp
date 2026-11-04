@@ -219,6 +219,11 @@ int main() {
             return detail::decode_mesh_description(f.bytes.data, source, options);
         };
         auto mesh = decode(data);
+        unsigned cancel_checks = 0;
+        options.control.cancelled = [&] { return ++cancel_checks >= 12; };
+        error([&] { decode(data); }, "cancelled");
+        options.control = {};
+
         check(mesh.vertices.size() == 3 && mesh.instances.size() == 3 && mesh.triangles.size() == 1,
               "Sparse geometry counts");
         check(mesh.vertices[1].id == 2 && mesh.vertices[2].id == 4 && mesh.triangles[0].id == 2,

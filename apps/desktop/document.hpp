@@ -1,9 +1,10 @@
 #pragma once
-#include <cyuediff/core.hpp>
+#include <cyuediff/cache.hpp>
 #ifdef CYUEDIFF_HAS_GIT
 #include <cyuediff/git.hpp>
 #endif
 #include <condition_variable>
+#include <atomic>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -19,6 +20,10 @@ struct LoadRequest {
     fs::path project, engine_root, codec;
     bool previews = true;
     std::optional<GitSource> git;
+    OperationControl control;
+    // Empty fields inherit the before-side project/engine selection.
+    fs::path after_project, after_engine_root;
+    std::shared_ptr<PackageCache> cache;
 };
 struct Preview {
     std::string object_path;
@@ -32,7 +37,7 @@ struct TextureDifference {
 struct Document {
     LoadRequest request;
     std::shared_ptr<const Package> before, after;
-    std::optional<ProjectContext> project;
+    std::optional<ProjectContext> project, after_project;
     std::optional<DiffResult> diff;
     std::vector<Preview> previews;
     std::vector<TextureDifference> texture_differences;
@@ -59,6 +64,11 @@ class DocumentSession {
     DocumentSession(const DocumentSession &) = delete;
     DocumentSession &operator=(const DocumentSession &) = delete;
     void request(LoadRequest);
+    void cancel();
+    bool cancelled() const {
+        return cancelled_;
+    }
+    OperationProgress progress() const;
     bool poll();
     bool busy() const {
         return busy_;
@@ -81,7 +91,11 @@ class DocumentSession {
         std::string error;
     };
     Loader loader_;
-    std::mutex mutex_;
+    std::shared_ptr<PackageCache> cache_ = std::make_shared<PackageCache>();
+    mutable std::mutex mutex_;
+    std::shared_ptr<std::atomic<bool>> cancel_;
+    OperationProgress progress_;
+    bool cancelled_ = false;
     std::condition_variable wake_;
     std::optional<Work> pending_;
     std::optional<Result> result_;

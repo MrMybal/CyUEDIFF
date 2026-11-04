@@ -8,7 +8,7 @@
 namespace cyuediff::detail {
 class Archive {
     std::ifstream stream_;
-    std::uint64_t position_ = 0, end_ = 0, read_limit_ = 0;
+    std::uint64_t position_ = 0, end_ = 0, read_limit_ = 0, progress_bytes_ = 0;
     const ReadOptions &options_;
 
   public:

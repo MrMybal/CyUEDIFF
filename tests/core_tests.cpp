@@ -40,6 +40,32 @@ int main() {
         check(sha256_file(root / "empty") ==
                   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
               "SHA256 empty");
+        auto cancellable = save(root, "cancellable", fixture(1012));
+        ReadOptions counted;
+        counted.fingerprints = false;
+        std::size_t checkpoints = 0;
+        counted.control.cancelled = [&] {
+            ++checkpoints;
+            return false;
+        };
+        Package::open(cancellable, counted);
+        for (std::size_t stop = 1; stop <= checkpoints; ++stop) {
+            std::size_t calls = 0;
+            ReadOptions cancelled;
+            cancelled.fingerprints = false;
+            cancelled.control.cancelled = [&] { return ++calls >= stop; };
+            error([&] { Package::open(cancellable, cancelled); }, "cancelled");
+        }
+        OperationControl cancel_hash;
+        cancel_hash.cancelled = [] { return true; };
+        error([&] { sha256_file(root / "abc", cancel_hash); }, "cancelled");
+        bool reported = false;
+        ReadOptions progress;
+        progress.control.progress = [&](const OperationProgress &p) {
+            reported = reported || (p.phase == "Reading exports" && p.total == 1);
+        };
+        Package::open(cancellable, progress);
+        check(reported, "Package reports export progress");
         for (int version : {0, 1009, 1011, 1012, 1016, 1018}) {
             auto file = save(root, "v" + std::to_string(version), fixture(version));
             auto p = Package::open(file);

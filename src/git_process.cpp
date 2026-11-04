@@ -149,6 +149,7 @@ std::vector<wchar_t> environment() {
 int git_process(const GitOptions &options, const fs::path &repository,
                 const std::vector<std::string> &arguments, const fs::path &output, const fs::path &errors,
                 std::uint64_t output_limit) {
+    options.control.checkpoint("Reading Git objects");
     if (!options.timeout_ms || !output_limit || options.executable.empty())
         throw Error("git-options", "Git timeout, executable and output limits must be nonzero");
     std::vector<std::string> args = {options.executable.u8string(), "--no-pager", "--literal-pathspecs", "-C",
@@ -205,7 +206,9 @@ int git_process(const GitOptions &options, const fs::path &repository,
     Handle process_handle(process.hProcess), thread(process.hThread);
     for (;;) {
         auto wait = WaitForSingleObject(process_handle.value, 20);
-        if (exceeds(output, output_limit) || exceeds(errors, 256 * 1024))
+        if (options.control.cancelled && options.control.cancelled())
+            failure = "cancelled";
+        else if (exceeds(output, output_limit) || exceeds(errors, 256 * 1024))
             failure = "git-output";
         else if (wait == WAIT_FAILED)
             failure = "git-process";
@@ -222,7 +225,8 @@ int git_process(const GitOptions &options, const fs::path &repository,
     DWORD code = 2;
     GetExitCodeProcess(process_handle.value, &code);
     if (!failure.empty())
-        throw Error(failure, "Git process exceeded its output or time limit");
+        throw Error(failure, failure == "cancelled" ? "Operation cancelled"
+                                                    : "Git process exceeded its output or time limit");
     return static_cast<int>(code);
 #else
     // Build environment/argv before fork so concurrent hosts do not allocate in the child.
@@ -286,7 +290,9 @@ int git_process(const GitOptions &options, const fs::path &repository,
     int status = 0;
     for (;;) {
         auto wait = waitpid(pid, &status, WNOHANG);
-        if (exceeds(output, output_limit) || exceeds(errors, 256 * 1024))
+        if (options.control.cancelled && options.control.cancelled())
+            failure = "cancelled";
+        else if (exceeds(output, output_limit) || exceeds(errors, 256 * 1024))
             failure = "git-output";
         else if (wait < 0 && errno != EINTR)
             failure = "git-process";
@@ -305,7 +311,8 @@ int git_process(const GitOptions &options, const fs::path &repository,
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     if (!failure.empty())
-        throw Error(failure, "Git process exceeded its output or time limit");
+        throw Error(failure, failure == "cancelled" ? "Operation cancelled"
+                                                    : "Git process exceeded its output or time limit");
     return WIFEXITED(status) ? WEXITSTATUS(status) : 2;
 #endif
 }

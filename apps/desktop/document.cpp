@@ -57,6 +57,7 @@ Json Document::report() const {
                    {"before", package(before)},
                    {"after", package(after)},
                    {"project", project ? project->to_json() : Json(nullptr)},
+                   {"afterProject", after_project ? after_project->to_json() : Json(nullptr)},
                    {"diff", diff ? diff->to_json() : Json(nullptr)},
                    {"previews", images},
                    {"textureDifferences", differences},
@@ -73,19 +74,27 @@ Json Document::report() const {
 std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     if (request.before.empty())
         throw Error("desktop-input", "Choose a package before loading");
+    request.control.checkpoint("Opening document");
+    ReadOptions read;
+    read.control = request.control;
     auto document = std::make_shared<Document>();
     document->request = request;
+    document->request.cache.reset();
+    document->request.control = {}; // Do not retain session callbacks in a completed document.
     if (request.git) {
 #ifdef CYUEDIFF_HAS_GIT
         const auto &source = *request.git;
         if (source.repository.empty() || source.before_revision.empty() || source.after_revision.empty())
             throw Error("desktop-git", "Choose a repository and two Git revisions");
         GitOptions options;
+        options.control = request.control;
         options.lfs_objects = source.lfs_objects;
         auto repository = GitRepository::open(source.repository, options);
         document->protected_files.push_back(repository.root() / ".git");
         document->protected_directories = {repository.common_directory(), repository.lfs_objects()};
         GitComparison comparison;
+        if (request.project.empty() && (!request.after_project.empty() || !request.after_engine_root.empty()))
+            throw Error("desktop-git", "Independent Git contexts require a historical project on both sides");
         if (!request.project.empty()) {
             GitProjectOptions context_options;
             context_options.engine_root = request.engine_root;
@@ -94,8 +103,13 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
                 throw Error("desktop-git", "Engine discovery disabled with an explicit engine root");
             auto a = repository.project(source.before_revision, request.project.generic_u8string(),
                                         context_options);
-            auto b = repository.project(source.after_revision, request.project.generic_u8string(),
-                                        context_options);
+            auto after_options = context_options;
+            if (!request.after_engine_root.empty())
+                after_options.engine_root = request.after_engine_root;
+            auto b = repository.project(
+                source.after_revision,
+                (request.after_project.empty() ? request.project : request.after_project).generic_u8string(),
+                after_options);
             auto protect_context = [&](const GitProjectContext &context) {
                 for (const auto &entry : context.documents)
                     document->protected_files.push_back(
@@ -108,12 +122,12 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             };
             protect_context(a);
             protect_context(b);
-            comparison = compare_git(repository, a, b, request.before, request.after);
+            comparison = compare_git(repository, a, b, request.before, request.after, read);
         } else {
             if (!request.engine_root.empty() || !source.discover_engine)
                 throw Error("desktop-git", "Engine selection requires a historical project descriptor");
             comparison = compare_git(repository, source.before_revision, source.after_revision,
-                                     request.before, request.after);
+                                     request.before, request.after, read);
         }
         auto protect_revision = [&](const GitRevision &revision) {
             auto asset = revision.storage == "git" ? repository.root() / fs::u8path(revision.repository_path)
@@ -139,15 +153,29 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             document->project = ProjectContext::open(request.project, request.engine_root);
         else if (!request.engine_root.empty())
             throw Error("desktop-project", "An engine root requires a project descriptor");
-        auto resolve = [&](const std::string &name) {
-            if (document->project && name.rfind("/", 0) == 0)
-                return document->project->resolve(name);
+        auto after_project = request.after_project.empty() ? request.project : request.after_project;
+        if (!request.after_project.empty() || !request.after_engine_root.empty()) {
+            if (after_project.empty())
+                throw Error("desktop-project", "An after-side engine requires a project descriptor");
+            document->after_project = ProjectContext::open(after_project, request.after_engine_root.empty()
+                                                                              ? request.engine_root
+                                                                              : request.after_engine_root);
+        }
+        auto resolve = [&](const std::string &name, bool after = false) {
+            const auto &context =
+                after && document->after_project ? document->after_project : document->project;
+            if (context && name.rfind("/", 0) == 0)
+                return context->resolve(name);
             return fs::u8path(name);
         };
-        document->before = std::make_shared<const Package>(Package::open(resolve(request.before)));
+        auto open = [&](const fs::path &path) {
+            return request.cache ? request.cache->open(path, read)
+                                 : std::make_shared<const Package>(Package::open(path, read));
+        };
+        document->before = open(resolve(request.before));
         if (!request.after.empty()) {
-            document->after = std::make_shared<const Package>(Package::open(resolve(request.after)));
-            document->diff = compare(*document->before, *document->after);
+            document->after = open(resolve(request.after, true));
+            document->diff = compare(*document->before, *document->after, request.control);
         }
     }
     if (!request.previews)
@@ -165,12 +193,15 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             try {
                 TextureDecodeOptions options;
                 options.decoder = decoder;
+                options.control = request.control;
                 options.max_pixels = 16ull * 1024 * 1024;
                 options.max_payload_bytes = 128ull * 1024 * 1024;
                 options.max_decoder_bytes = 128ull * 1024 * 1024;
                 document->previews.push_back({package->textures.front().object_path, after,
                                               decode_texture(package->textures.front(), 0, options)});
             } catch (const std::exception &e) {
+                if (const auto *error = dynamic_cast<const Error *>(&e); error && error->code == "cancelled")
+                    throw;
                 document->diagnostics.push_back(side + std::string(e.what()));
             }
         }
@@ -178,18 +209,23 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             try {
                 MeshDecodeOptions options;
                 options.decoder = decoder;
+                options.control = request.control;
                 options.max_payload_bytes = 128ull * 1024 * 1024;
                 auto mesh =
                     std::make_shared<const MeshGeometry>(decode_mesh(package->mesh_source(), options));
                 (after ? document->after_mesh : document->before_mesh) = std::move(mesh);
             } catch (const std::exception &e) {
+                if (const auto *error = dynamic_cast<const Error *>(&e); error && error->code == "cancelled")
+                    throw;
                 document->diagnostics.push_back(side + std::string(e.what()));
             }
         }
     };
     previews(document->before, false);
     previews(document->after, true);
+    request.control.checkpoint("Comparing previews");
     document->texture_differences = compare_previews(document->previews);
+    request.control.checkpoint("Document ready", 1, 1);
     return document;
 }
 DocumentSession::DocumentSession(Loader loader) : loader_(std::move(loader)) {
@@ -201,20 +237,58 @@ DocumentSession::~DocumentSession() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;
+        if (cancel_)
+            cancel_->store(true);
         pending_.reset();
     }
     wake_.notify_one();
     worker_.join();
 }
 void DocumentSession::request(LoadRequest request) {
+    if (!request.cache)
+        request.cache = cache_;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        pending_ = Work{++generation_, std::move(request)};
+        if (cancel_)
+            cancel_->store(true);
+        cancel_ = std::make_shared<std::atomic<bool>>(false);
+        const auto token = cancel_;
+        const auto id = ++generation_;
+        auto external = request.control;
+        request.control.cancelled = [token, external] {
+            return token->load() || (external.cancelled && external.cancelled());
+        };
+        request.control.progress = [this, id, external](const OperationProgress &value) {
+            if (external.progress)
+                external.progress(value);
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (id == generation_)
+                progress_ = value;
+        };
+        pending_ = Work{id, std::move(request)};
+        progress_ = {"Opening document", 0, 0};
         result_.reset();
     }
     busy_ = true;
+    cancelled_ = false;
     error_.clear();
     wake_.notify_one();
+}
+void DocumentSession::cancel() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (cancel_)
+        cancel_->store(true);
+    ++generation_;
+    pending_.reset();
+    result_.reset();
+    busy_ = false;
+    cancelled_ = true;
+    error_.clear();
+    progress_ = {};
+}
+OperationProgress DocumentSession::progress() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return progress_;
 }
 bool DocumentSession::poll() {
     std::optional<Result> result;

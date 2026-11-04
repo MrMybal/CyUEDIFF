@@ -30,6 +30,7 @@ class Reader {
     Reader(const std::vector<std::uint8_t> &bytes, const MeshDecodeOptions &opts)
         : bytes_(bytes), options(opts) {}
     void require(std::size_t n) const {
+        options.control.check();
         if (pos > bytes_.size() || n > bytes_.size() - pos)
             throw Error("mesh-bounds", "Mesh data exceeds payload", pos);
     }
@@ -372,6 +373,7 @@ MeshGeometry decode_mesh_description(const std::vector<std::uint8_t> &bytes, con
         throw Error("mesh-profile", "Unsupported MeshDescription serialization profile");
     if (!options.max_elements || !options.max_attribute_values)
         throw Error("limit", "Mesh decode limits must be positive");
+    options.control.checkpoint("Decoding mesh", 0, bytes.size());
     Reader r(bytes, options);
     MeshGeometry mesh;
     auto elements = read_elements(r, mesh.attributes);

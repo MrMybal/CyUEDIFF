@@ -118,6 +118,7 @@ void dimension_limit(std::uint32_t width, std::uint32_t height, const TextureDec
 } // namespace
 ImageRgba8 decode_texture(const TextureSource &texture, std::uint32_t mip,
                           const TextureDecodeOptions &options) {
+    options.control.checkpoint("Decoding image");
     if (!texture.mips || mip >= texture.mips || texture.mips > 32)
         throw Error("texture-mip", "Requested source mip does not exist");
     if (texture.slices != 1 || texture.layers != 1 || texture.block_offsets.size() != 1 ||
@@ -163,6 +164,7 @@ ImageRgba8 decode_texture(const TextureSource &texture, std::uint32_t mip,
                 throw Error("limit", "Image decoder exceeded its allocation budget");
             throw Error("texture-image", "Unable to decode PNG/JPEG source image");
         }
+        options.control.checkpoint("Decoding image", 1, 1);
         image.pixels.assign(decoded.get(), decoded.get() + std::size_t(width) * height * 4);
         return image;
     }
@@ -187,6 +189,8 @@ ImageRgba8 decode_texture(const TextureSource &texture, std::uint32_t mip,
     auto count = std::uint64_t(image.width) * image.height;
     image.pixels.resize(static_cast<std::size_t>(count * 4));
     for (std::size_t i = 0; i < count; ++i) {
+        if (i % 65536 == 0)
+            options.control.checkpoint("Converting image", i, count);
         auto input = source.data() + offset + i * stride;
         auto output = image.pixels.data() + i * 4;
         output[3] = 255;

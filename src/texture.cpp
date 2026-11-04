@@ -376,6 +376,8 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
         p.raw_bytes > options.max_payload_bytes || p.stored_bytes > SIZE_MAX || p.raw_bytes > SIZE_MAX)
         throw Error("limit", "Bulk source exceeds configured payload limit");
     ReadOptions read;
+    read.control = options.control;
+    options.control.checkpoint("Reading bulk data", 0, p.raw_bytes);
     detail::Archive a(p.file, read);
     if (p.offset > a.size() || p.stored_bytes > a.size() - p.offset)
         throw Error("bounds", "Bulk payload escapes input file");
@@ -384,7 +386,7 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
     a.seek(p.offset);
     std::vector<std::uint8_t> encoded(static_cast<std::size_t>(p.stored_bytes));
     a.read(encoded.data(), encoded.size());
-    if (!p.sha256.empty() && sha256_bytes(encoded) != p.sha256)
+    if (!p.sha256.empty() && sha256_bytes(encoded, options.control) != p.sha256)
         throw Error("source-changed", "Bulk source changed while reading");
     if (checked.method == 0) {
         encoded.erase(encoded.begin(), encoded.begin() + 64);
@@ -418,6 +420,7 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
     position = 64 + static_cast<std::size_t>(blocks) * 4;
     std::size_t destination = 0;
     for (std::size_t i = 0; i < blocks; ++i) {
+        options.control.checkpoint("Decoding bulk data", destination, p.raw_bytes);
         auto size = static_cast<std::size_t>(big(64 + i * 4, 4));
         auto raw = std::min<std::size_t>(output.size() - destination, std::size_t(1) << exponent);
         if (size == raw)
@@ -427,7 +430,9 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
             throw Error("bulk-codec", "Block decoder did not produce the expected byte count");
         position += size;
         destination += raw;
+        options.control.check();
     }
+    options.control.checkpoint("Decoding bulk data", p.raw_bytes, p.raw_bytes);
     return output;
 }
 } // namespace cyuediff

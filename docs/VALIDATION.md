@@ -136,3 +136,12 @@ La configuration desktop sans Git passe dix suites, dont le rejet explicite d’
 Le build natif passe quinze suites et 625 vérifications. Le desktop sans Git passe douze suites ; le Core seul passe huit suites, sans UI/Desktop/Git/Oodle. Un consommateur externe `examples/catalog_consumer` a été compilé avec `find_package` contre le SDK Core installé et exécuté sur le projet local. Le SDK n’installe ni les vues CyUI ni Git dans cette configuration.
 
 `scripts/validate_browser.py` produit 21 captures natives et vérifie cinq refus de sorties, dont un catalogue CLI partiel qui tente d’écrire dans les sources. Les essais couvrent contenus projet/plugins/moteur, cinq thèmes et deux langues, recherche avec ou sans résultat, présences Git, sélection locale/Git, erreur de projet/révision/sélection et LFS manquant. Les catalogues correspondent à la CLI et les empreintes des entrées, de l’index et du checkout restent inchangées. Rapports dans `build-native/browser-validation/`, ignoré. La présence de fichiers volontairement vides dans les fixtures montre que l’index n’essaie pas de décoder les packages ; leur validité n’est vérifiée qu’à l’ouverture.
+
+
+## 0.13 runtime and distribution validation
+
+The Windows desktop passes 17 CTest suites (860 checks), 30 UI frames and native DX11/WARP rendering. Core-only passes ten suites. The desktop-without-Git configuration passes fourteen suites. Cancellation is exercised at every reader checkpoint in a representative package, inside texture/mesh decoding and while a direct Git child is active. Cache tests include same-size, restored-timestamp edits and companion creation/removal.
+
+The CyTrace project supplied locally adds 150 original loose packages (UE 5.3 / serializer 1009), 12,396 exports, 12 rejected truncated headers and unchanged original package/companion hashes. Of those exports, 11,575 expose tagged properties, 818 remain partial and three remain opaque; these counts are coverage observations, not a claim of complete native decoding. The supplied build also contains a version-11 Pak and version-5 IoStore TOCs; their presence alone does not establish container/cooked support. No `.usmap` was found in that project tree.
+
+A desktop CPack archive was extracted and validated with its CLI, native WARP smoke and an external Core consumer compiled and run against the extracted SDK. The archive excludes source assets and the optional locally built Oodle module, while preserving selected third-party notices. CI YAML was parsed locally; hosted Windows/Linux jobs await a user-authorized push.

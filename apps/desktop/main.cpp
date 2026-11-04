@@ -15,7 +15,7 @@ using namespace cyuediff;
 using namespace cyuediff::desktop;
 namespace {
 struct Settings {
-    std::string before, after, project, engine, codec, repository, lfs_objects;
+    std::string before, after, project, engine, codec, repository, lfs_objects, after_project, after_engine;
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
     int source = 0;
     bool previews = true, discover_engine = true, include_engine = false;
@@ -33,6 +33,8 @@ struct Settings {
     LoadRequest request() const {
         LoadRequest result{before,  after, fs::u8path(project), fs::u8path(engine), fs::u8path(codec),
                            previews};
+        result.after_project = fs::u8path(after_project);
+        result.after_engine_root = fs::u8path(after_engine);
         if (source == 1)
             result.git = GitSource{fs::u8path(repository), fs::u8path(lfs_objects), before_revision,
                                    after_revision, discover_engine};
@@ -102,10 +104,14 @@ Options parse(const std::vector<std::string> &args) {
         } else if (argument == "--no-engine") {
             options.settings.discover_engine = false;
             git_options = true;
-        } else if (argument == "--project")
+        } else if (argument == "--project" || argument == "--before-project")
             options.settings.project = value();
-        else if (argument == "--engine-root")
+        else if (argument == "--engine-root" || argument == "--before-engine-root")
             options.settings.engine = value();
+        else if (argument == "--after-project")
+            options.settings.after_project = value();
+        else if (argument == "--after-engine-root")
+            options.settings.after_engine = value();
         else if (argument == "--codec")
             options.settings.codec = value();
         else if (argument == "--no-previews")
@@ -161,7 +167,20 @@ void register_translations() {
     CatalogView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"Browse content...", "Parcourir les contenus..."},
+        {{"Cancelled", "Annulé"},
+         {"Cancel loading", "Annuler le chargement"},
+         {"Opening document", "Ouverture du document"},
+         {"Reading file", "Lecture du fichier"},
+         {"Reading exports", "Lecture des exports"},
+         {"Reading bulk data", "Lecture des blocs de données"},
+         {"Decoding bulk data", "Décodage des blocs de données"},
+         {"Decoding image", "Décodage de l'image"},
+         {"Converting image", "Conversion de l'image"},
+         {"Decoding mesh", "Décodage du mesh"},
+         {"Reading Git objects", "Lecture des objets Git"},
+         {"Comparing previews", "Comparaison des aperçus"},
+         {"Document ready", "Document prêt"},
+         {"Browse content...", "Parcourir les contenus..."},
          {"Browse content (Ctrl+B)", "Parcourir les contenus (Ctrl+B)"},
          {"Content browser", "Navigateur de contenus"},
          {"Scanning content...", "Analyse des contenus..."},
@@ -172,6 +191,14 @@ void register_translations() {
          {"Scan diagnostics", "Diagnostics du parcours"},
          {"Choose a project to browse its content.", "Choisissez un projet pour parcourir ses contenus."},
          {"Local files", "Fichiers locaux"},
+         {"After project", "Projet après"},
+         {"After engine", "Moteur après"},
+         {"Empty after context inherits the before context.",
+          "Le contexte après vide reprend celui d'avant."},
+         {"Hashing data", "Calcul des empreintes"},
+         {"Copying local LFS data", "Copie des données LFS locales"},
+         {"Comparing packages", "Comparaison des packages"},
+         {"Checking package cache", "Vérification du cache"},
          {"Git revisions", "Révisions Git"},
          {"Repository", "Dépôt"},
          {"Before ref", "Rév. avant"},
@@ -283,20 +310,22 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         for (const auto &path : {options.settings.before, options.settings.after})
             if (!path.empty() && path.front() != '/')
                 package(repository.root() / fs::u8path(path));
-        if (!options.settings.project.empty())
-            inputs.push_back(repository.root() / fs::u8path(options.settings.project));
+        for (const auto &project : {options.settings.project, options.settings.after_project})
+            if (!project.empty())
+                inputs.push_back(repository.root() / fs::u8path(project));
 #endif
     } else {
-        std::optional<ProjectContext> project;
-        for (const auto &path : {options.settings.before, options.settings.after}) {
+        auto request = options.settings.request();
+        for (bool after : {false, true}) {
+            const auto &path = after ? request.after : request.before;
             if (path.empty())
                 continue;
-            if (!options.settings.project.empty() && path.front() == '/') {
-                if (!project)
-                    project = ProjectContext::open(fs::u8path(options.settings.project),
-                                                   fs::u8path(options.settings.engine));
-                package(project->resolve(path));
-            } else
+            auto project = after && !request.after_project.empty() ? request.after_project : request.project;
+            auto engine =
+                after && !request.after_engine_root.empty() ? request.after_engine_root : request.engine_root;
+            if (!project.empty() && path.front() == '/')
+                package(ProjectContext::open(project, engine).resolve(path));
+            else
                 package(fs::u8path(path));
         }
     }
@@ -315,11 +344,12 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         directories.insert(directories.end(), browser->protected_directories.begin(),
                            browser->protected_directories.end());
     }
-    for (auto path : {options.settings.project, options.settings.codec})
+    for (auto path : {options.settings.project, options.settings.after_project, options.settings.codec})
         if (!path.empty())
             inputs.push_back(fs::u8path(path));
-    if (!options.settings.engine.empty())
-        inputs.push_back(fs::u8path(options.settings.engine) / "Engine/Build/Build.version");
+    for (const auto &engine : {options.settings.engine, options.settings.after_engine})
+        if (!engine.empty())
+            inputs.push_back(fs::u8path(engine) / "Engine/Build/Build.version");
     for (const auto &output : {options.capture, options.report})
         if (!output.empty())
             for (const auto &input : inputs)
@@ -347,6 +377,7 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
 }
 enum class Action {
     none,
+    cancel_load,
     open_before,
     open_after,
     project,
@@ -512,6 +543,8 @@ class Shell {
             return "Scanning content...";
         if (session_.busy())
             return "Loading...";
+        if (session_.cancelled())
+            return "Cancelled";
         if (!error().empty())
             return "Load failed";
         if (!displayed_)
@@ -645,8 +678,13 @@ class Shell {
                     field("##project", settings_.project);
                     cyui::property(cyui::tr("Engine root").c_str());
                     field("##engine", settings_.engine);
+                    cyui::property(cyui::tr("After project").c_str());
+                    field("##after-project", settings_.after_project);
+                    cyui::property(cyui::tr("After engine").c_str());
+                    field("##after-engine", settings_.after_engine);
                     cyui::endProperties();
                 }
+                cyui::textDim("%s", cyui::tr("Empty after context inherits the before context.").c_str());
                 if (settings_.source == 1)
                     cyui::toggleSwitch(cyui::trLabel("Discover engine").c_str(), &settings_.discover_engine);
                 if (settings_.source == 0 && cyui::button(cyui::trLabel("Choose project").c_str()))
@@ -683,6 +721,16 @@ class Shell {
                         cyui::trLabel(settings_.source == 1 ? "Swap revisions" : "Swap files").c_str(),
                         cyui::Variant::secondary, cyui::dp(-1, 0)))
                     action = Action::swap;
+            }
+            if (session_.busy()) {
+                const auto progress = session_.progress();
+                float fraction =
+                    progress.total ? float(double(progress.completed) / double(progress.total)) : 0.f;
+                ImGui::ProgressBar(std::clamp(fraction, 0.f, 1.f), cyui::dp(-1, 0),
+                                   cyui::tr(progress.phase.c_str()).c_str());
+                if (cyui::button(cyui::trLabel("Cancel loading").c_str(), cyui::Variant::secondary,
+                                 cyui::dp(-1, 0)))
+                    action = Action::cancel_load;
             }
             if (displayed_) {
                 cyui::divider();
@@ -819,6 +867,10 @@ class Shell {
             if (action == Action::none)
                 return;
             dialog_error_.clear();
+            if (action == Action::cancel_load) {
+                session_.cancel();
+                return;
+            }
             if (action == Action::browse) {
                 start_browser();
                 return;
@@ -844,6 +896,15 @@ class Shell {
                     (action == Action::open_after ? settings_.after : settings_.before) = path->u8string();
                 }
             } else if (action == Action::swap) {
+                // Materialize inherited values before swapping so both contexts follow their files.
+                if (!settings_.after_project.empty() || !settings_.after_engine.empty()) {
+                    if (settings_.after_project.empty())
+                        settings_.after_project = settings_.project;
+                    if (settings_.after_engine.empty())
+                        settings_.after_engine = settings_.engine;
+                    std::swap(settings_.project, settings_.after_project);
+                    std::swap(settings_.engine, settings_.after_engine);
+                }
                 if (settings_.source == 1) {
                     std::swap(settings_.before_revision, settings_.after_revision);
                     if (!settings_.after.empty())
@@ -873,6 +934,7 @@ int run(const Options &options) {
             << "CyUEDiff desktop [BEFORE.uasset [AFTER.uasset]] [--project FILE] [--engine-root DIR]\n"
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
+               "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --browse [--include-engine] [--browse-filter TEXT] : browse project or revision content\n"
                "  [--codec DLL] [--no-previews] [--locale en|fr] [--theme KEY]\n"

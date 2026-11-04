@@ -309,6 +309,11 @@ int main(int argc, char **argv) {
               "Direct process arguments preserve quotes and trailing backslashes");
         fake.timeout_ms = 100;
         rejects([&] { detail::git_text(fake, repo_path, {"--fake-timeout"}, helper); }, "git-timeout");
+        unsigned polls = 0;
+        fake.timeout_ms = 5000;
+        fake.control.cancelled = [&] { return ++polls >= 4; };
+        rejects([&] { detail::git_text(fake, repo_path, {"--fake-timeout"}, helper); }, "cancelled");
+        fake.control = {};
         auto output = helper.directory / "stdout", errors = helper.directory / "stderr";
         rejects([&] { detail::git_process(fake, repo_path, {"--fake-output"}, output, errors, 32); },
                 "git-output");

@@ -161,6 +161,9 @@ int main() {
         auto image = decode_texture(texture);
         check(image.width == 2 && image.pixels == std::vector<std::uint8_t>({255, 0, 0, 255, 0, 255, 0, 128}),
               "BGRA channels and alpha preserved");
+        TextureDecodeOptions cancel_texture;
+        cancel_texture.control.cancelled = [] { return true; };
+        error([&] { decode_texture(texture, 0, cancel_texture); }, "cancelled");
         check(texture.payload.offset == 137 && texture.payload.raw_bytes == 8 &&
                   texture.payload.storage == "local",
               "Validated trailer resolves source bytes");

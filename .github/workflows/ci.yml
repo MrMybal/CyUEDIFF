@@ -1,0 +1,65 @@
+name: Build, test and package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+        git: ['ON', 'OFF']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require Git integration test runner
+        if: matrix.git == 'ON'
+        run: python -c "import re, subprocess; version=tuple(map(int,re.search(r'(\d+)\.(\d+)',subprocess.check_output(['git','--version'],text=True)).groups())); assert version >= (2,45), 'Git 2.45+ required for integration tests'"
+      - name: Configure
+        run: cmake -S . -B build-ci -DCMAKE_BUILD_TYPE=Release -DCYUEDIFF_BUILD_GIT=${{ matrix.git }} -DCYUEDIFF_BUILD_UI=OFF -DCYUEDIFF_BUILD_DESKTOP=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Build
+        run: cmake --build build-ci --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir build-ci -C Release --output-on-failure --timeout 120
+      - name: Install SDK
+        run: cmake --install build-ci --config Release --prefix build-ci/sdk
+      - name: Build external Core consumer
+        run: cmake -S examples/catalog_consumer -B build-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Link external Core consumer
+        run: cmake --build build-consumer --config Release --parallel 2
+      - name: Package
+        working-directory: build-ci
+        run: cpack -C Release -G ZIP
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: CyUEDiff-${{ matrix.os }}-git-${{ matrix.git }}
+          path: build-ci/CyUEDiff-*.zip
+          if-no-files-found: error
+          retention-days: 14
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install pinned Gitleaks
+        shell: bash
+        run: |
+          mkdir -p build-tools
+          curl --fail --silent --show-error --location --output build-tools/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  build-tools/gitleaks.tar.gz' | sha256sum --check
+          tar -xzf build-tools/gitleaks.tar.gz -C build-tools gitleaks
+      - name: Scan publishable files and complete history
+        run: python3 scripts/scan_secrets.py --gitleaks build-tools/gitleaks --report-dir build-ci/security

@@ -108,6 +108,27 @@ int main() {
         check(contextual->project && contextual->project->engine.major == 5 &&
                   fs::equivalent(contextual->before->source, project_asset),
               "Long package name resolved with explicit project and engine");
+        auto second_root = root / "other-project";
+        fs::create_directories(second_root / "Content");
+        auto second_asset = save(second_root / "Content", "TestAsset", fixture(1012, 8));
+        auto second_engine = root / "other-engine";
+        fs::create_directories(second_engine / "Engine/Build");
+        std::ofstream(second_engine / "Engine/Build/Build.version")
+            << R"({"MajorVersion":5,"MinorVersion":4,"PatchVersion":1})";
+        auto second_project = second_root / "Other.uproject";
+        std::ofstream(second_project) << R"({"FileVersion":3,"EngineAssociation":"5.4"})";
+        auto independent = project_request;
+        independent.after = "/Game/TestAsset";
+        independent.after_project = second_project;
+        independent.after_engine_root = second_engine;
+        auto dual = load_document(independent);
+        check(dual->project && dual->after_project && dual->project->engine.minor == 5 &&
+                  dual->after_project->engine.minor == 4,
+              "Before and after retain independent engine contexts");
+        check(fs::equivalent(dual->before->source, project_asset) &&
+                  fs::equivalent(dual->after->source, second_asset) && dual->diff->status() == "changed",
+              "Same virtual path resolves independently on each side");
+        check(dual->report()["afterProject"]["engine"]["minor"] == 4, "Report exposes the after context");
         DocumentSession session;
         check(!session.busy() && !session.document() && !session.poll(), "Empty session");
         session.request(request);
@@ -150,6 +171,29 @@ int main() {
               "Stale active result cannot replace latest request");
         check(calls == std::vector<std::string>({"first", "third"}),
               "Pending work is bounded to the latest request");
+        std::promise<void> cancelling_started;
+        auto cancelling_began = cancelling_started.get_future();
+        std::atomic<bool> stopped{false};
+        DocumentSession cancellable_session([&](const LoadRequest &work) -> std::shared_ptr<const Document> {
+            cancelling_started.set_value();
+            while (!(work.control.cancelled && work.control.cancelled()))
+                std::this_thread::yield();
+            stopped = true;
+            work.control.check();
+            return {};
+        });
+        cancellable_session.request({"cancel-me"});
+        check(cancelling_began.wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+              "Cooperative worker started");
+        cancellable_session.cancel();
+        auto cancel_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!stopped && std::chrono::steady_clock::now() < cancel_deadline)
+            std::this_thread::yield();
+        check(stopped && cancellable_session.cancelled() && !cancellable_session.busy(),
+              "Cancel interrupts active work");
+        check(!cancellable_session.poll() && !cancellable_session.document() &&
+                  cancellable_session.error().empty(),
+              "Cancelled result is never published as a failure");
         DocumentSession exception([](const auto &) -> std::shared_ptr<const Document> { throw 42; });
         exception.request({"x"});
         settle(exception);

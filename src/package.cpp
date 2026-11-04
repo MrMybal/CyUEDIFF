@@ -371,6 +371,8 @@ class PropertyReader {
                 if (a.tell() != next)
                     throw Error("opaque", "Property decoder did not consume exact payload", a.tell());
             } catch (const Error &e) {
+                if (e.code == "cancelled")
+                    throw;
                 partial = true;
                 entry.erase("value");
                 entry["opaque"] = {{"bytes", t.bytes}, {"reason", e.code}};
@@ -473,6 +475,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     if (fs::is_regular_file(sidecar))
         export_data = std::make_unique<Archive>(sidecar, options);
     for (auto &entry : p.exports) {
+        options.control.checkpoint("Reading exports", static_cast<std::uint64_t>(&entry - p.exports.data()),
+                                   p.exports.size());
         if (entry.size == 0) {
             entry.coverage = "empty";
             continue;
@@ -535,6 +539,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                         entry.native_end = consumed - base;
                     }
                 } catch (const Error &error) {
+                    if (error.code == "cancelled")
+                        throw;
                     extension_native = true;
                     entry.native_coverage = "opaque";
                     p.diagnostics.push_back(entry.path + ": native " + error.code + ": " + error.what());
@@ -554,6 +560,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     entry.native_end = decoded.end - base;
                     consumed = decoded.end;
                 } catch (const Error &error) {
+                    if (error.code == "cancelled")
+                        throw;
                     entry.native_coverage = "opaque";
                     p.diagnostics.push_back(entry.path + ": native " + error.code + " at " +
                                             std::to_string(error.offset) + ": " + error.what());
@@ -572,6 +580,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     consumed = decoded.end;
                     p.textures.push_back(std::move(decoded.source));
                 } catch (const Error &error) {
+                    if (error.code == "cancelled")
+                        throw;
                     entry.native_coverage = "opaque";
                     std::string diagnostic = error.code + ": " + error.what();
                     TextureSource texture;
@@ -598,6 +608,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     consumed = decoded.end;
                     p.mesh_sources.push_back(std::move(decoded.source));
                 } catch (const Error &error) {
+                    if (error.code == "cancelled")
+                        throw;
                     entry.native_coverage = "opaque";
                     MeshSource source;
                     source.object_path = entry.path;
@@ -612,6 +624,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
             if (consumed < base + entry.size)
                 entry.opaque["suffix"] = opaque_range(*data, consumed, base + entry.size - consumed, options);
         } catch (const Error &e) {
+            if (e.code == "cancelled")
+                throw;
             entry.properties = Json::object();
             entry.coverage = "opaque";
             entry.opaque["export"] = opaque_range(*data, base, entry.size, options);
@@ -626,7 +640,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
             companion.replace_extension(extension);
             if (fs::is_regular_file(companion))
                 p.fingerprints[extension] = {{"bytes", fs::file_size(companion)},
-                                             {"sha256", sha256_file(companion)}};
+                                             {"sha256", sha256_file(companion, options.control)}};
         }
     }
     if (s.flags & unversioned_properties)

@@ -13,7 +13,9 @@ std::string pointer_token(const std::string &input) {
     }
     return out;
 }
-void walk(const Json &before, const Json &after, const std::string &path, Json &changes) {
+void walk(const Json &before, const Json &after, const std::string &path, Json &changes,
+          const OperationControl &control = {}) {
+    control.check();
     if (before == after)
         return;
     if (before.is_object() && after.is_object()) {
@@ -22,7 +24,7 @@ void walk(const Json &before, const Json &after, const std::string &path, Json &
             if (!after.contains(it.key()))
                 changes.push_back({{"op", "remove"}, {"path", child}, {"before", it.value()}});
             else
-                walk(it.value(), after.at(it.key()), child, changes);
+                walk(it.value(), after.at(it.key()), child, changes, control);
         }
         for (auto it = after.begin(); it != after.end(); ++it)
             if (!before.contains(it.key()))
@@ -30,7 +32,7 @@ void walk(const Json &before, const Json &after, const std::string &path, Json &
                     {{"op", "add"}, {"path", path + "/" + pointer_token(it.key())}, {"after", it.value()}});
     } else if (before.is_array() && after.is_array() && before.size() == after.size()) {
         for (std::size_t i = 0; i < before.size(); ++i)
-            walk(before[i], after[i], path + "/" + std::to_string(i), changes);
+            walk(before[i], after[i], path + "/" + std::to_string(i), changes, control);
     } else
         changes.push_back({{"op", "replace"}, {"path", path}, {"before", before}, {"after", after}});
 }
@@ -89,17 +91,18 @@ MeshComparison compare_meshes(const MeshGeometry &before, const MeshGeometry &af
     walk(before.to_json(), after.to_json(), "", result.changes);
     return result;
 }
-DiffResult compare(const Package &before, const Package &after) {
+DiffResult compare(const Package &before, const Package &after, const OperationControl &control) {
+    control.checkpoint("Comparing packages");
     DiffResult result;
     result.complete_input = before.complete_input && after.complete_input;
     result.binary_comparison_available = !before.fingerprints.empty() && !after.fingerprints.empty();
     if (result.binary_comparison_available)
         result.binary_changed = before.fingerprints != after.fingerprints;
-    walk(before.semantic_snapshot(), after.semantic_snapshot(), "", result.changes);
-    walk(before.blueprint_snapshot(), after.blueprint_snapshot(), "", result.graph_changes);
-    walk(before.texture_snapshot(), after.texture_snapshot(), "", result.texture_changes);
-    walk(before.mesh_snapshot(), after.mesh_snapshot(), "", result.mesh_changes);
-    walk(before.material_snapshot(), after.material_snapshot(), "", result.material_changes);
+    walk(before.semantic_snapshot(), after.semantic_snapshot(), "", result.changes, control);
+    walk(before.blueprint_snapshot(), after.blueprint_snapshot(), "", result.graph_changes, control);
+    walk(before.texture_snapshot(), after.texture_snapshot(), "", result.texture_changes, control);
+    walk(before.mesh_snapshot(), after.mesh_snapshot(), "", result.mesh_changes, control);
+    walk(before.material_snapshot(), after.material_snapshot(), "", result.material_changes, control);
     result.diagnostics.push_back(
         "Opaque hashes identify changed bytes. Texture source metadata is projected separately; "
         "pixel comparison is available through image-diff for supported sources. "

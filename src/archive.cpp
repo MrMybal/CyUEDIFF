@@ -122,6 +122,7 @@ Archive::Archive(const fs::path &path, const ReadOptions &options)
     seek(0);
 }
 void Archive::seek(std::uint64_t p) {
+    options_.control.check();
     if (p > read_limit_)
         throw Error("bounds", "Offset outside file", p);
     stream_.clear();
@@ -138,10 +139,22 @@ void Archive::skip(std::uint64_t n) {
 void Archive::read(void *destination, std::size_t bytes) {
     if (bytes > read_limit_ - position_)
         throw Error("bounds", "Truncated data", position_);
-    stream_.read(static_cast<char *>(destination), static_cast<std::streamsize>(bytes));
-    if (!stream_)
-        throw Error("io", "Read failed", position_);
-    position_ += bytes;
+    options_.control.check();
+    auto out = static_cast<char *>(destination);
+    while (bytes) {
+        auto chunk = std::min<std::size_t>(bytes, 1024 * 1024);
+        stream_.read(out, static_cast<std::streamsize>(chunk));
+        if (!stream_)
+            throw Error("io", "Read failed", position_);
+        out += chunk;
+        bytes -= chunk;
+        position_ += chunk;
+        progress_bytes_ += chunk;
+        if (progress_bytes_ >= 1024 * 1024) {
+            progress_bytes_ = 0;
+            options_.control.checkpoint("Reading file", position_, end_);
+        }
+    }
 }
 std::uint32_t Archive::count(std::uint32_t limit) {
     auto n = get<std::int32_t>();
@@ -243,17 +256,24 @@ std::string category(const std::string &c) {
         return "data";
     return "object";
 }
-std::string hash_bytes(const std::vector<std::uint8_t> &bytes) {
+std::string hash_bytes(const std::vector<std::uint8_t> &bytes, const OperationControl &control) {
     Sha256 hash;
-    hash.update(bytes.data(), bytes.size());
+    control.check();
+    for (std::size_t at = 0; at < bytes.size();) {
+        auto count = std::min<std::size_t>(bytes.size() - at, 1024 * 1024);
+        hash.update(bytes.data() + at, count);
+        at += count;
+        control.checkpoint("Hashing data", at, bytes.size());
+    }
     return hash.finish();
 }
 } // namespace detail
-std::string sha256_bytes(const std::vector<std::uint8_t> &bytes) {
-    return detail::hash_bytes(bytes);
+std::string sha256_bytes(const std::vector<std::uint8_t> &bytes, const OperationControl &control) {
+    return detail::hash_bytes(bytes, control);
 }
-std::string sha256_file(const fs::path &path) {
+std::string sha256_file(const fs::path &path, const OperationControl &control) {
     ReadOptions o;
+    o.control = control;
     detail::Archive a(path, o);
     return a.hash(0, a.size());
 }

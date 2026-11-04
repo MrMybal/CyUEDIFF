@@ -128,7 +128,8 @@ void budget(std::uint64_t bytes, std::uint64_t &total, const GitOptions &options
         throw Error("git-budget", "Revision exceeds configured file or total byte budget");
     total += bytes;
 }
-void copy_lfs(const fs::path &source, const fs::path &target, const Pointer &p) {
+void copy_lfs(const fs::path &source, const fs::path &target, const Pointer &p,
+              const OperationControl &control) {
     std::error_code error;
     if (!fs::is_regular_file(source, error))
         throw Error("lfs-missing", "LFS object is not available locally: sha256:" + p.oid);
@@ -141,6 +142,7 @@ void copy_lfs(const fs::path &source, const fs::path &target, const Pointer &p) 
     std::array<char, 65536> block{};
     std::uint64_t copied = 0;
     while (copied < p.bytes) {
+        control.checkpoint("Copying local LFS data", copied, p.bytes);
         auto take = static_cast<std::streamsize>(std::min<std::uint64_t>(block.size(), p.bytes - copied));
         input.read(block.data(), take);
         if (input.gcount() != take)
@@ -155,7 +157,7 @@ void copy_lfs(const fs::path &source, const fs::path &target, const Pointer &p) 
     output.close();
     if (!output)
         throw Error("git-io", "Cannot finish materialized LFS content");
-    if (sha256_file(target) != p.oid)
+    if (sha256_file(target, control) != p.oid)
         throw Error("lfs-hash", "Local LFS object SHA-256 differs from pointer: " + p.oid);
 }
 std::string resolve_commit(const GitOptions &options, const fs::path &root, const std::string &revision,
@@ -196,7 +198,7 @@ GitFile extract(const Entry &entry, const GitOptions &options, const fs::path &r
         fs::rename(blob, target);
     else {
         auto objects = get_lfs();
-        copy_lfs(objects / p.oid.substr(0, 2) / p.oid.substr(2, 2) / p.oid, target, p);
+        copy_lfs(objects / p.oid.substr(0, 2) / p.oid.substr(2, 2) / p.oid, target, p, options.control);
         fs::remove(blob);
     }
     return file;
@@ -531,9 +533,9 @@ GitRevision GitRepository::materialize(const GitProjectContext &context, const s
             throw Error("package-path", "Engine source escapes selected installation");
         auto size = fs::file_size(source);
         budget(size, total, options_);
-        auto hash = sha256_file(source);
+        auto hash = sha256_file(source, options_.control);
         try {
-            copy_lfs(source, result.storage_->directory / source.filename(), {hash, size});
+            copy_lfs(source, result.storage_->directory / source.filename(), {hash, size}, options_.control);
         } catch (const Error &e) {
             throw Error("engine-source", e.what());
         }
@@ -582,7 +584,7 @@ GitComparison compare_git(const GitRepository &repo, const std::string &before_r
     Package absent;
     absent.fingerprints = {{"absent", true}};
     result.diff = compare(result.before_package ? *result.before_package : absent,
-                          result.after_package ? *result.after_package : absent);
+                          result.after_package ? *result.after_package : absent, options.control);
     return result;
 }
 GitComparison compare_git(const GitRepository &repo, const GitProjectContext &before,
@@ -602,7 +604,7 @@ GitComparison compare_git(const GitRepository &repo, const GitProjectContext &be
     Package absent;
     absent.fingerprints = {{"absent", true}};
     result.diff = compare(result.before_package ? *result.before_package : absent,
-                          result.after_package ? *result.after_package : absent);
+                          result.after_package ? *result.after_package : absent, options.control);
     result.before_context = before.to_json();
     result.after_context = after.to_json();
     auto a = before.semantic_snapshot(), b = after.semantic_snapshot();
