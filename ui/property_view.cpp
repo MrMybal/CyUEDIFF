@@ -58,6 +58,28 @@ void PropertyView::set_values(const Json *before, const Json *after, bool compar
     if (!visible_.empty())
         selected_ = visible_.front();
 }
+Json PropertyView::view_state() const {
+    return {{"filter", filter_.query},
+            {"changedOnly", changed_only_},
+            {"selected", selected_row() ? Json(selected_row()->path) : Json(nullptr)}};
+}
+void PropertyView::restore_view_state(const Json &state) {
+    cyuediff::view_state::validate(state, "property");
+    if (state.contains("filter"))
+        filter_.query = state["filter"].get<std::string>();
+    if (state.contains("changedOnly"))
+        changed_only_ = comparing_ && state["changedOnly"].get<bool>();
+    rebuild();
+    if (state.contains("selected")) {
+        selected_ = -1;
+        if (!state["selected"].is_null())
+            for (auto i : visible_)
+                if (table_.rows[i].path == state["selected"].get<std::string>()) {
+                    selected_ = i;
+                    break;
+                }
+    }
+}
 void PropertyView::draw(const char *id) {
     cyui::ScopedID scope(id);
     bool update = cyui::filterBox("##property-filter", filter_);

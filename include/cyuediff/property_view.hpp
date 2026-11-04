@@ -1,4 +1,5 @@
 #pragma once
+#include <cyuediff/view_state.hpp>
 #include <cyuediff/visual_diff.hpp>
 #include <cyui/Core.h>
 namespace cyuediff {
@@ -11,6 +12,9 @@ class PropertyView {
     void rebuild();
 
   public:
+    // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
+    Json view_state() const;
+    void restore_view_state(const Json &);
     static void register_translations();
     void set_filter(std::string);
     void set_changed_only(bool);

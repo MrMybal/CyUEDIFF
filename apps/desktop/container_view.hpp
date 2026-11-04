@@ -30,6 +30,8 @@ class ContainerView {
     void rebuild_objects();
 
   public:
+    Json view_state() const;
+    void restore_view_state(const Json &);
     static void register_translations();
     void set_document(std::shared_ptr<const ContainerDocument>);
     void set_filter(std::string);

@@ -61,6 +61,26 @@ void TextureView::clear_preview() {
     image_ = {};
     state_ = {};
 }
+Json TextureView::view_state() const {
+    Json result = {{"difference", show_difference_}};
+    if (!state_.fitPending && image_.texture) {
+        result["pan"] = {state_.canvas.view.origin.x, state_.canvas.view.origin.y};
+        result["zoom"] = state_.canvas.view.zoom;
+    }
+    return result;
+}
+void TextureView::restore_view_state(const Json &state) {
+    cyuediff::view_state::validate(state, "texture");
+    if (state.contains("difference"))
+        show_difference_ =
+            difference_.texture && comparison_ && comparison_->comparable && state["difference"].get<bool>();
+    if (state.contains("pan"))
+        state_.canvas.view.origin = {state["pan"][0].get<double>(), state["pan"][1].get<double>()};
+    if (state.contains("zoom"))
+        state_.canvas.view.zoom = state["zoom"].get<double>();
+    if (state.contains("pan") || state.contains("zoom"))
+        state_.fitPending = false;
+}
 void TextureView::draw(const char *id) {
     cyui::ScopedID scope(id);
     if (source_.object_path.empty()) {

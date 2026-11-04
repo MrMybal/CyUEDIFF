@@ -1,0 +1,237 @@
+#include <cyuediff/asset_view.hpp>
+#include <iostream>
+using namespace cyuediff;
+namespace {
+int checks = 0;
+void check(bool v, const char *m) {
+    ++checks;
+    if (!v)
+        throw std::runtime_error(m);
+}
+} // namespace
+int main() {
+    try {
+        ImGui::CreateContext();
+        auto &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {1280, 800};
+        io.DeltaTime = 1.f / 60;
+        AssetView::register_translations();
+        Json values = {{"Health", {{"type", "IntProperty"}, {"value", 42}}},
+                       {"Mana", {{"type", "IntProperty"}, {"value", 7}}}};
+        auto changed = values;
+        changed["Health"]["value"] = 99;
+        PropertyView property;
+        property.set_values(&values, &changed, true);
+        property.set_filter("Health");
+        property.set_changed_only(false);
+        std::size_t target = 0;
+        for (std::size_t i = 0; i < property.table().rows.size(); ++i)
+            if (property.table().rows[i].label == "Health")
+                target = i;
+        check(property.select_row(target), "Select named property");
+        const auto property_state = property.view_state();
+        auto shifted = values;
+        shifted["Earlier"] = 0;
+        PropertyView restored;
+        restored.set_values(&shifted, &changed, true);
+        restored.restore_view_state(property_state);
+        check(restored.selected_row() && restored.selected_row()->path == property.selected_row()->path &&
+                  restored.view_state() == property_state,
+              "Property restores by path after row insertion");
+        auto removed = changed;
+        removed.erase("Health");
+        restored.set_values(&removed, nullptr, false);
+        restored.restore_view_state(property_state);
+        check(!restored.selected_row(), "Removed property is not replaced by an unrelated selection");
+        property.restore_view_state({{"filter", "no-match"}, {"selected", property_state["selected"]}});
+        check(!property.visible_count() && !property.selected_row(), "Hidden property selection clears");
+        property.restore_view_state(property_state);
+        auto package = std::make_shared<Package>();
+        package->source = "Fixture.uasset";
+        for (const auto *name : {"A", "B"}) {
+            ObjectExport e;
+            e.path = e.name = name;
+            e.class_name = "DataAsset";
+            e.properties = values;
+            e.coverage = "properties";
+            package->exports.push_back(e);
+        }
+        AssetView asset;
+        asset.set_packages(package);
+        asset.restore_view_state({{"selected", "B"},
+                                  {"filter", "B"},
+                                  {"rawProperties", true},
+                                  {"comparison", {{"query", "Health"}, {"split", false}, {"scroll", 32}}}});
+        auto state = asset.view_state();
+        auto reordered = std::make_shared<Package>(*package);
+        std::swap(reordered->exports[0], reordered->exports[1]);
+        AssetView resumed;
+        resumed.set_packages(reordered);
+        resumed.restore_view_state(state);
+        check(resumed.view_state() == state,
+              "Asset object identity and inspector states survive export reordering");
+        auto malformed = state;
+        malformed["before"]["mesh"] = {{"distance", -1}};
+        bool failed = false;
+        try {
+            resumed.restore_view_state(malformed);
+        } catch (const Error &) {
+            failed = true;
+        }
+        check(failed && resumed.view_state() == state,
+              "Invalid nested state is rejected before changing the view");
+        resumed.restore_view_state({{"selected", "missing"}});
+        check(resumed.view_state()["selected"] == "B", "Missing object uses the current package default");
+        AssetView added;
+        added.set_packages({}, package, true);
+        added.restore_view_state({{"propertiesAfter", false}, {"graphAfter", false}, {"meshAfter", false}});
+        check(added.view_state()["propertiesAfter"] == true && added.view_state()["meshAfter"] == true,
+              "Absent before side never becomes active");
+        AssetView removed_view;
+        removed_view.set_packages(package, {}, true);
+        removed_view.restore_view_state({{"propertiesAfter", true}, {"textureAfter", true}});
+        check(removed_view.view_state()["propertiesAfter"] == false &&
+                  removed_view.view_state()["textureAfter"] == false,
+              "Absent after side never becomes active");
+        TextureSource source;
+        source.object_path = "Texture";
+        source.width = 2;
+        source.height = 1;
+        source.format = "TSF_BGRA8";
+        TextureView texture;
+        texture.set_source(source);
+        texture.set_preview({(ImTextureID)42, 2, 1});
+        Json image_state = {{"pan", {-70.0, 25.0}}, {"zoom", 2.0}, {"difference", true}};
+        texture.restore_view_state(image_state);
+        check(texture.view_state()["zoom"] == 2 && texture.view_state()["difference"] == false,
+              "Image transform restores without an unavailable difference binding");
+        ImageComparison diff;
+        diff.comparable = diff.same_size = true;
+        diff.before_width = diff.after_width = 2;
+        diff.before_height = diff.after_height = 1;
+        check(texture.set_difference({(ImTextureID)43, 2, 1}, diff), "Difference binding available");
+        texture.restore_view_state(image_state);
+        check(texture.view_state() == image_state, "Image transform and difference switch round trip");
+        auto mesh = std::make_shared<MeshGeometry>();
+        mesh->vertices = {{0, {0, 0, 0}}, {1, {1, 0, 0}}, {2, {0, 1, 0}}};
+        for (std::uint32_t i = 0; i < 3; ++i) {
+            MeshInstance e;
+            e.id = e.vertex = i;
+            mesh->instances.push_back(e);
+        }
+        mesh->triangles = {{0, 0, 0, {0, 1, 2}}};
+        MeshView mesh_view;
+        mesh_view.set_mesh(mesh);
+        Json camera = {
+            {"target", {0, 0, 0}}, {"up", {0, 0, 1}}, {"yaw", .7}, {"pitch", .35}, {"distance", 5}};
+        mesh_view.restore_view_state(camera);
+        check(mesh_view.view_state() == camera, "Orbit camera round trip without a fit overwriting it");
+        MeshView absent_mesh;
+        absent_mesh.restore_view_state(camera);
+        check(absent_mesh.view_state().empty(), "Missing geometry cannot receive a camera");
+        Package graphs;
+        ObjectExport graph;
+        graph.path = graph.name = "Graph";
+        graph.properties = {{"GraphGuid", {{"value", std::string(32, '1')}}},
+                            {"Nodes", {{"value", Json::array({"Graph.A"})}}}};
+        graphs.exports.push_back(graph);
+        ObjectExport node;
+        node.path = "Graph.A";
+        node.name = "A";
+        node.outer_index = 1;
+        node.class_name = "K2Node";
+        node.native_coverage = "pins";
+        node.properties = {{"NodeGuid", {{"value", std::string(32, 'a')}}}};
+        node.native_data = {{"kind", "edgraph-node"}, {"pins", Json::object()}};
+        graphs.exports.push_back(node);
+        BlueprintView blueprint;
+        blueprint.set_package(graphs);
+        check(!blueprint.empty(), "Graph fixture prepared");
+        auto graph_key = blueprint.view_state()["selected"].get<std::string>();
+        Json graph_state = {{"selected", graph_key},
+                            {"views", {{graph_key, {{"pan", {150, 80}}, {"zoom", .8}}}}}};
+        blueprint.restore_view_state(graph_state);
+        check(blueprint.view_state() == graph_state, "Blueprint camera uses graph identity");
+        auto changed_graphs = graphs;
+        changed_graphs.exports.insert(changed_graphs.exports.begin(), ObjectExport{});
+        changed_graphs.exports[2].outer_index = 2;
+        BlueprintView second_graph;
+        second_graph.set_package(changed_graphs);
+        second_graph.restore_view_state(graph_state);
+        check(second_graph.view_state() == graph_state, "Graph state survives export index movement");
+        Package materials;
+        ObjectExport material;
+        material.path = material.name = "M";
+        material.class_name = "/Script/Engine.Material";
+        material.properties = {{"Expressions", {{"value", Json::array({"M.Node"})}}}};
+        materials.exports.push_back(material);
+        ObjectExport expression;
+        expression.path = "M.Node";
+        expression.class_name = "/Script/Engine.MaterialExpressionScalarParameter";
+        expression.outer_index = 1;
+        expression.properties = {{"MaterialExpressionGuid", {{"value", std::string(32, 'e')}}}};
+        materials.exports.push_back(expression);
+        MaterialView material_view;
+        material_view.set_package(materials);
+        check(!material_view.empty(), "Material fixture prepared");
+        Json material_state = {{"selected", "M"}, {"views", {{"M", {{"pan", {40, 60}}, {"zoom", 1.2}}}}}};
+        material_view.restore_view_state(material_state);
+        check(material_view.view_state() == material_state, "Material graph camera round trip");
+        const auto original_package = package->to_json();
+        int frames = 0;
+        for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
+            cyui::Config config;
+            config.themeKey = theme;
+            cyui::apply(config);
+            cyui::loadFonts();
+            unsigned char *pixels;
+            int w, h;
+            io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
+            for (const auto *locale : {"en", "fr"})
+                for (int scene = 0; scene < 6; ++scene)
+                    for (int n = 0; n < 2; ++n) {
+                        cyui::setLocale(locale);
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos({0, 0});
+                        ImGui::SetNextWindowSize(io.DisplaySize);
+                        ImGui::Begin("Restored views");
+                        switch (scene) {
+                        case 0:
+                            property.draw();
+                            break;
+                        case 1:
+                            resumed.draw("Asset", false);
+                            break;
+                        case 2:
+                            blueprint.draw();
+                            break;
+                        case 3:
+                            material_view.draw();
+                            break;
+                        case 4:
+                            texture.draw();
+                            break;
+                        case 5:
+                            mesh_view.draw();
+                            break;
+                        }
+                        ImGui::End();
+                        ImGui::Render();
+                        check(ImGui::GetDrawData()->TotalVtxCount > 0, "Restored view draw data");
+                        ++frames;
+                    }
+        }
+        check(blueprint.view_state() == graph_state && material_view.view_state() == material_state &&
+                  mesh_view.view_state() == camera,
+              "Drawing restored views does not auto-fit over saved navigation");
+        check(package->to_json() == original_package, "Restoring views never modifies package data");
+        ImGui::DestroyContext();
+        std::cout << checks << " view state UI checks passed\n"
+                  << frames << " restored view UI frames validated\n";
+        return 0;
+    } catch (const std::exception &e) {
+        std::cerr << e.what() << '\n';
+        return 1;
+    }
+}

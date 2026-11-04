@@ -108,6 +108,37 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
     state_ = {};
     fit_pending_ = true;
 }
+Json MeshView::view_state() const {
+    if (fit_pending_ || !mesh_)
+        return Json::object();
+    const auto &c = state_.camera;
+    return {{"target", {c.target.x, c.target.y, c.target.z}},
+            {"up", {c.up.x, c.up.y, c.up.z}},
+            {"yaw", c.yaw},
+            {"pitch", c.pitch},
+            {"distance", c.distance}};
+}
+void MeshView::restore_view_state(const Json &state) {
+    cyuediff::view_state::validate(state, "mesh");
+    if (!mesh_ || state.empty())
+        return;
+    if (fit_pending_)
+        fit(1);
+    auto &c = state_.camera;
+    auto vector = [&](const char *key, cyui::Vec3 &out) {
+        if (state.contains(key))
+            out = {state[key][0].get<double>(), state[key][1].get<double>(), state[key][2].get<double>()};
+    };
+    vector("target", c.target);
+    vector("up", c.up);
+    if (state.contains("yaw"))
+        c.yaw = state["yaw"].get<double>();
+    if (state.contains("pitch"))
+        c.pitch = state["pitch"].get<double>();
+    if (state.contains("distance"))
+        c.distance = state["distance"].get<double>();
+    state_.orbiting = state_.panning = false;
+}
 void MeshView::draw(const char *id) {
     cyui::ScopedID scope(id);
     rendered_edges_ = 0;

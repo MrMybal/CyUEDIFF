@@ -231,6 +231,124 @@ void AssetView::set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, 
     before_mesh_.set_mesh(before_geometry_, after_geometry_, false, comparison_);
     after_mesh_.set_mesh(after_geometry_, before_geometry_, true, comparison_);
 }
+Json AssetView::view_state() const {
+    const auto &p = properties_after_ ? after_ : before_;
+    const auto &t = texture_after_ ? after_textures_ : before_textures_;
+    Json result = {
+        {"filter", filter_.query},
+        {"selected", p && selected_ < p->exports.size() ? Json(p->exports[selected_].path) : Json(nullptr)},
+        {"propertiesAfter", properties_after_},
+        {"rawProperties", raw_properties_},
+        {"graphAfter", graph_after_},
+        {"materialAfter", material_after_},
+        {"textureAfter", texture_after_},
+        {"meshAfter", mesh_after_},
+        {"textureSelected",
+         texture_selected_ < t.size() ? Json(t[texture_selected_].object_path()) : Json(nullptr)},
+        {"comparison",
+         {{"split", diff_state_.split},
+          {"query", diff_state_.query},
+          {"scroll", std::max(0.f, diff_state_.scroll)}}}};
+    auto side = [&](bool after) {
+        const auto &package = after ? after_ : before_;
+        const auto &views = after ? after_inspection_ : before_inspection_;
+        Json properties = Json::object();
+        if (package && selected_ < views.size())
+            properties[package->exports[selected_].path] = views[selected_].view_state();
+        Json textures = Json::object();
+        const auto &tv = after ? after_textures_ : before_textures_;
+        if (texture_selected_ < tv.size())
+            textures[tv[texture_selected_].object_path()] = tv[texture_selected_].view_state();
+        for (const auto &v : tv)
+            if (textures.size() < 128)
+                textures[v.object_path()] = v.view_state();
+        return Json{{"properties", properties},
+                    {"blueprint", (after ? after_graph_ : before_graph_).view_state()},
+                    {"material", (after ? after_material_ : before_material_).view_state()},
+                    {"textures", textures},
+                    {"mesh", (after ? after_mesh_ : before_mesh_).view_state()}};
+    };
+    result["before"] = side(false);
+    result["after"] = side(true);
+    return result;
+}
+void AssetView::restore_view_state(const Json &state) {
+    cyuediff::view_state::validate(state, "asset");
+    auto flag = [&](const char *key, bool &out) {
+        if (state.contains(key))
+            out = state[key].get<bool>();
+        if (!before_)
+            out = bool(after_);
+        if (!after_)
+            out = false;
+    };
+    flag("propertiesAfter", properties_after_);
+    flag("graphAfter", graph_after_);
+    flag("materialAfter", material_after_);
+    flag("textureAfter", texture_after_);
+    flag("meshAfter", mesh_after_);
+    if (state.contains("rawProperties"))
+        raw_properties_ = state["rawProperties"].get<bool>();
+    if (state.contains("filter"))
+        filter_.query = state["filter"].get<std::string>();
+    if (state.contains("selected")) {
+        selected_ = 0;
+        const auto &p = properties_after_ ? after_ : before_;
+        if (p)
+            for (std::size_t i = 0; i < p->exports.size(); ++i)
+                if (state["selected"] == p->exports[i].path) {
+                    selected_ = i;
+                    break;
+                }
+    }
+    if (state.contains("textureSelected")) {
+        texture_selected_ = 0;
+        const auto &views = texture_after_ ? after_textures_ : before_textures_;
+        for (std::size_t i = 0; i < views.size(); ++i)
+            if (state["textureSelected"] == views[i].object_path()) {
+                texture_selected_ = i;
+                break;
+            }
+    }
+    for (bool after : {false, true}) {
+        const char *key = after ? "after" : "before";
+        if (!state.contains(key))
+            continue;
+        const auto &v = state[key];
+        if (v.contains("blueprint"))
+            (after ? after_graph_ : before_graph_).restore_view_state(v["blueprint"]);
+        if (v.contains("material"))
+            (after ? after_material_ : before_material_).restore_view_state(v["material"]);
+        if (v.contains("mesh"))
+            (after ? after_mesh_ : before_mesh_).restore_view_state(v["mesh"]);
+        if (v.contains("textures"))
+            for (auto &t : after ? after_textures_ : before_textures_) {
+                auto it = v["textures"].find(t.object_path());
+                if (it != v["textures"].end())
+                    t.restore_view_state(*it);
+            }
+        const auto &p = after ? after_ : before_;
+        auto &views = after ? after_inspection_ : before_inspection_;
+        if (p && v.contains("properties"))
+            for (std::size_t i = 0; i < views.size(); ++i) {
+                auto it = v["properties"].find(p->exports[i].path);
+                if (it != v["properties"].end())
+                    views[i].restore_view_state(*it);
+            }
+    }
+    if (state.contains("comparison")) {
+        const auto &v = state["comparison"];
+        if (v.contains("split"))
+            diff_state_.split = v["split"].get<bool>();
+        if (v.contains("query"))
+            diff_state_.query = v["query"].get<std::string>();
+        if (v.contains("scroll")) {
+            diff_state_.scroll = v["scroll"].get<float>();
+            diff_state_.focus = -1;
+            diff_state_.hunk = -1;
+        }
+    }
+}
 void AssetView::draw(const char *id, bool show_language) {
     cyui::ScopedID scope(id);
     if (show_language && ImGui::BeginCombo(cyui::trLabel("Language").c_str(), cyui::locale().c_str())) {

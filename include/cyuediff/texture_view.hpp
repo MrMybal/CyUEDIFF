@@ -1,4 +1,5 @@
 #pragma once
+#include <cyuediff/view_state.hpp>
 #include <cyuediff/hdr.hpp>
 #include <cyui/modules/Images.h>
 #include <optional>
@@ -14,6 +15,9 @@ class TextureView {
     cyui::ImageState state_;
 
   public:
+    // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
+    Json view_state() const;
+    void restore_view_state(const Json &);
     void set_source(TextureSource source);
     bool set_preview(const cyui::ImageData &image);
     void clear_preview();

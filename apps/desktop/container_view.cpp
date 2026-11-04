@@ -402,6 +402,66 @@ Json ContainerView::property_report() const {
             {"afterStatus", row ? status(row->after_read) : Json(nullptr)},
             {"visibleProperties", row ? values_.visible_count() : 0}};
 }
+Json ContainerView::view_state() const {
+    return {{"filter", filter_.query},
+            {"objectFilter", object_filter_.query},
+            {"packagesOnly", packages_only_},
+            {"changedOnly", changed_only_},
+            {"member", member_ >= 0 ? Json(selected_key()) : Json(nullptr)},
+            {"object", object_ >= 0 ? Json(object_rows_[object_].path) : Json(nullptr)},
+            {"propertyMode", property_mode_},
+            {"inspection", inspection_.view_state()},
+            {"properties", properties_.view_state()},
+            {"values", values_.view_state()},
+            {"comparison", comparison_.view_state()},
+            {"schema", schema_.view_state()}};
+}
+void ContainerView::restore_view_state(const Json &state) {
+    cyuediff::view_state::validate(state, "container");
+    if (state.contains("filter"))
+        filter_.query = state["filter"].get<std::string>();
+    if (state.contains("objectFilter"))
+        object_filter_.query = state["objectFilter"].get<std::string>();
+    if (state.contains("packagesOnly"))
+        packages_only_ = state["packagesOnly"].get<bool>();
+    if (state.contains("changedOnly"))
+        changed_only_ = state["changedOnly"].get<bool>();
+    rebuild_members();
+    rebuild_objects();
+    if (state.contains("member")) {
+        member_ = -1;
+        if (!state["member"].is_null())
+            select_member(state["member"].get<std::string>());
+    }
+    if (state.contains("object")) {
+        object_ = -1;
+        pending_object_ = -1;
+        for (auto i : objects_)
+            if (state["object"] == object_rows_[i].path) {
+                select_object(static_cast<std::size_t>(i));
+                break;
+            }
+    }
+    if (object_ < 0) {
+        property_available_ = properties_comparing_ = property_mode_ = false;
+        properties_ = PropertyView{};
+        values_ = PropertyView{};
+        if (schema_details_.is_object())
+            schema_details_.erase("selectedObject");
+        schema_.set_values(&schema_details_, nullptr, false);
+    }
+    if (state.contains("propertyMode"))
+        property_mode_ = property_available_ && state["propertyMode"].get<bool>();
+    auto restore = [&](const char *key, PropertyView &v) {
+        if (state.contains(key))
+            v.restore_view_state(state[key]);
+    };
+    restore("inspection", inspection_);
+    restore("properties", properties_);
+    restore("values", values_);
+    restore("comparison", comparison_);
+    restore("schema", schema_);
+}
 ContainerAction ContainerView::draw(bool busy) {
     if (!document_)
         return ContainerAction::none;

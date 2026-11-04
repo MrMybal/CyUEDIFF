@@ -1,4 +1,5 @@
 #pragma once
+#include <cyuediff/view_state.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/blueprint_view.hpp>
 #include <cyuediff/texture_view.hpp>
@@ -34,6 +35,9 @@ class AssetView {
     std::vector<TextureView> before_textures_, after_textures_;
 
   public:
+    // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
+    Json view_state() const;
+    void restore_view_state(const Json &);
     static void register_translations();
     // compare_missing_side enables an addition/removal diff when one side is absent.
     void set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after = {},

@@ -135,6 +135,44 @@ bool MaterialView::select_object(const std::string &path) {
         }
     return false;
 }
+Json MaterialView::view_state() const {
+    Json views = Json::object();
+    auto add = [&](const auto &g) {
+        if (!g.needs_fit && views.size() < 128)
+            views[g.path] = {{"pan", {g.state.canvas.view.origin.x, g.state.canvas.view.origin.y}},
+                             {"zoom", g.state.canvas.view.zoom}};
+    };
+    if (!documents_.empty())
+        add(documents_[selected_]);
+    for (const auto &g : documents_)
+        add(g);
+    return {{"selected", documents_.empty() ? Json(nullptr) : Json(documents_[selected_].path)},
+            {"views", views}};
+}
+void MaterialView::restore_view_state(const Json &state) {
+    cyuediff::view_state::validate(state, "graphs");
+    if (state.contains("selected")) {
+        selected_ = 0;
+        for (std::size_t i = 0; i < documents_.size(); ++i)
+            if (state["selected"] == documents_[i].path) {
+                selected_ = i;
+                break;
+            }
+    }
+    if (state.contains("views"))
+        for (auto &g : documents_) {
+            auto it = state["views"].find(g.path);
+            if (it == state["views"].end())
+                continue;
+            const auto &v = *it;
+            if (v.contains("pan"))
+                g.state.canvas.view.origin = {v["pan"][0].get<double>(), v["pan"][1].get<double>()};
+            if (v.contains("zoom"))
+                g.state.canvas.view.zoom = v["zoom"].get<double>();
+            if (v.contains("pan") || v.contains("zoom"))
+                g.needs_fit = false;
+        }
+}
 void MaterialView::draw(const char *id) {
     cyui::ScopedID scope(id);
     if (documents_.empty()) {

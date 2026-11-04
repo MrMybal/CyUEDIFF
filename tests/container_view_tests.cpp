@@ -160,6 +160,39 @@ int main() {
         if (!view.property_table().rows.empty() || view.property_report()["available"] ||
             view.property_report()["visibleProperties"] != 0)
             throw std::runtime_error("An index request clears the previous property inspector");
+        view.set_document(mapped_pair);
+        const auto original_view = view.view_state();
+        auto configured = original_view;
+        configured["filter"] = "0000";
+        configured["objectFilter"] = "Example";
+        configured["values"] = {{"filter", "Health"}, {"changedOnly", false}, {"selected", nullptr}};
+        view.restore_view_state(configured);
+        const auto saved_view = view.view_state();
+        ContainerView restored_view;
+        restored_view.set_document(mapped_pair);
+        restored_view.restore_view_state(saved_view);
+        if (restored_view.view_state() != saved_view)
+            throw std::runtime_error("Container presentation state round trip");
+        auto stale_view = saved_view;
+        stale_view["object"] = "missing";
+        stale_view["member"] = "missing";
+        restored_view.restore_view_state(stale_view);
+        if (!restored_view.view_state()["object"].is_null() ||
+            !restored_view.view_state()["member"].is_null() ||
+            restored_view.property_report()["available"] != false)
+            throw std::runtime_error("Stale container identities cannot select unrelated rows");
+        auto invalid_view = saved_view;
+        invalid_view["values"]["selected"] = 42;
+        const auto retained_view = view.view_state();
+        bool invalid_rejected = false;
+        try {
+            view.restore_view_state(invalid_view);
+        } catch (const Error &) {
+            invalid_rejected = true;
+        }
+        if (!invalid_rejected || view.view_state() != retained_view)
+            throw std::runtime_error("Container restore validation precedes mutations");
+        view.restore_view_state(original_view);
         ImGui::CreateContext();
         auto &io = ImGui::GetIO();
         io.DisplaySize = ImVec2(1280, 900);

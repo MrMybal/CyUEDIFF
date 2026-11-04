@@ -100,6 +100,43 @@ void BlueprintView::set_package(const Package &package, const Package *peer, boo
         graphs_.push_back(std::move(prepared));
     }
 }
+Json BlueprintView::view_state() const {
+    Json views = Json::object();
+    auto add = [&](const auto &g) {
+        if (!g.needs_fit && views.size() < 128)
+            views[g.id] = {{"pan", {g.state.canvas.view.origin.x, g.state.canvas.view.origin.y}},
+                           {"zoom", g.state.canvas.view.zoom}};
+    };
+    if (!graphs_.empty())
+        add(graphs_[selected_]);
+    for (const auto &g : graphs_)
+        add(g);
+    return {{"selected", graphs_.empty() ? Json(nullptr) : Json(graphs_[selected_].id)}, {"views", views}};
+}
+void BlueprintView::restore_view_state(const Json &state) {
+    cyuediff::view_state::validate(state, "graphs");
+    if (state.contains("selected")) {
+        selected_ = 0;
+        for (std::size_t i = 0; i < graphs_.size(); ++i)
+            if (state["selected"] == graphs_[i].id) {
+                selected_ = i;
+                break;
+            }
+    }
+    if (state.contains("views"))
+        for (auto &g : graphs_) {
+            auto it = state["views"].find(g.id);
+            if (it == state["views"].end())
+                continue;
+            const auto &v = *it;
+            if (v.contains("pan"))
+                g.state.canvas.view.origin = {v["pan"][0].get<double>(), v["pan"][1].get<double>()};
+            if (v.contains("zoom"))
+                g.state.canvas.view.zoom = v["zoom"].get<double>();
+            if (v.contains("pan") || v.contains("zoom"))
+                g.needs_fit = false;
+        }
+}
 void BlueprintView::draw(const char *id) {
     cyui::ScopedID scope(id);
     if (graphs_.empty()) {

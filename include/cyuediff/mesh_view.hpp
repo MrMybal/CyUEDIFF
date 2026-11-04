@@ -1,4 +1,5 @@
 #pragma once
+#include <cyuediff/view_state.hpp>
 #include <cyuediff/visual_diff.hpp>
 #include <cyui/modules/Viewport.h>
 #include <memory>
@@ -21,6 +22,9 @@ class MeshView {
     void fit(float aspect);
 
   public:
+    // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
+    Json view_state() const;
+    void restore_view_state(const Json &);
     void set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_ptr<const MeshGeometry> peer = {},
                   bool after = false, bool comparing = false);
     const ChangeCounts &changes() const {

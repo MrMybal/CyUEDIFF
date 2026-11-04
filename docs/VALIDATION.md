@@ -305,3 +305,8 @@ The extracted 0.37 archive is checked with its CLI, blank desktop workspace save
 ## 0.38 milestone: bounded presentation state and workspace migration
 
 The new header-only presentation contract validates identities, filters, graph/image transforms, orbit camera data and inspector state without depending on CyUI/ImGui. Workspace version two records this data and reads version-one files with empty presentation state. Model checks cover migration, invalid/unknown fields, finite numeric bounds, control characters, malformed UTF-8 and bounded object maps. The existing workspace file suite and the new state model suite pass; native application of this state follows the next milestones.
+
+
+## 0.39 milestone: reusable view snapshot and restore APIs
+
+Property, asset, Blueprint, material, texture, mesh and desktop container views now capture/apply presentation data outside drawing. Tests validate property identity after row insertion, object identity after export reordering, missing/hidden selections, unavailable comparison sides, graph identities, texture difference bindings and orbit camera state. Invalid nested state is rejected before changing existing views. A new renderer-free suite draws six restored view types across 120 frames in all five themes and English/French, confirms that auto-fit does not replace restored navigation and verifies immutable package data. Existing container, asset UI and state/file model suites pass alongside these tests. Native workspace integration follows the next milestone.
