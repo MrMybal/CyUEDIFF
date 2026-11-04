@@ -1,6 +1,7 @@
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
 #include <cyuediff/collision_wireframe.hpp>
+#include <cyuediff/skeleton_pose.hpp>
 #include <cyuediff/catalog.hpp>
 #include <cyuediff/hdr.hpp>
 #include <cyuediff/container.hpp>
@@ -34,6 +35,9 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff hdr-diff BEFORE AFTER [--threshold SAMPLE_DELTA] [--heatmap MASK.png] [--codec "
                "MODULE.dll]\n"
                "  preview accepts --exposure EV for HDR source display.\n"
+               "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff skeleton-diff BEFORE AFTER [--out FILE]\n"
+               "  cyuediff skeleton-pose ASSET [--object PATH] [--out FILE]\n"
                "  cyuediff collision ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-preview ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-diff BEFORE AFTER [--out FILE]\n"
@@ -129,8 +133,9 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "collision-diff" || command == "mesh-diff" || command == "material-diff" ||
-                     command == "hdr-diff" || command == "container-read" || command == "container-diff")
+                     command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
+                     command == "container-diff")
                         ? 2u
                         : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
@@ -202,7 +207,7 @@ int run(const std::vector<std::string> &args) {
              key == "--before-engine-root" || key == "--after-engine-root"))
             throw Error("arguments", key + " requires a Git command");
         if (((key == "--mip") && !image_command) ||
-            (key == "--object" && !image_command && !geometry_command))
+            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose"))
             throw Error("arguments", key + " requires an image or geometry command");
         if ((key == "--threshold" || key == "--heatmap") && command != "image-diff" && command != "hdr-diff")
             throw Error("arguments", key + " requires image-diff or hdr-diff");
@@ -574,9 +579,10 @@ int run(const std::vector<std::string> &args) {
 #endif
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
                command == "mesh" || command == "material" || command == "collision" ||
-               command == "collision-preview") {
+               command == "collision-preview" || command == "skeleton" || command == "skeleton-pose") {
         if ((command == "graph" || command == "texture" || command == "mesh" || command == "material" ||
-             command == "collision" || command == "collision-preview") &&
+             command == "collision" || command == "collision-preview" || command == "skeleton" ||
+             command == "skeleton-pose") &&
             flags.contains("--metadata"))
             throw Error("arguments", "Graph/texture inspection requires properties");
         if (flags.contains("--metadata"))
@@ -590,6 +596,10 @@ int run(const std::vector<std::string> &args) {
             output = package.mesh_snapshot();
         else if (command == "material")
             output = package.material_snapshot();
+        else if (command == "skeleton")
+            output = package.skeleton_snapshot();
+        else if (command == "skeleton-pose")
+            output = reference_pose(package, flags.value("--object",std::string{})).to_json();
         else if (command == "collision-preview")
             output = collision_wireframe(package).to_json();
         else if (command == "collision")
@@ -690,6 +700,14 @@ int run(const std::vector<std::string> &args) {
             output["lod"] = lod;
             exit_code = comparison.changes.empty() ? 0 : 1;
         }
+    } else if (command == "skeleton-diff") {
+        if (flags.contains("--metadata"))
+            throw Error("arguments", "Skeleton comparison requires properties");
+        const auto before = read(positional[0], "--before-project", options),
+                   after = read(positional[1], "--after-project", options);
+        const auto comparison = compare_skeletons(before, after);
+        output = comparison.to_json();
+        exit_code = !comparison.complete ? 2 : comparison.changes.empty() ? 0 : 1;
     } else if (command == "collision-diff") {
         if (flags.contains("--metadata"))
             throw Error("arguments", "Collision comparison requires properties");

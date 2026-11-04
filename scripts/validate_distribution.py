@@ -324,6 +324,17 @@ if args.consumer:
  if wireframe['space']!='body-local' or len(wireframe['shapes'])!=1 or not wireframe['shapes'][0]['ready'] or len(wireframe['shapes'][0]['lines'])!=96:raise RuntimeError('Installed collision wireframe API failed')
  print('Installed independent collision Core consumer validated')
 
+ skeleton_build=target/'skeleton-consumer'
+ configure=[cmake,'-S',str(root/'examples/skeleton_consumer'),'-B',str(skeleton_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(skeleton_build),'--config','Release','--parallel','2'],check=True,env=env)
+ skeleton_executable=skeleton_build/'Release'/('skeleton_consumer'+suffix) if os.name=='nt' else skeleton_build/'skeleton_consumer'
+ result=subprocess.run([str(skeleton_executable)],capture_output=True,check=True,env=env,timeout=20)
+ skeleton_data=json.loads(result.stdout)
+ if not skeleton_data['snapshot']['complete'] or skeleton_data['comparison']['status']!='changed' or skeleton_data['pose']['joints']['arm']['position']!=[10.,0.,0.]:raise RuntimeError('Installed skeleton SDK consumer failed')
+ print('Installed independent skeleton projection/pose consumer validated')
+
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
@@ -338,5 +349,5 @@ if args.consumer:
 
 
 
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision consumers' if args.consumer else '')+' validated')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

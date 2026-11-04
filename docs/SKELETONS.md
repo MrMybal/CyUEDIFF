@@ -13,3 +13,7 @@ Skeleton snapshots key raw bones by their exact stored FName and use named paren
 ## Bounded affine reference-pose display data - 0.85
 
 reference_pose exposes named joint positions by composing stored local translation/quaternion/scale matrices through the raw hierarchy. Signed scale and bounded unit-quaternion roundoff are handled explicitly; invalid rotations leave the affected joint and descendants unavailable. Iterative composition has joint/depth budgets and cancellation, and nonfinite derived values abort. The raw-reference-affine space is display data: it does not execute animation, skin vertices or emulate Unreal FTransform decomposition where nonuniform scale introduces shear. Stored local values remain unchanged and continue to drive the structural diff.
+
+## CLI inspection, pose export and independent SDK consumer - 0.86
+
+skeleton exports the stored named hierarchy; skeleton-diff compares two projections with exit 0 identical, 1 changed and 2 incomplete/error; skeleton-pose exports raw-reference-affine joint positions and accepts an explicit object path. Inspection remains successful when a projection is unavailable, with complete/diagnostics explicit. Shared project contexts and source/companion/hard-link output protections apply. An independent installed Core consumer demonstrates native package reads or an explicit host model, structural comparison and reference-pose composition without Unreal, CyUI or Git.
