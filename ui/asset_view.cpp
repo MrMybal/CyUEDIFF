@@ -4,7 +4,14 @@ namespace cyuediff {
 void AssetView::register_translations() {
     cyui::registerTranslations(
         "fr",
-        {{"Pixel difference mask", "Masque des pixels modifiés"},
+        {{"Source diagnostics", "Diagnostics de la source"},
+         {"HDR preview: Reinhard / sRGB at 0 EV. Differences use source floats.",
+          "Aperçu HDR : Reinhard / sRGB à 0 EV. Les écarts utilisent les flottants sources."},
+         {"HDR: %llu changed pixels | maximum sample delta: %.8g",
+          "HDR : %llu pixels modifiés | écart maximal source : %.8g"},
+         {"HDR and LDR sources require an explicit common sample space.",
+          "Les sources HDR et LDR nécessitent un espace d'échantillonnage commun explicite."},
+         {"Pixel difference mask", "Masque des pixels modifiés"},
          {"%llu changed pixels | maximum delta: %u", "%llu pixels modifiés | écart maximal : %u"},
          {"Images have different dimensions.", "Les images ont des dimensions différentes."},
          {"Added", "Ajouté"},
@@ -189,6 +196,17 @@ bool AssetView::set_texture_preview(const std::string &path, const cyui::ImageDa
 }
 bool AssetView::set_texture_difference(const std::string &before_path, const std::string &after_path,
                                        const cyui::ImageData &image, const ImageComparison &comparison) {
+    bool found = false;
+    for (auto &view : before_textures_)
+        if (view.object_path() == before_path)
+            found = view.set_difference(image, comparison) || found;
+    for (auto &view : after_textures_)
+        if (view.object_path() == after_path)
+            found = view.set_difference(image, comparison) || found;
+    return found;
+}
+bool AssetView::set_texture_difference(const std::string &before_path, const std::string &after_path,
+                                       const cyui::ImageData &image, const HdrImageComparison &comparison) {
     bool found = false;
     for (auto &view : before_textures_)
         if (view.object_path() == before_path)

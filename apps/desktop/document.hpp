@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/cache.hpp>
+#include <cyuediff/hdr.hpp>
 #ifdef CYUEDIFF_HAS_GIT
 #include <cyuediff/git.hpp>
 #endif
@@ -29,10 +30,13 @@ struct Preview {
     std::string object_path;
     bool after = false;
     ImageRgba8 image;
+    std::optional<ImageRgba32f> hdr;
 };
 struct TextureDifference {
     std::string before_object, after_object;
     ImageComparison comparison;
+    std::optional<HdrImageComparison> hdr_comparison;
+    std::string diagnostic;
 };
 struct Document {
     LoadRequest request;

@@ -12,6 +12,7 @@ from zipfile import ZipFile
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('archive',type=Path)
 parser.add_argument('--consumer',action='store_true',help='Compile a Core-only consumer against the extracted SDK')
+parser.add_argument('--static-runtime',action='store_true',help='Match archives built with the static MSVC runtime')
 args=parser.parse_args()
 root=Path(__file__).resolve().parents[1]
 work=root/'build-native'
@@ -52,7 +53,9 @@ if args.consumer:
  if not cmake and os.name=='nt':cmake=str(Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
  if not cmake:raise RuntimeError('CMake is required for --consumer')
  build=target/'consumer'
- subprocess.run([cmake,'-S',str(root/'examples/catalog_consumer'),'-B',str(build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)],check=True,env=env)
+ configure=[cmake,'-S',str(root/'examples/catalog_consumer'),'-B',str(build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(build),'--config','Release','--parallel','2'],check=True,env=env)
  project=target/'fixture';(project/'Content').mkdir(parents=True)
  (project/'Example.uproject').write_text('{"FileVersion":3}',encoding='utf-8')

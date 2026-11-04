@@ -195,6 +195,9 @@ void register_translations() {
          {"After engine", "Moteur après"},
          {"Empty after context inherits the before context.",
           "Le contexte après vide reprend celui d'avant."},
+         {"Decoding HDR source", "Décodage de la source HDR"},
+         {"Tone mapping HDR preview", "Conversion de l'aperçu HDR"},
+         {"Comparing HDR samples", "Comparaison des échantillons HDR"},
          {"Hashing data", "Calcul des empreintes"},
          {"Copying local LFS data", "Copie des données LFS locales"},
          {"Comparing packages", "Comparaison des packages"},
@@ -529,9 +532,13 @@ class Shell {
                                int(difference.comparison.heatmap.width),
                                int(difference.comparison.heatmap.height)};
                 }
-                if (view_.set_texture_difference(difference.before_object, difference.after_object, binding,
-                                                 difference.comparison) &&
-                    image)
+                bool bound =
+                    difference.hdr_comparison
+                        ? view_.set_texture_difference(difference.before_object, difference.after_object,
+                                                       binding, *difference.hdr_comparison)
+                        : view_.set_texture_difference(difference.before_object, difference.after_object,
+                                                       binding, difference.comparison);
+                if (bound && image)
                     images_.push_back(std::move(image));
             } catch (const std::exception &e) {
                 gpu_diagnostics_.push_back(e.what());

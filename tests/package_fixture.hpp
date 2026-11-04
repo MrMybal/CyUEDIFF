@@ -37,11 +37,18 @@ struct Fixture {
     Bytes header, script;
     std::size_t export_offset = 0, serial_offset_field = 0;
 };
-Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0) {
+using NameWriter = std::function<void(Bytes &, const std::string &)>;
+using ExtraScript = std::function<void(Bytes &, const NameWriter &)>;
+Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0,
+                const std::vector<std::string> &extra_names = {}, const ExtraScript &extra = {},
+                int editor_version = -1) {
     std::vector<std::string> names = {
         "None",        "TestAsset",   "DataAsset",     "/Script/CoreUObject", "Class",
         "Value",       "IntProperty", "Enabled",       "BoolProperty",        "Text",
         "StrProperty", "Items",       "ArrayProperty", "StructProperty",      "ExampleStruct"};
+    for (const auto &name : extra_names)
+        if (std::find(names.begin(), names.end(), name) == names.end())
+            names.push_back(name);
     if (reorder)
         std::reverse(names.begin(), names.end());
     std::map<std::string, int> ids;
@@ -108,6 +115,8 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
     }
     tag("Items", "ArrayProperty", static_cast<int>(array.data.size()));
     s.append(array);
+    if (extra)
+        extra(s, name);
     name(s, "None");
     b.put<std::uint32_t>(0x9e2a83c1);
     b.i(version >= 1016 ? -9 : (version ? -8 : -7));
@@ -116,14 +125,22 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
     if (version)
         b.i(version);
     b.i(0);
+    auto custom_versions = [&] {
+        b.i(editor_version < 0 ? 0 : 1);
+        if (editor_version >= 0) {
+            for (auto word : {0xe4b068edu, 0xf49442e9u, 0xa231da0bu, 0x2e46bb41u})
+                b.put<std::uint32_t>(word);
+            b.i(editor_version);
+        }
+    };
     std::size_t size_pos;
     if (version >= 1016) {
         b.zeros(20);
         size_pos = b.data.size();
         b.i(0);
-        b.i(0);
+        custom_versions();
     } else {
-        b.i(0);
+        custom_versions();
         size_pos = b.data.size();
         b.i(0);
     }

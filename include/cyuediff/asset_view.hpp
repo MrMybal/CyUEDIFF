@@ -40,6 +40,8 @@ class AssetView {
     bool set_texture_preview(const std::string &object_path, const cyui::ImageData &, bool after = false);
     bool set_texture_difference(const std::string &before_path, const std::string &after_path,
                                 const cyui::ImageData &, const ImageComparison &);
+    bool set_texture_difference(const std::string &before_path, const std::string &after_path,
+                                const cyui::ImageData &, const HdrImageComparison &);
     bool clear_texture_preview(const std::string &object_path, bool after = false);
     void set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after = false);
     void select_tab(AssetTab tab) {

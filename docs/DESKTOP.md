@@ -67,7 +67,7 @@ The main thread prepares the views and uploads images before the next frame. Rep
 
 The host prepares the first texture source and first mesh source/LOD 0 per side. Texture budgets are 16 million pixels and 128 MiB for payload/decoder data; mesh payloads are limited to 128 MiB with the Core's element limits. **Load previews** can be disabled. An optional codec must be supplied explicitly with `--codec DLL`; it is trusted host code and is never discovered from an asset or engine directory. No Oodle SDK or binary is distributed. See [CODECS.md](CODECS.md).
 
-Commit history, multiple documents, configurable decoder profiles, persistent preferences and independent desktop contexts per side remain future work. Material evaluation, skinned mesh rendering and Nanite rendering retain the Core's documented limitations.
+Independent contexts per side, active cancellation/progress, verified package caching and the typed inspector are available; see [RUNTIME.md](RUNTIME.md). Commit history, multiple documents, configurable desktop decoder profiles and persistent preferences remain future work. Material evaluation, skinned mesh rendering and Nanite rendering retain the Core's documented limitations.
 
 ## Native validation
 
@@ -78,8 +78,10 @@ python scripts/validate_desktop_git.py --asset D:/Owned/BP_Player.uasset --after
 
 `--smoke` renders at least twelve settled frames in a hidden DX11/WARP window. `--view` accepts `properties`, `blueprint`, `materials`, `textures`, `meshes` and `comparison`. Capture/report require smoke mode. Outputs overlapping input assets, companions, Git metadata, LFS storage or selected engine context are rejected. Exit code `0` means the document loaded, even when changed; `2` means loading/capture failed. The document report exposes `status`, the package `diff` and the optional complete `git` comparison, including project contexts and immutable commit IDs.
 
-The Windows Release configuration passes fifteen CTest suites with 625 checks, thirty renderer-free UI frames and a native renderer smoke test. `catalog` covers 21 checks, `desktop_browser` covers 25 checks and `desktop_git` covers 35 integration checks; the UI frames also exercise additions/removals. The desktop configuration without Git passes twelve suites. The Core-only configuration passes eight suites.
+The Windows Release configuration passes nineteen CTest suites with 914 checks, thirty renderer-free UI frames and a native renderer smoke test. `catalog` covers 21 checks, `desktop_browser` covers 25 checks and `desktop_git` covers 35 integration checks; the UI frames also exercise additions/removals. The desktop configuration without Git passes sixteen suites. The Core-only configuration passes twelve suites.
 
 `scripts/validate_desktop_git.py` produced 22 native captures, six option/output refusals, desktop/CLI Git diff parity and unchanged index/checkout/source fingerprints. It uses a fresh owned repository with generated local LFS pointers and copies of explicitly selected UE 5.5.4/5.3.2 assets. Captures were reviewed in all five themes, both languages and the relevant views. The existing loose-file validator also covers 21 captures and seven refusals. Generated assets, repositories, reports and images are ignored and never committed.
 
 `scripts/validate_browser.py` adds 21 native captures and five output refusals. It checks both languages and all themes, local/engine/plugin content, repository-wide Git presence, filtering, local opening and Git comparison, missing LFS content, error states and CLI parity. Browser-only capture is available with `--smoke --browse`; `--browse-filter TEXT` presets search. The controlled `--browse-select PATH` option requires smoke mode and opens an entry through the same selection path for validation. Reports include the complete browser metadata, filtered count and document if opened. Captures and generated repositories are ignored.
+
+HDR previews and difference masks retain floating-point source comparisons; see [HDR.md](HDR.md). A successfully loaded preview keeps source diagnostic details in a collapsible section.

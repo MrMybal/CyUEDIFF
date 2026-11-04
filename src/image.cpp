@@ -1,4 +1,5 @@
 #include "archive.hpp"
+#include <cyuediff/hdr.hpp>
 #include <climits>
 #include <cmath>
 #include <fstream>
@@ -119,6 +120,8 @@ void dimension_limit(std::uint32_t width, std::uint32_t height, const TextureDec
 ImageRgba8 decode_texture(const TextureSource &texture, std::uint32_t mip,
                           const TextureDecodeOptions &options) {
     options.control.checkpoint("Decoding image");
+    if (is_hdr_format(texture.format))
+        return tone_map_hdr(decode_texture_hdr(texture, mip, options), 0, options.control);
     if (!texture.mips || mip >= texture.mips || texture.mips > 32)
         throw Error("texture-mip", "Requested source mip does not exist");
     if (texture.slices != 1 || texture.layers != 1 || texture.block_offsets.size() != 1 ||

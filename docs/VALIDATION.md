@@ -145,3 +145,10 @@ The Windows desktop passes 17 CTest suites (860 checks), 30 UI frames and native
 The CyTrace project supplied locally adds 150 original loose packages (UE 5.3 / serializer 1009), 12,396 exports, 12 rejected truncated headers and unchanged original package/companion hashes. Of those exports, 11,575 expose tagged properties, 818 remain partial and three remain opaque; these counts are coverage observations, not a claim of complete native decoding. The supplied build also contains a version-11 Pak and version-5 IoStore TOCs; their presence alone does not establish container/cooked support. No `.usmap` was found in that project tree.
 
 A desktop CPack archive was extracted and validated with its CLI, native WARP smoke and an external Core consumer compiled and run against the extracted SDK. The archive excludes source assets and the optional locally built Oodle module, while preserving selected third-party notices. CI YAML was parsed locally; hosted Windows/Linux jobs await a user-authorized push.
+
+
+## 0.14 extended-property and HDR validation
+
+The desktop passes 19 suites with 914 checks. Extended-property fixtures cover legacy/full type tags, map/set order independence and deltas, localized text histories, native transforms/ticks, bounded unknown histories and retained experimental-extension metadata. The original 150-package CyTrace corpus remains unchanged by SHA-256; full tagged-property coverage rises to 12,091 exports, with 302 partial and three opaque exports. Twelve corrupt headers are still rejected.
+
+HDR tests preserve finite FP16/FP32 and RGBE samples before display conversion, including negatives, subnormals and values above one. A source-sample change hidden by identical RGBA8 previews remains detectable. Real RGBA16F/32F sources decode using the explicit local codec. Comparing two real 1024-square HDR sources reports 1,048,576 changed pixels with maximum sample delta 1.0; the native French desktop and CLI reports match exactly. Self-comparison, unsupported HDR use through byte-domain image-diff, exposure bounds and unchanged original hashes are checked.

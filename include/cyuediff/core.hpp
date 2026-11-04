@@ -139,7 +139,7 @@ struct ImageComparison {
     ImageRgba8 heatmap;
     Json to_json() const;
 };
-// Produces encoded RGBA8 samples; 16-bit inputs are reduced without a color-space transform.
+// LDR returns encoded RGBA8 samples. HDR uses the documented display tone map in hdr.hpp.
 ImageRgba8 decode_texture(const TextureSource &, std::uint32_t mip = 0,
                           const TextureDecodeOptions &options = {});
 ImageComparison compare_images(const ImageRgba8 &, const ImageRgba8 &, std::uint8_t threshold = 0,

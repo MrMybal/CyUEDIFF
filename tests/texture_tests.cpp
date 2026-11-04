@@ -274,7 +274,7 @@ int main() {
         multi.layers = 2;
         error([&] { decode_texture(multi); }, "texture-layout");
         multi = texture;
-        multi.format = "TSF_RGBA16F";
+        multi.format = "TSF_Unknown";
         error([&] { decode_texture(multi); }, "texture-format");
         Bytes mips;
         mips.data = {10, 20, 30, 40, 90};

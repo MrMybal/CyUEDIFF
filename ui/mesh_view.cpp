@@ -17,10 +17,10 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
     std::vector<Edge> edges;
     comparing_ = comparing || bool(peer);
     counts_ = {};
-    Json current = mesh ? mesh->to_json() : Json{};
-    Json remote = peer ? peer->to_json() : Json{};
+    Json current = mesh && peer ? mesh->to_json() : Json{};
+    Json remote = mesh && peer ? peer->to_json() : Json{};
     std::set<std::pair<std::uint32_t, std::uint32_t>> peer_edges;
-    if (peer) {
+    if (mesh && peer) {
         std::map<std::uint32_t, std::uint32_t> instances;
         for (const auto &i : peer->instances)
             instances[i.id] = i.vertex;

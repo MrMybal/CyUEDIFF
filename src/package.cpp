@@ -139,6 +139,7 @@ struct Tag {
     std::uint32_t bytes = 0, index = 0;
     std::uint8_t flags = 0;
     bool boolean = false;
+    Json extensions;
 };
 class PropertyReader {
     Archive &a;
@@ -161,12 +162,18 @@ class PropertyReader {
             t.parameters.push_back(full_type(depth + 1));
         return t;
     }
-    void extensions() {
+    Json extensions() {
         auto flags = a.get<std::uint8_t>();
         if (flags & ~2u)
             throw Error("property-extension", "Unknown property extension", a.tell() - 1);
-        if (flags & 2u)
-            a.skip(5); // operation byte + archive boolean
+        if (flags & 2u) {
+            auto operation = a.get<std::uint8_t>();
+            auto experimental = a.get<std::uint32_t>();
+            if (experimental > 1)
+                throw Error("property-extension", "Invalid overridable serialization flag", a.tell() - 4);
+            return Json{{"operation", operation}, {"experimentalOverridable", experimental != 0}};
+        }
+        return nullptr;
     }
     Tag tag() {
         Tag t;
@@ -187,7 +194,7 @@ class PropertyReader {
             if (t.flags & 2)
                 t.guid = a.guid();
             if (t.flags & 4)
-                extensions();
+                t.extensions = extensions();
             t.boolean = (t.flags & 0x10) != 0;
         } else {
             t.type.name = fname(a, p);
@@ -211,7 +218,7 @@ class PropertyReader {
             if (a.get<std::uint8_t>())
                 t.guid = a.guid();
             if (p.summary.ue5_version >= 1011)
-                extensions();
+                t.extensions = extensions();
         }
         return t;
     }
@@ -252,6 +259,40 @@ class PropertyReader {
         }
         if (n == "StrProperty")
             return a.string();
+        if (n == "TextProperty") {
+            auto flags = a.get<std::uint32_t>();
+            auto history = a.get<std::int8_t>();
+            Json result = {{"flags", flags}, {"history", history}};
+            if (history == -1) {
+                result["kind"] = "none";
+                result["source"] = "";
+                if (p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 32) {
+                    auto present = a.get<std::uint32_t>();
+                    if (present > 1)
+                        throw Error("text-boolean", "Invalid culture-invariant text flag", a.tell() - 4);
+                    if (present) {
+                        result["kind"] = "culture-invariant";
+                        result["source"] = a.string();
+                    }
+                }
+                return result;
+            }
+            if (history == 0) {
+                result["kind"] = "localized";
+                result["namespace"] = a.string();
+                result["key"] = a.string();
+                result["source"] = a.string();
+                return result;
+            }
+            if (history == 11) {
+                result["kind"] = "string-table";
+                result["table"] = fname(a, p);
+                result["key"] = a.string();
+                return result;
+            }
+            throw Error("text-history",
+                        "Text history requires an additional decoder: " + std::to_string(history), a.tell());
+        }
         if (n == "ObjectProperty" || n == "ClassProperty" || n == "WeakObjectProperty")
             return p.reference(a.get<std::int32_t>());
         if (n == "SoftObjectProperty" || n == "SoftClassProperty") {
@@ -271,6 +312,22 @@ class PropertyReader {
                     return detail::decode_extension(a, p, object, options, *decoder, end, exact_size);
             if (s == "Guid")
                 return a.guid();
+            if (s == "DateTime" || s == "Timespan")
+                return Json{{"ticks", a.get<std::int64_t>()}};
+            if (s == "Transform") {
+                auto vector = [&](unsigned count) {
+                    Json values = Json::array();
+                    for (unsigned i = 0; i < count; ++i)
+                        values.push_back(
+                            number(p.summary.ue5_version >= 1004 ? a.get<double>() : a.get<float>()));
+                    return values;
+                };
+                Json result;
+                result["rotation"] = vector(4);
+                result["translation"] = vector(3);
+                result["scale"] = vector(3);
+                return result;
+            }
             if (detail::is_material_input(s)) {
                 if (!options.native_materials)
                     throw Error("material-disabled", "Native material inputs disabled", a.tell());
@@ -310,6 +367,35 @@ class PropertyReader {
                 return v;
             }
             return properties(end, depth + 1, false);
+        }
+        if ((n == "MapProperty" && t.parameters.size() == 2) ||
+            (n == "SetProperty" && t.parameters.size() == 1)) {
+            const bool map = n == "MapProperty";
+            // These are stored deltas; inherited/default values are deliberately not fabricated.
+            Json removed = Json::object(), entries = Json::object();
+            auto insert = [&](Json &target, Json key, Json data) {
+                auto identity = key.dump();
+                if (target.contains(identity))
+                    throw Error("container-identity", "Duplicate map/set key", a.tell());
+                target[identity] = std::move(data);
+            };
+            auto removed_count = a.count(options.max_properties);
+            for (std::uint32_t i = 0; i < removed_count; ++i) {
+                auto key = value(t.parameters[0], end, depth + 1, false);
+                insert(removed, key, key);
+            }
+            auto count = a.count(options.max_properties);
+            if (count > options.max_properties - removed_count)
+                throw Error("limit", "Map/set entry budget exceeded", a.tell());
+            for (std::uint32_t i = 0; i < count; ++i) {
+                auto key = value(t.parameters[0], end, depth + 1, false);
+                Json data =
+                    map ? Json{{"key", key}, {"value", value(t.parameters[1], end, depth + 1, false)}} : key;
+                insert(entries, key, std::move(data));
+            }
+            return Json{{"kind", map ? "stored-map-delta" : "stored-set-delta"},
+                        {"removed", std::move(removed)},
+                        {"entries", std::move(entries)}};
         }
         if (n == "ArrayProperty" && !t.parameters.empty()) {
             auto count = a.count(options.max_properties);
@@ -360,8 +446,13 @@ class PropertyReader {
                 entry["guid"] = t.guid;
             if (t.flags & 0x28)
                 entry["serializationFlags"] = t.flags;
+            if (!t.extensions.is_null())
+                entry["extensions"] = t.extensions;
             try {
                 Archive::ReadLimit property_limit(a, next);
+                if (t.extensions.is_object() && t.extensions.value("experimentalOverridable", false))
+                    throw Error("property-extension",
+                                "Experimental overridable values require a schema decoder", a.tell());
                 if (t.type.name == "BoolProperty")
                     entry["value"] = t.boolean;
                 else if (t.flags & 0x20)

@@ -1,5 +1,5 @@
 #pragma once
-#include <cyuediff/core.hpp>
+#include <cyuediff/hdr.hpp>
 #include <cyui/modules/Images.h>
 #include <optional>
 namespace cyuediff {
@@ -10,6 +10,7 @@ class TextureView {
     cyui::ImageData image_, difference_;
     bool show_difference_ = false;
     std::optional<ImageComparison> comparison_;
+    std::optional<double> hdr_delta_;
     cyui::ImageState state_;
 
   public:
@@ -17,6 +18,7 @@ class TextureView {
     bool set_preview(const cyui::ImageData &image);
     void clear_preview();
     bool set_difference(const cyui::ImageData &, const ImageComparison &);
+    bool set_difference(const cyui::ImageData &, const HdrImageComparison &);
     const std::string &object_path() const {
         return source_.object_path;
     }

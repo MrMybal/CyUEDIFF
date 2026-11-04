@@ -12,7 +12,7 @@ cd build-native
 cpack -C Release -G ZIP
 ```
 
-Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and link an independent consumer. The check retains its extraction under an ignored build directory.
+Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and link an independent consumer. Use `--static-runtime` when validating the static-CRT CI archives. The check retains its extraction under an ignored build directory.
 
 The ZIP contains the selected CLI/desktop executables, the reusable Core SDK (plus Git when enabled), public Core headers, CMake import targets and documentation/notices. UI headers/library are integrated from source by hosts; they are not advertised as an installed standalone UI SDK. The optional Oodle module is deliberately excluded even if it was built locally.
 
@@ -25,3 +25,5 @@ Windows archives built with the default dynamic MSVC runtime require the matchin
 The hosted workflow takes effect only after these files are pushed. Local validation does not certify a hosted run. This workflow does not publish a GitHub Release or change repository visibility. For a release, inspect the CI results and archives, then attach the selected archives to a draft release with the corresponding version tag.
 
 The desktop requires the host-provided CyUI checkout and is tested locally by the native smoke/capture tools. Its installation preserves CyUI, ImGui, stb and syntax-data licenses from the exact checkout selected by the host. No private dependency credentials are stored in the workflow.
+
+The pinned official Actions releases are [checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) and [upload-artifact v7.0.2](https://github.com/actions/upload-artifact/releases/tag/v7.0.2), both using Node 24. Their immutable commit refs were verified when the workflow was prepared.

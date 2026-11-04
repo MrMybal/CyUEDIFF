@@ -4,7 +4,7 @@
 
 Cœur C++17 pour inspecter des packages Unreal **sans lancer Unreal Editor**, produire une représentation stable et comparer deux versions. Une bibliothèque de vues CyUI reste séparée du lecteur.
 
-Cette version 0.11 lit les objets et propriétés sérialisées, reconstruit les graphes Blueprint et ajoute les sources de textures et de meshes statiques. Le core fournit des aperçus d'images, la géométrie source, des graphes de matériaux et leurs paramètres, des diffs spécialisés et un export OBJ. Les vues CyUI restent séparées. Un adaptateur Oodle local optionnel débloque les sources comprimées, sans lancer Unreal. Le module Git/LFS matérialise les révisions et leurs compagnons depuis les objets locaux, puis les compare avec le core. Les descripteurs de projet et plugins historiques, les installations moteur par côté et leurs différences de contexte sont accessibles. Un registre C++ permet désormais à l’application hôte de fournir ses décodeurs de structures et de fins natives, sélectionnés par type et versions. Une première application desktop Windows/CyUI ouvre et compare désormais ces fichiers dans une fenêtre native, avec chargement en arrière-plan. Elle compare aussi les révisions Git/LFS locales, les ajouts/suppressions et les changements de contexte projet. Un catalogue de métadonnées et un navigateur de contenus permettent de rechercher et sélectionner les packages du projet ou des révisions Git sans les décoder pendant le parcours.
+Cette version 0.14 lit les objets et propriétés sérialisées, reconstruit les graphes Blueprint et ajoute les sources de textures et de meshes statiques. Le core fournit des aperçus d'images, la géométrie source, des graphes de matériaux et leurs paramètres, des diffs spécialisés et un export OBJ. Les vues CyUI restent séparées. Un adaptateur Oodle local optionnel débloque les sources comprimées, sans lancer Unreal. Le module Git/LFS matérialise les révisions et leurs compagnons depuis les objets locaux, puis les compare avec le core. Les descripteurs de projet et plugins historiques, les installations moteur par côté et leurs différences de contexte sont accessibles. Un registre C++ permet désormais à l’application hôte de fournir ses décodeurs de structures et de fins natives, sélectionnés par type et versions. Une première application desktop Windows/CyUI ouvre et compare désormais ces fichiers dans une fenêtre native, avec chargement en arrière-plan. Elle compare aussi les révisions Git/LFS locales, les ajouts/suppressions et les changements de contexte projet. Un catalogue de métadonnées et un navigateur de contenus permettent de rechercher et sélectionner les packages du projet ou des révisions Git sans les décoder pendant le parcours.
 
 ## Modules
 
@@ -143,3 +143,14 @@ L'adaptateur UI se construit séparément et reste embarquable. L’exécutable 
 `textconv` exporte le snapshot pour une intégration Git optionnelle. Git LFS stocke les versions binaires ; le diff lisible vient de ce lecteur. Rien n'est configuré automatiquement dans un dépôt. Voir [l'intégration Git](docs/GIT.md).
 
 La suite synthétique et les tests CyUI sont reproductibles avec le script de build. Le compte rendu initial des essais sur des fichiers locaux est dans [VALIDATION.md](docs/VALIDATION.md). La suite du développement est décrite dans [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+
+## Mise à jour 0.14
+
+Le code original est désormais sous [licence MIT](LICENSE). Les licences tierces restent applicables.
+
+Les diffs visuels surlignent les nœuds Blueprint/matériau, les paramètres enregistrés, les arêtes et les pixels modifiés. L'inspecteur affiche les propriétés typées avant/après. Les deux côtés peuvent utiliser des contextes projet/moteur distincts. Le chargement dispose d'une annulation coopérative, d'une progression et d'un cache vérifié par empreintes des packages et compagnons.
+
+Les sources HDR FP16/FP32/RGBE se comparent en flottants avant conversion d'aperçu. La lecture des textes localisés, Maps/Sets et transformations natives est étendue. Le corpus CyTrace fourni ajoute 150 packages sources vérifiés ; les exports partiels restent signalés. Voir les guides anglais [HDR](docs/HDR.md), [propriétés](docs/PROPERTIES.md), [exécution](docs/RUNTIME.md) et [distribution](docs/DISTRIBUTION.md).
+
+La CI Windows/Linux est préparée et les archives exécutables/SDK se construisent avec CPack. Les fichiers restent locaux tant qu'aucun push n'est demandé. La lecture cooked/Pak/IoStore complète, les ressources virtualisées, meshes squelettiques, collisions et données Nanite, ainsi que l'historique Git et les documents multiples de l'interface restent à réaliser.

@@ -1,5 +1,9 @@
 #include <cyuediff/core.hpp>
 #include <cyuediff/catalog.hpp>
+#include <cyuediff/hdr.hpp>
+#include <cmath>
+#include <locale>
+#include <sstream>
 #ifdef CYUEDIFF_HAS_GIT
 #include <cyuediff/git.hpp>
 #endif
@@ -22,6 +26,9 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff preview ASSET --out IMAGE.png [--mip N] [--object NAME]\n"
                "  cyuediff image-diff BEFORE AFTER [--threshold 0..255] [--mip N] [--object NAME] "
                "[--heatmap MASK.png] [--out REPORT.json]\n"
+               "  cyuediff hdr-diff BEFORE AFTER [--threshold SAMPLE_DELTA] [--heatmap MASK.png] [--codec "
+               "MODULE.dll]\n"
+               "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff material ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff material-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff mesh ASSET [--project PROJECT] [--out FILE]\n"
@@ -53,6 +60,7 @@ int run(const std::vector<std::string> &args) {
     Json flags = Json::object();
     const std::set<std::string> valued = {"--max-assets",
                                           "--max-entries",
+                                          "--exposure",
                                           "--project",
                                           "--before-project",
                                           "--after-project",
@@ -86,7 +94,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "mesh-diff" || command == "material-diff")
+                     command == "mesh-diff" || command == "material-diff" || command == "hdr-diff")
                         ? 2u
                         : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
@@ -96,7 +104,7 @@ int run(const std::vector<std::string> &args) {
         required = command == "git-diff" ? 4u : (command == "git-catalog" ? 2u : 3u);
     if (positional.size() != required)
         throw Error("arguments", "Wrong number of arguments; use --help");
-    const bool image_command = command == "preview" || command == "image-diff";
+    const bool image_command = command == "preview" || command == "image-diff" || command == "hdr-diff";
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
@@ -122,8 +130,10 @@ int run(const std::vector<std::string> &args) {
         if (((key == "--mip") && !image_command) ||
             (key == "--object" && !image_command && !geometry_command))
             throw Error("arguments", key + " requires an image or geometry command");
-        if ((key == "--threshold" || key == "--heatmap") && command != "image-diff")
-            throw Error("arguments", key + " requires image-diff");
+        if ((key == "--threshold" || key == "--heatmap") && command != "image-diff" && command != "hdr-diff")
+            throw Error("arguments", key + " requires image-diff or hdr-diff");
+        if (key == "--exposure" && command != "preview")
+            throw Error("arguments", "--exposure requires preview");
         if ((key == "--lod" && !geometry_command) ||
             (key == "--codec" && !geometry_command && !image_command))
             throw Error("arguments", key + " requires a source decode command");
@@ -144,6 +154,18 @@ int run(const std::vector<std::string> &args) {
         if (value > limit)
             throw Error("arguments", "Out of range value for " + key);
         return static_cast<std::uint32_t>(value);
+    };
+    auto real_option = [&](const std::string &key, double fallback, double minimum, double maximum) {
+        if (!flags.contains(key))
+            return fallback;
+        std::istringstream input(flags.at(key).get<std::string>());
+        input.imbue(std::locale::classic());
+        double value = 0;
+        input >> value;
+        if (!input || input.peek() != std::char_traits<char>::eof() || !std::isfinite(value) ||
+            value < minimum || value > maximum)
+            throw Error("arguments", "Invalid or out of range value for " + key);
+        return value;
     };
     auto catalog_options = [&] {
         CatalogOptions result;
@@ -345,8 +367,28 @@ int run(const std::vector<std::string> &args) {
         if (!before.complete_input)
             throw Error("incomplete", "Required input payload is missing");
         auto mip = integer_option("--mip", 31);
-        auto image = decode_texture(select_texture(before), mip, texture_options);
-        if (command == "preview") {
+        const auto &source = select_texture(before);
+        if (command == "hdr-diff") {
+            auto a = decode_texture_hdr(source, mip, texture_options);
+            auto after = read(positional[1], "--after-project", options);
+            if (!after.complete_input)
+                throw Error("incomplete", "Required input payload is missing");
+            auto b = decode_texture_hdr(select_texture(after), mip, texture_options);
+            png_destination = path_option("--heatmap");
+            auto comparison =
+                compare_hdr_images(a, b, real_option("--threshold", 0, 0, std::numeric_limits<double>::max()),
+                                   !png_destination.empty());
+            output = comparison.to_json();
+            output["mip"] = mip;
+            exit_code = comparison.comparable && !comparison.changed_pixels ? 0 : 1;
+            png = std::move(comparison.heatmap);
+        } else if (command == "preview") {
+            bool hdr = is_hdr_format(source.format);
+            auto exposure = real_option("--exposure", 0, -32, 32);
+            if (flags.contains("--exposure") && !hdr)
+                throw Error("arguments", "--exposure requires an HDR source");
+            auto image = hdr ? tone_map_hdr(decode_texture_hdr(source, mip, texture_options), exposure)
+                             : decode_texture(source, mip, texture_options);
             png_destination = path_option("--out");
             if (png_destination.empty())
                 throw Error("arguments", "preview requires --out IMAGE.png");
@@ -355,20 +397,30 @@ int run(const std::vector<std::string> &args) {
                       {"height", image.height},
                       {"mip", mip},
                       {"path", png_destination.u8string()},
-                      {"conversion", "RGBA8 encoded samples; no color-space conversion"}};
+                      {"sourceFormat", source.format},
+                      {"conversion", hdr ? "HDR display: exposure, positive Reinhard tone mapping, "
+                                           "linear-to-sRGB RGB; clamped alpha"
+                                         : "RGBA8 encoded samples; no color-space conversion"}};
+            if (hdr)
+                output["exposureEV"] = exposure;
             png = std::move(image);
         } else {
             auto after = read(positional[1], "--after-project", options);
             if (!after.complete_input)
                 throw Error("incomplete", "Required input payload is missing");
-            auto other = decode_texture(select_texture(after), mip, texture_options);
+            const auto &other_source = select_texture(after);
+            if (is_hdr_format(source.format) || is_hdr_format(other_source.format))
+                throw Error("hdr-comparison",
+                            "Use hdr-diff to compare HDR source samples before display conversion");
+            auto image = decode_texture(source, mip, texture_options),
+                 other = decode_texture(other_source, mip, texture_options);
             png_destination = path_option("--heatmap");
             auto comparison =
                 compare_images(image, other, static_cast<std::uint8_t>(integer_option("--threshold", 255)),
                                !png_destination.empty());
             output = comparison.to_json();
             output["mip"] = mip;
-            exit_code = comparison.comparable && comparison.changed_pixels == 0 ? 0 : 1;
+            exit_code = comparison.comparable && !comparison.changed_pixels ? 0 : 1;
             png = std::move(comparison.heatmap);
         }
     } else if (geometry_command) {

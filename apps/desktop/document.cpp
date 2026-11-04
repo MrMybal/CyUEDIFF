@@ -17,8 +17,30 @@ std::vector<TextureDifference> compare_previews(const std::vector<Preview> &prev
         if (!after)
             continue;
         bool same = before->image.width == after->image.width && before->image.height == after->image.height;
-        result.push_back(
-            {before->object_path, after->object_path, compare_images(before->image, after->image, 0, same)});
+        TextureDifference difference;
+        difference.before_object = before->object_path;
+        difference.after_object = after->object_path;
+        if (before->hdr && after->hdr) {
+            auto hdr = compare_hdr_images(*before->hdr, *after->hdr, 0, same);
+            difference.comparison = {hdr.comparable,
+                                     hdr.same_size,
+                                     hdr.before_width,
+                                     hdr.before_height,
+                                     hdr.after_width,
+                                     hdr.after_height,
+                                     hdr.changed_pixels,
+                                     0,
+                                     0,
+                                     0,
+                                     std::move(hdr.heatmap)};
+            difference.hdr_comparison = std::move(hdr);
+        } else if (bool(before->hdr) != bool(after->hdr)) {
+            difference.comparison = compare_images(before->image, after->image, 0, false);
+            difference.comparison.comparable = false;
+            difference.diagnostic = "HDR/LDR sample domains differ";
+        } else
+            difference.comparison = compare_images(before->image, after->image, 0, same);
+        result.push_back(std::move(difference));
     }
     return result;
 }
@@ -49,7 +71,10 @@ Json Document::report() const {
     Json differences = Json::array();
     for (const auto &d : texture_differences)
         differences.push_back(
-            {{"before", d.before_object}, {"after", d.after_object}, {"comparison", d.comparison.to_json()}});
+            {{"before", d.before_object},
+             {"after", d.after_object},
+             {"comparison", d.hdr_comparison ? d.hdr_comparison->to_json() : d.comparison.to_json()},
+             {"diagnostic", d.diagnostic}});
     auto mesh = [](const std::shared_ptr<const MeshGeometry> &m) -> Json {
         return m ? Json{{"vertices", m->vertices.size()}, {"triangles", m->triangles.size()}} : Json(nullptr);
     };
@@ -197,8 +222,15 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
                 options.max_pixels = 16ull * 1024 * 1024;
                 options.max_payload_bytes = 128ull * 1024 * 1024;
                 options.max_decoder_bytes = 128ull * 1024 * 1024;
-                document->previews.push_back({package->textures.front().object_path, after,
-                                              decode_texture(package->textures.front(), 0, options)});
+                Preview preview;
+                preview.object_path = package->textures.front().object_path;
+                preview.after = after;
+                if (is_hdr_format(package->textures.front().format)) {
+                    preview.hdr = decode_texture_hdr(package->textures.front(), 0, options);
+                    preview.image = tone_map_hdr(*preview.hdr, 0, request.control);
+                } else
+                    preview.image = decode_texture(package->textures.front(), 0, options);
+                document->previews.push_back(std::move(preview));
             } catch (const std::exception &e) {
                 if (const auto *error = dynamic_cast<const Error *>(&e); error && error->code == "cancelled")
                     throw;

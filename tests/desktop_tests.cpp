@@ -70,6 +70,18 @@ int main() {
         auto mismatched = compare_previews({{"A", false, pixels}, {"A", true, {1, 1, {0, 0, 0, 255}}}});
         check(!mismatched[0].comparison.comparable && mismatched[0].comparison.heatmap.pixels.empty(),
               "Different image dimensions explicitly incomparable");
+        ImageRgba32f hdr_before{1, 1, {65504, 65504, 65504, 1}}, hdr_after = hdr_before;
+        hdr_after.pixels[0] += 1;
+        auto hdr_masks = compare_previews({{"HDR", false, tone_map_hdr(hdr_before), hdr_before},
+                                           {"HDR", true, tone_map_hdr(hdr_after), hdr_after}});
+        check(hdr_masks.size() == 1 && hdr_masks[0].hdr_comparison &&
+                  hdr_masks[0].hdr_comparison->changed_pixels == 1 &&
+                  hdr_masks[0].comparison.heatmap.pixels[0] == 255,
+              "Desktop differences retain HDR changes hidden by display tone mapping");
+        auto mixed = compare_previews({{"Texture", false, tone_map_hdr(hdr_before), hdr_before},
+                                       {"Texture", true, tone_map_hdr(hdr_after)}});
+        check(!mixed[0].comparison.comparable && !mixed[0].diagnostic.empty(),
+              "Mixed HDR/LDR domains are explicitly incomparable");
         error([&] { load_document({}); }, "desktop-input");
         auto missing = request;
         missing.after = (root / "missing.uasset").u8string();

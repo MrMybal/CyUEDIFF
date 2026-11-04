@@ -171,6 +171,18 @@ int main() {
     if (!view.set_texture_difference("ExampleTexture", "ExampleTexture", {(ImTextureID)43, 2, 1},
                                      image_difference))
         return 22;
+    cyuediff::TextureView hdr_view;
+    auto hdr_source = texture;
+    hdr_source.object_path = "HDR";
+    hdr_source.format = "TSF_RGBA32F";
+    hdr_source.width = 1;
+    hdr_source.height = 1;
+    hdr_view.set_source(hdr_source);
+    hdr_view.set_preview({(ImTextureID)44, 1, 1});
+    auto hdr_difference = cyuediff::compare_hdr_images({1, 1, {65504, 65504, 65504, 1}},
+                                                       {1, 1, {65505, 65504, 65504, 1}}, 0, true);
+    if (!hdr_view.set_difference({(ImTextureID)45, 1, 1}, hdr_difference))
+        return 23;
     auto mesh_unchanged = mesh->to_json();
     int frames = 0;
     const cyuediff::AssetTab tabs[] = {cyuediff::AssetTab::properties, cyuediff::AssetTab::blueprint,
@@ -203,6 +215,7 @@ int main() {
                 ImGui::SetNextWindowSize(io.DisplaySize);
                 ImGui::Begin("Texture host");
                 texture_view.draw();
+                hdr_view.draw("##hdr-test");
                 ImGui::End();
                 ImGui::SetNextWindowPos(ImVec2(0, 0));
                 ImGui::SetNextWindowSize(io.DisplaySize);
