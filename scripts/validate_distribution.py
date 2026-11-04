@@ -261,6 +261,19 @@ if args.consumer:
  if text['arguments'][0]['value']!=-9007199254740993 or text['arguments'][1]['value']!=255:raise RuntimeError('Installed argument-data width/gender consumer failed')
  date=text['arguments'][2]['value']
  if date['ticks']!=638980123456789013 or date['customPattern']!='yyyy-MM-dd' or date['timeZone']!='UTC':raise RuntimeError('Installed calendar history consumer failed')
+ names_path=target/'consumer-names.json'
+ names_path.write_text(json.dumps(['None','SDK generator']),encoding='utf-8')
+ contents=bytes([0,1,255,7])
+ generator=struct.pack('<Ibiii',0,12,1,0,len(contents))+contents
+ values.write_bytes(struct.pack('<H',0x0700)+generator+byte_values)
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path),str(names_path)],capture_output=True,check=True,env=env,timeout=20)
+ value=json.loads(result.stdout)['Consumer.Value']['value']
+ if value['generator']!='SDK generator' or value['contents']!={'bytes':4,'sha256':hashlib.sha256(contents).hexdigest()}:raise RuntimeError('Installed opaque generator consumer failed')
+ for invalid in ({},[3],['None']):
+  names_path.write_text(json.dumps(invalid),encoding='utf-8')
+  refused=subprocess.run([str(executable),str(mappings),str(values),str(context_path),str(names_path)],capture_output=True,env=env,timeout=20)
+  if refused.returncode!=2:raise RuntimeError('Installed invalid package names were accepted')
+ print('Installed explicit name-table and opaque generator consumer validated')
  # Reuse the independent native mapping with new explicit wire tokens.
  payload=u32(3)+b''.join(bytes([len(n)])+n for n in native_names)+u32(0)+u32(2)
  payload+=u32(0)+struct.pack('<iHHHBiBi',-1,1,1,0,1,1,9,2)
@@ -271,7 +284,9 @@ if args.consumer:
      ('timespan-i64',struct.pack('<q',-9007199254740993),{'ticks':-9007199254740993}),
      ('box3-f64',struct.pack('<6dB',1,2,3,4,5,6,255),{'min':[1,2,3],'max':[4,5,6],'isValid':255}),
      ('sphere-f32',struct.pack('<4f',1,2,3,-4),{'center':[1,2,3],'radius':-4}),
-     ('box-sphere-f64',struct.pack('<7d',1,2,3,4,5,6,7),{'origin':[1,2,3],'boxExtent':[4,5,6],'sphereRadius':7})):
+     ('box-sphere-f64',struct.pack('<7d',1,2,3,4,5,6,7),{'origin':[1,2,3],'boxExtent':[4,5,6],'sphereRadius':7}),
+     ('matrix4-f64',struct.pack('<16d',*range(16)),[list(range(i,i+4)) for i in range(0,16,4)]),
+     ('plane-f32',struct.pack('<4f',1,2,3,-4),{'normal':[1,2,3],'distance':-4})):
   context_path.write_text(json.dumps({'format':'cyuediff.zen-schema/2','profile':'ue5.5',
       'usmap':mappings.name,'sha256':hashlib.sha256(mappings.read_bytes()).hexdigest(),
       'bindings':{'/Script/Consumer.Consumer':{'schema':'Consumer','offset':0}},'nativeStructs':{'Native':token}}),encoding='utf-8')

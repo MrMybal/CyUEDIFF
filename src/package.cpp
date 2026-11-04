@@ -293,14 +293,22 @@ class PropertyReader {
                 return Json{{"ticks", a.get<std::int64_t>()}};
             const bool box = s == "Box" || s == "Box3f" || s == "Box3d";
             const bool sphere = s == "Sphere" || s == "Sphere3f" || s == "Sphere3d";
-            const bool bounds =
-                s == "BoxSphereBounds" || s == "BoxSphereBounds3f" || s == "BoxSphereBounds3d";
             const bool matrix = s == "Matrix" || s == "Matrix44f" || s == "Matrix44d";
             const bool plane = s == "Plane" || s == "Plane4f" || s == "Plane4d";
-            if (box || sphere || bounds || matrix || plane) {
-                const bool narrow = s == "Box3f" || s == "Sphere3f" || s == "BoxSphereBounds3f" ||
-                                    s == "Matrix44f" || s == "Plane4f";
+            if (box || sphere || matrix || plane) {
+                const bool narrow = s == "Box3f" || s == "Sphere3f" || s == "Matrix44f" || s == "Plane4f";
                 const bool doubles = !narrow && p.summary.ue5_version >= 1004;
+                // Sphere is immutable binary reflection; combined bounds are ordinary reflected fields.
+                if (s == "Sphere3d" && p.summary.ue5_version < 1004)
+                    throw Error("native-layout", "Pre-LWC explicit double sphere is not certified", a.tell());
+                const std::uint64_t expected = (matrix ? 16
+                                                : box  ? 6
+                                                       : 4) *
+                                                   (doubles ? 8ull : 4ull) +
+                                               (box ? 1 : 0);
+                if (exact_size && (a.tell() > end || end - a.tell() != expected))
+                    throw Error("native-layout", "Native geometry property has an unexpected wire size",
+                                a.tell());
                 auto component = [&]() {
                     depth_check(depth + 1);
                     options.control.check();
@@ -331,6 +339,10 @@ class PropertyReader {
                     auto normal = vector(), distance = component();
                     return {{"normal", std::move(normal)}, {"distance", std::move(distance)}};
                 }
+                if (sphere) {
+                    auto center = vector(), radius = component();
+                    return {{"center", std::move(center)}, {"radius", std::move(radius)}};
+                }
                 if (box) {
                     auto minimum = vector(), maximum = vector();
                     if (++native_nodes_ > options.max_properties)
@@ -338,14 +350,6 @@ class PropertyReader {
                     const auto validity = a.get<std::uint8_t>();
                     return {{"min", std::move(minimum)}, {"max", std::move(maximum)}, {"isValid", validity}};
                 }
-                if (sphere) {
-                    auto center = vector(), radius = component();
-                    return {{"center", std::move(center)}, {"radius", std::move(radius)}};
-                }
-                auto origin = vector(), extent = vector(), radius = component();
-                return {{"origin", std::move(origin)},
-                        {"boxExtent", std::move(extent)},
-                        {"sphereRadius", std::move(radius)}};
             }
             if (s == "Transform") {
                 auto vector = [&](unsigned count) {
@@ -369,9 +373,9 @@ class PropertyReader {
             }
             unsigned components = 0;
             bool doubles = false, integers = false;
-            if (s == "Vector" || s == "Rotator") {
+            if (s == "Vector" || s == "Rotator" || s == "Vector3f" || s == "Vector3d") {
                 components = 3;
-                doubles = p.summary.ue5_version >= 1004;
+                doubles = s != "Vector3f" && p.summary.ue5_version >= 1004;
             } else if (s == "Vector2D") {
                 components = 2;
                 doubles = p.summary.ue5_version >= 1004;

@@ -141,6 +141,10 @@ int main() {
     instance_view.set_package(*before);
     if (material_view.empty() || !instance_view.select_object("MI") || instance_view.select_object("missing"))
         return 10;
+    before->exports[2].native_data["pins"][std::string(32, '1')]["defaultText"] = {
+        {"kind", "text-generator"},
+        {"generator", "PluginText"},
+        {"contents", {{"bytes", 4}, {"sha256", "before"}}}};
     auto unchanged = before->to_json();
     cyuediff::BlueprintView graph_view;
     graph_view.set_package(*before);
@@ -186,7 +190,15 @@ int main() {
     mesh_view.set_mesh(mesh, changed_mesh);
     view.set_mesh_geometry(changed_mesh, true);
     auto before_graph_change = std::make_shared<cyuediff::Package>(*before);
-    before_graph_change->exports[2].properties["NodePosX"]["value"] = 120;
+    before_graph_change->exports[2].native_data["pins"][std::string(32, '1')]["defaultText"] = {
+        {"kind", "text-generator"},
+        {"generator", "PluginText"},
+        {"contents", {{"bytes", 4}, {"sha256", "after"}}}};
+    const auto first_graph = before->blueprint_snapshot()["graphs"].begin().value();
+    const auto second_graph = before_graph_change->blueprint_snapshot()["graphs"].begin().value();
+    if (cyuediff::graph_changes(&first_graph, &second_graph).nodes.at(std::string(32, 'a')) !=
+        cyuediff::ChangeKind::modified)
+        return 24;
     graph_view.set_package(*before, before_graph_change.get());
     material_view.set_package(*before, before_graph_change.get());
     instance_view.set_package(*before, before_graph_change.get());

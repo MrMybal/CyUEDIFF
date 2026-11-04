@@ -58,7 +58,7 @@ inline Bytes mixed_value_bytes(const std::string &mode = "mixed") {
         bytes.append(invariant_text_value());
     else if (mode == "unsupported") {
         bytes.i(0);
-        bytes.put<std::int8_t>(12);
+        bytes.put<std::int8_t>(42);
     } else
         bytes.append(text_value(mode.find("changed") == 0 ? "Edited source" : "Original source"));
     auto multi = multicast_value(mode.find("changed") == 0);

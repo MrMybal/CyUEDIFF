@@ -57,6 +57,19 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-text-cli-', dir=Path.cwd()) a
         assert inspect(name)['exports'][0]['propertyRead']['status'] == 'opaque'; checks += 1
         classic = classic_properties(run('inspect', root/(name+'.uasset')))
         assert 'opaque' in classic['Formatted'] and classic['AfterFormat']['value'] == 876; checks += 1
+    for name in ('generator', 'empty-generator', 'none-generator'):
+        value = inspect(name)['exports'][0]['propertyRead']['properties'][prefix+'Lookup']['value']
+        classic = classic_properties(run('inspect', root/(name+'.uasset')))['Formatted']['value']
+        assert value['kind'] == classic['kind'] == 'text-generator' and value['contents'] == classic['contents']; checks += 1
+        if name == 'generator':
+            assert value['generator'] == 'Example' and classic['generator'] == 'DataAsset'; checks += 1
+    delta = run('zen-diff', root/'generator.utoc', entry, root/'changed-generator.utoc', entry, *common, code=1)
+    assert any(c['path'].endswith('/value/contents/sha256') for c in delta['changes']); checks += 1
+    run('diff', root/'generator.uasset', root/'changed-generator.uasset', code=1)
+    for name in ('bad-generator-size', 'truncated-generator'):
+        assert inspect(name)['exports'][0]['propertyRead']['status'] == 'opaque'; checks += 1
+        damaged_props = classic_properties(run('inspect', root/(name+'.uasset')))
+        assert 'opaque' in damaged_props['Formatted'] and damaged_props['AfterFormat']['value'] == 876; checks += 1
     changed = run('zen-diff', root/'named.utoc', entry, root/'changed-named.utoc', entry, *common, code=1)
     for suffix in ('/value/format/source', '/value/arguments/Count/value', '/value/arguments/Label/value/source/source', '/value/arguments/Label/value/transformType'):
         assert any(c['path'].endswith(suffix) for c in changed['changes']); checks += 1

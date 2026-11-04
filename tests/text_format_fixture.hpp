@@ -158,6 +158,19 @@ inline Bytes format_text_payload(const std::string &mode) {
     auto count = text_argument(0, integer);
     auto label = text_argument(
         4, transform_text_value(text_value(changed ? "Edited label" : "Original label"), changed ? 1 : 0));
+    if (type == "generator" || type == "empty-generator" || type == "none-generator" ||
+        type == "bad-generator-size" || type == "truncated-generator") {
+        auto value = generator_text_value(
+            type == "none-generator" ? 0 : 2,
+            type == "empty-generator"
+                ? std::vector<unsigned char>{}
+                : std::vector<unsigned char>{0, 1, 255, static_cast<unsigned char>(changed ? 6 : 7)});
+        if (type == "bad-generator-size")
+            value.patch(13, -1);
+        if (type == "truncated-generator")
+            value.data.pop_back();
+        return value;
+    }
     if (type == "date" || type == "time" || type == "date-time" || type == "custom-date-time" ||
         type == "bad-style")
         return calendar_text_value(type == "date"   ? 7
@@ -256,7 +269,13 @@ inline void write_text_format_fixtures(const fs::path &root) {
                              "data",
                              "changed-data",
                              "empty-data",
-                             "bad-data"}) {
+                             "bad-data",
+                             "generator",
+                             "changed-generator",
+                             "empty-generator",
+                             "none-generator",
+                             "bad-generator-size",
+                             "truncated-generator"}) {
         const std::string mode = name;
         Bytes values;
         if (mode == "zero") {
@@ -265,10 +284,13 @@ inline void write_text_format_fixtures(const fs::path &root) {
         } else {
             values.put<std::uint16_t>(0x0700);
             values.append(format_text_payload(mode));
-            values.append(byte_string_value(mode == "bad-utf8"
-                                                ? std::string("\xc0\x80")
-                                                : format_utf8_source(mode.find("changed-") == 0)));
-            values.append(byte_string_value(mode.find("changed-") == 0 ? "Edited ASCII" : "Stored ASCII"));
+            if (mode != "truncated-generator") {
+                values.append(byte_string_value(mode == "bad-utf8"
+                                                    ? std::string("\xc0\x80")
+                                                    : format_utf8_source(mode.find("changed-") == 0)));
+                values.append(
+                    byte_string_value(mode.find("changed-") == 0 ? "Edited ASCII" : "Stored ASCII"));
+            }
             if (mode == "truncated")
                 values.data.pop_back();
             save(root, mode, text_property_fixture(format_text_payload(mode), "TextProperty", 1013, 32, 12));

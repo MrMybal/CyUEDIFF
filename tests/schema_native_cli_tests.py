@@ -35,10 +35,18 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-native-cli-',dir=Path.cwd()) 
     assert run('zen-inspect',root/'native55.utoc',entry,*modern)['propertyExportsDecoded']==2;checks+=1
     catalog=run('zen-catalog',root/'native.utoc',*common,'--snapshot')
     assert catalog['propertiesDecoded'] and catalog['propertyExportsDecoded']==2;checks+=1
-    for layout, suffix in (('date-time-i64','ticks'),('timespan-i64','ticks'),('box3-f64','isValid'),('sphere-f64','radius'),('box-sphere-f64','sphereRadius')):
+    for layout, suffix in (('date-time-i64','ticks'),('timespan-i64','ticks'),('box3-f64','isValid'),('sphere-f64','radius'),('box-sphere-f64','sphereRadius'),('matrix4-f64','3/3'),('plane-f64','distance')):
         modern=['--cooked-profile','ue5.5','--script-objects',root/'global.utoc','--schema',root/(layout+'.json')]
         prop=run('zen-inspect',root/(layout+'.utoc'),entry,*modern)['exports'][0]['propertyRead']['properties'][field]
         assert prop['nativeLayout']==layout;checks+=1
+        classic=next(iter(run('inspect',root/('tagged-'+layout+'.uasset'))['snapshot']['objects'].values()))['properties']
+        tagged=classic['Native']['value']
+        if layout=='box-sphere-f64':
+            assert tagged['Origin']['value']==prop['value']['origin'] and tagged['BoxExtent']['value']==prop['value']['boxExtent'] and tagged['SphereRadius']['value']==prop['value']['sphereRadius'];checks+=1
+        else:
+            assert tagged==prop['value'];checks+=1
+        assert classic['AfterNative']['value']==987;checks+=1
+        run('diff',root/('tagged-'+layout+'.uasset'),root/('changed-tagged-'+layout+'.uasset'),code=1)
         delta=run('zen-diff',root/(layout+'.utoc'),entry,root/('changed-'+layout+'.utoc'),entry,*modern,code=1)
         assert any(c['path'].endswith('/value/'+suffix) for c in delta['changes']) and not delta['contextChanged'];checks+=1
     config=json.loads((root/'native.json').read_text(encoding='utf-8'));path=root/'context \u00e9.json'

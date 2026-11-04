@@ -56,6 +56,14 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-text-desktop-', dir=Path.cwd(
     for name in ('bad-style', 'bad-data'):
         result = run(*base, '--container', root/(name+'.utoc'))
         assert not result['containerView']['objectProperties']['available'] and result['containerView']['objectProperties']['beforeStatus'] == 'opaque'; checks += 1
+    state = {'container': {'values': {'filter': 'sha256', 'selected': '/~1Script~1Test.Collections.Lookup/contents/sha256'}}}
+    saved = run(*pair, '--container', root/'generator.utoc', '--after-container', root/'changed-generator.utoc',
+                '--document-action', 'view-state:'+json.dumps(state), '--save-workspace', root/'generator-workspace.json')
+    assert saved['containerView']['objectProperties']['available']; checks += 1
+    resumed = run('--workspace', root/'generator-workspace.json', '--locale', 'fr')
+    assert resumed['document'] == saved['document'] and resumed['workspace']['documents'][0]['viewState']['container']['values']['selected'] == state['container']['values']['selected']; checks += 1
+    for name in ('bad-generator-size', 'truncated-generator'):
+        assert not run(*base, '--container', root/(name+'.utoc'))['containerView']['objectProperties']['available']; checks += 1
     for name in ('duplicate', 'bad-argument', 'bad-rounding', 'unsupported', 'bad-utf8', 'truncated'):
         result = run(*base, '--container', root/(name+'.utoc'))
         assert not result['containerView']['objectProperties']['available'] and result['containerView']['objectProperties']['beforeStatus'] == 'opaque'; checks += 1

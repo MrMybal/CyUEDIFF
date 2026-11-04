@@ -36,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-native-desktop-',dir=Path.cwd
     assert modern['document']['container']['zen']['propertyExportsDecoded']==2;checks+=1
     provenance=run(*base,'--container-tab','schema')
     assert provenance['containerView']['tab']==4;checks+=1
-    for layout,leaf in (('date-time-i64','ticks'),('timespan-i64','ticks'),('box3-f64','isValid'),('sphere-f64','radius'),('box-sphere-f64','sphereRadius')):
+    for layout,leaf in (('date-time-i64','ticks'),('timespan-i64','ticks'),('box3-f64','isValid'),('sphere-f64','radius'),('box-sphere-f64','sphereRadius'),('matrix4-f64','3/3'),('plane-f64','distance')):
+        assert run('--before',root/('tagged-'+layout+'.uasset'),'--after',root/('changed-tagged-'+layout+'.uasset'),'--view','properties')['status']=='ready';checks+=1
         selected='/~1Script~1Test.Collections.Lookup/'+leaf
         state={'container':{'values':{'filter':leaf,'selected':selected}}}
         workspace=root/(layout+'-workspace.json')

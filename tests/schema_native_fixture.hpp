@@ -1,5 +1,6 @@
 #pragma once
 #include "schema_collection_fixture.hpp"
+#include "native_property_fixture.hpp"
 #include <fstream>
 #include <limits>
 namespace cyuediff::test {
@@ -42,7 +43,8 @@ inline void write_native_fixtures(const fs::path &root) {
     save("native.json");
     manifest["profile"] = "ue5.5";
     save("native55.json");
-    for (const char *token : {"date-time-i64", "timespan-i64", "box3-f64", "sphere-f64", "box-sphere-f64"}) {
+    for (const char *token : {"date-time-i64", "timespan-i64", "box3-f64", "sphere-f64", "box-sphere-f64",
+                              "matrix4-f64", "plane-f64"}) {
         const std::string layout = token;
         manifest["profile"] = "ue5.5";
         manifest["nativeStructs"] = {{"/Script/Test.Record", layout}};
@@ -52,7 +54,10 @@ inline void write_native_fixtures(const fs::path &root) {
             if (layout == "date-time-i64" || layout == "timespan-i64")
                 values.put<std::int64_t>(changed ? 9007199254740993LL : 9007199254740992LL);
             else {
-                const unsigned count = layout == "box3-f64" ? 6 : layout == "sphere-f64" ? 4 : 7;
+                const unsigned count = layout == "matrix4-f64"                           ? 16
+                                       : layout == "plane-f64" || layout == "sphere-f64" ? 4
+                                       : layout == "box3-f64"                            ? 6
+                                                                                         : 7;
                 for (unsigned i = 0; i < count; ++i)
                     values.put<double>(1000000000000.125 + i + (changed && i == count - 1 ? 1 : 0));
                 if (layout == "box3-f64")
@@ -60,6 +65,17 @@ inline void write_native_fixtures(const fs::path &root) {
             }
             auto package = collection_zen_fixture(collection_single(values), true);
             const auto name = (changed ? "changed-" : "") + layout;
+            const std::string tag = layout == "date-time-i64"  ? "DateTime"
+                                    : layout == "timespan-i64" ? "Timespan"
+                                    : layout == "box3-f64"     ? "Box"
+                                    : layout == "sphere-f64"   ? "Sphere"
+                                    : layout == "matrix4-f64"  ? "Matrix"
+                                    : layout == "plane-f64"    ? "Plane"
+                                                               : "BoxSphereBounds";
+            cyuediff::test::save(root, (changed ? "changed-tagged-" : "tagged-") + layout,
+                                 layout == "box-sphere-f64" ? reflected_geometry_fixture(tag, 1013, changed)
+                                                            : native_property_fixture(values, tag));
+
             package.save(root / (name + ".ucas"));
             zen_toc(package).save(root / (name + ".utoc"));
         }

@@ -84,7 +84,7 @@ int main() {
                   "Unknown transform operation never invents semantics");
         }
         auto unknown = text_value();
-        unknown.data[4] = 12;
+        unknown.data[4] = 42;
         rejects([&] { decode(transform_text_value(unknown), options); }, "schema-type");
         auto limited = options;
         limited.max_depth = 3;

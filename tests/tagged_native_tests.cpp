@@ -22,10 +22,11 @@ int main() {
     try {
         const auto schemas = UnversionedSchemas::parse(collection_schema_fixture(collection_struct()).data);
         for (int version : {1000, 1009, 1013})
-            for (const char *token : {"Box", "Box3f", "Box3d", "Sphere", "Sphere3f", "Sphere3d",
-                                      "BoxSphereBounds", "BoxSphereBounds3f", "BoxSphereBounds3d", "Matrix",
+            for (const char *token : {"Box", "Box3f", "Box3d", "Sphere", "Sphere3f", "Sphere3d", "Matrix",
                                       "Matrix44f", "Matrix44d", "Plane", "Plane4f", "Plane4d"}) {
                 const std::string name = token;
+                if (version < 1004 && name == "Sphere3d")
+                    continue;
                 const bool wide = version >= 1004 && name.back() != 'f';
                 auto payload = geometry_value(name, wide);
                 auto package =
@@ -57,6 +58,13 @@ int main() {
                               bad.exports[0].properties["AfterNative"]["value"] == 987,
                           "Truncated native struct remains opaque with next tagged field intact");
                 }
+                auto padded = payload;
+                padded.zeros(1);
+                check(Package::open(save(root, "padded", native_property_fixture(padded, name, version)))
+                          .exports[0]
+                          .properties["Native"]
+                          .contains("opaque"),
+                      "Fixed binary native layouts reject unexpected trailing bytes");
                 auto bad = payload;
                 if (wide) {
                     const auto nan = std::numeric_limits<double>::quiet_NaN();
@@ -70,6 +78,27 @@ int main() {
                           .properties["Native"]
                           .contains("opaque"),
                       "Non-finite native geometry stays opaque");
+            }
+        for (int version : {1000, 1009, 1013})
+            for (const char *token : {"BoxSphereBounds", "BoxSphereBounds3f", "BoxSphereBounds3d"}) {
+                const std::string name = token;
+                const bool wide = version >= 1004 && name.back() != 'f', sphere = name.find("Sphere") == 0;
+                const auto package =
+                    Package::open(save(root, "reflected", reflected_geometry_fixture(name, version)));
+                const auto value = package.exports[0].properties["Native"]["value"];
+                check(value[sphere ? "Center" : "Origin"]["value"][0] == (wide ? 1000000000000.125 : -3.5),
+                      "Spheres and combined bounds use reflected fields, including explicit vector aliases");
+                check(value[sphere ? "W" : "SphereRadius"]["value"] ==
+                              (wide ? 1000000000000.125 : -3.5) + (sphere ? 3 : 6) &&
+                          package.exports[0].properties["AfterNative"]["value"] == 987,
+                      "Reflected radius and following tag retained");
+                const auto after = Package::open(
+                    save(root, "reflected-after", reflected_geometry_fixture(name, version, true)));
+                check(!compare(package, after).changes.empty(), "Reflected bounds have semantic field diffs");
+                const auto raw = Package::open(save(
+                    root, "raw-refused", native_property_fixture(geometry_value(name, wide), name, version)));
+                check(raw.exports[0].properties["Native"].contains("opaque"),
+                      "Archive operator alone does not certify a native StructProperty serializer");
             }
         fs::remove_all(root);
         std::cout << checks << " tagged native geometry checks passed\n";
