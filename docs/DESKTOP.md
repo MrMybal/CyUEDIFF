@@ -1,4 +1,4 @@
-# Desktop application — 0.52
+# Desktop application — 0.57
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -226,3 +226,9 @@ Supported modern text histories, delegates and weak package references appear un
 ## Optional values and field paths - 0.52
 
 The cooked property inspector shows supported optional values as `kind`, `isSet` and a `value` only when set. An unset option has no invented inner value; a set null or zero remains distinct. Modern field paths show the original `path` segments and `owner` reference. Compare a presence marker, segment or owner, then select a leaf to view its complete before/after text. Filters and selections persist through workspace save/reopen in both languages. UE 5.5 enables the checked optional format; both supported profiles enable modern field paths subject to recorded custom versions. No reflected field lookup or runtime pointer resolution occurs. See [schema contracts](SCHEMAS.md).
+
+## Stored text formats and byte strings - 0.57
+
+Properties in loose packages and mapped cooked objects show recursive text transforms, named/ordered arguments and number/percent/currency metadata. Select a changed source, argument value, culture, currency code or rounding option for its before/after preview. The reader shows stored inputs without generating a localized display string. Counted UTF-8 strings retain their Unicode bytes; ANSI reading covers ASCII. Filters and selections, including nested arguments, survive workspace save/reopen in either UI language. Unsupported histories, malformed encodings and duplicate argument names retain opaque data and fingerprints. See [schema contracts](SCHEMAS.md).
+
+On a host built with 16-bit ImGui characters, supplementary Unicode scalars appear as distinct JSON surrogate escapes in typed previews. Accents remain readable, and parsing an untruncated preview recovers the exact original value. This avoids two different unsupported glyphs appearing identical. Stored UTF-8, semantic comparisons, property identities and workspace selections stay unchanged.

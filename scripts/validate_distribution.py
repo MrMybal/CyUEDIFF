@@ -222,6 +222,34 @@ if args.consumer:
  typed=json.loads(result.stdout)
  if typed['Consumer.Value']['value']!={'kind':'optional','isSet':False} or typed['Consumer.Nested']['value']!={'kind':'optional','isSet':False}:raise RuntimeError('Installed unset optional consumer failed')
  print('Installed optional and field path SDK consumer validated')
+ # Independently encoded recursive text formats and counted strings.
+ names=[b'Consumer',b'Value',b'Utf8',b'Ascii']
+ payload=u32(len(names))+b''.join(bytes([len(n)])+n for n in names)+u32(0)+u32(1)
+ payload+=u32(0)+struct.pack('<iHH',-1,3,3)
+ for index,kind in enumerate((11,29,30)):payload+=struct.pack('<HBiB',index,1,index+1,kind)
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ context_path.write_text(json.dumps({'format':'cyuediff.zen-schema/2','profile':'ue5.5',
+     'usmap':mappings.name,'sha256':hashlib.sha256(mappings.read_bytes()).hexdigest(),
+     'bindings':{'/Script/Consumer.Consumer':{'schema':'Consumer','offset':0}},'nativeStructs':{}}),encoding='utf-8')
+ def localized_wire(source):
+  return struct.pack('<Ib',0,0)+string_wire('SDK namespace')+string_wire('SDK key')+string_wire(source)
+ source='SDK \u00e9';utf8=source.encode('utf-8')
+ byte_values=u32(len(utf8))+utf8+u32(9)+b'SDK ASCII'
+ nested=struct.pack('<Ib',0,10)+localized_wire('MiXeD SDK')+bytes([1])
+ named=struct.pack('<Ib',0,1)+localized_wire('{Count}: {Label}')+u32(2)
+ named+=string_wire('Count')+struct.pack('<bq',0,43)+string_wire('Label')+bytes([4])+nested
+ values.write_bytes(struct.pack('<H',0x0700)+named+byte_values)
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ typed=json.loads(result.stdout);text=typed['Consumer.Value']['value']
+ if text['arguments']['Count']!={'argumentType':'int64','value':43} or text['arguments']['Label']['value']['source']['source']!='MiXeD SDK':raise RuntimeError('Installed recursive named text consumer failed')
+ if typed['Consumer.Utf8']['value']!=source or typed['Consumer.Ascii']['value']!='SDK ASCII':raise RuntimeError('Installed counted byte string consumer failed')
+ numeric=struct.pack('<Ib',0,6)+string_wire('EUR')+struct.pack('<bd',3,1000000000000.125)+u32(1)
+ numeric+=struct.pack('<IIbiiii',1,0,2,1,324,2,4)+string_wire('fr-FR')
+ values.write_bytes(struct.pack('<H',0x0700)+numeric+byte_values)
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ text=json.loads(result.stdout)['Consumer.Value']['value']
+ if text['currencyCode']!='EUR' or text['source']['value']!=1000000000000.125 or text['formatOptions']['roundingMode']!=2:raise RuntimeError('Installed numeric currency text consumer failed')
+ print('Installed recursive text formatting and byte string SDK consumer validated')
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]

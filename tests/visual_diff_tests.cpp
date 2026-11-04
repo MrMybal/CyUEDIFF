@@ -93,6 +93,31 @@ int main() {
         auto literal_table = property_table(&literal, &literal);
         check(row(literal_table, "/a~01b").label == "a~1b", "Display labels unescape once");
         check(before == saved, "Input snapshots remain immutable");
+        Json supplementary = std::string("Caf\xc3\xa9 \xf0\x9f\x98\x80"),
+             supplementary_after = std::string("Caf\xc3\xa9 \xf0\x9f\x98\x81");
+        auto original = supplementary;
+        PropertyTableOptions readable;
+        auto ordinary = property_table(&supplementary, &supplementary_after, readable);
+        check(ordinary.rows[0].before.find("\xf0\x9f\x98\x80") != std::string::npos,
+              "Default host preview retains original UTF8");
+        readable.escape_non_bmp = true;
+        auto fallback = property_table(&supplementary, &supplementary_after, readable);
+        check(fallback.rows[0].before == "\"Caf\xc3\xa9 \\ud83d\\ude00\"" &&
+                  fallback.rows[0].after == "\"Caf\xc3\xa9 \\ud83d\\ude01\"",
+              "Supplementary characters remain visibly distinct while French accents stay readable");
+        check(Json::parse(fallback.rows[0].before) == supplementary &&
+                  Json::parse(fallback.rows[0].after) == supplementary_after,
+              "Escaped display previews preserve exact scalar values");
+        check(fallback.rows[0].change == ChangeKind::modified && supplementary == original,
+              "Preview fallback never changes semantic data or classification");
+        Json literal_escape = "\\ud83d\\ude00";
+        auto literal_preview = property_table(&literal_escape, &literal_escape, readable);
+        check(Json::parse(literal_preview.rows[0].before) == literal_escape,
+              "Literal backslash sequences remain distinct from a scalar");
+        readable.max_text_bytes = 7;
+        check(property_table(&supplementary, &supplementary, readable).rows[0].before ==
+                  "\"Caf\xc3\xa9 \"...",
+              "Truncation never emits a partial four-byte scalar");
         limits.max_rows = 0;
         try {
             property_table(&before, &after, limits);

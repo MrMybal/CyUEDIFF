@@ -23,7 +23,11 @@ template <class F> void rejects(F f, const char *code) {
     throw std::runtime_error("Expected numeric text refusal");
 }
 } // namespace
-int main() {
+int main(int argc, char **argv) {
+    if (argc == 3 && std::string(argv[1]) == "--write-fixtures") {
+        write_text_format_fixtures(fs::u8path(argv[2]));
+        return 0;
+    }
     const auto root =
         fs::current_path() / (".test-tmp-text-numeric-" +
                               std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));

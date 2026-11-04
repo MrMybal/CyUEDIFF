@@ -51,7 +51,9 @@ void PropertyView::set_values(const Json *before, const Json *after, bool compar
         else
             before = after;
     }
-    table_ = property_table(before, after);
+    PropertyTableOptions options;
+    options.escape_non_bmp = sizeof(ImWchar) == 2;
+    table_ = property_table(before, after, options);
     filter_ = {};
     changed_only_ = comparing;
     selected_ = -1;

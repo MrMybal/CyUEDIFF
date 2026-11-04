@@ -104,4 +104,102 @@ inline Bytes numeric_text_value(unsigned history = 4, bool with_options = true,
     value.string(culture);
     return value;
 }
+inline Bytes format_text_payload(const std::string &mode) {
+    const bool changed = mode.find("changed-") == 0;
+    const auto type = changed ? mode.substr(8) : mode;
+    Bytes integer;
+    integer.put<std::int64_t>(changed ? 42 : 41);
+    auto count = text_argument(0, integer);
+    auto label = text_argument(
+        4, transform_text_value(text_value(changed ? "Edited label" : "Original label"), changed ? 1 : 0));
+    if (type == "transform")
+        return transform_text_value(text_value(changed ? "Edited label" : "Original label"), changed ? 1 : 0);
+    if (type == "number" || type == "currency" || type == "percent" || type == "bad-rounding") {
+        auto value = numeric_text_value(type == "currency"  ? 6
+                                        : type == "percent" ? 5
+                                                            : 4,
+                                        true, changed ? "en-US" : "fr-FR", true,
+                                        type == "bad-rounding" ? 7
+                                        : changed              ? 2
+                                                               : 0,
+                                        changed ? 1000000000001.125 : 1000000000000.125);
+        if (type == "currency" && changed) {
+            value.data[9] = 'G';
+            value.data[10] = 'B';
+            value.data[11] = 'P';
+        }
+        return value;
+    }
+    if (type == "ordered")
+        return ordered_text_value({count, label});
+    if (type == "bad-argument")
+        return ordered_text_value({text_argument(99, {})});
+    if (type == "empty-ordered")
+        return ordered_text_value({});
+    if (type == "empty-named")
+        return named_text_value({});
+    if (type == "duplicate")
+        return named_text_value({{"Count", count}, {"Count", count}});
+    if (type == "unsupported") {
+        Bytes value;
+        value.i(0);
+        value.put<std::int8_t>(7);
+        return value;
+    }
+    const auto format = text_value(changed ? "{Label}: {Count}" : "{Count}: {Label}");
+    return type == "reordered-named" ? named_text_value({{"Label", label}, {"Count", count}}, format)
+                                     : named_text_value({{"Count", count}, {"Label", label}}, format);
+}
+inline std::string format_utf8_source(bool changed = false) {
+    return changed ? "Caf\xc3\xa9 \xf0\x9f\x98\x81" : "Caf\xc3\xa9 \xf0\x9f\x98\x80";
+}
+inline void write_text_format_fixtures(const fs::path &root) {
+    fs::create_directories(root);
+    auto mapping = collection_schema_fixture(collection_type(11), collection_type(29), collection_type(30));
+    mapping.save(root / "formats.usmap");
+    for (const char *name :
+         {"named",        "changed-named",     "reordered-named", "ordered",        "changed-ordered",
+          "transform",    "changed-transform", "number",          "changed-number", "percent",
+          "currency",     "changed-currency",  "empty-named",     "empty-ordered",  "duplicate",
+          "bad-argument", "bad-rounding",      "unsupported",     "bad-utf8",       "truncated",
+          "zero"}) {
+        const std::string mode = name;
+        Bytes values;
+        if (mode == "zero") {
+            values.put<std::uint16_t>(0x0780);
+            values.put<std::uint8_t>(7);
+        } else {
+            values.put<std::uint16_t>(0x0700);
+            values.append(format_text_payload(mode));
+            values.append(byte_string_value(mode == "bad-utf8"
+                                                ? std::string("\xc0\x80")
+                                                : format_utf8_source(mode.find("changed-") == 0)));
+            values.append(byte_string_value(mode.find("changed-") == 0 ? "Edited ASCII" : "Stored ASCII"));
+            if (mode == "truncated")
+                values.data.pop_back();
+            save(root, mode, text_property_fixture(format_text_payload(mode)));
+        }
+        auto package = collection_zen_fixture(values, true);
+        package.save(root / (mode + ".ucas"));
+        zen_toc(package).save(root / (mode + ".utoc"));
+    }
+    save(root, "utf8", text_property_fixture(byte_string_value(format_utf8_source()), "Utf8StrProperty"));
+    save(root, "changed-utf8",
+         text_property_fixture(byte_string_value(format_utf8_source(true)), "Utf8StrProperty"));
+    save(root, "bad-utf8", text_property_fixture(byte_string_value("\xc0\x80"), "Utf8StrProperty"));
+    save(root, "ascii", text_property_fixture(byte_string_value("Stored ASCII"), "AnsiStrProperty"));
+    auto global = script_fixture();
+    global.save(root / "global.ucas");
+    zen_toc(global, 5).save(root / "global.utoc");
+    Json manifest = {{"format", "cyuediff.zen-schema/2"},
+                     {"profile", "ue5.5"},
+                     {"usmap", "formats.usmap"},
+                     {"sha256", sha256_bytes(mapping.data)},
+                     {"bindings", {{"/Script/Test.DemoAsset", {{"schema", "Collections"}, {"offset", 0}}}}},
+                     {"nativeStructs", Json::object()}};
+    std::ofstream file(root / "formats.json", std::ios::binary);
+    file << manifest.dump(2) << '\n';
+    if (!file)
+        throw std::runtime_error("Cannot write text format context fixture");
+}
 } // namespace cyuediff::test

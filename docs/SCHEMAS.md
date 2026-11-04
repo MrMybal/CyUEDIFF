@@ -36,7 +36,7 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Enum | Declared integer storage and enum type identity; no inferred display label |
 | Name / string | Package FName index and numeric suffix, ASCII narrow FString and validated UTF-16 FString |
 | Object / interface | Signed 32-bit package index through an explicit host resolver; interface addresses are not reconstructed |
-| Text | Modern localized, empty/invariant and unresolved string-table histories; explicit standalone layout |
+| Text | Explicit layouts: localized/empty/invariant/string-table, recursive transforms, named/ordered arguments and numeric/percent/currency histories |
 | Delegate / multicast | Persistent object/function bindings; original order, duplicates and null targets |
 | Optional | Explicit binary presence marker and supported inner value; checked UE 5.5 profile |
 | Field path | Modern ordered FName segments plus persistent owner reference |
@@ -281,3 +281,11 @@ Both package backends share these shapes, limits and validation. Counts, primiti
 Histories 4, 5 and 6 retain their typed source argument, optional formatOptions and culture. Currency also retains currencyCode, serialized before the shared numeric fields. Missing options are null; no default formatting rules are reconstructed. Present options retain alwaysSign when serialized, useGrouping, roundingMode and the four signed integral/fractional digit constraints. Unusual stored digit constraints remain unchanged; no runtime clamping, rounding or culture lookup runs.
 
 The classic backend uses the recorded EditorObjectVersion threshold 21 for alwaysSign. Earlier layouts omit that field without inventing a value. Supported mapped text profiles use the explicit modern layout; recorded old editor versions still disable that layout. Invalid bool markers, unknown rounding modes, non-finite numeric arguments and truncated components stay opaque. Source, culture, currency and individual option changes produce distinct diff paths. Local UE 5.5 Text.cpp, Text.h and TextHistory.cpp establish these layouts and version thresholds. Date/time histories, ArgumentDataFormat and text-generator payloads remain unsupported.
+
+## Application integration and SDK - 0.57
+
+The CLI, typed inspector and workspace selections consume the shared structured text projection in both classic and mapped packages. Named argument identities and ordered indices remain in selection paths; argumentType is data, not a property tag. Before/after schema contexts remain independent and use existing version-two manifests. The SDK schema consumer forwards the checked byte-string layout for its UE 5.5 context. Installed-consumer validation independently encodes named arguments, a nested transform, precise currency formatting and counted Unicode/ASCII values. No external text/culture/asset lookup is performed.
+
+Unsupported ArgumentDataFormat, date/time and text-generator histories remain opaque. ANSI high bytes still need an explicit character-set reader. The matching-build USMAP limitation for real cooked property validation remains unchanged.
+
+The renderer-independent property-table API adds an opt-in escape_non_bmp presentation option; it defaults to false. The UI enables it for 16-bit ImGui hosts. Only preview text changes, with at most threefold expansion of supplementary UTF-8 bytes into JSON escapes. Decoded values and comparison identities remain original data.

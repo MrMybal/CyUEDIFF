@@ -29,6 +29,8 @@ struct PropertyRow {
 struct PropertyTableOptions {
     std::size_t max_rows = 20000, max_text_bytes = 2048;
     unsigned max_depth = 48;
+    // Presentation only: keep supplementary scalars distinct in 16-bit glyph hosts.
+    bool escape_non_bmp = false;
 };
 struct PropertyTable {
     std::vector<PropertyRow> rows;

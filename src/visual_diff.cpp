@@ -58,7 +58,7 @@ std::string escape(const std::string &key) {
         result += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
     return result;
 }
-std::string text(const Json *v, std::size_t limit) {
+std::string text(const Json *v, std::size_t limit, bool escape_non_bmp) {
     if (!v)
         return {};
     std::string result;
@@ -72,6 +72,28 @@ std::string text(const Json *v, std::size_t limit) {
         while (count < s.size() && count && (static_cast<unsigned char>(s[count]) & 0xc0) == 0x80)
             --count;
         result = Json(s.substr(0, count)).dump(-1, ' ', false, Json::error_handler_t::replace);
+        if (escape_non_bmp) {
+            std::string escaped;
+            auto word = [&](unsigned value) {
+                escaped += "\\u";
+                static const char digits[] = "0123456789abcdef";
+                for (int shift = 12; shift >= 0; shift -= 4)
+                    escaped += digits[(value >> shift) & 15];
+            };
+            for (std::size_t i = 0; i < result.size();) {
+                auto byte = [&](std::size_t at) { return static_cast<unsigned char>(result[at]); };
+                if (byte(i) >= 0xf0 && byte(i) <= 0xf4 && result.size() - i >= 4) {
+                    auto cp = ((byte(i) & 7u) << 18) | ((byte(i + 1) & 63u) << 12) |
+                              ((byte(i + 2) & 63u) << 6) | (byte(i + 3) & 63u);
+                    cp -= 0x10000;
+                    word(0xd800 + (cp >> 10));
+                    word(0xdc00 + (cp & 1023));
+                    i += 4;
+                } else
+                    escaped += result[i++];
+            }
+            result = std::move(escaped);
+        }
         if (count < s.size())
             result += "...";
     } else
@@ -134,9 +156,9 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
             label_type = ta == tb || tb.empty() ? ta : ta.empty() ? tb : ta + " -> " + tb;
         else
             label_type = y ? y->type_name() : x ? x->type_name() : "null";
-        result.rows.push_back({path, label_type, text(x, options.max_text_bytes),
-                               text(y, options.max_text_bytes), classify_change(a, b), depth, bool(a),
-                               bool(b)});
+        result.rows.push_back({path, label_type, text(x, options.max_text_bytes, options.escape_non_bmp),
+                               text(y, options.max_text_bytes, options.escape_non_bmp), classify_change(a, b),
+                               depth, bool(a), bool(b)});
         auto &display = result.rows.back().label;
         auto slash = path.find_last_of('/');
         auto token =
