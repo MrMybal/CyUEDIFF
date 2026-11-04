@@ -53,6 +53,9 @@ int main() {
             return decode_unversioned(wire.data, 0, wire.data.size(), schemas, "Collections", opt);
         };
         rejects([&] { decode(args(), options); }, "schema-type");
+        auto unknownLayout = options;
+        unknownLayout.text_argument_data_layout = static_cast<TextArgumentDataLayout>(255);
+        rejects([&] { decode(args(), unknownLayout); }, "schema-type");
         for (bool wide : {false, true}) {
             options.text_argument_data_layout =
                 wide ? TextArgumentDataLayout::variant_int64 : TextArgumentDataLayout::variant_int32;
@@ -164,7 +167,8 @@ int main() {
                 bytes.patch(88, version);
                 auto package = ZenPackage::parse(bytes.data, zen);
                 check(package.property_exports_decoded == 2 &&
-                          package.exports[0].property_read["properties"][field]["value"]["arguments"][0]["argumentType"] ==
+                          package.exports[0].property_read["properties"][field]["value"]["arguments"][0]
+                                                          ["argumentType"] ==
                               (version >= 12 ? "int64" : "int32"),
                       "Recorded cooked release version selects integer width");
             }

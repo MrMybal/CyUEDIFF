@@ -1,7 +1,9 @@
 #include "../apps/desktop/container_view.hpp"
 #include "container_fixtures.hpp"
 #include "schema_fixture.hpp"
+#include "schema_native_fixture.hpp"
 #include <chrono>
+#include <array>
 #include <algorithm>
 #include <iostream>
 using namespace cyuediff;
@@ -193,6 +195,31 @@ int main() {
         if (!invalid_rejected || view.view_state() != retained_view)
             throw std::runtime_error("Container restore validation precedes mutations");
         view.restore_view_state(original_view);
+        const auto nativeRoot = root / "native";
+        write_native_fixtures(nativeRoot);
+        for (const auto &test : std::vector<std::array<std::string, 4>>{
+                 {"date-time-i64", "ticks", "9007199254740992", "9007199254740993"},
+                 {"timespan-i64", "ticks", "9007199254740992", "9007199254740993"},
+                 {"box3-f64", "isValid", "1", "0"},
+                 {"sphere-f64", "radius", "1000000000003.125", "1000000000004.125"},
+                 {"box-sphere-f64", "sphereRadius", "1000000000006.125", "1000000000007.125"}}) {
+            ContainerSource nativeSource;
+            nativeSource.path = nativeRoot / (test[0] + ".utoc");
+            nativeSource.after_path = nativeRoot / ("changed-" + test[0] + ".utoc");
+            nativeSource.entry = "000000000000000000000001";
+            nativeSource.profile = nativeSource.after_profile = ZenProfile::unreal_5_5;
+            nativeSource.schema = nativeSource.after_schema = nativeRoot / (test[0] + ".json");
+            nativeSource.script_objects = nativeSource.after_script_objects = nativeRoot / "global.utoc";
+            view.set_document(load_container_document(nativeSource, {}));
+            const auto path = "/~1Script~1Test.Collections.Lookup/" + test[1];
+            view.restore_view_state({{"values", {{"filter", test[1]}, {"selected", path}}}});
+            const auto &rows = view.property_table().rows;
+            if (!std::any_of(rows.begin(), rows.end(), [&](const PropertyRow &row) {
+                    return row.path == path && row.before == test[2] && row.after == test[3] &&
+                           row.change == ChangeKind::modified;
+                }))
+                throw std::runtime_error("Exact native temporal/bounds desktop preview");
+        }
         ImGui::CreateContext();
         auto &io = ImGui::GetIO();
         io.DisplaySize = ImVec2(1280, 900);

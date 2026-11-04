@@ -43,6 +43,19 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-text-desktop-', dir=Path.cwd(
     for name in ('ordered', 'transform', 'number', 'currency'):
         result = run(*pair, '--container', root/(name+'.utoc'), '--after-container', root/('changed-'+name+'.utoc'))
         assert result['containerView']['objectProperties']['available']; checks += 1
+    for name, leaf in (('date', 'ticks'), ('time', 'timeZone'), ('custom-date-time', 'customPattern'), ('data', 'arguments/0/value')):
+        selected = '/~1Script~1Test.Collections.Lookup/'+leaf
+        state = {'container': {'values': {'filter': leaf.split('/')[-1], 'selected': selected}}}
+        workspace = root/(name+'-workspace.json')
+        saved = run(*pair, '--container', root/(name+'.utoc'), '--after-container', root/('changed-'+name+'.utoc'),
+                    '--document-action', 'view-state:'+json.dumps(state), '--save-workspace', workspace)
+        assert saved['containerView']['objectProperties']['available']; checks += 1
+        restored = run('--workspace', workspace, '--locale', 'fr')
+        assert restored['document'] == saved['document'] and restored['workspace']['documents'][0]['viewState']['container']['values']['selected'] == selected; checks += 1
+        assert run('--before', root/(name+'.uasset'), '--after', root/('changed-'+name+'.uasset'), '--view', 'properties')['status'] == 'ready'; checks += 1
+    for name in ('bad-style', 'bad-data'):
+        result = run(*base, '--container', root/(name+'.utoc'))
+        assert not result['containerView']['objectProperties']['available'] and result['containerView']['objectProperties']['beforeStatus'] == 'opaque'; checks += 1
     for name in ('duplicate', 'bad-argument', 'bad-rounding', 'unsupported', 'bad-utf8', 'truncated'):
         result = run(*base, '--container', root/(name+'.utoc'))
         assert not result['containerView']['objectProperties']['available'] and result['containerView']['objectProperties']['beforeStatus'] == 'opaque'; checks += 1

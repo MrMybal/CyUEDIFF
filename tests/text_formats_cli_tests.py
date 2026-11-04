@@ -41,6 +41,22 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-text-cli-', dir=Path.cwd()) a
         value = inspect(name)['exports'][0]['propertyRead']['properties'][prefix+'Lookup']['value']
         classic = classic_properties(run('inspect', root/(name+'.uasset')))
         assert classic['Formatted']['value'] == value and classic['AfterFormat']['value'] == 876; checks += 1
+    for name in ('date', 'time', 'date-time', 'custom-date-time', 'data', 'empty-data'):
+        value = inspect(name)['exports'][0]['propertyRead']['properties'][prefix+'Lookup']['value']
+        classic = classic_properties(run('inspect', root/(name+'.uasset')))
+        assert classic['Formatted']['value'] == value and classic['AfterFormat']['value'] == 876; checks += 1
+    for name in ('date', 'time', 'date-time', 'custom-date-time', 'data'):
+        delta = run('zen-diff', root/(name+'.utoc'), entry, root/('changed-'+name+'.utoc'), entry, *common, code=1)
+        suffix = '/value/arguments/0/value' if name == 'data' else '/value/ticks'
+        assert any(c['path'].endswith(suffix) for c in delta['changes']); checks += 1
+        run('diff', root/(name+'.uasset'), root/('changed-'+name+'.uasset'), code=1)
+    data = inspect('data')['exports'][0]['propertyRead']['properties'][prefix+'Lookup']['value']
+    assert data['arguments'][0]['name'] == data['arguments'][1]['name'] == 'Count' and data['arguments'][1]['value'] == 2; checks += 1
+    assert inspect('changed-custom-date-time')['exports'][0]['propertyRead']['properties'][prefix+'Lookup']['value']['customPattern'] == 'yyyy'; checks += 1
+    for name in ('bad-style', 'bad-data'):
+        assert inspect(name)['exports'][0]['propertyRead']['status'] == 'opaque'; checks += 1
+        classic = classic_properties(run('inspect', root/(name+'.uasset')))
+        assert 'opaque' in classic['Formatted'] and classic['AfterFormat']['value'] == 876; checks += 1
     changed = run('zen-diff', root/'named.utoc', entry, root/'changed-named.utoc', entry, *common, code=1)
     for suffix in ('/value/format/source', '/value/arguments/Count/value', '/value/arguments/Label/value/source/source', '/value/arguments/Label/value/transformType'):
         assert any(c['path'].endswith(suffix) for c in changed['changes']); checks += 1

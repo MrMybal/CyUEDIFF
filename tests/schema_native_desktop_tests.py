@@ -36,6 +36,17 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-native-desktop-',dir=Path.cwd
     assert modern['document']['container']['zen']['propertyExportsDecoded']==2;checks+=1
     provenance=run(*base,'--container-tab','schema')
     assert provenance['containerView']['tab']==4;checks+=1
+    for layout,leaf in (('date-time-i64','ticks'),('timespan-i64','ticks'),('box3-f64','isValid'),('sphere-f64','radius'),('box-sphere-f64','sphereRadius')):
+        selected='/~1Script~1Test.Collections.Lookup/'+leaf
+        state={'container':{'values':{'filter':leaf,'selected':selected}}}
+        workspace=root/(layout+'-workspace.json')
+        paired=run(*base,'--container',root/(layout+'.utoc'),'--cooked-profile','ue5.5','--schema',root/(layout+'.json'),
+                   '--after-container',root/('changed-'+layout+'.utoc'),'--after-cooked-profile','ue5.5',
+                   '--after-script-objects',root/'global.utoc','--after-schema',root/(layout+'.json'),
+                   '--document-action','view-state:'+json.dumps(state),'--save-workspace',workspace)
+        assert paired['containerView']['objectProperties']['available'] and paired['containerView']['objectProperties']['comparing'];checks+=1
+        resumed=run('--workspace',workspace,'--locale','fr')
+        assert resumed['document']==paired['document'] and resumed['workspace']['documents'][0]['viewState']['container']['values']['selected']==selected;checks+=1
     for protected in ('native.json','native.usmap','native.utoc','native.ucas'):
         run(*base,'--save-workspace',root/protected,code=2)
     assert all(hashlib.sha256(p.read_bytes()).hexdigest()==digest for p,digest in hashes.items()) and not (root/'unused-profile').exists();checks+=1

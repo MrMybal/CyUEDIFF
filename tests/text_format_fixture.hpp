@@ -144,6 +144,26 @@ inline Bytes format_text_payload(const std::string &mode) {
     auto count = text_argument(0, integer);
     auto label = text_argument(
         4, transform_text_value(text_value(changed ? "Edited label" : "Original label"), changed ? 1 : 0));
+    if (type == "date" || type == "time" || type == "date-time" || type == "custom-date-time" ||
+        type == "bad-style")
+        return calendar_text_value(type == "date"   ? 7
+                                   : type == "time" ? 8
+                                                    : 9,
+                                   changed ? 638980123456789013LL : 638980123456789012LL,
+                                   type == "bad-style"          ? 6
+                                   : type == "custom-date-time" ? 5
+                                   : changed                    ? 4
+                                                                : 2,
+                                   changed ? 4 : 1, changed ? "UTC" : "Europe/Paris",
+                                   changed ? "en-US" : "fr-FR", changed ? "yyyy" : "yyyy-MM-dd");
+    if (type == "data")
+        return data_text_value({{"Count", count},
+                                {"Count", text_argument(5, Bytes{{2}})},
+                                {"Label", text_argument(4, calendar_text_value(9, changed ? 7 : 6))}});
+    if (type == "empty-data")
+        return data_text_value({});
+    if (type == "bad-data")
+        return data_text_value({{"Bad", text_argument(1, {})}});
     if (type == "transform")
         return transform_text_value(text_value(changed ? "Edited label" : "Original label"), changed ? 1 : 0);
     if (type == "number" || type == "currency" || type == "percent" || type == "bad-rounding") {
@@ -189,12 +209,40 @@ inline void write_text_format_fixtures(const fs::path &root) {
     fs::create_directories(root);
     auto mapping = collection_schema_fixture(collection_type(11), collection_type(29), collection_type(30));
     mapping.save(root / "formats.usmap");
-    for (const char *name :
-         {"named",        "changed-named",     "reordered-named", "ordered",        "changed-ordered",
-          "transform",    "changed-transform", "number",          "changed-number", "percent",
-          "currency",     "changed-currency",  "empty-named",     "empty-ordered",  "duplicate",
-          "bad-argument", "bad-rounding",      "unsupported",     "bad-utf8",       "truncated",
-          "zero"}) {
+    for (const char *name : {"named",
+                             "changed-named",
+                             "reordered-named",
+                             "ordered",
+                             "changed-ordered",
+                             "transform",
+                             "changed-transform",
+                             "number",
+                             "changed-number",
+                             "percent",
+                             "currency",
+                             "changed-currency",
+                             "empty-named",
+                             "empty-ordered",
+                             "duplicate",
+                             "bad-argument",
+                             "bad-rounding",
+                             "unsupported",
+                             "bad-utf8",
+                             "truncated",
+                             "zero",
+                             "date",
+                             "changed-date",
+                             "time",
+                             "changed-time",
+                             "date-time",
+                             "changed-date-time",
+                             "custom-date-time",
+                             "changed-custom-date-time",
+                             "bad-style",
+                             "data",
+                             "changed-data",
+                             "empty-data",
+                             "bad-data"}) {
         const std::string mode = name;
         Bytes values;
         if (mode == "zero") {
@@ -209,7 +257,7 @@ inline void write_text_format_fixtures(const fs::path &root) {
             values.append(byte_string_value(mode.find("changed-") == 0 ? "Edited ASCII" : "Stored ASCII"));
             if (mode == "truncated")
                 values.data.pop_back();
-            save(root, mode, text_property_fixture(format_text_payload(mode)));
+            save(root, mode, text_property_fixture(format_text_payload(mode), "TextProperty", 1013, 32, 12));
         }
         auto package = collection_zen_fixture(values, true);
         package.save(root / (mode + ".ucas"));

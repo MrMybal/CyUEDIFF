@@ -21,6 +21,7 @@ int run(const std::vector<std::string> &args) {
             options.reflected_structs = context->reflected_structs;
             options.native_structs = context->native_structs;
             options.text_layout = cyuediff::TextLayout::ue5_history;
+            options.text_argument_data_layout = cyuediff::TextArgumentDataLayout::variant_int64;
             options.script_reference_layout = cyuediff::ScriptReferenceLayout::package_indices;
             options.field_path_layout = cyuediff::FieldPathLayout::owner_and_names;
             if (context->profile == cyuediff::ZenProfile::unreal_5_5) {

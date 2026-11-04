@@ -35,6 +35,12 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-native-cli-',dir=Path.cwd()) 
     assert run('zen-inspect',root/'native55.utoc',entry,*modern)['propertyExportsDecoded']==2;checks+=1
     catalog=run('zen-catalog',root/'native.utoc',*common,'--snapshot')
     assert catalog['propertiesDecoded'] and catalog['propertyExportsDecoded']==2;checks+=1
+    for layout, suffix in (('date-time-i64','ticks'),('timespan-i64','ticks'),('box3-f64','isValid'),('sphere-f64','radius'),('box-sphere-f64','sphereRadius')):
+        modern=['--cooked-profile','ue5.5','--script-objects',root/'global.utoc','--schema',root/(layout+'.json')]
+        prop=run('zen-inspect',root/(layout+'.utoc'),entry,*modern)['exports'][0]['propertyRead']['properties'][field]
+        assert prop['nativeLayout']==layout;checks+=1
+        delta=run('zen-diff',root/(layout+'.utoc'),entry,root/('changed-'+layout+'.utoc'),entry,*modern,code=1)
+        assert any(c['path'].endswith('/value/'+suffix) for c in delta['changes']) and not delta['contextChanged'];checks+=1
     config=json.loads((root/'native.json').read_text(encoding='utf-8'));path=root/'context \u00e9.json'
     path.write_text(json.dumps(config),encoding='utf-8')
     assert run('zen-inspect',root/'native.utoc',entry,*common,'--schema',path)['propertyExportsDecoded']==2;checks+=1

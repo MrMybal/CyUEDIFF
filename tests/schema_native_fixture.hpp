@@ -42,6 +42,28 @@ inline void write_native_fixtures(const fs::path &root) {
     save("native.json");
     manifest["profile"] = "ue5.5";
     save("native55.json");
+    for (const char *token : {"date-time-i64", "timespan-i64", "box3-f64", "sphere-f64", "box-sphere-f64"}) {
+        const std::string layout = token;
+        manifest["profile"] = "ue5.5";
+        manifest["nativeStructs"] = {{"/Script/Test.Record", layout}};
+        save((layout + ".json").c_str());
+        for (bool changed : {false, true}) {
+            Bytes values;
+            if (layout == "date-time-i64" || layout == "timespan-i64")
+                values.put<std::int64_t>(changed ? 9007199254740993LL : 9007199254740992LL);
+            else {
+                const unsigned count = layout == "box3-f64" ? 6 : layout == "sphere-f64" ? 4 : 7;
+                for (unsigned i = 0; i < count; ++i)
+                    values.put<double>(1000000000000.125 + i + (changed && i == count - 1 ? 1 : 0));
+                if (layout == "box3-f64")
+                    values.put<std::uint8_t>(changed ? 0 : 1);
+            }
+            auto package = collection_zen_fixture(collection_single(values), true);
+            const auto name = (changed ? "changed-" : "") + layout;
+            package.save(root / (name + ".ucas"));
+            zen_toc(package).save(root / (name + ".utoc"));
+        }
+    }
     manifest["profile"] = "ue5.3";
     manifest["format"] = "cyuediff.zen-schema/1";
     manifest.erase("nativeStructs");

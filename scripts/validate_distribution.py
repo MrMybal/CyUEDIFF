@@ -250,6 +250,37 @@ if args.consumer:
  text=json.loads(result.stdout)['Consumer.Value']['value']
  if text['currencyCode']!='EUR' or text['source']['value']!=1000000000000.125 or text['formatOptions']['roundingMode']!=2:raise RuntimeError('Installed numeric currency text consumer failed')
  print('Installed recursive text formatting and byte string SDK consumer validated')
+ calendar=struct.pack('<Ibqbb',0,9,638980123456789013,5,1)+string_wire('yyyy-MM-dd')+string_wire('UTC')+string_wire('en-US')
+ data=struct.pack('<Ib',0,3)+localized_wire('{Tick}: {Date}')+u32(3)
+ data+=string_wire('Tick')+struct.pack('<bq',0,-9007199254740993)
+ data+=string_wire('Tick')+struct.pack('<bB',5,255)
+ data+=string_wire('Date')+bytes([4])+calendar
+ values.write_bytes(struct.pack('<H',0x0700)+data+byte_values)
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ text=json.loads(result.stdout)['Consumer.Value']['value']
+ if text['arguments'][0]['value']!=-9007199254740993 or text['arguments'][1]['value']!=255:raise RuntimeError('Installed argument-data width/gender consumer failed')
+ date=text['arguments'][2]['value']
+ if date['ticks']!=638980123456789013 or date['customPattern']!='yyyy-MM-dd' or date['timeZone']!='UTC':raise RuntimeError('Installed calendar history consumer failed')
+ # Reuse the independent native mapping with new explicit wire tokens.
+ payload=u32(3)+b''.join(bytes([len(n)])+n for n in native_names)+u32(0)+u32(2)
+ payload+=u32(0)+struct.pack('<iHHHBiBi',-1,1,1,0,1,1,9,2)
+ payload+=u32(2)+struct.pack('<iHH',-1,0,0)
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ for token,wire,expected in (
+     ('date-time-i64',struct.pack('<q',9007199254740993),{'ticks':9007199254740993}),
+     ('timespan-i64',struct.pack('<q',-9007199254740993),{'ticks':-9007199254740993}),
+     ('box3-f64',struct.pack('<6dB',1,2,3,4,5,6,255),{'min':[1,2,3],'max':[4,5,6],'isValid':255}),
+     ('sphere-f32',struct.pack('<4f',1,2,3,-4),{'center':[1,2,3],'radius':-4}),
+     ('box-sphere-f64',struct.pack('<7d',1,2,3,4,5,6,7),{'origin':[1,2,3],'boxExtent':[4,5,6],'sphereRadius':7})):
+  context_path.write_text(json.dumps({'format':'cyuediff.zen-schema/2','profile':'ue5.5',
+      'usmap':mappings.name,'sha256':hashlib.sha256(mappings.read_bytes()).hexdigest(),
+      'bindings':{'/Script/Consumer.Consumer':{'schema':'Consumer','offset':0}},'nativeStructs':{'Native':token}}),encoding='utf-8')
+  values.write_bytes(struct.pack('<H',0x0300)+wire)
+  result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+  native=json.loads(result.stdout)['Consumer.Value']
+  if native['value']!=expected or native['nativeLayout']!=token:raise RuntimeError('Installed native '+token+' consumer failed')
+ print('Installed calendar/argument-data and native temporal/bounds SDK consumers validated')
+
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
