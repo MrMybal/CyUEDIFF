@@ -9,6 +9,9 @@ int main() {
         io.DeltaTime = 1.f / 60;
         io.IniFilename = nullptr;
         DocumentTabsView::register_translations();
+        cyui::setLocale("fr");
+        if (cyui::tr("Reopen closed document") != "Rouvrir le document ferm\u00e9")
+            throw std::runtime_error("French document actions");
         DocumentTabsView view;
         int frames = 0;
         for (const auto &theme : cyui::builtInThemes())

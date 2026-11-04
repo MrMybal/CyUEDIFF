@@ -1,4 +1,4 @@
-# Desktop application — 0.26
+# Desktop application — 0.34
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -130,7 +130,7 @@ build-native/Release/cyuediff_desktop.exe --container D:/Build/Content.utoc --co
 build-native/Release/cyuediff_desktop.exe --container D:/Build/Content.utoc --container-entry CHUNK_ID --cooked-profile ue5.3 --script-objects D:/Build/global.utoc --codec D:/Host/cyuediff_oodle.dll
 ```
 
-Requests use the same cancellable background document worker as loose/Git assets. A new request reopens current indexes; no previous index is reused to read changed source files. One request waits at most, and stale results cannot publish. A failed inspection retains the previous document. All physical container partitions, global-script sources and the explicit codec path are protected against overlapping capture/report/preference outputs. No path is persisted in user preferences. Containers also work in builds without Git.
+Requests use the same cancellable background document worker as loose/Git assets. A new request reopens current indexes; no previous index is reused to read changed source files. One request per document waits at most in the shared queue, and stale results cannot publish. A failed inspection retains the previous document. All physical container partitions, global-script sources and the explicit codec path are protected against overlapping capture/report/preference outputs. No path is persisted in user preferences. Containers also work in builds without Git.
 
 Desktop limits are 100,000 indexed entries, a 64 MiB index, 64 MiB per decoded member/global-script chunk, 16 MiB Zen headers and 16 MiB Zen text. The Core has separate configurable limits. Hidden `--smoke` reports include `document.container` with summary/inspection/Zen data and `containerView` with visible rows, selected member/object and active tab. Full member tables are not duplicated in the report.
 
@@ -187,9 +187,22 @@ The default maximum is eight open documents, configurable from one to 32 by an e
 
 Switching tabs preserves their input settings, selected objects, filters, canvas/inspector state and uploaded previews. View objects keep stable addresses, and each document has its own ImGui identity scope. Views and GPU previews initialize on first display outside drawing; selecting a loaded tab does not decode its files again. Reload explicitly reads current sources. Cancelling one tab leaves other documents' queued requests intact. Content-browser/history navigation closes when switching documents so it cannot apply a selection to another context.
 
-The launch syntax groups source options with `--new-document`. Appearance, report/capture, preference and automatic browser/history options belong to the first group. `--document-index 0..7` chooses the initially visible group; otherwise the last opens as active. Smoke mode waits for all queued documents and reports background failures as failures. Reports retain the active `document` and add `workspace.documents` with per-tab results/statuses. Input protection covers initial and open document contexts, including inactive containers, companions, mappings and global partitions.
+The launch syntax groups source options with `--new-document`. Appearance, report/capture, preference and automatic browser/history options belong to the first group. `--document-index 0..7` chooses the initially visible group; otherwise the last opens as active. Smoke mode waits for all queued documents and reports background failures as failures. Reports retain the active `document` and add `workspace.documents` with per-tab results/statuses. Input protection covers initial, open and session-local closed document contexts, including inactive containers, companions, mappings and global partitions.
 
 ```powershell
 cyuediff_desktop.exe --before Before.uasset --after After.uasset --new-document --container Build.pak
 cyuediff_desktop.exe --document-index 0 --container Before.utoc --new-document --container After.utoc
+```
+
+
+## Document lifecycle commands — 0.34
+
+The **File** menu and tab context menu expose **Duplicate document**, **Close document** and **Close other documents**. Duplicate (`Ctrl+D`) copies the input context into a new tab and reads its current sources. Each copy has its own snapshot and views. **Reopen closed document** (`Ctrl+Shift+T`, File menu) restores the most recently closed context in a new tab and reads it again. Closing other documents keeps the chosen tab and cancels/drops the others' work as one operation. `Ctrl+Tab` and `Ctrl+Shift+Tab` cycle through the current tab order. New and duplicate/reopen actions respect the eight-tab limit. Closing the last tab creates an empty document with the same preview/content-display preferences.
+
+Up to eight closed contexts are remembered in memory, containing source/settings data only. Decoded snapshots, GPU previews, filters and callback/cache closures are released when a tab closes. Reopening restores context, not the previous view state. The closed list disappears when the process exits. Appearance preferences continue to store only theme, language and preview/content options.
+
+Hidden validation accepts repeated `--document-action` options before `--new-document`, with up to 64 actions. Supported actions include `select:N`, `close[:N]`, `duplicate[:N]`, `new`, `reopen`, `close-others`, `next`, `previous` and `reload`. Indices are zero-based positions in the current tab order. `member:ID_OR_PATH` selects a visible container row without reading it; `filter:TEXT` changes the container filter. Actions run after the shared queue settles and call the same document helpers as the menus. Reports include the action results, per-document revision counts and the number of remembered closed documents. They are validation reports, not restorable workspace files.
+
+```powershell
+cyuediff_desktop.exe --smoke --report workspace.json --document-action duplicate --document-action close --document-action reopen --before Before.uasset --after After.uasset
 ```

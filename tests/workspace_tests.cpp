@@ -176,6 +176,38 @@ int main(int argc, char **argv) {
         settle(cancelled);
         check(cancelled.find(again)->cancelled && !cancelled.document(),
               "Cancelled queued request never publishes");
+        DocumentWorkspace lifecycle(result, 3);
+        const auto original = lifecycle.active_id();
+        lifecycle.request({"original"});
+        settle(lifecycle);
+        const auto copy = lifecycle.duplicate(original);
+        settle(lifecycle);
+        check(copy != original && lifecycle.document() != lifecycle.find(original)->document &&
+                  lifecycle.document()->request.before == "original",
+              "Duplicate reloads context as an independent document");
+        check(lifecycle.close_others(copy) && lifecycle.documents().size() == 1 &&
+                  lifecycle.active_id() == copy,
+              "Close others preserves the requested ID");
+        auto restored = lifecycle.reopen();
+        settle(lifecycle);
+        check(restored > copy && lifecycle.document()->request.before == "original",
+              "Reopen uses a new ID and reloads saved context");
+        check(lifecycle.closed().empty(), "Reopened context leaves the closed stack");
+        rejects([&] { lifecycle.reopen(); }, "desktop-document");
+        auto empty = lifecycle.create();
+        lifecycle.close(empty);
+        auto history_count = lifecycle.closed().size();
+        auto full = lifecycle.create();
+        rejects([&] { lifecycle.reopen(); }, "document-limit");
+        check(lifecycle.closed().size() == history_count,
+              "A tab-limit failure does not consume reopen history");
+        lifecycle.close_others(full);
+        for (int j = 0; j < 20; ++j) {
+            auto temporary = lifecycle.create();
+            lifecycle.close(temporary);
+        }
+        check(lifecycle.closed().size() == 8, "Closed context history stays bounded without snapshots");
+        check(!lifecycle.close_others(999), "Invalid close-others ID is inert");
         std::cout << checks << " document workspace checks passed\n";
         return 0;
     } catch (const std::exception &error) {

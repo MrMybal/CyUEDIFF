@@ -1,6 +1,9 @@
 #include "document_tabs.hpp"
 namespace cyuediff::desktop {
 void DocumentTabsView::register_translations() {
+    cyui::registerTranslations("fr", {{"Duplicate document", "Dupliquer le document"},
+                                      {"Reopen closed document", "Rouvrir le document fermé"},
+                                      {"Close other documents", "Fermer les autres documents"}});
     cyui::registerTranslations("en", {{"Queued document", "Waiting for document loader"}});
     cyui::registerTranslations("fr", {{"New document", "Nouveau document"},
                                       {"New document (Ctrl+N)", "Nouveau document (Ctrl+N)"},
@@ -45,9 +48,21 @@ DocumentTabAction DocumentTabsView::draw() {
         cyui::tooltip(tab.tooltip.c_str());
         if (shown)
             ImGui::EndTabItem();
+        if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem(cyui::trLabel("Duplicate document").c_str(), "Ctrl+D", false, can_create_))
+                result = {DocumentTabOperation::duplicate, tab.id};
+            if (ImGui::MenuItem(cyui::trLabel("Close document").c_str(), "Ctrl+W"))
+                result = {DocumentTabOperation::close, tab.id};
+            if (ImGui::MenuItem(cyui::trLabel("Close other documents").c_str(), nullptr, false,
+                                tabs_.size() > 1))
+                result = {DocumentTabOperation::close_others, tab.id};
+            ImGui::EndPopup();
+        }
+
         if (!open)
             result = {DocumentTabOperation::close, tab.id};
-        else if (tab.id != active_ && (clicked || (shown && !syncing)))
+        else if (result.operation == DocumentTabOperation::none && tab.id != active_ &&
+                 (clicked || (shown && !syncing)))
             result = {DocumentTabOperation::select, tab.id};
     }
     {

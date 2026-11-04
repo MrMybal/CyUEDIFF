@@ -51,6 +51,51 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-desktop-',dir=Path.
     run('--document-index','wrong','--container',pak,code=2)
     run('--container',pak,'--new-document','--locale','fr',code=2)
     run('--container',pak,'--new-document','--report',root/'other.json',code=2)
+    def actions(*values):
+        return sum((['--document-action',value] for value in values),[])
+    report=run(*actions('select:0','select:1','member:Content/B.bin','select:2','filter:missing-query','select:1'),*first,*second,*third)
+    docs=report['workspace']['documents']
+    assert docs[1]['active'] and docs[1]['containerSelection']=='Content/B.bin' and docs[2]['visibleMembers']==0
+    assert all(d['revision']==1 for d in docs) and all(a['ok'] for a in report['workspace']['actions'])
+    checks+=1
+    report=run(*actions('duplicate'),'--container',pak,'--container-entry','Content/A.bin')
+    docs=report['workspace']['documents']
+    assert len(docs)==2 and docs[1]['active'] and docs[0]['id']!=docs[1]['id'] and docs[0]['document']==docs[1]['document']
+    checks+=1
+    report=run(*actions('close','reopen'),*first,*second)
+    docs=report['workspace']['documents']
+    assert len(docs)==2 and docs[1]['id']==3 and docs[1]['container']==str(pak) and docs[1]['revision']==1
+    assert report['workspace']['closedDocuments']==0
+    checks+=1
+    report=run(*actions('close','reopen'),'--container',pak)
+    docs=report['workspace']['documents']
+    assert len(docs)==2 and docs[0]['document'] is None and docs[1]['id']==3 and docs[1]['document'] is not None
+    checks+=1
+    report=run(*actions('select:0','close-others'),*first,*second,*third)
+    assert len(report['workspace']['documents'])==1 and report['workspace']['closedDocuments']==2 and report['document']['diff']['status']=='changed'
+    checks+=1
+    report=run(*actions('select:0','close-others','reopen'),*first,*second,*third)
+    assert report['document']['container']['zen']['propertyExportsDecoded']==2 and report['workspace']['closedDocuments']==1
+    checks+=1
+    report=run(*actions('reload'),'--container',pak)
+    assert report['workspace']['documents'][0]['revision']==2
+    checks+=1
+    report=run(*actions('next','previous'),*first,*second,*third)
+    assert report['workspace']['active']==3 and report['workspace']['actions'][0]['after']==1
+    checks+=1
+    report=run(*actions('member:Content/B.bin','new','close'),'--container',pak)
+    assert len(report['workspace']['documents'])==1 and report['containerView']['selectedMember']=='Content/B.bin'
+    checks+=1
+    report=run(*actions('select:7'),'--container',pak,code=2)
+    assert report['workspace']['actions'][0]['ok'] is False and report['document']['container']['metadata']['kind']=='pak'
+    checks+=1
+    report=run(*actions('reopen'),'--container',pak,code=2)
+    assert report['workspace']['closedDocuments']==0
+    checks+=1
+    report=run(*actions('duplicate'),'--container',pak,*sum((['--new-document','--container',pak] for _ in range(7)),[]),code=2)
+    assert len(report['workspace']['documents'])==8
+    checks+=1
+    run('--document-action','unknown','--container',pak,code=2)
     for source in [before,schema/'schema.json',schema/'test.usmap',schema/'global.ucas',root/'pak/test_s1.ucas']:
         alias=root/'alias.json';alias.unlink(missing_ok=True);os.link(source,alias)
         args=['--container',pak,'--new-document','--before',before,*third,

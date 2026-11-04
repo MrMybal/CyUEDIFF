@@ -48,12 +48,62 @@ bool DocumentWorkspace::close(DocumentId id) {
     }
     queue_.erase(std::remove(queue_.begin(), queue_.end(), id), queue_.end());
     pending_.erase(id);
+    remember(*found);
     auto index = static_cast<std::size_t>(found - documents_.begin());
     documents_.erase(found);
     if (active_ == id)
         active_ = documents_.empty() ? 0 : documents_[std::min(index, documents_.size() - 1)].id;
     start_next();
     return true;
+}
+void DocumentWorkspace::remember(const WorkspaceDocument &entry) {
+    if (closed_.size() == 8)
+        closed_.erase(closed_.begin());
+    closed_.push_back({entry.id, entry.request, entry.has_request});
+}
+bool DocumentWorkspace::close_others(DocumentId id) {
+    if (!find(id))
+        return false;
+    if (running_ && running_ != id) {
+        worker_.cancel();
+        running_ = 0;
+    }
+    for (const auto &entry : documents_)
+        if (entry.id != id) {
+            remember(entry);
+            pending_.erase(entry.id);
+        }
+    queue_.erase(std::remove_if(queue_.begin(), queue_.end(), [=](auto queued) { return queued != id; }),
+                 queue_.end());
+    documents_.erase(std::remove_if(documents_.begin(), documents_.end(),
+                                    [=](const auto &entry) { return entry.id != id; }),
+                     documents_.end());
+    active_ = id;
+    start_next();
+    return true;
+}
+DocumentId DocumentWorkspace::duplicate(DocumentId id, bool reload) {
+    const auto source = require(id);
+    const auto created = create();
+    auto &entry = require(created);
+    entry.request = source.request;
+    entry.has_request = source.has_request;
+    if (reload && entry.has_request)
+        request(created, entry.request);
+    return created;
+}
+DocumentId DocumentWorkspace::reopen(bool reload) {
+    if (closed_.empty())
+        throw Error("desktop-document", "No closed document to reopen");
+    const auto source = closed_.back();
+    const auto created = create();
+    closed_.pop_back();
+    auto &entry = require(created);
+    entry.request = source.request;
+    entry.has_request = source.has_request;
+    if (reload && entry.has_request)
+        request(created, entry.request);
+    return created;
 }
 void DocumentWorkspace::request(LoadRequest request) {
     if (!active_)

@@ -7,7 +7,7 @@ struct DocumentTab {
     std::string label, tooltip;
     bool busy = false, failed = false;
 };
-enum class DocumentTabOperation { none, select, close, create };
+enum class DocumentTabOperation { none, select, close, create, duplicate, close_others };
 struct DocumentTabAction {
     DocumentTabOperation operation = DocumentTabOperation::none;
     DocumentId id = 0;

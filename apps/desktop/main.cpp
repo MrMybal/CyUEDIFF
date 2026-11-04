@@ -85,6 +85,7 @@ struct Options {
     Settings settings;
     std::vector<Options> additional_documents;
     std::optional<std::size_t> selected_document;
+    std::vector<std::string> document_actions;
     bool smoke = false, help = false, browse = false;
     fs::path capture, report, preferences;
     bool no_preferences = false, save_preferences = false, preference_write = false;
@@ -123,7 +124,12 @@ Options parse_one(const std::vector<std::string> &args) {
                 throw Error("desktop-option", "Missing value for " + argument);
             return args[i];
         };
-        if (argument == "--document-index") {
+        if (argument == "--document-action") {
+            auto action = value();
+            if (action.empty() || action.size() > 1024 || options.document_actions.size() >= 64)
+                throw Error("desktop-option", "Document action limit exceeded");
+            options.document_actions.push_back(std::move(action));
+        } else if (argument == "--document-index") {
             const auto text = value();
             if (text.size() != 1 || text[0] < '0' || text[0] > '7')
                 throw Error("desktop-option", "Document index must be between 0 and 7");
@@ -286,6 +292,8 @@ Options parse_one(const std::vector<std::string> &args) {
         else
             throw Error("desktop-option", "Too many package paths");
     }
+    if (!options.document_actions.empty() && !options.smoke)
+        throw Error("desktop-option", "Document action sequences require --smoke");
     if (options.no_preferences && (!options.preferences.empty() || options.save_preferences))
         throw Error("desktop-option", "--no-preferences conflicts with preference file options");
     if (!options.preferences.empty() && options.preferences.extension() != ".json")
@@ -361,8 +369,8 @@ Options parse(const std::vector<std::string> &args) {
         auto entry = parse_one(groups[i]);
         if (entry.smoke || entry.help || entry.history || entry.browse || !entry.capture.empty() ||
             !entry.report.empty() || !entry.preferences.empty() || entry.no_preferences ||
-            entry.save_preferences || entry.theme_override || entry.locale_override ||
-            entry.selected_document)
+            !entry.document_actions.empty() || entry.save_preferences || entry.theme_override ||
+            entry.locale_override || entry.selected_document)
             throw Error("desktop-option", "Global options must precede --new-document");
         result.additional_documents.push_back(std::move(entry));
     }
@@ -664,13 +672,20 @@ enum class Action {
     after_schema,
     document_tab,
     new_document,
-    close_document
+    close_document,
+    duplicate_document,
+    reopen_document,
+    close_other_documents,
+    next_document,
+    previous_document
 };
-struct DocumentPresentation {
+struct DocumentContext {
     Settings settings;
     AssetTab initial_tab = AssetTab::properties;
     int container_tab = -1;
     std::string cooked_view;
+};
+struct DocumentPresentation : DocumentContext {
     std::shared_ptr<const Document> displayed;
     AssetView view;
     ContainerView container_view;
@@ -687,6 +702,9 @@ class Shell {
     DocumentTabsView document_tabs_;
     DocumentTabAction tab_action_;
     std::map<DocumentId, std::unique_ptr<DocumentPresentation>> presentations_;
+    std::map<DocumentId, DocumentContext> closed_contexts_;
+    std::deque<std::string> smoke_actions_;
+    Json action_results_ = Json::array();
     DocumentPresentation &current() {
         return *presentations_.at(session_.active_id());
     }
@@ -727,6 +745,7 @@ class Shell {
             if ((entry.settings.source == 2 || !entry.settings.before.empty()) && !entry.history)
                 session_.request(id, presentations_.at(id)->settings.request());
         };
+        smoke_actions_.assign(options.document_actions.begin(), options.document_actions.end());
         initialize(session_.active_id(), options);
         for (const auto &entry : options.additional_documents)
             initialize(session_.create(), entry);
@@ -910,15 +929,138 @@ class Shell {
         if (!session_.find(id))
             return;
         reset_navigation();
+        closed_contexts_[id] = static_cast<const DocumentContext &>(*presentations_.at(id));
         session_.close(id);
         presentations_.erase(id);
+        prune_closed_contexts();
         if (!session_.active_id()) {
             const auto empty = session_.create();
-            presentations_[empty] = std::make_unique<DocumentPresentation>();
+            auto state = std::make_unique<DocumentPresentation>();
+            state->settings.previews = closed_contexts_.at(id).settings.previews;
+            state->settings.include_engine = closed_contexts_.at(id).settings.include_engine;
+            presentations_[empty] = std::move(state);
         }
+    }
+    void prune_closed_contexts() {
+        for (auto it = closed_contexts_.begin(); it != closed_contexts_.end();) {
+            const auto id = it->first;
+            if (std::none_of(session_.closed().begin(), session_.closed().end(),
+                             [=](const auto &closed) { return closed.id == id; }))
+                it = closed_contexts_.erase(it);
+            else
+                ++it;
+        }
+    }
+    void duplicate_document(DocumentId id) {
+        const auto context = static_cast<const DocumentContext &>(*presentations_.at(id));
+        const auto created = session_.duplicate(id, false);
+        auto state = std::make_unique<DocumentPresentation>();
+        static_cast<DocumentContext &>(*state) = context;
+        presentations_[created] = std::move(state);
+        reset_navigation();
+        if (current().settings.ready())
+            session_.request(current().settings.request());
+    }
+    void reopen_document() {
+        if (session_.closed().empty())
+            throw Error("desktop-document", "No closed document to reopen");
+        const auto old = session_.closed().back().id;
+        const auto context = closed_contexts_.at(old);
+        const auto created = session_.reopen(false);
+        auto state = std::make_unique<DocumentPresentation>();
+        static_cast<DocumentContext &>(*state) = context;
+        presentations_[created] = std::move(state);
+        prune_closed_contexts();
+        reset_navigation();
+        if (current().settings.ready())
+            session_.request(current().settings.request());
+    }
+    void close_other_documents(DocumentId keep) {
+        for (const auto &entry : session_.documents())
+            if (entry.id != keep)
+                closed_contexts_[entry.id] =
+                    static_cast<const DocumentContext &>(*presentations_.at(entry.id));
+        if (!session_.close_others(keep))
+            return;
+        for (auto it = presentations_.begin(); it != presentations_.end();) {
+            if (it->first != keep)
+                it = presentations_.erase(it);
+            else
+                ++it;
+        }
+        prune_closed_contexts();
+        reset_navigation();
+    }
+    void cycle_document(bool previous) {
+        const auto &entries = session_.documents();
+        auto found = std::find_if(entries.begin(), entries.end(),
+                                  [&](const auto &entry) { return entry.id == session_.active_id(); });
+        auto at = static_cast<std::size_t>(found - entries.begin());
+        select_document(entries[(at + (previous ? entries.size() - 1 : 1)) % entries.size()].id);
+    }
+    bool perform_next_document_action() {
+        if (smoke_actions_.empty())
+            return false;
+        auto text = smoke_actions_.front();
+        smoke_actions_.pop_front();
+        const auto before = session_.active_id();
+        const auto colon = text.find(':');
+        const auto command = text.substr(0, colon);
+        const auto argument = colon == std::string::npos ? std::string{} : text.substr(colon + 1);
+        auto index = [&]() {
+            if (argument.size() != 1 || argument[0] < '0' || argument[0] > '7')
+                throw Error("desktop-document", "Invalid document action index");
+            auto at = static_cast<std::size_t>(argument[0] - '0');
+            if (at >= session_.documents().size())
+                throw Error("desktop-document", "Document action index is not open");
+            return session_.documents()[at].id;
+        };
+        try {
+            if (command == "select" && colon != std::string::npos)
+                select_document(index());
+            else if (command == "close")
+                close_document(colon == std::string::npos ? before : index());
+            else if (command == "duplicate")
+                duplicate_document(colon == std::string::npos ? before : index());
+            else if (command == "new" && argument.empty())
+                create_document();
+            else if (command == "reopen" && argument.empty())
+                reopen_document();
+            else if (command == "close-others" && argument.empty())
+                close_other_documents(before);
+            else if (command == "next" && argument.empty())
+                cycle_document(false);
+            else if (command == "previous" && argument.empty())
+                cycle_document(true);
+            else if (command == "reload" && argument.empty()) {
+                if (!current().settings.ready())
+                    throw Error("desktop-document", "No document context to reload");
+                session_.request(current().settings.request());
+            } else if (command == "member" && !argument.empty()) {
+                if (!current().container_view.select_member(argument))
+                    throw Error("desktop-document", "Member is not visible in this document");
+            } else if (command == "filter" && colon != std::string::npos)
+                current().container_view.set_filter(argument);
+            else
+                throw Error("desktop-option", "Unknown document action");
+            action_results_.push_back(
+                {{"action", text}, {"before", before}, {"after", session_.active_id()}, {"ok", true}});
+        } catch (const std::exception &error) {
+            current().dialog_error = error.what();
+            action_results_.push_back(
+                {{"action", text}, {"before", before}, {"after", session_.active_id()}, {"ok", false}});
+            smoke_actions_.clear();
+        }
+        return true;
     }
     void protect(const Options &options) const {
         protect_outputs(options, {}, browsed_, history_storage());
+        for (const auto &closed : closed_contexts_) {
+            auto local = options;
+            local.additional_documents.clear();
+            local.settings = closed.second.settings;
+            protect_outputs(local, {}, browsed_, history_storage());
+        }
         for (const auto &entry : session_.documents()) {
             auto local = options;
             local.additional_documents.clear();
@@ -956,12 +1098,15 @@ class Shell {
                                {"source", view.settings.source},
                                {"uploadedPreviews", view.images.size()},
                                {"containerSelection", view.container_view.selected_key()},
+                               {"visibleMembers", view.container_view.visible_count()},
                                {"containerTab", view.container_view.active_tab()},
                                {"document", entry.document ? entry.document->report() : Json(nullptr)}});
         }
         return {{"schema", "cyuediff.desktop-workspace/1"},
                 {"active", session_.active_id()},
                 {"maximum", session_.maximum()},
+                {"closedDocuments", session_.closed().size()},
+                {"actions", action_results_},
                 {"documents", std::move(entries)}};
     }
     void update_tabs() {
@@ -1144,6 +1289,16 @@ class Shell {
                     action = Action::new_document;
                 if (ImGui::MenuItem(cyui::trLabel("Close document").c_str(), "Ctrl+W"))
                     action = Action::close_document;
+                if (ImGui::MenuItem(cyui::trLabel("Duplicate document").c_str(), "Ctrl+D", false,
+                                    session_.documents().size() < session_.maximum()))
+                    action = Action::duplicate_document;
+                if (ImGui::MenuItem(cyui::trLabel("Reopen closed document").c_str(), "Ctrl+Shift+T", false,
+                                    !session_.closed().empty() &&
+                                        session_.documents().size() < session_.maximum()))
+                    action = Action::reopen_document;
+                if (ImGui::MenuItem(cyui::trLabel("Close other documents").c_str(), nullptr, false,
+                                    session_.documents().size() > 1))
+                    action = Action::close_other_documents;
                 if (ImGui::MenuItem(cyui::trLabel("Open container...").c_str()))
                     action = Action::open_container;
                 if (ImGui::MenuItem(cyui::trLabel("Browse content...").c_str(), "Ctrl+B", false,
@@ -1570,6 +1725,12 @@ class Shell {
                 action = ImGui::GetIO().KeyShift ? Action::open_after : Action::open_before;
             if (ImGui::IsKeyPressed(ImGuiKey_N, false))
                 action = Action::new_document;
+            if (ImGui::IsKeyPressed(ImGuiKey_D, false))
+                action = Action::duplicate_document;
+            if (ImGui::IsKeyPressed(ImGuiKey_T, false) && ImGui::GetIO().KeyShift)
+                action = Action::reopen_document;
+            if (ImGui::IsKeyPressed(ImGuiKey_Tab, false))
+                action = ImGui::GetIO().KeyShift ? Action::previous_document : Action::next_document;
             if (ImGui::IsKeyPressed(ImGuiKey_W, false))
                 action = Action::close_document;
             if (ImGui::IsKeyPressed(ImGuiKey_R, false))
@@ -1591,6 +1752,26 @@ class Shell {
                     select_document(tab_action_.id);
                 else if (tab_action_.operation == DocumentTabOperation::close)
                     close_document(tab_action_.id);
+                else if (tab_action_.operation == DocumentTabOperation::duplicate)
+                    duplicate_document(tab_action_.id);
+                else if (tab_action_.operation == DocumentTabOperation::close_others)
+                    close_other_documents(tab_action_.id);
+                return;
+            }
+            if (action == Action::duplicate_document) {
+                duplicate_document(session_.active_id());
+                return;
+            }
+            if (action == Action::reopen_document) {
+                reopen_document();
+                return;
+            }
+            if (action == Action::close_other_documents) {
+                close_other_documents(session_.active_id());
+                return;
+            }
+            if (action == Action::next_document || action == Action::previous_document) {
+                cycle_document(action == Action::previous_document);
                 return;
             }
             if (action == Action::new_document) {
@@ -1751,6 +1932,8 @@ int run(Options options) {
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
+               "  [--document-action select:N|close|duplicate|reopen|close-others|next|previous|reload] : "
+               "smoke only\n"
                "  [--new-document SOURCE_OPTIONS ...] [--document-index 0..7]\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
@@ -1840,6 +2023,8 @@ int run(Options options) {
         renderer.draw();
         ++frames;
         if (shell.busy())
+            settled = 0;
+        if (options.smoke && !shell.busy() && settled >= 2 && shell.perform_next_document_action())
             settled = 0;
         bool finished = options.smoke && !shell.busy() && ++settled >= 12;
         if (options.smoke && std::chrono::steady_clock::now() - started > std::chrono::seconds(30))
