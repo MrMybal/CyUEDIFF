@@ -64,10 +64,43 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
         };
-        if (kind == "document") {
+        auto columns = [&](const char *name, std::size_t count) {
+            if (key == name) {
+                require(x.is_array() && x.size() == count);
+                for (const auto &weight : x)
+                    scalar(weight, .0001, 1000);
+                known = true;
+            }
+        };
+        if (kind == "shell-layout") {
+            if (key == "sidebarWidth") {
+                scalar(x, 180, 640);
+                known = true;
+            }
+            flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics"});
+        } else if (kind == "property-layout") {
+            columns("singleColumns", 3);
+            columns("comparisonColumns", 5);
+            if (key == "previewFraction") {
+                scalar(x, .1, .7);
+                known = true;
+            }
+        } else if (kind == "asset-layout") {
+            columns("objectColumns", 2);
+        } else if (kind == "graph-layout") {
+            flag({"diagnostics"});
+            columns("singleColumns", 3);
+            columns("comparisonColumns", 5);
+        } else if (kind == "container-layout") {
+            columns("memberColumns", 4);
+            columns("objectColumns", 2);
+            flag({"diagnostics"});
+        } else if (kind == "document") {
+            child("layout", "shell-layout");
             child("asset", "asset");
             child("container", "container");
         } else if (kind == "property") {
+            child("layout", "property-layout");
             string({"filter"});
             string({"selected"}, true);
             flag({"changedOnly"});
@@ -83,6 +116,7 @@ inline void validate(const Json &v, std::string_view kind) {
             if (kind == "texture")
                 flag({"difference"});
         } else if (kind == "graphs") {
+            child("layout", "graph-layout");
             string({"selected"}, true);
             entries("views", "canvas");
         } else if (kind == "mesh") {
@@ -122,6 +156,7 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
         } else if (kind == "asset") {
+            child("layout", "asset-layout");
             string({"filter"});
             string({"selected", "textureSelected"}, true);
             flag({"propertiesAfter", "rawProperties", "graphAfter", "materialAfter", "textureAfter",
@@ -130,6 +165,7 @@ inline void validate(const Json &v, std::string_view kind) {
             child("after", "side");
             child("comparison", "diff");
         } else if (kind == "container") {
+            child("layout", "container-layout");
             string({"filter", "objectFilter"});
             string({"member", "object"}, true);
             flag({"packagesOnly", "changedOnly", "propertyMode"});

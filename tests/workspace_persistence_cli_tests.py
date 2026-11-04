@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
             '--script-objects',schema/'global.utoc','--schema',schema/'schema.json','--container-tab','schema']
     original=run('--save-workspace',workspace,'--document-index','1',*source)
     saved=json.loads(workspace.read_text(encoding='utf-8'))
-    assert saved['schema']=='cyuediff.workspace/2' and saved['active']==1 and len(saved['documents'])==3
+    assert saved['schema']=='cyuediff.workspace/3' and saved['active']==1 and len(saved['documents'])==3
     assert saved['documents'][0]['view']=='comparison' and saved['documents'][2]['containerTab']==4
     assert not saved['documents'][0]['settings']['previews'] and saved['documents'][1]['settings']['previews']
     assert all('codec' not in d['settings'] for d in saved['documents']) and original['workspaceFile']['saved']
@@ -82,7 +82,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
     for d in legacy['documents']:d.pop('viewState')
     legacy_file=root/'legacy.json';legacy_file.write_text(json.dumps(legacy),encoding='utf-8')
     upgraded=root/'upgraded.json';run('--workspace',legacy_file,'--save-workspace',upgraded)
-    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/2';checks+=1
+    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/3';checks+=1
     invalid_state=json.loads(configured_file.read_text(encoding='utf-8'))
     invalid_state['documents'][0]['viewState']['asset']['before']['mesh']={'distance':-1}
     invalid_file=root/'invalid-state.json';invalid_file.write_text(json.dumps(invalid_state),encoding='utf-8')

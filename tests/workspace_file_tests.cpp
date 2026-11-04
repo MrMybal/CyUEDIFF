@@ -111,6 +111,18 @@ int main() {
                   read.documents[2].settings.compare_container_payloads,
               "Container identities, contexts and view round trip");
         check(read.documents[0].view_state == value.documents[0].view_state, "Presentation data round trip");
+        auto version_two = value.to_json();
+        version_two["schema"] = "cyuediff.workspace/2";
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/3",
+              "Version two presentation files upgrade on explicit save");
+        auto with_layout = value.to_json();
+        with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
+        with_layout["documents"][0]["viewState"]["asset"]["layout"] = {{"objectColumns", {1, 3}}};
+        check(WorkspaceFile::from_json(with_layout).to_json() == with_layout,
+              "Version three layout round trip");
+        auto bad_layout = with_layout;
+        bad_layout["documents"][0]["viewState"]["layout"]["sidebarWidth"] = -1;
+        rejects([&] { WorkspaceFile::from_json(bad_layout); });
         auto legacy = value.to_json();
         legacy["schema"] = "cyuediff.workspace/1";
         for (auto &d : legacy["documents"])
@@ -118,7 +130,7 @@ int main() {
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/2",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/3",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);
@@ -145,7 +157,7 @@ int main() {
         invalid(std::string(26, '[') + "0" + std::string(26, ']'));
         invalid("{\"active\":0," + relative.dump().substr(1));
         auto bad = relative;
-        bad["schema"] = "cyuediff.workspace/3";
+        bad["schema"] = "cyuediff.workspace/99";
         invalid(bad.dump());
         bad = relative;
         bad["extra"] = true;

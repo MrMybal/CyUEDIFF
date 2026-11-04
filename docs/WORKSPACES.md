@@ -1,6 +1,6 @@
 # Workspace files
 
-The optional desktop host has a data-only `cyuediff.workspace/2` JSON format. It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
+The optional desktop host has a data-only `cyuediff.workspace/3` JSON format. It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
 
 Local filesystem paths are saved as absolute paths. Relative paths in a file being opened resolve against that file's parent directory. Git asset/project paths remain repository-relative, and mounted names such as `/Game/Example` remain mounted when a project context is present. Git revision expressions are retained as entered, so a later opening can resolve a moving branch differently. No checkout, network fetch or source modification is performed.
 
@@ -39,3 +39,8 @@ Restoration runs on the owner thread outside drawing. The desktop retains pendin
 The embedding APIs expose `view_state()` and `restore_view_state(Json)` on the individual views and `AssetView`; bind data and GPU previews first, then restore. The header-only contract in `cyuediff/view_state.hpp` has no ImGui/CyUI dependency. It never contains resource handles or invokes readers/codecs. Hosts still own decoding, scheduling and resources. `--document-action view-state:JSON` exercises these same APIs in hidden validation; reports expose each document's current or pending `viewState`.
 
 This is bounded presentation restoration, not a complete ImGui layout dump. Table column widths, expanded diagnostic trees, general panel scroll, selected nodes, active drag/edit gestures and content-browser/history dialogs are not persisted. Diff split/search/vertical scroll are recorded, but numeric hunk/row selections are not. Camera/canvas coordinates retain the saved pose rather than automatically refitting for another window size; the existing Fit controls remain available. No automatic last-session restoration is enabled.
+
+
+## Layout contract - 0.41
+
+Version three accepts bounded layout metadata inside `viewState.layout` and each view's `layout` object. Version-one and version-two files remain readable; an explicit save writes version three. Earlier applications reject the newer format. Sidebar widths use logical units (180-640), preview heights use fractions (0.1-0.7), and table columns use positive finite weights with an exact count for each table. Diagnostic/context sections use named boolean fields. No ImGui INI text, window identifiers, arbitrary section names or native handles are accepted. Validation remains data-only and runs before replacing a workspace or applying any view state.

@@ -111,13 +111,14 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/2"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/3"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
 WorkspaceFile WorkspaceFile::from_json(const Json &j) {
     require(j.is_object() && j.size() == 3 && j.contains("schema") &&
-                (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2") &&
+                (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
+                 j["schema"] == "cyuediff.workspace/3") &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];

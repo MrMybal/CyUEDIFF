@@ -21,6 +21,27 @@ int main() {
             view_state::validate(Json::object(), kind);
             ++checks;
         }
+        for (const auto *kind :
+             {"shell-layout", "property-layout", "asset-layout", "graph-layout", "container-layout"}) {
+            view_state::validate(Json::object(), kind);
+            ++checks;
+        }
+        view_state::validate(
+            {{"layout", {{"sidebarWidth", 400}, {"diagnostics", true}}},
+             {"asset",
+              {{"layout", {{"objectColumns", {1, 2}}}},
+               {"before",
+                {{"properties",
+                  {{"A", {{"layout", {{"previewFraction", .4}, {"singleColumns", {2, 1, 3}}}}}}}}}}}}});
+        ++checks;
+        for (const auto &bad : {Json{{"sidebarWidth", 0}}, Json{{"sidebarWidth", 1e9}},
+                                Json{{"diagnostics", 1}}, Json{{"unknown", false}}})
+            rejects(bad, "shell-layout");
+        rejects({{"layout", {{"singleColumns", {1, 2}}}}}, "property");
+        rejects({{"layout", {{"comparisonColumns", {1, 2, 3, 4, 0}}}}}, "property");
+        rejects({{"layout", {{"previewFraction", .99}}}}, "property");
+        rejects({{"layout", {{"objectColumns", {1, std::numeric_limits<double>::infinity()}}}}}, "asset");
+        rejects({{"layout", {{"memberColumns", {1, 2, 3, "4"}}}}}, "container");
         Json property = {
             {"filter", "Health"}, {"changedOnly", true}, {"selected", "/properties/Health/value"}};
         Json canvas = {{"pan", {-35.5, 420.0}}, {"zoom", .75}};
