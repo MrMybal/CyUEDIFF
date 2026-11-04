@@ -426,8 +426,8 @@ int run(const std::vector<std::string> &args) {
                     throw Error("schema-context", "Expected reflectedStructs array");
                 for (const auto &value : manifest.at("reflectedStructs")) {
                     auto name = value.get<std::string>();
-                    context->schemas->schema(name);
-                    if (!context->reflected_structs.insert(name).second)
+                    const auto &definition = context->schemas->schema(name);
+                    if (!context->reflected_structs.insert(definition.path).second)
                         throw Error("schema-context", "Duplicate reflected struct binding");
                 }
             }

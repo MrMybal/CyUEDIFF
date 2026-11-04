@@ -7,11 +7,12 @@ import subprocess
 import sys
 import tempfile
 
-cli, fixture = [str(Path(p).resolve()) for p in sys.argv[1:]]
+cli, fixture, extensions_fixture = [str(Path(p).resolve()) for p in sys.argv[1:]]
 checks = 0
 with tempfile.TemporaryDirectory(prefix='.test-tmp-schema-cli-', dir=Path.cwd()) as temp:
     root = Path(temp)
     subprocess.run([fixture, '--write-fixtures', temp], check=True, timeout=20)
+    subprocess.run([extensions_fixture, '--write-fixtures', temp], check=True, timeout=20)
     hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
     entry = '000000000000000000000001'
     before, after = root/'schema.utoc', root/'changed.utoc'
@@ -77,5 +78,25 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-schema-cli-', dir=Path.cwd())
     unicode_schema = root/'schéma.json'
     unicode_schema.write_bytes((root/'schema.json').read_bytes())
     assert run('zen-inspect', before, entry, *context, '--schema', unicode_schema)['sha256'] == package['sha256']
+    extended = run('usmap', root/'extended.usmap')
+    assert extended['extensions'] == ['PPTH', 'EATR', 'ENVP']
+    assert extended['enums']['/Script/Test.ModeEnum'][0]['value'] == -5
+    extended_context = [*context, '--schema', root/'extended.json']
+    package = run('zen-inspect', before, entry, *extended_context)
+    assert package['exports'][0]['propertyRead']['properties']['/Script/Test.DemoAsset.Health']['value'] == 42
+    snapshot = run('zen-inspect', before, entry, *extended_context, '--snapshot')
+    assert snapshot['objects']['/Game/Example.Example']['properties']['/Script/Test.Base.Enabled']['value'] is True
+    diff = run('zen-diff', before, entry, after, entry, *extended_context, code=1)
+    assert any(c['path'].endswith('/properties/~1Script~1Test.DemoAsset.Health/value') for c in diff['changes'])
+    assert run('zen-catalog', before, *extended_context)['propertyExportsDecoded'] == 2
+    homonyms = run('usmap', root/'ambiguous.usmap')
+    assert {s['path'] for s in homonyms['schemas']} == {'/Script/A.Twin', '/Script/B.Twin', '/Script/B.Child'}
+    run('usmap', root/'unsupported.usmap', code=2, error='schema-extension')
+    other = dict(manifest, usmap='ambiguous.usmap', sha256=homonyms['sha256'], bindings={'/Script/Test.DemoAsset': {'schema': 'Twin', 'offset': 0}})
+    write(other)
+    run('zen-inspect', before, entry, *context, '--schema', modified, code=2, error='schema-ambiguous')
+    for source in (root/'extended.json', root/'extended.usmap'):
+        run('zen-inspect', before, entry, *extended_context, '--out', source, code=2, error='output-path')
+    run('usmap', root/'extended.usmap', '--out', root/'extended.usmap', code=2, error='output-path')
     assert all(hashlib.sha256(p.read_bytes()).hexdigest() == sha for p, sha in hashes.items())
 print(f'{checks} schema CLI checks passed; original input hashes unchanged')

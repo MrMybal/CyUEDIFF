@@ -4,9 +4,24 @@ Version 0.17 adds `<cyuediff/schema.hpp>` to `CyUEDiff::Core`. Hosts can load ex
 
 ## Mapping input
 
-`UnversionedSchemas::parse` accepts bytes; `read` accepts a local file. The immutable result exposes schema definitions, inheritance, expanded static-array slots, enum metadata, recorded versions and the SHA-256 of the original mapping file. No engine, plugin or filesystem schema discovery takes place.
+`UnversionedSchemas::parse` accepts bytes; `read` accepts a local file. The immutable result exposes schema definitions, qualified module identities, inheritance, expanded static-array slots, enum metadata, recorded versions and the SHA-256 of the original mapping file. No engine, plugin or filesystem schema discovery takes place.
 
-Supported USMAP base layouts are versions 0–4: optional package/custom versions, long names, large enum tables and explicit enum values. Names are non-NUL ASCII; enum identifiers and signed explicit values are preserved. Duplicate/ambiguous identities, missing bases, inheritance cycles, overlapping slots, invalid descriptors and size mismatches fail explicitly. Trailing USMAP extensions, including CEXT/PPTH/MODL, are currently rejected with `schema-extension`; they are not silently discarded. Support for those formats remains future work.
+Supported USMAP base layouts are versions 0–4: optional package/custom versions, long names, large enum tables and explicit enum values. Names are non-NUL ASCII; enum identifiers and signed explicit values are preserved. Duplicate qualified identities, ambiguous references, missing bases, inheritance cycles, overlapping slots, invalid descriptors and size mismatches fail explicitly.
+
+Version 0.18 reads the CEXT layout version 0 and four extensions:
+
+| Extension | Preserved data |
+| --- | --- |
+| PPTH v0 | Schema and enum module paths, qualified as `/Script/Module.Type` or `/Game/Package.Type` |
+| MODL | Legacy module path table and 8/16-bit schema module indices, inside CEXT or behind the legacy signature |
+| EATR v0 | Enum flags, schema kind and flags, raw serialized property-flag sequence |
+| ENVP v0 | Replacement enum label/value pairs, including signed 64-bit values |
+
+Known extension payloads must consume exactly their declared window and have matching table counts. Unknown extension IDs/versions/layouts, repeated IDs, combined PPTH/MODL identity sources and trailing bytes fail explicitly. The implementation does not discard failed or unknown extensions and continue with weaker identity information.
+
+Qualified schema and enum names resolve exactly. A short name is accepted only when unique across the mapping. Homonyms with distinct module paths are retained as separate definitions; an unqualified ambiguous base/struct/enum reference is rejected. Matching a type to the referring module would be a guess, so the reader does not do that. A mapping whose base references are ambiguous cannot be loaded; other ambiguous value-type references fail when decoded.
+
+`schema(name)` and `enumeration(name)` return immutable definitions, with basename, module and qualified `path`. `super` is normalized to its resolved identity. JSON enum keys use qualified identities when available, and schema/enum metadata retain their original basenames. EATR property flags are exposed as an uninterpreted sequence, with lossless hexadecimal strings in JSON; no association to sparse property descriptors is inferred. EATR metadata never enables a native/reflected serializer automatically.
 
 Uncompressed mappings need no codec. Compressed methods are delegated to a host-provided `SchemaReadOptions::decoder` by name (`Oodle`, `Brotli`, `Zstd`), with an exact output-size check and bounded allocation. The existing numeric codec bridge supplies Oodle/LZ4 only; the CLI's `--codec` can therefore supply Oodle, while Brotli/Zstd need a suitable C++ callback. No codec or proprietary mapping is bundled. Callback tests validate dispatch/bounds, not these compression implementations.
 
@@ -27,11 +42,11 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 
 Schemas preserve descriptors for maps, sets, texts, delegates, soft/weak/lazy references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported type also fails explicitly.
 
-Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
+Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
 `decode_unversioned(bytes, offset, size, schemas, schema_name, options)` returns properties, consumed bytes and work/text counters. It throws on unsupported or invalid input, with no partial result. The input window can include trailing native data: `consumed_bytes` describes only the property stream. Callers retain the original bytes and decide what follows.
 
-Default standalone limits are 100,000 value/fragment work units, depth 48 and 4 MiB decoded text. Header traversal, nested values and zero-masked values consume work. Optional `charge` callbacks let hosts enforce a shared enclosing-operation budget, including failed reads. Mapping input/expansion defaults to 64 MiB, one million combined slots/descriptors/enum entries and depth 48. Limits bound input/work, not total process heap use. Cancellation applies during file reading, parsing, hashing and property traversal; a decompression callback must implement its own interruption if needed during the call.
+Default standalone limits are 100,000 value/fragment work units, depth 48 and 4 MiB decoded text. Header traversal, nested values and zero-masked values consume work. Optional `charge` callbacks let hosts enforce a shared enclosing-operation budget, including failed reads. Mapping input/expansion defaults to 64 MiB, one million combined slots/descriptors/enum entries and depth 48. Mapping names, resolved identities and expanded static-array type/name copies also consume a separate 64 MiB text budget (`max_text_bytes`); expanded type copies consume work units. Limits bound input/work, not total process heap use. Cancellation applies during file reading, parsing, hashing and property traversal; a decompression callback must implement its own interruption if needed during the call.
 
 ## Explicit Zen context
 
@@ -44,7 +59,7 @@ The CLI reads a JSON context through `--schema CONTEXT.json`. `--after-schema` s
   "usmap": "build.usmap",
   "sha256": "REPLACE_WITH_THE_USMAP_SHA256",
   "bindings": {
-    "/Script/Example.ExampleAsset": { "schema": "ExampleAsset", "offset": 0 }
+    "/Script/Example.ExampleAsset": { "schema": "/Script/Example.ExampleAsset", "offset": 0 }
   },
   "reflectedStructs": []
 }
@@ -75,9 +90,9 @@ auto context = std::make_shared<cyuediff::ZenSchemaContext>();
 context->profile = cyuediff::ZenProfile::unreal_5_3;
 context->schemas = std::make_shared<cyuediff::UnversionedSchemas>(
     cyuediff::UnversionedSchemas::read("build.usmap"));
-context->bindings["/Script/Example.ExampleAsset"] = {"ExampleAsset", 0};
+context->bindings["/Script/Example.ExampleAsset"] = {"/Script/Example.ExampleAsset", 0};
 // Only list structs whose serializer is known to use reflected properties.
-context->reflected_structs.insert("ExampleRecord");
+context->reflected_structs.insert("/Script/Example.ExampleRecord");
 cyuediff::ZenReadOptions options;
 options.profile = context->profile;
 options.schema_context = context;
@@ -85,4 +100,4 @@ options.schema_context = context;
 // Publish the context as immutable; do not mutate it while readers use it.
 ```
 
-The installed-SDK `examples/schema_consumer` reads a minimal `Consumer` mapping and a raw property buffer without Git/UI/Unreal. Schema/native-property coverage is validated using original synthetic fixtures, including independently generated SDK-consumer bytes. The supplied CyTrace corpus has no matching USMAP; its 3,507 packages and 7,502 exports continue to validate object tables and opaque fallback, **not real mapped values**. Matching-build mapping and property-offset validation remain required before certifying any cooked class.
+The installed-SDK `examples/schema_consumer` reads a minimal `Consumer` mapping and a raw property buffer without Git/UI/Unreal. Schema/native-property coverage is validated using original synthetic fixtures, including independently generated SDK-consumer bytes with CEXT/PPTH/EATR/ENVP. The supplied CyTrace corpus has no matching USMAP; its 3,507 packages and 7,502 exports continue to validate object tables and opaque fallback, **not real mapped values**. Matching-build mapping and property-offset validation remain required before certifying any cooked class.

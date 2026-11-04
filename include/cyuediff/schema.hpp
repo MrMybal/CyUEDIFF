@@ -4,6 +4,7 @@
 namespace cyuediff {
 struct SchemaReadOptions {
     std::uint64_t max_bytes = 64ull * 1024 * 1024;
+    std::uint64_t max_text_bytes = 64ull * 1024 * 1024;
     std::uint32_t max_entries = 1'000'000, max_depth = 48;
     ContainerBlockDecoder decoder;
     OperationControl control;
@@ -20,9 +21,20 @@ struct SchemaProperty {
     SchemaType type;
 };
 struct SchemaDefinition {
-    std::string name, super;
+    std::string name, super, module, path;
+    bool attributes_present = false;
+    std::uint8_t struct_kind = 0;
+    std::uint32_t flags = 0;
+    // Raw EATR sequence; no inferred association to sparse descriptor indices.
+    std::vector<std::uint64_t> serialized_property_flags;
     std::uint16_t slots = 0;
     std::map<std::uint16_t, SchemaProperty> properties;
+};
+struct SchemaEnum {
+    std::string name, module, path;
+    bool attributes_present = false;
+    std::uint32_t flags = 0;
+    Json values = Json::array();
 };
 // Immutable, explicit host-supplied USMAP mappings. No asset or engine discovery.
 class UnversionedSchemas {
@@ -33,7 +45,9 @@ class UnversionedSchemas {
   public:
     static UnversionedSchemas parse(const std::vector<std::uint8_t> &, const SchemaReadOptions & = {});
     static UnversionedSchemas read(const fs::path &, const SchemaReadOptions & = {});
+    // Exact qualified identity, or a unique short name. Ambiguous names throw.
     const SchemaDefinition &schema(const std::string &) const;
+    const SchemaEnum &enumeration(const std::string &) const;
     Json to_json() const;
     const Json &versioning() const;
     const std::string &sha256() const;

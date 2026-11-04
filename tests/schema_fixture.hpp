@@ -1,11 +1,15 @@
 #pragma once
 #include "zen_fixture.hpp"
 namespace cyuediff::test {
-inline Bytes schema_fixture(unsigned version = 4, bool versioning = false) {
+inline Bytes schema_fixture(unsigned version = 4, bool versioning = false, bool module_names = false) {
     std::vector<std::string> names = {"Base",     "DemoAsset", "Enabled", "Health",      "Values",
                                       "Target",   "Label",     "Title",   "Samples",     "Mode",
                                       "ModeEnum", "Off",       "On",      "Wide",        "Item",
                                       "Nested",   "Inner",     "Record",  "Unsupported", "Text"};
+    if (module_names) {
+        names.push_back("/Script/Test");
+        names.push_back("/Script/Other");
+    }
     Bytes body;
     body.i(static_cast<int>(names.size()));
     for (const auto &n : names) {

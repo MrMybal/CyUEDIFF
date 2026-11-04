@@ -30,7 +30,7 @@ with ZipFile(archive) as package:
   if key in seen:raise RuntimeError('Duplicate archive path')
   seen.add(key);parents.add(path.parts[0])
   if (entry.external_attr>>16)&0o170000==0o120000:raise RuntimeError('Archive symlink')
-  if path.suffix.lower() in ('.uasset','.umap','.ubulk','.uexp','.uptnl','.upayload','.pak','.utoc','.ucas','.pdb') or 'oodle' in path.name.lower():raise RuntimeError('Host-owned or development data in archive')
+  if path.suffix.lower() in ('.uasset','.umap','.ubulk','.uexp','.uptnl','.upayload','.pak','.utoc','.ucas','.usmap','.pdb') or 'oodle' in path.name.lower():raise RuntimeError('Host-owned or development data in archive')
  if len(parents)!=1:raise RuntimeError('Expected one package root')
  package.extractall(target)
 prefix=target/next(iter(parents))
@@ -119,5 +119,20 @@ if args.consumer:
  executable=schema_build/'Release'/('schema_consumer'+suffix) if os.name=='nt' else schema_build/'schema_consumer'
  result=subprocess.run([str(executable),str(mappings),str(values)],capture_output=True,check=True,env=env,timeout=20)
  if json.loads(result.stdout)['Consumer.Value']['value']!=42:raise RuntimeError('Installed USMAP consumer failed')
+ # Independently encode CEXT/PPTH/EATR/ENVP for the same external SDK consumer.
+ names=[b'Consumer',b'Value',b'/Script/Consumer']
+ payload=u32(3)+b''.join(bytes([len(n)])+n for n in names)+u32(0)+u32(1)
+ payload+=u32(0)+struct.pack('<iHHHBiB',-1,1,1,0,1,1,2)
+ ppth=bytes(1)+u32(0)+u32(1)+u32(2)
+ eatr=bytes(1)+u32(0)+u32(1)+bytes([2])+u32(0x40000001)+u32(1)+u64(0x8000000000000010)
+ extensions=[(b'PPTH',ppth),(b'EATR',eatr),(b'ENVP',bytes(1)+u32(0))]
+ payload+=b'CEXT'+bytes(1)+u32(len(extensions))+b''.join(key+u32(len(value))+value for key,value in extensions)
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ result=subprocess.run([str(executable),str(mappings),str(values)],capture_output=True,check=True,env=env,timeout=20)
+ if json.loads(result.stdout)['/Script/Consumer.Consumer.Value']['value']!=42:raise RuntimeError('Installed extended USMAP consumer failed')
+ result=subprocess.run([str(cli),'usmap',str(mappings)],capture_output=True,check=True,env=env,timeout=20)
+ report=json.loads(result.stdout)
+ if report['extensions']!=['PPTH','EATR','ENVP'] or report['schemas'][0]['serializedPropertyFlagsHex']!=['8000000000000010']:raise RuntimeError('Installed extended USMAP metadata failed')
+
 print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))
