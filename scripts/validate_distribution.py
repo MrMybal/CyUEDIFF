@@ -311,6 +311,17 @@ if args.consumer:
   if image_data[kind]['changedPixels']!=1 or image_data[kind]['changedBounds']!=bounds:raise RuntimeError('Installed '+kind+' changed bounds failed')
  print('Installed independent LDR/HDR image SDK consumer validated')
 
+ collision_build=target/'collision-consumer'
+ configure=[cmake,'-S',str(root/'examples/collision_consumer'),'-B',str(collision_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(collision_build),'--config','Release','--parallel','2'],check=True,env=env)
+ collision_executable=collision_build/'Release'/('collision_consumer'+suffix) if os.name=='nt' else collision_build/'collision_consumer'
+ result=subprocess.run([str(collision_executable)],capture_output=True,check=True,env=env,timeout=20)
+ collision_data=json.loads(result.stdout)
+ if not collision_data['snapshot']['complete'] or collision_data['comparison']['status']!='changed' or collision_data['comparison']['changes'][0]['path']!='/bodies/Body/shapes/sphere:name:Ball/geometry/radius':raise RuntimeError('Installed collision SDK projection/diff failed')
+ print('Installed independent collision Core consumer validated')
+
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
@@ -325,5 +336,5 @@ if args.consumer:
 
 
 
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image consumers' if args.consumer else '')+' validated')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

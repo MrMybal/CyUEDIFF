@@ -19,3 +19,22 @@ The collision-diff projection matches unique exact stored shape names within the
 collision ASSET emits the stored collision model; collision-diff BEFORE AFTER emits stable named-shape changes (exit 0 identical, 1 changed, 2 incomplete/error). Shared project/engine contexts and input/output protection apply. Independent classic UE 5.3/5.5-style tagged fixtures exercise all five supported shape kinds through the real package reader, including named reorderings, missing geometry, generic inspect/diff integration and source preservation.
 
 CLI output protection also handles missing companion paths under Windows short-name temporary directories without the MSVC weakly_canonical failure. Output aliases through hard links are rejected. The regression exercises collision-diff, ordinary diff and material-diff; input and companion bytes remain unchanged.
+
+## CyUI collision review and persistent state - 0.77
+
+The separate CollisionView and desktop Collisions tab inspect body/shape unions, typed before/after geometry, settings, unresolved data and native fingerprints. Named shape navigation, body/shape selection and property filters/previews survive explicit workspace save/restore. Missing identities cannot silently select unrelated shapes. English/French and all five themes are covered. This milestone adds serialized-property review, not a physics solver or a 3D collision renderer.
+
+## Usage
+
+    cyuediff collision Content/SM_Example.uasset --out collision.json
+    cyuediff collision-diff before/SM_Example.uasset after/SM_Example.uasset
+
+The desktop --view collisions and Collisions tab inspect the union of bodies and shapes. All bodies and references includes owner associations; selecting a shape isolates its typed geometry/settings/extra data. The property filter and selected value preview remain in explicit workspace files. Unknown body/shape identities clear rather than selecting another shape.
+
+The collision consumer example builds against the installed Core SDK. With one or two package paths it reads the actual assets; without arguments it demonstrates projection/diff on a small host-populated decoded model. Core has no CyUI or Git dependency.
+
+Completeness describes the supported stored projection, never simulated collision behavior. Field defaults are not reconstructed. Indices are validated as stored triangles; no convex hull, skeleton pose, material collision, Chaos mesh or level-set data is generated. Positive dimensions, finite components and valid references do not certify a physically valid body. Explicit empty level-set arrays need no native element decoder.
+
+Shape identity uses the exact stored name when unique within its kind, otherwise the collection index. Body identity uses its object path. The ordinary package diff retains serialized order changes while collisionChanges omits inspection-only sourceIndex changes for unique named shapes. Unsupported raw properties and native payload hashes remain visible.
+
+Export outer containment is reported separately from bodyReferences. A child BodySetup can be discovered through its exact export outer while an owner reference stored in unread native data remains unavailable. This does not reconstruct that reference or resolve external assets.

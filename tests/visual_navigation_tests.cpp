@@ -1,4 +1,5 @@
 #include <cyuediff/asset_view.hpp>
+#include "collision_fixture.hpp"
 #include "platform_win32.hpp"
 #include <fstream>
 #include <iostream>
@@ -159,14 +160,24 @@ int main(int argc, char **argv) {
             texture.set_preview({(ImTextureID)image_gpu.Get(), 128, 128});
             texture.set_difference({(ImTextureID)mask_gpu.Get(), 128, 128}, delta);
             check(texture.focus_changes(), "Texture fixture has changed bounds");
+            auto collision_before = cyuediff::test::collision_extended_fixture(),
+                 collision_after = collision_before;
+            collision_after.exports[0]
+                .properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Radius"]["value"] = 7.;
+            CollisionView collision;
+            collision.set_packages(&collision_before, &collision_after);
+            check(collision.next_changed_shape(), "Native collision fixture has a changed shape");
+            collision.restore_view_state(
+                {{"properties", {{"filter", "radius"}, {"selected", "/geometry/radius"}}}});
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 8; ++scene) {
-                        const char *names[] = {"blueprint", "material", "parameters", "mesh",
-                                               "texture",   "no-nodes", "no-edges",   "narrow-blueprint"};
+                    for (int scene = 0; scene < 9; ++scene) {
+                        const char *names[] = {"blueprint", "material",         "parameters",
+                                               "mesh",      "texture",          "no-nodes",
+                                               "no-edges",  "narrow-blueprint", "collisions"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -204,6 +215,9 @@ int main(int argc, char **argv) {
                                 break;
                             case 7:
                                 blueprint.draw("Narrow blueprint");
+                                break;
+                            case 8:
+                                collision.draw();
                                 break;
                             }
                             ImGui::End();
@@ -243,6 +257,7 @@ int main(int argc, char **argv) {
             saved["blueprint"] = blueprint.view_state();
             saved["material"] = material.view_state();
             saved["parameters"] = parameters.view_state();
+            saved["collisions"] = collision.view_state();
             saved["mesh"] = changed_mesh.view_state();
             saved["texture"] = texture.view_state();
             saved["frames"] = frames;

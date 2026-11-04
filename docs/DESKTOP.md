@@ -1,4 +1,4 @@
-# Desktop application — 0.72
+# Desktop application — 0.77
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -262,3 +262,7 @@ Wireframe comparisons can hide unchanged edges and frame the bounds of changed g
 LDR and source-float HDR comparisons now return changedBounds (x/y/width/height, half-open coordinates), computed alongside thresholded changed-pixel counts even without a heatmap. Identical/incomparable images return null bounds. The texture view can frame this region, return to actual-pixel zoom and display changed percentage/mean absolute error. Bounds are validated against the bound image before navigation; image pan/zoom and mask selection remain workspace state. No new source formats or cooked texture payload decoders are implied.
 
 See [visual review](VISUAL_REVIEW.md) for the complete node/instance/mesh/texture workflow, embedding APIs, workspace state and format limits.
+
+## Stored collisions - 0.77
+
+The Collisions tab and --view collisions select stored bodies and shapes, navigate changes, inspect typed before/after values and save those selections/filters in explicit workspace files. See [collision contracts](COLLISIONS.md). Native physics blobs and absent struct defaults remain explicit.

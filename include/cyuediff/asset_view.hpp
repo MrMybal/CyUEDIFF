@@ -7,13 +7,14 @@
 #include <cyuediff/mesh_view.hpp>
 #include <cyuediff/material_view.hpp>
 #include <cyuediff/property_view.hpp>
+#include <cyuediff/collision_view.hpp>
 #include <cyui/modules/Diff.h>
 #include <memory>
 #include <optional>
 namespace cyuediff {
 // The host owns the window/backend and loads packages outside its render loop.
 // No platform window, Unreal dependency or file I/O is introduced by draw().
-enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison };
+enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison, collisions };
 class AssetView {
     ViewLayout layout_;
     std::shared_ptr<const Package> before_, after_;
@@ -29,6 +30,7 @@ class AssetView {
     AssetTab active_tab_ = AssetTab::properties;
     BlueprintView before_graph_, after_graph_;
     MaterialView before_material_, after_material_;
+    CollisionView collisions_;
     bool material_after_ = false;
     MeshView before_mesh_, after_mesh_;
     bool mesh_after_ = false;

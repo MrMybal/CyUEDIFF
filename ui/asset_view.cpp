@@ -3,6 +3,23 @@
 namespace cyuediff {
 void AssetView::register_translations() {
     PropertyView::register_translations();
+    cyui::registerTranslations(
+        "fr", {{"Collisions", "Collisions"},
+               {"Collision body", "Corps de collision"},
+               {"Collision shape", "Forme de collision"},
+               {"All bodies and references", "Tous les corps et r\u00e9f\u00e9rences"},
+               {"All stored shapes", "Toutes les formes enregistr\u00e9es"},
+               {"No stored collision bodies", "Aucun corps de collision enregistr\u00e9"},
+               {"This package has no supported BodySetup projection.",
+                "Ce package ne contient aucun BodySetup pris en charge."},
+               {"Stored collision properties; physics data is not evaluated.",
+                "Propri\u00e9t\u00e9s de collision enregistr\u00e9es ; les donn\u00e9es physiques ne sont "
+                "pas \u00e9valu\u00e9es."},
+               {"Collision data is incomplete. Missing fields and external bodies remain explicit.",
+                "Donn\u00e9es de collision incompl\u00e8tes. Les champs manquants et les corps externes "
+                "restent explicites."},
+               {"Previous changed shape", "Forme modifi\u00e9e pr\u00e9c\u00e9dente"},
+               {"Next changed shape", "Forme modifi\u00e9e suivante"}});
     GraphInspector::register_translations();
     cyui::registerTranslations("fr",
                                {{"Actual pixels", "Pixels r\u00e9els"},
@@ -171,6 +188,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
                 break;
             }
 
+    collisions_.set_packages(before_.get(), after_.get(), comparison_);
     before_geometry_.reset();
     after_geometry_.reset();
     graph_after_ = texture_after_ = mesh_after_ = material_after_ = !before_;
@@ -291,6 +309,8 @@ Json AssetView::view_state() const {
     };
     if (!layout_.snapshot().empty())
         result["layout"] = layout_.snapshot();
+    if (!collisions_.empty())
+        result["collisions"] = collisions_.view_state();
     result["before"] = side(false);
     result["after"] = side(true);
     return result;
@@ -299,6 +319,8 @@ void AssetView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "asset");
     if (state.contains("layout"))
         layout_.restore(state["layout"], "asset-layout");
+    if (state.contains("collisions"))
+        collisions_.restore_view_state(state["collisions"]);
     auto flag = [&](const char *key, bool &out) {
         if (state.contains(key))
             out = state[key].get<bool>();
@@ -529,6 +551,11 @@ void AssetView::draw(const char *id, bool show_language) {
                     mesh_after_ = true;
             }
             (mesh_after_ ? after_mesh_ : before_mesh_).draw();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(cyui::trLabel("Collisions").c_str(), nullptr, flags(AssetTab::collisions))) {
+            active_tab_ = AssetTab::collisions;
+            collisions_.draw();
             ImGui::EndTabItem();
         }
         if (comparison_ &&

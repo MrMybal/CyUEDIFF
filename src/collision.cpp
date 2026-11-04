@@ -63,13 +63,13 @@ struct Projection {
         }
         return nullptr;
     }
-    Json shape(const Json &properties, const std::string &kind, std::size_t index, bool named) {
+    Json shape(const Json &properties, const std::string &kind, std::size_t source_index, bool named) {
         if (shapes++ >= options.max_shapes)
             throw Error("limit", "Collision projection exceeds shape budget");
         options.control.check();
         Json out = {{"kind", kind},
                     {"identity", named ? "name" : "index"},
-                    {"sourceIndex", index},
+                    {"sourceIndex", source_index},
                     {"name", nullptr},
                     {"geometry", Json::object()},
                     {"settings", Json::object()},
@@ -243,6 +243,16 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
             for (auto it = entry.properties.begin(); it != entry.properties.end(); ++it)
                 if (it.key() != "AggGeom")
                     body["properties"][it.key()] = projection.copy(*it);
+        if (entry.outer_index) {
+            try {
+                body["outer"] = projection.copy(package.reference(entry.outer_index));
+            } catch (const Error &) {
+                body["outerIndex"] = entry.outer_index;
+                body["complete"] = false;
+                body["diagnostics"].push_back("Collision body has an unresolved outer reference");
+            }
+        } else
+            body["outer"] = nullptr;
         const auto *aggregate = value(entry.properties, "AggGeom");
         if (!aggregate || !aggregate->is_object()) {
             body["complete"] = false;
@@ -259,6 +269,11 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
             for (auto collection = aggregate->begin(); collection != aggregate->end(); ++collection) {
                 const auto kind = supported.find(collection.key());
                 const auto *array = value(*aggregate, collection.key());
+                if ((collection.key() == "LevelSetElems" || collection.key() == "SkinnedLevelSetElems") &&
+                    array && array->is_array() && array->empty()) {
+                    body["collections"][collection.key()] = 0;
+                    continue;
+                }
                 if (kind == supported.end() || !array || !array->is_array()) {
                     body["unresolvedCollections"][collection.key()] = projection.copy(*collection);
                     body["complete"] = false;
@@ -313,18 +328,25 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
             throw Error("limit", "Collision projection exceeds owner budget");
         if (owners.contains(entry.path))
             throw Error("collision-identity", "Duplicate collision owner path");
+        projection.text(entry.path.size() + entry.class_name.size());
         const auto *references = value(entry.properties, field);
+        if (references && references->is_array() && references->size() > options.max_bodies)
+            throw Error("limit", "Collision owner exceeds reference budget");
         Json owner = {{"class", entry.class_name},
                       {"bodyReferences", Json::array()},
                       {"complete", true},
                       {"diagnostics", Json::array()}};
+        owner["containedBodies"] = Json::array();
+        for (auto it = bodies.begin(); it != bodies.end(); ++it)
+            if (it->contains("outer") && it->at("outer") == entry.path)
+                owner["containedBodies"].push_back(projection.copy(it.key()));
         if (entry.properties.contains(field))
             owner["property"] = projection.copy(entry.properties.at(field));
         auto reference = [&](const Json &ref) {
             options.control.check();
             const bool resolved = ref.is_string() && bodies.contains(ref.get<std::string>());
             owner["bodyReferences"].push_back({{"path", projection.copy(ref)}, {"resolved", resolved}});
-            if (!resolved && !ref.is_null()) {
+            if (!resolved && !ref.is_null() && ref != "None") {
                 owner["complete"] = false;
                 owner["diagnostics"].push_back("Collision body reference is external, missing or unresolved");
             }

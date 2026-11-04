@@ -753,7 +753,7 @@ int run(const std::vector<std::string> &args) {
         while (!fs::exists(existing)) {
             const auto parent = existing.parent_path();
             if (parent == existing || parent.empty())
-                throw Error("output-path","Cannot resolve output ancestor");
+                throw Error("output-path", "Cannot resolve output ancestor");
             suffix = existing.filename() / suffix;
             existing = parent;
         }
@@ -761,8 +761,7 @@ int run(const std::vector<std::string> &args) {
         return suffix.empty() ? resolved : resolved / suffix;
     };
     auto same_file = [&](const fs::path &a, const fs::path &b) {
-        return guarded_path(a) == guarded_path(b) ||
-               (fs::exists(a) && fs::exists(b) && fs::equivalent(a, b));
+        return guarded_path(a) == guarded_path(b) || (fs::exists(a) && fs::exists(b) && fs::equivalent(a, b));
     };
     for (const auto &target : {destination, png_destination, obj_destination, raw_destination}) {
         if (target.empty())

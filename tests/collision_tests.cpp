@@ -257,6 +257,43 @@ int main(int argc, char **argv) {
             diff_cancelled = e.code == "cancelled";
         }
         check(diff_cancelled, "Collision comparison cooperates with cancellation");
+        auto empty_levelsets = package;
+        empty_levelsets.exports[0].properties["AggGeom"]["value"]["LevelSetElems"] =
+            collision_property(Json::array(), "ArrayProperty");
+        check(empty_levelsets.collision_snapshot()["complete"],
+              "A known stored empty level-set collection needs no native element decoding");
+        auto contained = package;
+        ObjectExport static_mesh;
+        static_mesh.path = static_mesh.name = "SM";
+        static_mesh.class_name = "/Script/Engine.StaticMesh";
+        contained.exports.push_back(static_mesh);
+        contained.exports[0].outer_index = 2;
+        check(contained.collision_snapshot()["owners"]["SM"]["containedBodies"] == Json::array({"SM.Body"}),
+              "Export containment stays separate from unavailable native BodySetup references");
+        auto long_owner = Package{};
+        ObjectExport named_owner;
+        named_owner.path = std::string(1000, 'x');
+        named_owner.class_name = "/Script/Engine.StaticMesh";
+        long_owner.exports.push_back(named_owner);
+        CollisionOptions bounded_owner;
+        bounded_owner.max_text_bytes = 100;
+        rejects(long_owner, bounded_owner, "limit");
+        auto many_references = long_owner;
+        many_references.exports[0].path = "Mesh";
+        many_references.exports[0].class_name = "/Script/Engine.PhysicsAsset";
+        many_references.exports[0].properties = {
+            {"SkeletalBodySetups",
+             collision_property(Json::array({"A", "B", "C", "D", "E"}), "ArrayProperty")}};
+        bounded_owner = CollisionOptions{};
+        bounded_owner.max_bodies = 4;
+        bounded_owner.max_nodes = 1;
+        bool preflight = false;
+        try {
+            collision_snapshot(many_references, bounded_owner);
+        } catch (const Error &e) {
+            preflight = std::string(e.what()).find("reference budget") != std::string::npos;
+        }
+        check(preflight, "Owner reference budget is checked before copying a large property tree");
         check(package.to_json() == original, "Projection never mutates source package");
         check(!Package{}.collision_snapshot()["complete"],
               "Absent bodies cannot establish collision equality");
