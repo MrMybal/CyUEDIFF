@@ -41,9 +41,10 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Array / static array | Bounded dynamic element counts; expanded static slots retain array indices |
 | Map / set | Stored removals and additions/replacements keyed by canonical JSON identity; explicit whole-container replacement state |
 | Reflected struct | Nested unversioned header only when explicitly listed in `reflected_structs` |
-| Unsupported/native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
+| Explicit native struct | Host-bound math/color/GUID wire layouts; component values and layout provenance |
+| Unsupported/unbound native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
 
-Schemas preserve descriptors for texts, delegates, weak/legacy asset references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar/native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
+Schemas preserve descriptors for texts, delegates, weak/legacy asset references, field paths, optionals and newer string types, but their unversioned **values are not implemented**. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
 
 Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
@@ -196,3 +197,10 @@ Manifest format `cyuediff.zen-schema/2` adds a required `nativeStructs` object m
 Every native binding must exist in the supplied mapping. Reading the manifest validates token/type/entry limits without opening a USMAP; loading it canonicalizes identities and rejects duplicate aliases or reflected/native conflicts before publishing the immutable context. Native entries share the existing combined entry budget with class/reflected bindings. Provenance includes declared bindings and the input format. A mapping fingerprint still certifies only selected bytes, not cooked-build compatibility.
 
 C++ hosts set `ZenSchemaContext::native_structs` directly. Both supported Zen profiles forward these bindings to the bounded property reader. A decoded native property is compared at component paths such as `/value/translation/1`. The entire export hash remains part of the comparison. Missing layouts, malformed values and truncated native components retain the whole opaque export with a reason; no partial property values are published. Cancellation and shared budget exhaustion still fail the enclosing operation.
+
+
+## CLI, desktop and installed SDK - 0.46
+
+The existing `--schema` / `--after-schema` options accept version-two contexts in both the CLI and desktop. No additional reader mode or automatic native type detection is required. The cooked property inspector presents decoded native components through the existing typed table, change filtering and selected before/after preview. The schema tab exposes each declared native layout and its manifest/context fingerprints. Unsupported or truncated values still show opaque/unavailable properties; general export native payloads remain opaque.
+
+The installed `examples/schema_consumer` forwards native/reflected bindings from an optional context to `UnversionedReadOptions`. Distribution validation independently encodes a mapping, version-two context and double-precision transform and runs the extracted SDK consumer, including an explicitly zero-masked transform. Source projects and local engine headers are never dependencies of this consumer.

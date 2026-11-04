@@ -1,6 +1,6 @@
 #include <cyuediff/schema.hpp>
 #include <cyuediff/zen.hpp>
-#include "schema_collection_fixture.hpp"
+#include "schema_native_fixture.hpp"
 #include <iostream>
 #include <limits>
 using namespace cyuediff;
@@ -22,8 +22,12 @@ template <class F> void rejects(F f, const char *code = nullptr) {
     throw std::runtime_error("Expected native struct refusal");
 }
 } // namespace
-int main() {
+int main(int argc, char **argv) {
     try {
+        if (argc == 3 && std::string(argv[1]) == "--write-fixtures") {
+            write_native_fixtures(fs::u8path(argv[2]));
+            return 0;
+        }
         const std::string field = "/Script/Test.Collections.Lookup";
         auto schemas = UnversionedSchemas::parse(collection_schema_fixture(collection_struct()).data);
         auto decode = [&](const Bytes &wire, const UnversionedReadOptions &options) {
@@ -163,6 +167,29 @@ int main() {
         auto list = decode_unversioned(body.data, 0, body.data.size(), nested, "Collections", options);
         check(list.properties[field]["value"].size() == 2 && list.consumed_bytes == body.data.size(),
               "Native layouts work inside bounded arrays");
+        auto map_schemas = UnversionedSchemas::parse(
+            collection_schema_fixture(map_type(collection_struct(), collection_type(2))).data);
+        auto map_values = [&](bool reorder, bool duplicate) {
+            Bytes data;
+            data.i(0);
+            data.i(2);
+            for (int i = 0; i < 2; ++i) {
+                auto key = numbers;
+                double first = duplicate ? 0.25 : double(reorder ? 1 - i : i) + .25;
+                std::memcpy(key.data.data(), &first, 8);
+                data.append(key);
+                data.i(reorder ? 1 - i : i);
+            }
+            return collection_single(data);
+        };
+        auto first_map = map_values(false, false), reordered_map = map_values(true, false),
+             duplicate_map = map_values(false, true);
+        auto native_map = [&](const Bytes &data) {
+            return decode_unversioned(data.data, 0, data.data.size(), map_schemas, "Collections", options);
+        };
+        check(native_map(first_map).properties == native_map(reordered_map).properties,
+              "Native struct map keys use stable canonical component identities");
+        rejects([&] { native_map(duplicate_map); }, "schema-identity");
         auto context = std::make_shared<ZenSchemaContext>();
         context->profile = ZenProfile::unreal_5_3;
         context->schemas = std::make_shared<UnversionedSchemas>(schemas);

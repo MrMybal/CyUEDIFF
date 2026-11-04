@@ -997,7 +997,7 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
                                          const std::string &schema, const UnversionedReadOptions &options) {
     if (offset > bytes.size() || size > bytes.size() - offset)
         throw Error("bounds", "Invalid unversioned property window", offset);
-    PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}};
+    PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}, {}};
     for (const auto &binding : options.native_structs) {
         reader.charge();
         native_struct_layout_name(binding.second);

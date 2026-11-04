@@ -10,6 +10,7 @@ int run(const std::vector<std::string> &args) {
     }
     try {
         auto schemas = cyuediff::UnversionedSchemas::read(cyuediff::fs::u8path(args[0]));
+        cyuediff::UnversionedReadOptions options;
         if (args.size() == 3) {
             const auto manifest = cyuediff::ZenSchemaManifest::read(cyuediff::fs::u8path(args[2]));
             const auto context = manifest.load();
@@ -17,6 +18,8 @@ int run(const std::vector<std::string> &args) {
                 context->bindings.at("/Script/Consumer.Consumer").schema != "Consumer")
                 throw std::runtime_error("Unexpected schema context binding");
             schemas = *context->schemas;
+            options.reflected_structs = context->reflected_structs;
+            options.native_structs = context->native_structs;
         }
         std::ifstream file(cyuediff::fs::u8path(args[1]), std::ios::binary | std::ios::ate);
         if (!file || file.tellg() < 0 || file.tellg() > 1024 * 1024)
@@ -25,7 +28,7 @@ int run(const std::vector<std::string> &args) {
         file.seekg(0);
         if (!file.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
             throw std::runtime_error("Cannot read properties");
-        auto decoded = cyuediff::decode_unversioned(bytes, 0, bytes.size(), schemas, "Consumer");
+        auto decoded = cyuediff::decode_unversioned(bytes, 0, bytes.size(), schemas, "Consumer", options);
         std::cout << decoded.properties.dump(2) << '\n';
         return 0;
     } catch (const std::exception &e) {

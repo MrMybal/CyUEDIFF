@@ -1,4 +1,4 @@
-# Desktop application — 0.43
+# Desktop application — 0.46
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -213,3 +213,8 @@ cyuediff_desktop.exe --smoke --report workspace.json --document-action duplicate
 **File → Open workspace...** (`Ctrl+Alt+O`), **Save workspace** (`Ctrl+S`) and **Save workspace as...** (`Ctrl+Shift+S`) manage explicit JSON workspace files. The files restore document order, active tab, source/project/engine/schema contexts, Git revision expressions, preview options and initial asset/container views. Current files are read again through the shared queue. An invalid import leaves the open documents intact. Workspace replacement clears closed-tab history and cancels previous work.
 
 Launch with `--workspace Review.json`; do not combine it with source arguments or `--new-document`. `--document-index` and preview flags can override saved choices. `--smoke --save-workspace Review.json` records a workspace through the hidden validation host. Workspace data cannot select/load codec modules, and no automatic workspace/profile restoration is enabled. Version-two workspace files additionally record supported inspector/container filters and identity-based selections, graph/image transforms and the mesh camera. Version three additionally records the per-document sidebar width, named context/diagnostic expansion, object/property splits, property/material/member column proportions and property preview height. Drag the sidebar edge or a table divider to resize; double-click the sidebar/preview handle to reset its default. The input pane scrolls when its controls exceed the available height. Native window geometry, dialog layout, general scroll and active gestures are not persisted. Format, limits, path rules and command examples are documented in [workspace files](WORKSPACES.md).
+
+
+## Native cooked property layouts - 0.46
+
+A version-two schema context can explicitly bind native math/color/GUID structs in a mapped property stream. Choose that context through the existing before/after schema inputs; class offsets and build compatibility remain the host's responsibility. The cooked object inspector shows decoded components and their changes, including translation/rotation/scale members of a transform. Search, change filters, selected previews and workspace save/restore use the same paths as other properties. Schema provenance includes the native binding names and selected serialized layouts. These layouts decode property values; skeletal/Nanite/collision/native export payload readers remain separate work. See [native schema contexts](SCHEMAS.md).

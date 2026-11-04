@@ -102,17 +102,17 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
                 throw Error("schema-context", "Property offset must be an unsigned integer");
             result.bindings_.emplace(it.key(), ZenSchemaBinding{name, offset.get<std::uint64_t>()});
         }
+        std::set<std::string> reflected_names;
         if (manifest.contains("reflectedStructs")) {
             const auto &values = manifest.at("reflectedStructs");
             if (!values.is_array())
                 throw Error("schema-context", "Expected reflectedStructs array");
             if (values.size() > options.max_entries - bindings.size())
                 throw Error("schema-limit", "Schema context entry limit exceeded");
-            std::set<std::string> unique;
             for (const auto &value : values) {
                 options.control.check();
                 auto name = string_value(value);
-                if (!unique.insert(name).second)
+                if (!reflected_names.insert(name).second)
                     throw Error("schema-context", "Duplicate reflected struct binding");
                 result.reflected_structs_.push_back(std::move(name));
             }
@@ -126,8 +126,7 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
             for (auto it = values.begin(); it != values.end(); ++it) {
                 options.control.check();
                 auto name = string_value(it.key());
-                if (std::find(result.reflected_structs_.begin(), result.reflected_structs_.end(), name) !=
-                    result.reflected_structs_.end())
+                if (reflected_names.count(name))
                     throw Error("schema-context", "Conflicting native/reflected struct binding");
                 result.native_structs_.emplace(std::move(name),
                                                parse_native_struct_layout(string_value(it.value())));

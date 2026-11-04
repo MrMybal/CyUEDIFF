@@ -161,6 +161,24 @@ if args.consumer:
  if collection['removed']!={'7':7} or collection['replace'] or collection['entries']['9']['value']['entries']!={'1':1,'2':2}:raise RuntimeError('Installed unversioned collection consumer failed')
  if collection['entries']['9']['value']['removed']!={'4':4}:raise RuntimeError('Installed unversioned set removal failed')
  if set(collection['entries'])!={'9','11'} or collection['entries']['11']['value']['entries']:raise RuntimeError('Installed unversioned collection tail failed')
+ # Independent native struct mapping and version-two context, using only installed SDK headers/libraries.
+ native_names=[b'Consumer',b'Value',b'Native']
+ payload=u32(3)+b''.join(bytes([len(n)])+n for n in native_names)+u32(0)+u32(2)
+ payload+=u32(0)+struct.pack('<iHHHBiBi',-1,1,1,0,1,1,9,2)
+ payload+=u32(2)+struct.pack('<iHH',-1,0,0)
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ values.write_bytes(struct.pack('<H10d',0x0300,0,0,0,1,1000000000000.125,2.5,3.5,1,1,1))
+ context_path.write_text(json.dumps({'format':'cyuediff.zen-schema/2','profile':'ue5.3',
+     'usmap':mappings.name,'sha256':hashlib.sha256(mappings.read_bytes()).hexdigest(),
+     'bindings':{'/Script/Consumer.Consumer':{'schema':'Consumer','offset':0}},
+     'nativeStructs':{'Native':'transform-f64'}}),encoding='utf-8')
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ native=json.loads(result.stdout)['Consumer.Value']
+ if native['nativeLayout']!='transform-f64' or native['value']['translation']!=[1000000000000.125,2.5,3.5]:raise RuntimeError('Installed native transform consumer failed')
+ values.write_bytes(struct.pack('<HB',0x0380,1))
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ if json.loads(result.stdout)['Consumer.Value']['value']['scale']!=[0,0,0]:raise RuntimeError('Installed zero native struct consumer failed')
+ print('Installed native struct and version-two context consumer validated')
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
