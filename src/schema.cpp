@@ -863,15 +863,33 @@ struct PropertyReader {
             if (!options.reference)
                 throw Error("schema-context", "Object property requires a package reference resolver", r.pos);
             auto value = options.reference(index);
-            // Charge reference strings supplied by the host, including nested fields.
-            std::function<void(const Json &)> measure = [&](const Json &v) {
-                if (v.is_string())
-                    text(v.get_ref<const std::string &>().size());
-                else if (v.is_structured())
-                    for (const auto &child : v)
-                        measure(child);
+            // Host-resolved identities share the reader's depth/work/text/cancellation bounds.
+            auto string = [&](const std::string &s) {
+                text(s.size());
+                try {
+                    static_cast<void>(Json(s).dump());
+                } catch (const Json::exception &) {
+                    throw Error("schema-value", "Invalid UTF-8 in resolved reference", r.pos);
+                }
             };
-            measure(value);
+            std::function<void(const Json &, unsigned)> measure = [&](const Json &v, unsigned level) {
+                depth(level);
+                charge();
+                if (v.is_string())
+                    string(v.get_ref<const std::string &>());
+                else if (v.is_object())
+                    for (auto it = v.begin(); it != v.end(); ++it) {
+                        string(it.key());
+                        measure(it.value(), level + 1);
+                    }
+                else if (v.is_array())
+                    for (const auto &child : v)
+                        measure(child, level + 1);
+                else if (v.is_binary() || v.is_discarded() ||
+                         (v.is_number_float() && !std::isfinite(v.get<double>())))
+                    throw Error("schema-value", "Invalid resolved reference value", r.pos);
+            };
+            measure(value, nesting + 1);
             return value;
         }
         case 11: {
@@ -901,6 +919,34 @@ struct PropertyReader {
                 throw Error("schema-type", "Unsupported text history: " + std::to_string(history), r.pos - 1);
             return value;
         }
+        case 6: {
+            if (!zero && options.script_reference_layout != ScriptReferenceLayout::package_indices)
+                throw Error("schema-context", "Delegate requires an explicit persistent package layout",
+                            r.pos);
+            auto object = read_value(SchemaType{4, {}, {}}, zero, nesting + 1);
+            auto function = read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
+            return {{"kind", "script-delegate"},
+                    {"object", std::move(object)},
+                    {"function", std::move(function)}};
+        }
+        case 13: {
+            if (!zero && options.script_reference_layout != ScriptReferenceLayout::package_indices)
+                throw Error("schema-context",
+                            "Multicast delegate requires an explicit persistent package layout", r.pos);
+            const auto count = zero ? 0 : r.count(options.max_values - result.values_read);
+            Json bindings = Json::array();
+            for (unsigned i = 0; i < count; ++i) {
+                bindings.push_back(read_value(SchemaType{6, {}, {}}, false, nesting + 1));
+                options.control.checkpoint("unversioned-delegate-bindings", i + 1, count);
+            }
+            return {{"kind", "multicast-script-delegate"}, {"bindings", std::move(bindings)}};
+        }
+        case 14:
+            if (!zero && options.script_reference_layout != ScriptReferenceLayout::package_indices)
+                throw Error("schema-context", "Weak reference requires an explicit persistent package layout",
+                            r.pos);
+            return {{"kind", "weak-object-reference"},
+                    {"object", read_value(SchemaType{4, {}, {}}, zero, nesting + 1)}};
         case 12:
             return {{"kind", "interface-reference"},
                     {"object", read_value(SchemaType{4, {}, {}}, zero, nesting + 1)}};

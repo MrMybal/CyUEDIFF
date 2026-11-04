@@ -27,4 +27,20 @@ inline Bytes table_text_value() {
     bytes.string("EntryKey");
     return bytes;
 }
+inline Bytes delegate_value(int object = 1, int function = 2, int suffix = 0) {
+    Bytes bytes;
+    bytes.i(object);
+    bytes.i(function);
+    bytes.i(suffix);
+    return bytes;
+}
+inline Bytes multicast_value(bool changed = false, bool reorder = false) {
+    Bytes bytes;
+    bytes.i(3);
+    auto first = delegate_value(1, changed ? 3 : 2), second = delegate_value(0, 0);
+    bytes.append(reorder ? second : first);
+    bytes.append(reorder ? first : second);
+    bytes.append(first);
+    return bytes;
+}
 } // namespace cyuediff::test

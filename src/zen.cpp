@@ -535,6 +535,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
                     props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
                     props.text_layout = TextLayout::ue5_history;
+                    props.script_reference_layout = ScriptReferenceLayout::package_indices;
                     // An explicit older editor version cannot certify the modern None layout.
                     if (!p.versioning.is_null() &&
                         p.versioning["customVersions"].value("e4b068edf49442e9a231da0b2e46bb41", 32) < 32)

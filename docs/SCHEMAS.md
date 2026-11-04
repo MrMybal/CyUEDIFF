@@ -44,7 +44,7 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Explicit native struct | Host-bound math/color/GUID wire layouts; component values and layout provenance |
 | Unsupported/unbound native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
 
-Schemas also preserve descriptors for delegates, weak/legacy asset references, field paths, optionals and newer string types whose unversioned values require additional readers. Supported text histories are described below. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
+Supported text histories and persistent delegate/weak values are described below. Legacy asset references, field paths, optionals and newer string values still require additional readers. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
 
 Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
@@ -56,7 +56,7 @@ Default standalone limits are 100,000 value/fragment work units, depth 48 and 4 
 
 Version 0.20 adds `InterfaceProperty`, `LazyObjectProperty` and the modern `SoftObjectProperty` layout. Interface values retain their resolved/null object reference; no native interface address is inferred. Lazy references retain four GUID words as `kind:lazy-object-guid` and a 32-digit hexadecimal `guid`; they are not resolved to an object. Soft paths retain `packageName`, `assetName` and `subPath` separately with `kind:soft-object-path`.
 
-Standalone readers must select `SoftPathLayout::ue5_top_level_names` for nonzero soft references. Zen's supported UE 5.3/5.5 profiles select that layout explicitly. Older combined-name/index-based soft paths, `AssetObjectProperty` and weak-pointer layouts remain unsupported. Zero references consume no payload and retain their explicit zero state. References never trigger package lookup, asset loading, path rewriting or archetype reconstruction. Modern layouts are tested with synthetic mappings and bounded package bytes; matching-build real schema coverage is still pending.
+Standalone readers must select `SoftPathLayout::ue5_top_level_names` for nonzero soft references. Zen's supported UE 5.3/5.5 profiles select that layout explicitly. Older combined-name/index-based soft paths, `AssetObjectProperty` and raw weak-pointer index/serial layouts remain unsupported. Persistent weak package references are described below. Zero references consume no payload and retain their explicit zero state. References never trigger package lookup, asset loading, path rewriting or archetype reconstruction. Modern layouts are tested with synthetic mappings and bounded package bytes; matching-build real schema coverage is still pending.
 
 ## Map and set values
 
@@ -213,3 +213,14 @@ The installed `examples/schema_consumer` forwards native/reflected bindings from
 Both supported Zen profiles select this modern layout. If an explicit cooked EditorObjectVersion is older than the invariant marker layout, text decoding remains opaque. No source lookup, namespace/key rewriting, string-table loading, culture selection or formatted text evaluation runs. Text namespace/key serialization was checked against the local UE 5.5 Text.cpp, TextHistory.cpp and TextKey.cpp serializers; [Epic's serialization entry point](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/Core/FText/SerializeText) documents the relevant engine API.
 
 A zero-masked text is empty, with no payload bytes. Missing standalone layout, unsupported histories, invalid boolean markers, malformed UTF-16 and truncation fail the complete property read. Zen publishes no partial text properties and keeps its full export fingerprint. Supported source edits produce diffs at `/value/source`; namespace/key and table identity changes remain distinct. Mapping/build compatibility still requires the host's matching schema.
+
+
+## Persistent delegates and weak references - 0.48
+
+Standalone hosts select `ScriptReferenceLayout::package_indices` for `DelegateProperty`, `MulticastDelegateProperty` and `WeakObjectProperty`. Both supported Zen profiles select it for persistent package reads. This layout uses signed package object indices, not process weak-pointer index/serial memory. The reference resolver and package FName table remain explicit inputs.
+
+A single delegate is `{kind:"script-delegate", object:REFERENCE, function:"StoredFunction"}`. A multicast value is `{kind:"multicast-script-delegate", bindings:[...]}` with ordered single-delegate entries. Duplicates and null/unresolved targets remain exactly as read; no runtime invocation-list compaction, validity test or execution occurs. Weak values retain `{kind:"weak-object-reference", object:REFERENCE}` without claiming live-object validity. Zero-masked values consume no payload and have null/None/empty bindings as appropriate.
+
+Layouts were cross-checked against local UE 5.5 ScriptDelegates.h, PropertyDelegate.cpp, PropertyMulticastDelegate.cpp, PropertyWeakObjectPtr.cpp and ArchiveUObject.cpp. In this package archive, weak references are serialized through object references. The reader does not implement memory dumps, network serializers or string-proxy archives. A changed delegate function produces a precise `/value/bindings/INDEX/function` diff; order changes remain observable.
+
+Counts, elements, nested values and host-resolved JSON identities share work/depth/text budgets and cancellation. Resolver object keys also consume text budget. Malformed UTF-8, non-finite values, unsupported resolver values and excessive reference structures fail explicitly. Missing layouts/maps/resolvers, invalid FNames/indices and truncated bindings discard the entire bound read in Zen; the opaque body hash remains. Matching-build real schema validation is still required.
