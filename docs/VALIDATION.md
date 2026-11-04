@@ -266,3 +266,7 @@ The extracted 0.31 distribution is checked with its CLI/WARP host, four separate
 ## 0.32 milestone: document workspace lifecycle
 
 The desktop configuration without Git passes 33 suites. New model checks cover stable/non-reused IDs, per-document snapshots/errors, sequential decoding, queued request replacement, external progress, cancellation/close during work, discarded closed requests, tab limits, adjacent selection, empty workspaces, snapshot release and absence of retained request callback/cache closures. Combined native tab/distribution validation follows the next milestones.
+
+## 0.33 milestone: native tabs and state isolation
+
+New native workspace checks load loose/Pak/mapped-Zen documents in one process, settle the shared queue, select each source group, isolate failed tabs, enforce the eight-document limit and reject output hard links to inactive loose packages, mapping/context files and secondary/global UCAS partitions. Source hashes and the real user profile remain unchanged. Renderer-free tab checks cover programmatic selection, duplicate labels, literal ImGui delimiters in filenames, queued/failure cues, empty/full tab bars and all five themes in English/French. Lifecycle command and combined distribution validation follows the next milestone.

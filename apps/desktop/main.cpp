@@ -1,4 +1,6 @@
 #include "document.hpp"
+#include "workspace.hpp"
+#include "document_tabs.hpp"
 #include "browser.hpp"
 #include "preferences.hpp"
 #include "container_view.hpp"
@@ -15,6 +17,7 @@
 #include <iostream>
 #include <chrono>
 #include <algorithm>
+#include <map>
 
 using namespace cyuediff;
 using namespace cyuediff::desktop;
@@ -80,6 +83,8 @@ struct Settings {
 };
 struct Options {
     Settings settings;
+    std::vector<Options> additional_documents;
+    std::optional<std::size_t> selected_document;
     bool smoke = false, help = false, browse = false;
     fs::path capture, report, preferences;
     bool no_preferences = false, save_preferences = false, preference_write = false;
@@ -108,7 +113,7 @@ AssetTab tab(const std::string &name) {
         return AssetTab::comparison;
     throw Error("desktop-option", "Unknown view: " + name);
 }
-Options parse(const std::vector<std::string> &args) {
+Options parse_one(const std::vector<std::string> &args) {
     Options options;
     bool git_options = false;
     for (std::size_t i = 1; i < args.size(); ++i) {
@@ -118,7 +123,12 @@ Options parse(const std::vector<std::string> &args) {
                 throw Error("desktop-option", "Missing value for " + argument);
             return args[i];
         };
-        if (argument == "--smoke")
+        if (argument == "--document-index") {
+            const auto text = value();
+            if (text.size() != 1 || text[0] < '0' || text[0] > '7')
+                throw Error("desktop-option", "Document index must be between 0 and 7");
+            options.selected_document = static_cast<std::size_t>(text[0] - '0');
+        } else if (argument == "--smoke")
             options.smoke = true;
         else if (argument == "--container") {
             options.settings.container_path = value();
@@ -336,11 +346,38 @@ Options parse(const std::vector<std::string> &args) {
         throw Error("desktop-option", "Report requires a .json path");
     return options;
 }
+Options parse(const std::vector<std::string> &args) {
+    std::vector<std::vector<std::string>> groups(1, {args.front()});
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        if (args[i] == "--new-document") {
+            if (groups.size() >= 8)
+                throw Error("document-limit", "At most eight documents may open");
+            groups.push_back({args.front()});
+        } else
+            groups.back().push_back(args[i]);
+    }
+    auto result = parse_one(groups.front());
+    for (std::size_t i = 1; i < groups.size(); ++i) {
+        auto entry = parse_one(groups[i]);
+        if (entry.smoke || entry.help || entry.history || entry.browse || !entry.capture.empty() ||
+            !entry.report.empty() || !entry.preferences.empty() || entry.no_preferences ||
+            entry.save_preferences || entry.theme_override || entry.locale_override ||
+            entry.selected_document)
+            throw Error("desktop-option", "Global options must precede --new-document");
+        result.additional_documents.push_back(std::move(entry));
+    }
+    if (!result.additional_documents.empty() && (result.history || result.browse))
+        throw Error("desktop-option", "Automatic history/browser launch requires a single document");
+    if (result.selected_document && *result.selected_document >= groups.size())
+        throw Error("desktop-option", "Selected document index is not open");
+    return result;
+}
 void register_translations() {
 #ifdef CYUEDIFF_HAS_GIT
     HistoryView::register_translations();
 #endif
     ContainerView::register_translations();
+    DocumentTabsView::register_translations();
     AssetView::register_translations();
     CatalogView::register_translations();
     cyui::registerTranslations(
@@ -482,6 +519,15 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         outputs.push_back(options.preferences);
     if (outputs.empty())
         return;
+    for (const auto &entry : options.additional_documents) {
+        auto other = entry;
+        other.capture = options.capture;
+        other.report = options.report;
+        other.preferences = options.preferences;
+        other.preference_write = options.preference_write;
+        protect_outputs(other, {}, {}, {});
+    }
+
     std::vector<fs::path> inputs;
     if (options.settings.source == 2) {
         for (const auto &path :
@@ -518,7 +564,7 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
     std::vector<fs::path> directories;
     if (!history_storage.empty())
         directories.push_back(history_storage);
-    if (options.settings.source == 1) {
+    if (options.settings.source == 1 && !options.settings.repository.empty()) {
 #ifdef CYUEDIFF_HAS_GIT
         GitOptions git_options;
         git_options.lfs_objects = fs::u8path(options.settings.lfs_objects);
@@ -615,10 +661,38 @@ enum class Action {
     container_inspect,
     container_object,
     before_schema,
-    after_schema
+    after_schema,
+    document_tab,
+    new_document,
+    close_document
+};
+struct DocumentPresentation {
+    Settings settings;
+    AssetTab initial_tab = AssetTab::properties;
+    int container_tab = -1;
+    std::string cooked_view;
+    std::shared_ptr<const Document> displayed;
+    AssetView view;
+    ContainerView container_view;
+    std::vector<ComPtr<ID3D11ShaderResourceView>> images;
+    std::vector<std::string> gpu_diagnostics;
+    std::string dialog_error, context_details;
+    ~DocumentPresentation() {
+        view.set_packages({});
+        images.clear();
+    }
 };
 class Shell {
-    DocumentSession session_;
+    DocumentWorkspace session_;
+    DocumentTabsView document_tabs_;
+    DocumentTabAction tab_action_;
+    std::map<DocumentId, std::unique_ptr<DocumentPresentation>> presentations_;
+    DocumentPresentation &current() {
+        return *presentations_.at(session_.active_id());
+    }
+    const DocumentPresentation &current() const {
+        return *presentations_.at(session_.active_id());
+    }
     BrowserSession browser_;
 #ifdef CYUEDIFF_HAS_GIT
     HistorySession history_;
@@ -633,27 +707,31 @@ class Shell {
     CatalogView catalog_view_;
     bool browser_open_ = false, close_browser_ = false;
     std::string browse_select_;
-    std::shared_ptr<const Document> displayed_;
-    AssetView view_;
-    ContainerView container_view_;
-    int container_tab_ = -1;
-    std::string cooked_view_;
-    std::vector<ComPtr<ID3D11ShaderResourceView>> images_;
-    std::vector<std::string> gpu_diagnostics_;
-    std::string dialog_error_, context_details_, preferences_diagnostic_;
-    Settings settings_;
-    AssetTab initial_tab_;
+    std::string preferences_diagnostic_;
 
   public:
-    explicit Shell(const Options &options)
-        : preferences_diagnostic_(options.preferences_diagnostic), settings_(options.settings),
-          initial_tab_(tab(options.view)) {
-        container_tab_ = options.container_tab;
-        cooked_view_ = options.cooked_view;
-        container_view_.set_filter(options.container_filter);
-        container_view_.set_changed_only(options.container_changes_only);
-        if ((settings_.source == 2 || !settings_.before.empty()) && !options.history)
-            session_.request(settings_.request());
+    explicit Shell(const Options &options) : preferences_diagnostic_(options.preferences_diagnostic) {
+        auto initialize = [&](DocumentId id, const Options &entry) {
+            auto state = std::make_unique<DocumentPresentation>();
+            state->settings = entry.settings;
+            if (!entry.previews_override)
+                state->settings.previews = options.settings.previews;
+            if (!entry.engine_override)
+                state->settings.include_engine = options.settings.include_engine;
+            state->initial_tab = tab(entry.view);
+            state->container_tab = entry.container_tab;
+            state->cooked_view = entry.cooked_view;
+            state->container_view.set_filter(entry.container_filter);
+            state->container_view.set_changed_only(entry.container_changes_only);
+            presentations_[id] = std::move(state);
+            if ((entry.settings.source == 2 || !entry.settings.before.empty()) && !entry.history)
+                session_.request(id, presentations_.at(id)->settings.request());
+        };
+        initialize(session_.active_id(), options);
+        for (const auto &entry : options.additional_documents)
+            initialize(session_.create(), entry);
+        if (options.selected_document)
+            session_.select(session_.documents()[*options.selected_document].id);
 #ifdef CYUEDIFF_HAS_GIT
         history_tip_ = options.history_revision;
         history_before_ = options.history_before;
@@ -668,14 +746,12 @@ class Shell {
         if (options.browse)
             start_browser();
     }
-    ~Shell() {
-        view_.set_packages({});
-        images_.clear();
-    }
+    ~Shell() = default;
     DesktopPreferences preferences() const {
-        return {cyui::currentThemeKey(), cyui::locale(), settings_.previews, settings_.include_engine};
+        return {cyui::currentThemeKey(), cyui::locale(), current().settings.previews,
+                current().settings.include_engine};
     }
-    const DocumentSession &session() const {
+    const DocumentWorkspace &session() const {
         return session_;
     }
     const std::shared_ptr<const BrowseDocument> &browser_document() const {
@@ -690,15 +766,15 @@ class Shell {
         return result;
     }
     Json container_view_report() const {
-        if (!displayed_ || !displayed_->container)
+        if (!current().displayed || !current().displayed->container)
             return nullptr;
-        const auto *entry = container_view_.selected_member();
-        return {{"visibleMembers", container_view_.visible_count()},
+        const auto *entry = current().container_view.selected_member();
+        return {{"visibleMembers", current().container_view.visible_count()},
                 {"selectedMember", entry ? Json(entry->id) : Json(nullptr)},
-                {"selectedObject", container_view_.selected_object()},
-                {"objectProperties", container_view_.property_report()},
-                {"selectedKey", container_view_.selected_key()},
-                {"tab", container_view_.active_tab()}};
+                {"selectedObject", current().container_view.selected_object()},
+                {"objectProperties", current().container_view.property_report()},
+                {"selectedKey", current().container_view.selected_key()},
+                {"tab", current().container_view.active_tab()}};
     }
     Json history_report() const {
 #ifdef CYUEDIFF_HAS_GIT
@@ -708,8 +784,8 @@ class Shell {
             result["visibleCommits"] = history_view_.visible_count();
             result["selected"] =
                 history_view_.selected() ? Json(history_view_.selected()->id) : Json(nullptr);
-            result["beforeRevision"] = settings_.before_revision;
-            result["afterRevision"] = settings_.after_revision;
+            result["beforeRevision"] = current().settings.before_revision;
+            result["afterRevision"] = current().settings.after_revision;
             return result;
         }
 #endif
@@ -725,16 +801,16 @@ class Shell {
 #ifdef CYUEDIFF_HAS_GIT
     bool history_can_compare() const {
         return !history_chosen_before_.empty() && !history_chosen_after_.empty() &&
-               history_chosen_before_ == settings_.before_revision &&
-               history_chosen_after_ == settings_.after_revision;
+               history_chosen_before_ == current().settings.before_revision &&
+               history_chosen_after_ == current().settings.after_revision;
     }
     void start_history(std::optional<std::uint32_t> skip = {}) {
-        if (!historied_ || !same_path(fs::u8path(settings_.repository), historied_->repository)) {
+        if (!historied_ || !same_path(fs::u8path(current().settings.repository), historied_->repository)) {
             history_chosen_before_.clear();
             history_chosen_after_.clear();
         }
         HistoryRequest request;
-        request.repository = fs::u8path(settings_.repository);
+        request.repository = fs::u8path(current().settings.repository);
         request.revision = history_tip_;
         if (skip && historied_) {
             request = historied_->request;
@@ -748,11 +824,12 @@ class Shell {
     void select_history(const std::string &id, bool after) {
         if (!historied_ || history_.busy() || !history_.error().empty())
             throw Error("history-selection", "No ready history page");
-        auto selection = historied_->select(id, settings_.request().git.value_or(GitSource{}), after);
-        settings_.source = 1;
-        settings_.repository = selection.repository.u8string();
-        settings_.before_revision = selection.before_revision;
-        settings_.after_revision = selection.after_revision;
+        auto selection =
+            historied_->select(id, current().settings.request().git.value_or(GitSource{}), after);
+        current().settings.source = 1;
+        current().settings.repository = selection.repository.u8string();
+        current().settings.before_revision = selection.before_revision;
+        current().settings.after_revision = selection.after_revision;
         (after ? history_chosen_after_ : history_chosen_before_) = id;
     }
 #endif
@@ -764,8 +841,8 @@ class Shell {
         return session_.busy() || browser_.busy();
     }
     std::string error() const {
-        if (!dialog_error_.empty())
-            return dialog_error_;
+        if (!current().dialog_error.empty())
+            return current().dialog_error;
 #ifdef CYUEDIFF_HAS_GIT
         if (!history_.error().empty())
             return history_.error();
@@ -775,7 +852,7 @@ class Shell {
     void start_browser() {
         browser_open_ = true;
         close_browser_ = false;
-        browser_.request(settings_.browse_request());
+        browser_.request(current().settings.browse_request());
     }
     void select_browser(CatalogAction action) {
         if (!browsed_ || browser_.busy() || !browser_.error().empty())
@@ -783,24 +860,124 @@ class Shell {
         const bool open = action == CatalogAction::open;
         auto selection = browsed_->select(catalog_view_.selected(), action == CatalogAction::use_after,
                                           open && browsed_->request.git.has_value());
-        settings_.project = selection.project.u8string();
-        settings_.engine = selection.engine_root.u8string();
+        current().settings.project = selection.project.u8string();
+        current().settings.engine = selection.engine_root.u8string();
         if (selection.git) {
-            settings_.before_revision = selection.git->before_revision;
-            settings_.after_revision = selection.git->after_revision;
+            current().settings.before_revision = selection.git->before_revision;
+            current().settings.after_revision = selection.git->after_revision;
         }
         if (open) {
-            settings_.before = selection.before;
-            settings_.after.clear();
+            current().settings.before = selection.before;
+            current().settings.after.clear();
         } else if (action == CatalogAction::use_after)
-            settings_.after = selection.after;
+            current().settings.after = selection.after;
         else
-            settings_.before = selection.before;
-        if (!settings_.before.empty())
-            session_.request(settings_.request());
+            current().settings.before = selection.before;
+        if (!current().settings.before.empty())
+            session_.request(current().settings.request());
     }
     std::size_t images() const {
-        return images_.size();
+        return current().images.size();
+    }
+    void reset_navigation() {
+        browser_.cancel();
+        browser_open_ = close_browser_ = false;
+        browse_select_.clear();
+#ifdef CYUEDIFF_HAS_GIT
+        history_.cancel();
+        history_open_ = auto_history_compare_ = history_compare_request_ = false;
+        history_before_.clear();
+        history_after_.clear();
+        history_chosen_before_.clear();
+        history_chosen_after_.clear();
+#endif
+    }
+    void select_document(DocumentId id) {
+        if (session_.active_id() == id || !session_.find(id))
+            return;
+        reset_navigation();
+        session_.select(id);
+    }
+    void create_document() {
+        auto state = std::make_unique<DocumentPresentation>();
+        state->settings.previews = current().settings.previews;
+        state->settings.include_engine = current().settings.include_engine;
+        const auto id = session_.create();
+        presentations_[id] = std::move(state);
+        reset_navigation();
+    }
+    void close_document(DocumentId id) {
+        if (!session_.find(id))
+            return;
+        reset_navigation();
+        session_.close(id);
+        presentations_.erase(id);
+        if (!session_.active_id()) {
+            const auto empty = session_.create();
+            presentations_[empty] = std::make_unique<DocumentPresentation>();
+        }
+    }
+    void protect(const Options &options) const {
+        protect_outputs(options, {}, browsed_, history_storage());
+        for (const auto &entry : session_.documents()) {
+            auto local = options;
+            local.additional_documents.clear();
+            local.settings = presentations_.at(entry.id)->settings;
+            protect_outputs(local, entry.document, browsed_, history_storage());
+        }
+    }
+    std::string result_error() const {
+        if (!error().empty())
+            return error();
+        for (const auto &entry : session_.documents()) {
+            if (!entry.error.empty())
+                return "One or more document loads failed";
+            if (!presentations_.at(entry.id)->dialog_error.empty())
+                return "One or more document actions failed";
+        }
+        return {};
+    }
+    Json workspace_report() const {
+        Json entries = Json::array();
+        for (const auto &entry : session_.documents()) {
+            const auto &view = *presentations_.at(entry.id);
+            entries.push_back({{"id", entry.id},
+                               {"active", entry.id == session_.active_id()},
+                               {"busy", entry.busy},
+                               {"cancelled", entry.cancelled},
+                               {"error", entry.error},
+                               {"actionError", view.dialog_error},
+                               {"revision", entry.revision},
+                               {"before", view.settings.before},
+                               {"after", view.settings.after},
+                               {"project", view.settings.project},
+                               {"engine", view.settings.engine},
+                               {"container", view.settings.container_path},
+                               {"source", view.settings.source},
+                               {"uploadedPreviews", view.images.size()},
+                               {"containerSelection", view.container_view.selected_key()},
+                               {"containerTab", view.container_view.active_tab()},
+                               {"document", entry.document ? entry.document->report() : Json(nullptr)}});
+        }
+        return {{"schema", "cyuediff.desktop-workspace/1"},
+                {"active", session_.active_id()},
+                {"maximum", session_.maximum()},
+                {"documents", std::move(entries)}};
+    }
+    void update_tabs() {
+        std::vector<DocumentTab> tabs;
+        for (const auto &entry : session_.documents()) {
+            const auto &state = *presentations_.at(entry.id);
+            const auto source =
+                state.settings.source == 2 ? state.settings.container_path : state.settings.before;
+            auto label = source.empty() ? cyui::tr("Untitled") : fs::u8path(source).filename().u8string();
+            if (!state.settings.after.empty() || !state.settings.after_container_path.empty())
+                label += " / " + cyui::tr("After");
+            tabs.push_back(
+                {entry.id, label, source, entry.busy, !entry.error.empty() || !state.dialog_error.empty()});
+        }
+        document_tabs_.set_tabs(std::move(tabs), session_.active_id(),
+                                session_.documents().size() < session_.maximum());
     }
     void poll(Renderer &renderer) {
 #ifdef CYUEDIFF_HAS_GIT
@@ -822,7 +999,7 @@ class Shell {
                 auto_history_compare_ = history_compare_request_;
                 history_compare_request_ = false;
             } catch (const std::exception &error) {
-                dialog_error_ = error.what();
+                current().dialog_error = error.what();
             }
         }
 #endif
@@ -844,52 +1021,57 @@ class Shell {
                     select_browser(CatalogAction::open);
                     close_browser_ = true;
                 } catch (const std::exception &e) {
-                    dialog_error_ = e.what();
+                    current().dialog_error = e.what();
                 }
                 browse_select_.clear();
             }
         }
         session_.poll();
-        if (session_.document() == displayed_)
+        update_tabs();
+        if (session_.document() == current().displayed)
             return;
-        displayed_ = session_.document();
-        if (displayed_->container) {
-            view_.set_packages({});
-            images_.clear();
-            gpu_diagnostics_.clear();
-            context_details_.clear();
-            container_view_.set_document(displayed_->container);
-            if (!cooked_view_.empty())
-                container_view_.set_property_mode(cooked_view_ == "properties");
-            if (container_tab_ >= 0 && !container_view_.select_tab(container_tab_))
+        current().displayed = session_.document();
+        if (!current().displayed)
+            return;
+        if (current().displayed->container) {
+            current().view.set_packages({});
+            current().images.clear();
+            current().gpu_diagnostics.clear();
+            current().context_details.clear();
+            current().container_view.set_document(current().displayed->container);
+            if (!current().cooked_view.empty())
+                current().container_view.set_property_mode(current().cooked_view == "properties");
+            if (current().container_tab >= 0 && !current().container_view.select_tab(current().container_tab))
                 throw Error("desktop-option", "Requested container tab is unavailable");
             return;
         }
-        container_view_.set_document({});
-        view_.set_packages(displayed_->before, displayed_->after, displayed_->request.git.has_value());
-        context_details_.clear();
+        current().container_view.set_document({});
+        current().view.set_packages(current().displayed->before, current().displayed->after,
+                                    current().displayed->request.git.has_value());
+        current().context_details.clear();
 #ifdef CYUEDIFF_HAS_GIT
-        if (displayed_->git && !displayed_->git->context_changes.empty())
-            context_details_ = displayed_->git->context_changes.dump(2);
+        if (current().displayed->git && !current().displayed->git->context_changes.empty())
+            current().context_details = current().displayed->git->context_changes.dump(2);
 #endif
-        images_.clear();
-        gpu_diagnostics_.clear();
-        view_.select_tab(initial_tab_);
-        view_.set_mesh_geometry(displayed_->before_mesh);
-        view_.set_mesh_geometry(displayed_->after_mesh, true);
-        for (const auto &preview : displayed_->previews) {
+        current().images.clear();
+        current().gpu_diagnostics.clear();
+        current().view.select_tab(current().initial_tab);
+        current().view.set_mesh_geometry(current().displayed->before_mesh);
+        current().view.set_mesh_geometry(current().displayed->after_mesh, true);
+        for (const auto &preview : current().displayed->previews) {
             try {
                 auto image = renderer.upload(preview.image);
-                if (view_.set_texture_preview(preview.object_path,
-                                              {ImTextureID(reinterpret_cast<std::uintptr_t>(image.Get())),
-                                               int(preview.image.width), int(preview.image.height)},
-                                              preview.after))
-                    images_.push_back(std::move(image));
+                if (current().view.set_texture_preview(
+                        preview.object_path,
+                        {ImTextureID(reinterpret_cast<std::uintptr_t>(image.Get())), int(preview.image.width),
+                         int(preview.image.height)},
+                        preview.after))
+                    current().images.push_back(std::move(image));
             } catch (const std::exception &e) {
-                gpu_diagnostics_.push_back(e.what());
+                current().gpu_diagnostics.push_back(e.what());
             }
         }
-        for (const auto &difference : displayed_->texture_differences) {
+        for (const auto &difference : current().displayed->texture_differences) {
             try {
                 cyui::ImageData binding{};
                 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> image;
@@ -899,16 +1081,17 @@ class Shell {
                                int(difference.comparison.heatmap.width),
                                int(difference.comparison.heatmap.height)};
                 }
-                bool bound =
-                    difference.hdr_comparison
-                        ? view_.set_texture_difference(difference.before_object, difference.after_object,
-                                                       binding, *difference.hdr_comparison)
-                        : view_.set_texture_difference(difference.before_object, difference.after_object,
-                                                       binding, difference.comparison);
+                bool bound = difference.hdr_comparison
+                                 ? current().view.set_texture_difference(difference.before_object,
+                                                                         difference.after_object, binding,
+                                                                         *difference.hdr_comparison)
+                                 : current().view.set_texture_difference(difference.before_object,
+                                                                         difference.after_object, binding,
+                                                                         difference.comparison);
                 if (bound && image)
-                    images_.push_back(std::move(image));
+                    current().images.push_back(std::move(image));
             } catch (const std::exception &e) {
-                gpu_diagnostics_.push_back(e.what());
+                current().gpu_diagnostics.push_back(e.what());
             }
         }
     }
@@ -919,15 +1102,15 @@ class Shell {
 #endif
         if (browser_.busy())
             return "Scanning content...";
-        if (session_.busy())
+        if (session_.active_busy())
             return "Loading...";
         if (session_.cancelled())
             return "Cancelled";
         if (!error().empty())
             return "Load failed";
-        if (!displayed_)
+        if (!current().displayed)
             return "Ready";
-        auto status = displayed_->status();
+        auto status = current().displayed->status();
         if (status == "changed")
             return "Changed";
         if (status == "identical")
@@ -948,7 +1131,7 @@ class Shell {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu(cyui::trLabel("File").c_str())) {
                 {
-                    cyui::ScopedDisabled local_only(settings_.source != 0);
+                    cyui::ScopedDisabled local_only(current().settings.source != 0);
                     if (ImGui::MenuItem(cyui::trLabel("Open before...").c_str(), "Ctrl+O"))
                         action = Action::open_before;
                     if (ImGui::MenuItem(cyui::trLabel("Open after...").c_str(), "Ctrl+Shift+O"))
@@ -956,14 +1139,19 @@ class Shell {
                     if (ImGui::MenuItem(cyui::trLabel("Choose project").c_str()))
                         action = Action::project;
                 }
+                if (ImGui::MenuItem(cyui::trLabel("New document").c_str(), "Ctrl+N", false,
+                                    session_.documents().size() < session_.maximum()))
+                    action = Action::new_document;
+                if (ImGui::MenuItem(cyui::trLabel("Close document").c_str(), "Ctrl+W"))
+                    action = Action::close_document;
                 if (ImGui::MenuItem(cyui::trLabel("Open container...").c_str()))
                     action = Action::open_container;
                 if (ImGui::MenuItem(cyui::trLabel("Browse content...").c_str(), "Ctrl+B", false,
-                                    settings_.browse_ready()))
+                                    current().settings.browse_ready()))
                     action = Action::browse;
 #ifdef CYUEDIFF_HAS_GIT
                 if (ImGui::MenuItem(cyui::trLabel("Browse history...").c_str(), nullptr, false,
-                                    settings_.source == 1 && !settings_.repository.empty()))
+                                    current().settings.source == 1 && !current().settings.repository.empty()))
                     action = Action::history;
 #endif
                 ImGui::Separator();
@@ -993,7 +1181,7 @@ class Shell {
             ImGui::SameLine();
             cyui::toolbarSeparator();
             {
-                cyui::ScopedDisabled local_only(settings_.source != 0);
+                cyui::ScopedDisabled local_only(current().settings.source != 0);
                 if (cyui::iconButton(cyui::icon::folder, cyui::tr("Open before (Ctrl+O)").c_str()))
                     action = Action::open_before;
                 ImGui::SameLine();
@@ -1005,7 +1193,7 @@ class Shell {
                 action = Action::load;
             ImGui::SameLine();
             {
-                cyui::ScopedDisabled disabled(!settings_.browse_ready());
+                cyui::ScopedDisabled disabled(!current().settings.browse_ready());
                 if (cyui::iconButton(cyui::icon::library, cyui::tr("Browse content (Ctrl+B)").c_str()))
                     action = Action::browse;
             }
@@ -1023,58 +1211,62 @@ class Shell {
         }
         cyui::endStatusBar();
         if (cyui::beginSidebar("##inputs", 310)) {
+            const auto key = std::to_string(session_.active_id());
+            cyui::ScopedID document_scope(key.c_str());
             if (!preferences_diagnostic_.empty()) {
                 cyui::callout(cyui::Tone::warning, cyui::tr("Preferences could not be loaded.").c_str());
                 ImGui::TextWrapped("%s", preferences_diagnostic_.c_str());
             }
-            cyui::heading(cyui::tr(settings_.source == 2 ? "Containers" : "Compare packages").c_str(), 3);
+            cyui::heading(
+                cyui::tr(current().settings.source == 2 ? "Containers" : "Compare packages").c_str(), 3);
             const auto local_label = cyui::tr("Local files"), container_label = cyui::tr("Containers");
 #ifdef CYUEDIFF_HAS_GIT
             const auto git_label = cyui::tr("Git revisions");
             const char *sources[] = {local_label.c_str(), git_label.c_str(), container_label.c_str()};
-            cyui::segmented("##source", sources, 3, &settings_.source, cyui::dp(-1));
+            cyui::segmented("##source", sources, 3, &current().settings.source, cyui::dp(-1));
 #else
             const char *sources[] = {local_label.c_str(), container_label.c_str()};
-            int mode = settings_.source == 2 ? 1 : 0;
+            int mode = current().settings.source == 2 ? 1 : 0;
             if (cyui::segmented("##source", sources, 2, &mode, cyui::dp(-1)))
-                settings_.source = mode ? 2 : 0;
+                current().settings.source = mode ? 2 : 0;
 #endif
-            if (settings_.source == 2) {
+            if (current().settings.source == 2) {
                 if (cyui::button(cyui::trLabel("Open container...").c_str()))
                     action = Action::open_container;
                 if (cyui::beginProperties("##container-input", 95)) {
                     cyui::property(cyui::tr("Container file").c_str());
-                    field("##container-file", settings_.container_path);
+                    field("##container-file", current().settings.container_path);
                     cyui::property(cyui::tr("Cooked profile").c_str());
                     const auto bytes = cyui::tr("Byte inspection");
                     const char *profiles[] = {bytes.c_str(), "UE 5.3", "UE 5.5"};
-                    ImGui::Combo("##cooked-profile", &settings_.cooked_profile, profiles, 3);
+                    ImGui::Combo("##cooked-profile", &current().settings.cooked_profile, profiles, 3);
                     cyui::property(cyui::tr("Global script TOC").c_str());
-                    field("##script-toc", settings_.script_objects);
+                    field("##script-toc", current().settings.script_objects);
                     cyui::property(cyui::tr("After container").c_str());
-                    field("##after-container-file", settings_.after_container_path);
+                    field("##after-container-file", current().settings.after_container_path);
                     cyui::property(cyui::tr("After cooked profile").c_str());
-                    ImGui::Combo("##after-cooked-profile", &settings_.after_cooked_profile, profiles, 3);
+                    ImGui::Combo("##after-cooked-profile", &current().settings.after_cooked_profile, profiles,
+                                 3);
                     cyui::property(cyui::tr("After global script TOC").c_str());
-                    field("##after-script-toc", settings_.after_script_objects);
+                    field("##after-script-toc", current().settings.after_script_objects);
                     cyui::property(cyui::tr("Codec module").c_str());
-                    field("##container-codec", settings_.codec);
+                    field("##container-codec", current().settings.codec);
                     cyui::endProperties();
                 }
                 if (cyui::beginSection(cyui::trLabel("Schema contexts (optional)").c_str(),
-                                       !settings_.container_schema.empty() ||
-                                           !settings_.after_container_schema.empty())) {
+                                       !current().settings.container_schema.empty() ||
+                                           !current().settings.after_container_schema.empty())) {
                     if (cyui::beginProperties("##schema-input", 95)) {
                         cyui::property(cyui::tr("Before schema").c_str());
-                        field("##schema-before", settings_.container_schema);
+                        field("##schema-before", current().settings.container_schema);
                         cyui::property(cyui::tr("After schema").c_str());
-                        field("##schema-after", settings_.after_container_schema);
+                        field("##schema-after", current().settings.after_container_schema);
                         cyui::endProperties();
                     }
                     if (cyui::button(cyui::trLabel("Choose before schema...").c_str()))
                         action = Action::before_schema;
                     {
-                        cyui::ScopedDisabled unavailable(settings_.after_container_path.empty());
+                        cyui::ScopedDisabled unavailable(current().settings.after_container_path.empty());
                         if (cyui::button(cyui::trLabel("Choose after schema...").c_str()))
                             action = Action::after_schema;
                     }
@@ -1083,34 +1275,34 @@ class Shell {
                 ImGui::TextWrapped(
                     "%s", cyui::tr("Choose an explicit UE profile for Zen object inspection.").c_str());
                 {
-                    cyui::ScopedDisabled unavailable(settings_.after_container_path.empty());
+                    cyui::ScopedDisabled unavailable(current().settings.after_container_path.empty());
                     ImGui::Checkbox(cyui::trLabel("Compare all decoded members").c_str(),
-                                    &settings_.compare_container_payloads);
+                                    &current().settings.compare_container_payloads);
                 }
                 cyui::textDim("%s", cyui::tr("Up to 512 MiB total; 64 MiB per member.").c_str());
-                cyui::ScopedDisabled disabled(!settings_.ready());
-                if (cyui::primaryButton(cyui::trLabel(settings_.after_container_path.empty()
+                cyui::ScopedDisabled disabled(!current().settings.ready());
+                if (cyui::primaryButton(cyui::trLabel(current().settings.after_container_path.empty()
                                                           ? "Index container"
                                                           : "Index comparison")
                                             .c_str(),
                                         cyui::dp(-1, 0)))
                     action = Action::container_index;
             } else {
-                if (settings_.source == 1) {
+                if (current().settings.source == 1) {
 #ifdef CYUEDIFF_HAS_GIT
                     {
-                        cyui::ScopedDisabled disabled(settings_.repository.empty());
+                        cyui::ScopedDisabled disabled(current().settings.repository.empty());
                         if (cyui::button(cyui::trLabel("Browse history...").c_str()))
                             action = Action::history;
                     }
 #endif
                     if (cyui::beginProperties("##git", 76)) {
                         cyui::property(cyui::tr("Repository").c_str());
-                        field("##repository", settings_.repository);
+                        field("##repository", current().settings.repository);
                         cyui::property(cyui::tr("Before ref").c_str());
-                        field("##before-revision", settings_.before_revision);
+                        field("##before-revision", current().settings.before_revision);
                         cyui::property(cyui::tr("After ref").c_str());
-                        field("##after-revision", settings_.after_revision);
+                        field("##after-revision", current().settings.after_revision);
                         cyui::endProperties();
                     }
                     ImGui::TextWrapped(
@@ -1120,72 +1312,78 @@ class Shell {
                             .c_str());
                 }
                 if (cyui::beginProperties("##files", 76)) {
-                    cyui::property(cyui::tr(settings_.source == 1 ? "Before path" : "Before").c_str());
-                    field("##before", settings_.before);
-                    cyui::property(cyui::tr(settings_.source == 1 ? "After path" : "After").c_str());
-                    field("##after", settings_.after);
-                    if (settings_.source == 1 && settings_.after.empty())
+                    cyui::property(
+                        cyui::tr(current().settings.source == 1 ? "Before path" : "Before").c_str());
+                    field("##before", current().settings.before);
+                    cyui::property(cyui::tr(current().settings.source == 1 ? "After path" : "After").c_str());
+                    field("##after", current().settings.after);
+                    if (current().settings.source == 1 && current().settings.after.empty())
                         cyui::textFaint("%s", cyui::tr("Same path when empty").c_str());
                     cyui::endProperties();
                 }
                 cyui::space();
-                if (cyui::beginSection(cyui::trLabel(settings_.source == 1 ? "Historical project (optional)"
-                                                                           : "Project (optional)")
+                if (cyui::beginSection(cyui::trLabel(current().settings.source == 1
+                                                         ? "Historical project (optional)"
+                                                         : "Project (optional)")
                                            .c_str(),
                                        false)) {
                     if (cyui::beginProperties("##context", 66)) {
                         cyui::property(
-                            cyui::tr(settings_.source == 1 ? "Project path" : "Project file").c_str());
-                        field("##project", settings_.project);
+                            cyui::tr(current().settings.source == 1 ? "Project path" : "Project file")
+                                .c_str());
+                        field("##project", current().settings.project);
                         cyui::property(cyui::tr("Engine root").c_str());
-                        field("##engine", settings_.engine);
+                        field("##engine", current().settings.engine);
                         cyui::property(cyui::tr("After project").c_str());
-                        field("##after-project", settings_.after_project);
+                        field("##after-project", current().settings.after_project);
                         cyui::property(cyui::tr("After engine").c_str());
-                        field("##after-engine", settings_.after_engine);
+                        field("##after-engine", current().settings.after_engine);
                         cyui::endProperties();
                     }
                     cyui::textDim("%s", cyui::tr("Empty after context inherits the before context.").c_str());
-                    if (settings_.source == 1)
+                    if (current().settings.source == 1)
                         cyui::toggleSwitch(cyui::trLabel("Discover engine").c_str(),
-                                           &settings_.discover_engine);
-                    if (settings_.source == 0 && cyui::button(cyui::trLabel("Choose project").c_str()))
+                                           &current().settings.discover_engine);
+                    if (current().settings.source == 0 &&
+                        cyui::button(cyui::trLabel("Choose project").c_str()))
                         action = Action::project;
                     cyui::endSection();
                 }
-                if (settings_.source == 1 &&
+                if (current().settings.source == 1 &&
                     cyui::beginSection(cyui::trLabel("LFS cache (optional)").c_str(), false)) {
                     if (cyui::beginProperties("##lfs", 76)) {
                         cyui::property(cyui::tr("LFS objects").c_str());
-                        field("##lfs-objects", settings_.lfs_objects);
+                        field("##lfs-objects", current().settings.lfs_objects);
                         cyui::endProperties();
                     }
                     cyui::endSection();
                 }
                 {
-                    cyui::ScopedDisabled disabled(!settings_.browse_ready());
+                    cyui::ScopedDisabled disabled(!current().settings.browse_ready());
                     if (cyui::button(cyui::trLabel("Browse content...").c_str(), cyui::Variant::secondary,
                                      cyui::dp(-1, 0)))
                         action = Action::browse;
                 }
-                if (settings_.source == 0 && settings_.project.empty())
+                if (current().settings.source == 0 && current().settings.project.empty())
                     ImGui::TextWrapped("%s", cyui::tr("Choose a project to browse its content.").c_str());
-                cyui::toggleSwitch(cyui::trLabel("Load previews").c_str(), &settings_.previews);
+                cyui::toggleSwitch(cyui::trLabel("Load previews").c_str(), &current().settings.previews);
                 {
-                    cyui::ScopedDisabled disabled(!settings_.ready());
+                    cyui::ScopedDisabled disabled(!current().settings.ready());
                     if (cyui::primaryButton(cyui::trLabel("Load").c_str(), cyui::dp(-1, 0)))
                         action = Action::load;
                 }
                 {
-                    cyui::ScopedDisabled disabled(settings_.source == 0 ? settings_.after.empty()
-                                                                        : !settings_.ready());
+                    cyui::ScopedDisabled disabled(current().settings.source == 0
+                                                      ? current().settings.after.empty()
+                                                      : !current().settings.ready());
                     if (cyui::button(
-                            cyui::trLabel(settings_.source == 1 ? "Swap revisions" : "Swap files").c_str(),
+                            cyui::trLabel(current().settings.source == 1 ? "Swap revisions" : "Swap files")
+                                .c_str(),
                             cyui::Variant::secondary, cyui::dp(-1, 0)))
                         action = Action::swap;
                 }
             }
-            if (session_.busy()) {
+            if (session_.active_busy()) {
                 const auto progress = session_.progress();
                 float fraction =
                     progress.total ? float(double(progress.completed) / double(progress.total)) : 0.f;
@@ -1195,37 +1393,41 @@ class Shell {
                                  cyui::dp(-1, 0)))
                     action = Action::cancel_load;
             }
-            if (displayed_ && !displayed_->container) {
+            if (current().displayed && !current().displayed->container) {
                 cyui::divider();
-                const auto &present = displayed_->before ? displayed_->before : displayed_->after;
+                const auto &present =
+                    current().displayed->before ? current().displayed->before : current().displayed->after;
                 cyui::textDim(cyui::tr("%zu exported objects").c_str(), present->exports.size());
 #ifdef CYUEDIFF_HAS_GIT
-                if (displayed_->git) {
-                    for (const auto *revision : {&displayed_->git->before, &displayed_->git->after}) {
+                if (current().displayed->git) {
+                    for (const auto *revision :
+                         {&current().displayed->git->before, &current().displayed->git->after}) {
                         cyui::textMono(
                             "%s: %.12s",
-                            cyui::tr(revision == &displayed_->git->before ? "Before" : "After").c_str(),
+                            cyui::tr(revision == &current().displayed->git->before ? "Before" : "After")
+                                .c_str(),
                             revision->commit.c_str());
                         cyui::tooltip(revision->commit.c_str());
                     }
-                    if (!context_details_.empty() &&
+                    if (!current().context_details.empty() &&
                         cyui::beginSection(cyui::trLabel("Project context changes").c_str(), false)) {
-                        ImGui::TextWrapped("%s", context_details_.c_str());
+                        ImGui::TextWrapped("%s", current().context_details.c_str());
                         cyui::endSection();
                     }
                 }
 #endif
                 if (cyui::beginSection(cyui::trLabel("Diagnostics").c_str(), false)) {
-                    for (const auto *package : {displayed_->before.get(), displayed_->after.get()})
+                    for (const auto *package :
+                         {current().displayed->before.get(), current().displayed->after.get()})
                         if (package)
                             for (const auto &message : package->diagnostics)
                                 ImGui::TextWrapped("%s", message.c_str());
-                    if (displayed_->project)
-                        for (const auto &message : displayed_->project->diagnostics)
+                    if (current().displayed->project)
+                        for (const auto &message : current().displayed->project->diagnostics)
                             ImGui::TextWrapped("%s", message.c_str());
-                    for (const auto &message : displayed_->diagnostics)
+                    for (const auto &message : current().displayed->diagnostics)
                         ImGui::TextWrapped("%s", message.c_str());
-                    for (const auto &message : gpu_diagnostics_)
+                    for (const auto &message : current().gpu_diagnostics)
                         ImGui::TextWrapped("%s", message.c_str());
                     cyui::endSection();
                 }
@@ -1238,35 +1440,42 @@ class Shell {
         if (ImGui::Begin("##document", nullptr,
                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoSavedSettings)) {
+            tab_action_ = document_tabs_.draw();
+            if (tab_action_.operation != DocumentTabOperation::none)
+                action = Action::document_tab;
+            const auto key = std::to_string(session_.active_id());
+            cyui::ScopedID document_scope(key.c_str());
             auto message = error();
             if (!message.empty()) {
                 cyui::callout(cyui::Tone::error, message.c_str());
-                if (displayed_)
+                if (current().displayed)
                     cyui::textDim("%s", cyui::tr("The previous document remains displayed.").c_str());
             }
-            if (displayed_ && (!displayed_->diagnostics.empty() || !gpu_diagnostics_.empty()))
+            if (current().displayed &&
+                (!current().displayed->diagnostics.empty() || !current().gpu_diagnostics.empty()))
                 cyui::callout(cyui::Tone::warning, cyui::tr("Additional diagnostics are available.").c_str());
 #ifdef CYUEDIFF_HAS_GIT
-            if (displayed_ && displayed_->git && !displayed_->git->context_changes.empty()) {
+            if (current().displayed && current().displayed->git &&
+                !current().displayed->git->context_changes.empty()) {
                 cyui::textDim(cyui::tr("Context changes: %zu").c_str(),
-                              displayed_->git->context_changes.size());
+                              current().displayed->git->context_changes.size());
             }
 #endif
-            if (displayed_ && displayed_->container) {
-                const auto request = container_view_.draw(session_.busy());
+            if (current().displayed && current().displayed->container) {
+                const auto request = current().container_view.draw(session_.active_busy());
                 if (request == ContainerAction::inspect)
                     action = Action::container_inspect;
                 else if (request == ContainerAction::select_object)
                     action = Action::container_object;
-            } else if (displayed_)
-                view_.draw("##asset", false);
-            else if (settings_.source == 2)
+            } else if (current().displayed)
+                current().view.draw("##asset", false);
+            else if (current().settings.source == 2)
                 cyui::emptyState(cyui::tr("Containers").c_str(),
                                  cyui::tr("Choose a Pak or IoStore TOC, then index it.").c_str());
             else
                 cyui::emptyState(
                     cyui::tr("No package loaded").c_str(),
-                    cyui::tr(settings_.source == 1
+                    cyui::tr(current().settings.source == 1
                                  ? "Choose a repository, two revisions and an asset path, then load them."
                                  : "Choose a package on the left, then load it. Add a second package to "
                                    "compare versions.")
@@ -1283,9 +1492,9 @@ class Shell {
                     browser_open_ = false;
                     close_browser_ = false;
                 } else {
-                    if (settings_.source == 0)
+                    if (current().settings.source == 0)
                         cyui::toggleSwitch(cyui::trLabel("Include engine content").c_str(),
-                                           &settings_.include_engine);
+                                           &current().settings.include_engine);
                     if (cyui::button(cyui::trLabel("Refresh catalogue").c_str()))
                         action = Action::browse;
                     if (browser_.busy()) {
@@ -1333,8 +1542,8 @@ class Shell {
                     cyui::endProperties();
                 }
                 history_action_ =
-                    history_view_.draw(history_.busy(), history_.error(), settings_.before_revision,
-                                       settings_.after_revision, history_can_compare());
+                    history_view_.draw(history_.busy(), history_.error(), current().settings.before_revision,
+                                       current().settings.after_revision, history_can_compare());
                 if (auto_history_compare_) {
                     history_action_ = HistoryAction::compare;
                     auto_history_compare_ = false;
@@ -1359,9 +1568,13 @@ class Shell {
         if (!modal_open && !ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl) {
             if (ImGui::IsKeyPressed(ImGuiKey_O, false))
                 action = ImGui::GetIO().KeyShift ? Action::open_after : Action::open_before;
+            if (ImGui::IsKeyPressed(ImGuiKey_N, false))
+                action = Action::new_document;
+            if (ImGui::IsKeyPressed(ImGuiKey_W, false))
+                action = Action::close_document;
             if (ImGui::IsKeyPressed(ImGuiKey_R, false))
                 action = Action::load;
-            if (ImGui::IsKeyPressed(ImGuiKey_B, false) && settings_.browse_ready())
+            if (ImGui::IsKeyPressed(ImGuiKey_B, false) && current().settings.browse_ready())
                 action = Action::browse;
         }
         cyui::renderNotifications();
@@ -1371,7 +1584,25 @@ class Shell {
         try {
             if (action == Action::none)
                 return;
-            dialog_error_.clear();
+            if (action == Action::document_tab) {
+                if (tab_action_.operation == DocumentTabOperation::create)
+                    create_document();
+                else if (tab_action_.operation == DocumentTabOperation::select)
+                    select_document(tab_action_.id);
+                else if (tab_action_.operation == DocumentTabOperation::close)
+                    close_document(tab_action_.id);
+                return;
+            }
+            if (action == Action::new_document) {
+                create_document();
+                return;
+            }
+            if (action == Action::close_document) {
+                close_document(session_.active_id());
+                return;
+            }
+
+            current().dialog_error.clear();
 #ifdef CYUEDIFF_HAS_GIT
             if (action == Action::history) {
                 start_history();
@@ -1395,8 +1626,8 @@ class Shell {
                     if (!history_can_compare())
                         throw Error("history-selection", "Choose a before and an after commit");
                     history_.cancel();
-                    if (settings_.ready())
-                        session_.request(settings_.request());
+                    if (current().settings.ready())
+                        session_.request(current().settings.request());
                     else
                         start_browser();
                 } else if (event == HistoryAction::close)
@@ -1424,47 +1655,48 @@ class Shell {
                 auto path = window.choose_file(false, true);
                 if (!path)
                     return;
-                settings_.source = 2;
-                settings_.container_path = path->u8string();
-                settings_.container_entry.clear();
-                settings_.after_container_path.clear();
-                settings_.after_script_objects.clear();
-                settings_.container_schema.clear();
-                settings_.after_container_schema.clear();
-                settings_.after_cooked_profile = 0;
-                settings_.compare_container_payloads = false;
-                session_.request(settings_.request());
+                current().settings.source = 2;
+                current().settings.container_path = path->u8string();
+                current().settings.container_entry.clear();
+                current().settings.after_container_path.clear();
+                current().settings.after_script_objects.clear();
+                current().settings.container_schema.clear();
+                current().settings.after_container_schema.clear();
+                current().settings.after_cooked_profile = 0;
+                current().settings.compare_container_payloads = false;
+                session_.request(current().settings.request());
                 return;
             }
             if (action == Action::before_schema || action == Action::after_schema) {
                 auto path = window.choose_file(false, false, true);
                 if (path)
-                    (action == Action::before_schema ? settings_.container_schema
-                                                     : settings_.after_container_schema) = path->u8string();
+                    (action == Action::before_schema ? current().settings.container_schema
+                                                     : current().settings.after_container_schema) =
+                        path->u8string();
                 return;
             }
             if (action == Action::container_object) {
-                container_view_.apply_object_selection();
+                current().container_view.apply_object_selection();
                 return;
             }
             if (action == Action::container_index || action == Action::container_inspect ||
-                (action == Action::load && settings_.source == 2)) {
+                (action == Action::load && current().settings.source == 2)) {
                 if (action == Action::container_index)
-                    settings_.container_entry.clear();
+                    current().settings.container_entry.clear();
                 else if (action == Action::container_inspect) {
-                    const auto *selected = container_view_.selected_member();
-                    if (!selected || !displayed_ || !displayed_->container)
+                    const auto *selected = current().container_view.selected_member();
+                    if (!selected || !current().displayed || !current().displayed->container)
                         return;
-                    const auto &input = displayed_->container->source;
-                    settings_.source = 2;
-                    settings_.container_path = input.path.u8string();
-                    settings_.after_container_path = input.after_path.u8string();
-                    settings_.container_entry = container_view_.selected_key();
+                    const auto &input = current().displayed->container->source;
+                    current().settings.source = 2;
+                    current().settings.container_path = input.path.u8string();
+                    current().settings.after_container_path = input.after_path.u8string();
+                    current().settings.container_entry = current().container_view.selected_key();
                 }
-                session_.request(settings_.request());
+                session_.request(current().settings.request());
                 return;
             }
-            if (settings_.source != 0 &&
+            if (current().settings.source != 0 &&
                 (action == Action::open_before || action == Action::open_after || action == Action::project))
                 return;
             if (action == Action::open_before || action == Action::open_after || action == Action::project) {
@@ -1472,31 +1704,32 @@ class Shell {
                 if (!path)
                     return;
                 if (action == Action::project)
-                    settings_.project = path->u8string();
+                    current().settings.project = path->u8string();
                 else {
-                    (action == Action::open_after ? settings_.after : settings_.before) = path->u8string();
+                    (action == Action::open_after ? current().settings.after : current().settings.before) =
+                        path->u8string();
                 }
             } else if (action == Action::swap) {
                 // Materialize inherited values before swapping so both contexts follow their files.
-                if (!settings_.after_project.empty() || !settings_.after_engine.empty()) {
-                    if (settings_.after_project.empty())
-                        settings_.after_project = settings_.project;
-                    if (settings_.after_engine.empty())
-                        settings_.after_engine = settings_.engine;
-                    std::swap(settings_.project, settings_.after_project);
-                    std::swap(settings_.engine, settings_.after_engine);
+                if (!current().settings.after_project.empty() || !current().settings.after_engine.empty()) {
+                    if (current().settings.after_project.empty())
+                        current().settings.after_project = current().settings.project;
+                    if (current().settings.after_engine.empty())
+                        current().settings.after_engine = current().settings.engine;
+                    std::swap(current().settings.project, current().settings.after_project);
+                    std::swap(current().settings.engine, current().settings.after_engine);
                 }
-                if (settings_.source == 1) {
-                    std::swap(settings_.before_revision, settings_.after_revision);
-                    if (!settings_.after.empty())
-                        std::swap(settings_.before, settings_.after);
+                if (current().settings.source == 1) {
+                    std::swap(current().settings.before_revision, current().settings.after_revision);
+                    if (!current().settings.after.empty())
+                        std::swap(current().settings.before, current().settings.after);
                 } else
-                    std::swap(settings_.before, settings_.after);
+                    std::swap(current().settings.before, current().settings.after);
             }
-            if (action != Action::project && !settings_.before.empty())
-                session_.request(settings_.request());
+            if (action != Action::project && !current().settings.before.empty())
+                session_.request(current().settings.request());
         } catch (const std::exception &e) {
-            dialog_error_ = e.what();
+            current().dialog_error = e.what();
         }
     }
 };
@@ -1518,6 +1751,7 @@ int run(Options options) {
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
+               "  [--new-document SOURCE_OPTIONS ...] [--document-index 0..7]\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
                "  [--container-tab members|inspection|objects|comparison|schema]\n"
@@ -1579,8 +1813,7 @@ int run(Options options) {
         if (!options.preference_write)
             return;
         try {
-            protect_outputs(options, shell.session().document(), shell.browser_document(),
-                            shell.history_storage());
+            shell.protect(options);
             desktop::save_preferences(options.preferences, shell.preferences());
             preferences_saved = true;
         } catch (const std::exception &error) {
@@ -1613,13 +1846,12 @@ int run(Options options) {
             throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");
         if (finished) {
             persist();
-            protect_outputs(options, shell.session().document(), shell.browser_document(),
-                            shell.history_storage());
+            shell.protect(options);
             if (!options.capture.empty())
                 write_png(options.capture, renderer.capture());
             Json report = {{"schema", "cyuediff.desktop/1"},
-                           {"status", shell.error().empty() ? "ready" : "failed"},
-                           {"error", shell.error()},
+                           {"status", shell.result_error().empty() ? "ready" : "failed"},
+                           {"error", shell.result_error()},
                            {"frames", frames},
                            {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
                            {"renderer", "Direct3D11 WARP"},
@@ -1635,6 +1867,7 @@ int run(Options options) {
                            {"uploadedPreviews", shell.images()},
                            {"browser", shell.browser_report()},
                            {"history", shell.history_report()},
+                           {"workspace", shell.workspace_report()},
                            {"containerView", shell.container_view_report()},
                            {"document", shell.session().document() ? shell.session().document()->report()
                                                                    : Json(nullptr)}};
@@ -1644,7 +1877,7 @@ int run(Options options) {
                 if (!file)
                     throw Error("desktop-output", "Cannot write report");
             }
-            return shell.error().empty() ? 0 : 2;
+            return shell.result_error().empty() ? 0 : 2;
         }
         renderer.present(!options.smoke);
         shell.perform(action, window);

@@ -1,4 +1,5 @@
 #include "../apps/desktop/workspace.hpp"
+#include "package_fixture.hpp"
 #include <future>
 #include <iostream>
 using namespace cyuediff;
@@ -35,7 +36,14 @@ std::shared_ptr<const Document> result(const LoadRequest &request) {
     return document;
 }
 } // namespace
-int main() {
+int main(int argc, char **argv) {
+    if (argc == 3 && std::string(argv[1]) == "--write-fixtures") {
+        const auto root = fs::u8path(argv[2]);
+        fs::create_directories(root);
+        cyuediff::test::save(root, "Before", cyuediff::test::fixture(1012, 1));
+        cyuediff::test::save(root, "After", cyuediff::test::fixture(1012, 2));
+        return 0;
+    }
     try {
         rejects([] { DocumentWorkspace invalid(load_document, 0); }, "document-limit");
         rejects([] { DocumentWorkspace invalid(load_document, 33); }, "document-limit");

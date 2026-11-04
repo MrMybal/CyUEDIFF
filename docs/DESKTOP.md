@@ -180,3 +180,16 @@ Mapped UI coverage currently uses synthetic fixtures. The supplied CyTrace build
 The desktop model now exposes `DocumentWorkspace`: stable document IDs, independent retained snapshots/errors and a single `DocumentSession` worker. At most one pending request is kept per document. A newer request replaces queued work for that ID; different documents queue in order. Selecting a tab does not load files, and failures retain only that document's previous snapshot. All requests share the existing bounded worker package cache unless a host explicitly supplies another cache.
 
 The default maximum is eight open documents, configurable from one to 32 by an embedding host. This bounds document count and queue size, not aggregate decoded/GPU memory. Cancelling or closing a running document invalidates its publication and advances the queue after cooperative cancellation. Closing queued work drops it before decoding. Completed snapshots transfer out of the worker so it does not keep a closed document alive. Saved requests retain context data without callback/cache closures.
+
+## Native document tabs — 0.33
+
+**New document** (`Ctrl+N` or the tab bar's `+`) creates an independent context. Load a loose comparison, a local Git comparison or a Pak/IoStore view in each tab. **Close document** (`Ctrl+W` or the tab close button) releases that tab's views/resources and cancels its work. Closing the last tab leaves an empty document. The default limit is eight tabs.
+
+Switching tabs preserves their input settings, selected objects, filters, canvas/inspector state and uploaded previews. View objects keep stable addresses, and each document has its own ImGui identity scope. Views and GPU previews initialize on first display outside drawing; selecting a loaded tab does not decode its files again. Reload explicitly reads current sources. Cancelling one tab leaves other documents' queued requests intact. Content-browser/history navigation closes when switching documents so it cannot apply a selection to another context.
+
+The launch syntax groups source options with `--new-document`. Appearance, report/capture, preference and automatic browser/history options belong to the first group. `--document-index 0..7` chooses the initially visible group; otherwise the last opens as active. Smoke mode waits for all queued documents and reports background failures as failures. Reports retain the active `document` and add `workspace.documents` with per-tab results/statuses. Input protection covers initial and open document contexts, including inactive containers, companions, mappings and global partitions.
+
+```powershell
+cyuediff_desktop.exe --before Before.uasset --after After.uasset --new-document --container Build.pak
+cyuediff_desktop.exe --document-index 0 --container Before.utoc --new-document --container After.utoc
+```

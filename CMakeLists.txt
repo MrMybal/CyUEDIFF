@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.32.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.33.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -97,7 +97,7 @@ if(CYUEDIFF_BUILD_DESKTOP)
         target_link_libraries(cyuediff_desktop_model PUBLIC CyUEDiff::Git)
         target_compile_definitions(cyuediff_desktop_model PUBLIC CYUEDIFF_HAS_GIT=1)
     endif()
-    add_executable(cyuediff_desktop WIN32 apps/desktop/main.cpp apps/desktop/platform_win32.cpp apps/desktop/container_view.cpp
+    add_executable(cyuediff_desktop WIN32 apps/desktop/main.cpp apps/desktop/platform_win32.cpp apps/desktop/container_view.cpp apps/desktop/document_tabs.cpp
         "${CYUEDIFF_IMGUI_BACKENDS_DIR}/imgui_impl_win32.cpp"
         "${CYUEDIFF_IMGUI_BACKENDS_DIR}/imgui_impl_dx11.cpp")
     if(CYUEDIFF_BUILD_GIT)
@@ -214,6 +214,16 @@ if(BUILD_TESTING)
         add_executable(cyuediff_container_view_tests tests/container_view_tests.cpp apps/desktop/container_view.cpp)
         target_link_libraries(cyuediff_container_view_tests PRIVATE cyuediff_desktop_model CyUEDiff::UI)
         add_test(NAME desktop_container_view COMMAND cyuediff_container_view_tests)
+        add_executable(cyuediff_document_tabs_tests tests/document_tabs_tests.cpp apps/desktop/document_tabs.cpp)
+        target_link_libraries(cyuediff_document_tabs_tests PRIVATE cyuediff_desktop_model CyUEDiff::UI)
+        add_test(NAME desktop_document_tabs COMMAND cyuediff_document_tabs_tests)
+        if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_workspace_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/workspace_desktop_cli_tests.py"
+                "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_workspace_tests>"
+                "$<TARGET_FILE:cyuediff_container_tests>" "$<TARGET_FILE:cyuediff_schema_tests>")
+            set_tests_properties(desktop_workspace_cli PROPERTIES TIMEOUT 90)
+        endif()
         add_executable(cyuediff_workspace_tests tests/workspace_tests.cpp)
         target_link_libraries(cyuediff_workspace_tests PRIVATE cyuediff_desktop_model)
         add_test(NAME desktop_workspace COMMAND cyuediff_workspace_tests)
