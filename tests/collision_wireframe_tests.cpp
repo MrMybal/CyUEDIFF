@@ -114,6 +114,31 @@ int main() {
         zeroagg["SphereElems"]["value"][0]["Radius"]["value"] = 0.;
         auto zero_wire = collision_wireframe(zero);
         check(zero_wire.shapes[2].bounds.valid, "Zero dimension remains an explicit degenerate projection");
+        const auto analytic = collision_wireframe(collision_extended_fixture());
+        for (const auto &shape : analytic.shapes) {
+            if (shape.kind == "sphere")
+                check(shape.bounds.low == CollisionPoint{-4, -3, -2} &&
+                          shape.bounds.high == CollisionPoint{6, 7, 8},
+                      "Analytic sphere bounds");
+            if (shape.kind == "capsule")
+                check(near(shape.bounds.low[2], -7) && near(shape.bounds.high[2], 13),
+                      "Capsule segment length excludes caps");
+            if (shape.kind == "tapered-capsule")
+                check(near(shape.bounds.low[2], -6) && near(shape.bounds.high[2], 10),
+                      "Tapered radius0 is the positive Z end");
+        }
+        options = {};
+        options.max_edges = analytic.edge_count();
+        check(collision_wireframe(collision_extended_fixture(), options).edge_count() == options.max_edges,
+              "Exact edge budget is inclusive");
+        --options.max_edges;
+        bool exact_limit = false;
+        try {
+            collision_wireframe(collision_extended_fixture(), options);
+        } catch (const Error &e) {
+            exact_limit = e.code == "collision-preview-limit";
+        }
+        check(exact_limit, "One edge below required budget fails atomically");
         check(collision_wireframe(Package{}).to_json()["bounds"].is_null(), "Empty preview has no bounds");
         check(collision_fixture().to_json() == original, "Geometry preparation is read-only");
         std::cout << checks << " collision wireframe checks passed\n";

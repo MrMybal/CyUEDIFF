@@ -40,9 +40,19 @@ void CollisionView::set_packages(const Package *before, const Package *after, bo
     complete_ = (!before || before_.at("complete").get<bool>()) &&
                 (!after || after_.at("complete").get<bool>()) &&
                 (comparing_ ? before && after : before || after);
-    viewport_.set_models(before ? collision_wireframe(*before) : CollisionWireframe{},
-                         after ? collision_wireframe(*after) : CollisionWireframe{}, &before_, &after_,
-                         comparing_);
+    preview_errors_.clear();
+    auto preview = [&](const Package *package, const char *side) {
+        try {
+            return package ? collision_wireframe(*package) : CollisionWireframe{};
+        } catch (const Error &error) {
+            if (error.code == "cancelled")
+                throw;
+            preview_errors_.push_back(std::string(side) + ": " + error.what());
+            return CollisionWireframe{};
+        }
+    };
+    auto before_preview = preview(before, "Before"), after_preview = preview(after, "After");
+    viewport_.set_models(std::move(before_preview), std::move(after_preview), &before_, &after_, comparing_);
     std::set<std::string> keys;
     for (const auto *model : {&before_, &after_})
         if (!model->is_null())
@@ -137,6 +147,13 @@ void CollisionView::draw(const char *id) {
         return;
     }
     cyui::textDim("%s", cyui::tr("Stored collision properties; physics data is not evaluated.").c_str());
+    if (!preview_errors_.empty()) {
+        cyui::callout(
+            cyui::Tone::warning,
+            cyui::tr("Collision preview unavailable; stored properties remain inspectable.").c_str());
+        for (const auto &error : preview_errors_)
+            cyui::textDim("%s", error.c_str());
+    }
     if (!complete_)
         cyui::callout(
             cyui::Tone::warning,

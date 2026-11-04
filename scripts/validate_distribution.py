@@ -320,6 +320,8 @@ if args.consumer:
  result=subprocess.run([str(collision_executable)],capture_output=True,check=True,env=env,timeout=20)
  collision_data=json.loads(result.stdout)
  if not collision_data['snapshot']['complete'] or collision_data['comparison']['status']!='changed' or collision_data['comparison']['changes'][0]['path']!='/bodies/Body/shapes/sphere:name:Ball/geometry/radius':raise RuntimeError('Installed collision SDK projection/diff failed')
+ wireframe=collision_data['wireframe']
+ if wireframe['space']!='body-local' or len(wireframe['shapes'])!=1 or not wireframe['shapes'][0]['ready'] or len(wireframe['shapes'][0]['lines'])!=96:raise RuntimeError('Installed collision wireframe API failed')
  print('Installed independent collision Core consumer validated')
 
  if (prefix/'include/cyuediff/git.hpp').is_file():

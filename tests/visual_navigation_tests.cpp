@@ -169,15 +169,35 @@ int main(int argc, char **argv) {
             check(collision.next_changed_shape(), "Native collision fixture has a changed shape");
             collision.restore_view_state(
                 {{"properties", {{"filter", "radius"}, {"selected", "/geometry/radius"}}}});
+            auto all_before = cyuediff::test::collision_extended_fixture();
+            auto &all_agg = all_before.exports[0].properties["AggGeom"]["value"];
+            all_agg["BoxElems"]["value"][0]["Center"]["value"] = {-40., 0., 0.};
+            all_agg["SphylElems"]["value"][0]["Center"]["value"] = {0., -25., 0.};
+            all_agg["SphereElems"]["value"][0]["Center"]["value"] = {25., 0., 0.};
+            all_agg["SphereElems"]["value"][1]["Center"]["value"] = {40., 0., 0.};
+            all_agg["TaperedCapsuleElems"]["value"][0]["Center"]["value"] = {0., 25., 0.};
+            all_agg["ConvexElems"]["value"][0]["Transform"]["value"]["scale"] = {10., 10., 10.};
+            auto all_after = all_before;
+            all_after.exports[0]
+                .properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Radius"]["value"] = 7.;
+            all_after.exports[0].properties["AggGeom"]["value"]["BoxElems"]["value"][0]["Rotation"]["value"] =
+                {20., 35., 45.};
+            CollisionView collision_all, collision_incomplete;
+            collision_all.set_packages(&all_before, &all_after);
+            auto incomplete_package = all_after;
+            incomplete_package.exports[0].properties["AggGeom"]["value"]["ConvexElems"]["value"][0].erase(
+                "Transform");
+            collision_incomplete.set_packages(&incomplete_package);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 9; ++scene) {
-                        const char *names[] = {"blueprint", "material",         "parameters",
-                                               "mesh",      "texture",          "no-nodes",
-                                               "no-edges",  "narrow-blueprint", "collisions"};
+                    for (int scene = 0; scene < 12; ++scene) {
+                        const char *names[] = {"blueprint",     "material",         "parameters",
+                                               "mesh",          "texture",          "no-nodes",
+                                               "no-edges",      "narrow-blueprint", "collisions",
+                                               "collision-all", "collision-narrow", "collision-incomplete"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -186,8 +206,8 @@ int main(int argc, char **argv) {
                             }
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
-                            ImGui::SetNextWindowSize(scene == 7 ? ImVec2{640, io.DisplaySize.y}
-                                                                : io.DisplaySize);
+                            ImGui::SetNextWindowSize(
+                                (scene == 7 || scene == 10) ? ImVec2{640, io.DisplaySize.y} : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
@@ -218,6 +238,13 @@ int main(int argc, char **argv) {
                                 break;
                             case 8:
                                 collision.draw();
+                                break;
+                            case 9:
+                            case 10:
+                                collision_all.draw();
+                                break;
+                            case 11:
+                                collision_incomplete.draw();
                                 break;
                             }
                             ImGui::End();

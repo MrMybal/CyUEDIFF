@@ -1,4 +1,5 @@
 #include <cyuediff/collision.hpp>
+#include <cyuediff/collision_wireframe.hpp>
 #include <iostream>
 int main(int argc, char **argv) {
     try {
@@ -24,6 +25,7 @@ int main(int argc, char **argv) {
                 2.;
         }
         std::cout << cyuediff::Json{{"snapshot", before.collision_snapshot()},
+                                    {"wireframe", cyuediff::collision_wireframe(before).to_json()},
                                     {"comparison", cyuediff::compare_collisions(before, after).to_json()}}
                          .dump(2)
                   << '\n';

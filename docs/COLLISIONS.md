@@ -28,6 +28,7 @@ The separate CollisionView and desktop Collisions tab inspect body/shape unions,
 
     cyuediff collision Content/SM_Example.uasset --out collision.json
     cyuediff collision-diff before/SM_Example.uasset after/SM_Example.uasset
+    cyuediff collision-preview Content/SM_Example.uasset --out collision-lines.json
 
 The desktop --view collisions and Collisions tab inspect the union of bodies and shapes. All bodies and references includes owner associations; selecting a shape isolates its typed geometry/settings/extra data. The property filter and selected value preview remain in explicit workspace files. Unknown body/shape identities clear rather than selecting another shape.
 
@@ -54,3 +55,15 @@ The Collisions tab now draws prepared body-local wireframes beside the typed pro
 ## Collision picking and persistent orbit cameras - 0.81
 
 Clicking a visible wire within six themed pixels selects its stored shape and synchronizes the typed inspector. Alt-orbit does not select a shape, and split panes apply navigation deltas only once. Perspective/front/right/top presets, changed-only filtering, target/up/orientation/distance survive explicit workspace files. Nested camera values are validated before any state mutation. Actual ImGui mouse-event tests exercise picking in the after pane and a single ten-pixel orbit delta; desktop save/reopen tests retain camera and property selection.
+
+## Reusable preview exports and failure isolation - 0.82
+
+The collision-preview CLI command exports cyuediff.collision-wireframe/1 body-local line segments, per-shape availability/diagnostics, aggregate bounds and stored-projection completeness. Existing project contexts and input/companion output protections apply. The installed Core consumer compiles the wireframe API without CyUI/Unreal/Git. Desktop preview errors preserve the property inspector, and cancellation remains explicit. The corpus validator can additionally report ready/unavailable previews without altering sources. A ready preview certifies sampled stored geometry only; it does not certify cooked physics, default reconstruction or skeletal placement.
+
+## Wireframe API and limits
+
+Include cyuediff/collision_wireframe.hpp and call collision_wireframe(package, options). CollisionWireframe owns its shapes, body/shape identities, double-precision line endpoints and aggregate bounds. Each shape also exposes bounds through the C++ API. The JSON schema is cyuediff.collision-wireframe/1, space is body-local, and sourceComplete retains the stored-projection completeness independently of each shape's ready flag. Inspection/export exits zero even when geometry is unavailable; diagnostics and ready remain explicit. Error/invalid arguments exit two.
+
+Sampling defaults to 32 segments per circle, accepts multiples of four from 8 through 256 and has a 100,000-edge package budget. CollisionOptions still bounds source shapes/vertices/indices/copied data and provides cancellation/progress. Budget exhaustion and nonfinite derived coordinates throw rather than silently truncating a shape. The desktop isolates these preview errors per side and retains typed collision properties. It does not catch cancellation as an unavailable preview.
+
+Convex vertices apply scale, quaternion rotation and translation. Signed/zero scale is retained. Accepted quaternion unit-length roundoff is normalized only for display; original stored values still participate in semantic diffs. Stored triangle edges are deduplicated, including triangulation diagonals. No hull, bone transform, constructor value or external body is inferred. Curved wireframes are sampled display geometry, and picking measures screen-space distance to visible lines rather than intersections with solid physics surfaces. The desktop bounds orbit framing to the supported workspace camera range.

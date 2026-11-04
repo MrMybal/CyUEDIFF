@@ -1,5 +1,6 @@
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
+#include <cyuediff/collision_wireframe.hpp>
 #include <cyuediff/catalog.hpp>
 #include <cyuediff/hdr.hpp>
 #include <cyuediff/container.hpp>
@@ -34,6 +35,7 @@ int run(const std::vector<std::string> &args) {
                "MODULE.dll]\n"
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff collision ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff collision-preview ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff material ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff material-diff BEFORE AFTER [--out FILE]\n"
@@ -571,9 +573,10 @@ int run(const std::vector<std::string> &args) {
         throw Error("git-unavailable", "Configure CYUEDIFF_BUILD_GIT=ON to enable Git commands");
 #endif
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
-               command == "mesh" || command == "material" || command == "collision") {
+               command == "mesh" || command == "material" || command == "collision" ||
+               command == "collision-preview") {
         if ((command == "graph" || command == "texture" || command == "mesh" || command == "material" ||
-             command == "collision") &&
+             command == "collision" || command == "collision-preview") &&
             flags.contains("--metadata"))
             throw Error("arguments", "Graph/texture inspection requires properties");
         if (flags.contains("--metadata"))
@@ -587,6 +590,8 @@ int run(const std::vector<std::string> &args) {
             output = package.mesh_snapshot();
         else if (command == "material")
             output = package.material_snapshot();
+        else if (command == "collision-preview")
+            output = collision_wireframe(package).to_json();
         else if (command == "collision")
             output = package.collision_snapshot();
         else
@@ -835,7 +840,5 @@ int wmain(int argc, wchar_t **argv) {
     return checked_run(args);
 }
 #else
-int main(int argc, char **argv) {
-    return checked_run({argv + 1, argv + argc});
-}
+int main(int argc, char **argv) { return checked_run({argv + 1, argv + argc}); }
 #endif

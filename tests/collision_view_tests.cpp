@@ -90,7 +90,14 @@ int main() {
         asset.select_tab(AssetTab::collisions);
         check(asset.active_tab() == AssetTab::collisions && asset.view_state()["collisions"] == saved,
               "Asset host retains the collision tab state");
-        CollisionView missing, added, incomplete;
+        CollisionView missing, added, incomplete, failed_preview;
+        auto huge = collision_fixture();
+        auto &huge_sphere = huge.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0];
+        huge_sphere["Center"]["value"] = {1e308, 1e308, 1e308};
+        huge_sphere["Radius"]["value"] = 1e308;
+        failed_preview.set_packages(&huge);
+        check(!failed_preview.empty() && failed_preview.select_shape("sphere:name:Ball"),
+              "Preview coordinate overflow retains stored collision inspection");
         missing.set_packages(nullptr);
         added.set_packages(nullptr, &after, true);
         auto partial = before;
@@ -131,7 +138,7 @@ int main() {
             int w, h;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
             for (const auto *locale : {"en", "fr"})
-                for (int scene = 0; scene < 7; ++scene)
+                for (int scene = 0; scene < 8; ++scene)
                     for (int n = 0; n < 2; ++n) {
                         cyui::setLocale(locale);
                         ImGui::NewFrame();
@@ -152,6 +159,8 @@ int main() {
                             viewport.draw();
                         if (scene == 6)
                             added_viewport.draw();
+                        if (scene == 7)
+                            failed_preview.draw();
                         ImGui::End();
                         ImGui::Render();
                         check(ImGui::GetDrawData()->TotalVtxCount > 0,

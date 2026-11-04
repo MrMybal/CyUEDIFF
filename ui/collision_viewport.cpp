@@ -80,11 +80,12 @@ void CollisionViewport::fit(float aspect) {
         CollisionPoint diagonal{};
         for (unsigned i = 0; i < 3; ++i)
             diagonal[i] = box.high[i] - box.low[i];
-        camera_.camera.target = {(box.low[0] + box.high[0]) * .5, (box.low[1] + box.high[1]) * .5,
-                                 (box.low[2] + box.high[2]) * .5};
+        camera_.camera.target = {std::clamp(box.low[0] * .5 + box.high[0] * .5, -1e12, 1e12),
+                                 std::clamp(box.low[1] * .5 + box.high[1] * .5, -1e12, 1e12),
+                                 std::clamp(box.low[2] * .5 + box.high[2] * .5, -1e12, 1e12)};
         const double radius =
             std::max(1e-5, std::hypot(std::hypot(diagonal[0], diagonal[1]), diagonal[2]) * .5);
-        camera_.camera.distance = radius * 3 / std::max(.1f, std::min(1.f, aspect));
+        camera_.camera.distance = std::clamp(radius * 3 / std::max(.1f, std::min(1.f, aspect)), 1e-5, 1e12);
     }
     fit_pending_ = fit_changes_ = false;
 }
@@ -265,20 +266,31 @@ void CollisionViewport::draw(const char *id) {
         cyui::textDim("%s", cyui::tr("Select a body to preview its local geometry.").c_str());
         return;
     }
-    cyui::textDim("%s", cyui::tr("Body-local preview; bone and component placement is unavailable.").c_str());
+    ImGui::TextWrapped("%s",
+                       cyui::tr("Body-local preview; bone and component placement is unavailable.").c_str());
+    auto inline_next = [&](float width) {
+        const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+        if (right - ImGui::GetItemRectMax().x > width + ImGui::GetStyle().ItemSpacing.x)
+            ImGui::SameLine();
+    };
+    auto button_width = [&](const char *label) {
+        return ImGui::CalcTextSize(cyui::tr(label).c_str()).x + ImGui::GetStyle().FramePadding.x * 2;
+    };
     if (comparing_) {
         detail::change_legend(changes());
         ImGui::Checkbox(cyui::trLabel("Changed shapes only").c_str(), &changed_only_);
-        ImGui::SameLine();
+        inline_next(button_width("Fit changed geometry"));
         if (cyui::button(cyui::trLabel("Fit changed geometry").c_str()))
             focus_changes();
-        ImGui::SameLine();
+        inline_next(button_width("Fit collision geometry"));
     }
     if (cyui::button(cyui::trLabel("Fit collision geometry").c_str())) {
         fit_pending_ = true;
         fit_changes_ = false;
     }
-    ImGui::SameLine();
+    inline_next(cyui::dp(150) + button_width("Camera view"));
+    ImGui::SetNextItemWidth(std::min(cyui::dp(140), std::max(cyui::dp(60), ImGui::GetContentRegionAvail().x -
+                                                                               button_width("Camera view"))));
     if (ImGui::BeginCombo(cyui::trLabel("Camera view").c_str(), cyui::tr("Choose view").c_str())) {
         unsigned i = 0;
         for (const auto *label : {"Perspective", "Front", "Right", "Top"}) {
@@ -300,7 +312,8 @@ void CollisionViewport::draw(const char *id) {
     if (fit_pending_)
         fit(width / std::max(cyui::dp(1), size.y - ImGui::GetTextLineHeightWithSpacing()));
     const auto shown = camera_.camera;
-    pane(comparing_ ? "Before" : "Collision geometry", before_, {width, size.y}, 1, shown);
+    pane(comparing_ ? "Before" : "Collision geometry",
+         !comparing_ && before_.shapes.empty() ? after_ : before_, {width, size.y}, 1, shown);
     if (split) {
         ImGui::SameLine();
         pane("After", after_, {width, size.y}, 2, shown);

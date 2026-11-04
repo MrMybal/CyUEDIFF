@@ -1,4 +1,4 @@
-# Desktop application — 0.77
+# Desktop application — 0.82
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -266,3 +266,7 @@ See [visual review](VISUAL_REVIEW.md) for the complete node/instance/mesh/textur
 ## Stored collisions - 0.77
 
 The Collisions tab and --view collisions select stored bodies and shapes, navigate changes, inspect typed before/after values and save those selections/filters in explicit workspace files. See [collision contracts](COLLISIONS.md). Native physics blobs and absent struct defaults remain explicit.
+
+## Collision geometry review - 0.82
+
+The Collisions tab prepares stored body-local geometry outside the frame loop. Choose one body, then all its stored shapes or one exact shape identity. Before/after panes share scale and camera navigation. Click a wire to select its shape in the typed inspector; Alt-drag orbits, middle-drag pans and the wheel zooms. Changed-shapes filtering, fit-changes and camera presets aid review. Explicit workspace files retain the camera, shape and property selection. Bodies are not placed in a common skeleton/world space. Unavailable geometry and preview limits remain visible while stored properties stay inspectable.

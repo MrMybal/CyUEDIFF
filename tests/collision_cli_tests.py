@@ -20,6 +20,22 @@ with tempfile.TemporaryDirectory(prefix='collision-cli-') as folder:
   assert model['complete'] and len(model['bodies']['TestAsset']['shapes'])==6
   assert model['bodies']['TestAsset']['shapes']['sphere:name:Ball']['geometry']['radius']==5
   checks+=2
+  wire=run('collision-preview',a)
+  assert wire['schema']=='cyuediff.collision-wireframe/1' and wire['space']=='body-local'
+  assert wire['sourceComplete'] and len(wire['shapes'])==6 and all(s['ready'] for s in wire['shapes'])
+  hull=next(s for s in wire['shapes'] if s['kind']=='convex')
+  assert len(hull['lines'])==6
+  checks+=3
+  partial=run('collision-preview',d)
+  assert not partial['sourceComplete'] and sum(not s['ready'] for s in partial['shapes'])==1
+  checks+=1
+  run('collision-preview',a,'--metadata',code=2)
+  run('collision-preview',a,'--out',a,code=2)
+  run('collision-preview',a,'--out',a.with_suffix('.uexp'),code=2)
+  preview_target=root/('wireframe-'+version+'.json')
+  run('collision-preview',a,'--out',preview_target)
+  assert json.loads(preview_target.read_text(encoding='utf-8'))==wire
+  checks+=1
   changed=run('collision-diff',a,b,code=1)
   assert len(changed['changes'])==1 and changed['changes'][0]['path'].endswith('/geometry/radius')
   checks+=1

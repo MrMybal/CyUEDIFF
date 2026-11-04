@@ -8,6 +8,8 @@ void AssetView::register_translations() {
                {"Click a wire: inspect shape | Alt + drag: orbit | Middle drag: pan | Wheel: zoom",
                 "Clic sur une ar\u00eate : inspecter | Alt + glisser : orbite | Glisser central : "
                 "d\u00e9placer | Molette : zoom"},
+               {"Collision preview unavailable; stored properties remain inspectable.",
+                "Aper\u00e7u des collisions indisponible ; les propri\u00e9t\u00e9s restent consultables."},
                {"Collision geometry", "G\u00e9om\u00e9trie de collision"},
                {"Changed shapes only", "Formes modifi\u00e9es uniquement"},
                {"Fit collision geometry", "Cadrer les collisions"},
