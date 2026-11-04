@@ -5,6 +5,9 @@ void AssetView::register_translations() {
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Collisions", "Collisions"},
+               {"Click a wire: inspect shape | Alt + drag: orbit | Middle drag: pan | Wheel: zoom",
+                "Clic sur une ar\u00eate : inspecter | Alt + glisser : orbite | Glisser central : "
+                "d\u00e9placer | Molette : zoom"},
                {"Collision geometry", "G\u00e9om\u00e9trie de collision"},
                {"Changed shapes only", "Formes modifi\u00e9es uniquement"},
                {"Fit collision geometry", "Cadrer les collisions"},

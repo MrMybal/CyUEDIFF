@@ -50,3 +50,7 @@ Convex previews deduplicate the edges of stored triangles and apply signed scale
 ## CyUI before/after collision geometry - 0.80
 
 The Collisions tab now draws prepared body-local wireframes beside the typed properties. Both sides share camera scale/orientation; stored shape changes color the geometry, and a changed-shapes filter and fit-changes action isolate differences. Body selection prevents overlaying unrelated skeleton/body coordinate systems. Missing geometry stays labeled rather than reconstructed. Geometry is prepared outside draw; English/French and five themes were checked with 140 UI frames and thirteen actual desktop captures. This preview is not a Chaos simulation.
+
+## Collision picking and persistent orbit cameras - 0.81
+
+Clicking a visible wire within six themed pixels selects its stored shape and synchronizes the typed inspector. Alt-orbit does not select a shape, and split panes apply navigation deltas only once. Perspective/front/right/top presets, changed-only filtering, target/up/orientation/distance survive explicit workspace files. Nested camera values are validated before any state mutation. Actual ImGui mouse-event tests exercise picking in the after pane and a single ten-pixel orbit delta; desktop save/reopen tests retain camera and property selection.

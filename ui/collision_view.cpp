@@ -103,9 +103,13 @@ bool CollisionView::next_changed_shape(bool previous) {
 Json CollisionView::view_state() const {
     if (empty())
         return Json::object();
-    return {{"body", body_.empty() ? Json(nullptr) : Json(body_)},
-            {"shape", shape_.empty() ? Json(nullptr) : Json(shape_)},
-            {"properties", properties_.view_state()}};
+    Json result = {{"body", body_.empty() ? Json(nullptr) : Json(body_)},
+                   {"shape", shape_.empty() ? Json(nullptr) : Json(shape_)},
+                   {"properties", properties_.view_state()}};
+    const auto camera = viewport_.view_state();
+    if (!camera.empty())
+        result["viewport"] = camera;
+    return result;
 }
 void CollisionView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "collision");
@@ -119,6 +123,8 @@ void CollisionView::restore_view_state(const Json &state) {
         if (!select_shape(key))
             select_shape("");
     }
+    if (state.contains("viewport"))
+        viewport_.restore_view_state(state["viewport"]);
     if (state.contains("properties"))
         properties_.restore_view_state(state["properties"]);
 }
@@ -172,6 +178,9 @@ void CollisionView::draw(const char *id) {
                           ImGuiChildFlags_Borders);
         viewport_.draw();
         ImGui::EndChild();
+        auto picked = viewport_.take_picked_shape();
+        if (!picked.empty())
+            select_shape(picked);
     }
     properties_.draw("Collision properties");
 }

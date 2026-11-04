@@ -38,6 +38,7 @@ void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe
                                                        : ChangeKind::unchanged;
     before_ = std::move(before);
     after_ = std::move(after);
+    picked_.clear();
     body_.clear();
     shape_.clear();
     changed_only_ = false;
@@ -52,6 +53,7 @@ void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe
 void CollisionViewport::select(const std::string &body, const std::string &shape) {
     if (body_ == body && shape_ == shape)
         return;
+    picked_.clear();
     body_ = body;
     shape_ = shape;
     fit_pending_ = true;
@@ -93,6 +95,81 @@ bool CollisionViewport::focus_changes() {
     fit_pending_ = fit_changes_ = true;
     return true;
 }
+bool CollisionViewport::set_camera_view(CollisionCameraView view) {
+    if (!bounds().valid)
+        return false;
+    if (fit_pending_)
+        fit(1);
+    auto &c = camera_.camera;
+    switch (view) {
+    case CollisionCameraView::perspective:
+        c.yaw = .7;
+        c.pitch = .35;
+        break;
+    case CollisionCameraView::front:
+        c.yaw = 0;
+        c.pitch = 0;
+        break;
+    case CollisionCameraView::right:
+        c.yaw = 1.5707963267948966;
+        c.pitch = 0;
+        break;
+    case CollisionCameraView::top:
+        c.yaw = 0;
+        c.pitch = 1.55;
+        break;
+    default:
+        return false;
+    }
+    c.up = {0, 0, 1};
+    return true;
+}
+Json CollisionViewport::view_state() const {
+    Json result = changed_only_ ? Json{{"changedOnly", true}} : Json::object();
+    if (fit_pending_ || !bounds().valid)
+        return result;
+    const auto &c = camera_.camera;
+    result.update({{"target", {c.target.x, c.target.y, c.target.z}},
+                   {"up", {c.up.x, c.up.y, c.up.z}},
+                   {"yaw", c.yaw},
+                   {"pitch", c.pitch},
+                   {"distance", c.distance}});
+    return result;
+}
+void CollisionViewport::restore_view_state(const Json &state) {
+    view_state::validate(state, "mesh");
+    if (state.empty())
+        return;
+    if (state.contains("changedOnly"))
+        set_changed_only(state["changedOnly"].get<bool>());
+    if (state.size() == 1 && state.contains("changedOnly"))
+        return;
+    if (!bounds().valid)
+        return;
+    if (fit_pending_)
+        fit(1);
+    fit_pending_ = fit_changes_ = false;
+    auto &c = camera_.camera;
+    auto vector = [&](const char *key, cyui::Vec3 &out) {
+        if (state.contains(key))
+            out = {state[key][0].get<double>(), state[key][1].get<double>(), state[key][2].get<double>()};
+    };
+    vector("target", c.target);
+    vector("up", c.up);
+    if (state.contains("yaw"))
+        c.yaw = state["yaw"].get<double>();
+    if (state.contains("pitch"))
+        c.pitch = state["pitch"].get<double>();
+    if (state.contains("distance"))
+        c.distance = state["distance"].get<double>();
+    camera_.orbiting = camera_.panning = false;
+    navigation_pane_ = 0;
+}
+std::string CollisionViewport::take_picked_shape() {
+    auto key = std::move(picked_);
+    picked_.clear();
+    return key;
+}
 std::size_t CollisionViewport::visible_edge_count(bool after) const {
     std::size_t count = 0;
     for (const auto &s : (after ? after_ : before_).shapes)
@@ -119,8 +196,8 @@ void CollisionViewport::pane(const char *label, const CollisionWireframe &model,
                          ImGui::IsMouseHoveringRect(origin, {origin.x + size.x, origin.y + size.y});
     if (hovered && ((io.KeyAlt && ImGui::IsMouseClicked(0)) || ImGui::IsMouseClicked(2)))
         navigation_pane_ = pane_id;
-    cyui::viewport("##collision-camera", camera_, {}, size,
-                   navigation_pane_ == pane_id || (!navigation_pane_ && hovered));
+    const auto interaction = cyui::viewport("##collision-camera", camera_, {}, size,
+                                            navigation_pane_ == pane_id || (!navigation_pane_ && hovered));
     const auto matrix = cyui::cameraViewMatrix(shown);
     auto project = [&](const CollisionPoint &p, ImVec2 &screen) {
         const double x = matrix[0] * p[0] + matrix[4] * p[1] + matrix[8] * p[2] + matrix[12],
@@ -137,6 +214,15 @@ void CollisionViewport::pane(const char *label, const CollisionWireframe &model,
     auto *draw = ImGui::GetWindowDrawList();
     draw->PushClipRect(origin, {origin.x + size.x, origin.y + size.y}, true);
     std::size_t unavailable = 0, ready = 0;
+    double nearest = double(cyui::dp(6)) * cyui::dp(6);
+    std::string hit;
+    auto distance_squared = [&](ImVec2 a, ImVec2 b) {
+        const double dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy;
+        const double t =
+            len > 0 ? std::clamp(((io.MousePos.x - a.x) * dx + (io.MousePos.y - a.y) * dy) / len, 0., 1.) : 0;
+        const double x = io.MousePos.x - a.x - t * dx, y = io.MousePos.y - a.y - t * dy;
+        return x * x + y * y;
+    };
     for (const auto &shape : model.shapes)
         if (visible(shape)) {
             if (!shape.ready()) {
@@ -151,9 +237,18 @@ void CollisionViewport::pane(const char *label, const CollisionWireframe &model,
                     draw->AddLine(a, b, comparing_ ? detail::change_color(change) : cyui::palette().accent,
                                   cyui::dp(change == ChangeKind::unchanged ? 1.f : 2.f));
                     ++rendered_edges_;
+                    if (interaction.clicked) {
+                        const double distance = distance_squared(a, b);
+                        if (distance < nearest) {
+                            nearest = distance;
+                            hit = shape.identity;
+                        }
+                    }
                 }
             }
         }
+    if (!hit.empty())
+        picked_ = std::move(hit);
     const char *notice = unavailable ? "Some shapes have no supported stored geometry."
                          : !ready    ? "No visible collision geometry"
                                      : nullptr;
@@ -183,6 +278,19 @@ void CollisionViewport::draw(const char *id) {
         fit_pending_ = true;
         fit_changes_ = false;
     }
+    ImGui::SameLine();
+    if (ImGui::BeginCombo(cyui::trLabel("Camera view").c_str(), cyui::tr("Choose view").c_str())) {
+        unsigned i = 0;
+        for (const auto *label : {"Perspective", "Front", "Right", "Top"}) {
+            if (ImGui::Selectable(cyui::trLabel(label).c_str()))
+                set_camera_view(static_cast<CollisionCameraView>(i));
+            ++i;
+        }
+        ImGui::EndCombo();
+    }
+    cyui::textDim(
+        "%s",
+        cyui::tr("Click a wire: inspect shape | Alt + drag: orbit | Middle drag: pan | Wheel: zoom").c_str());
     auto size = ImGui::GetContentRegionAvail();
     if (size.x < cyui::dp(20) || size.y < cyui::dp(50))
         return;

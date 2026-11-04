@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-collision-desktop-',dir=Path.
  for version in ('53','55'):
   workspace=root/('workspace-'+version+'.json')
   state={'asset':{'collisions':{'body':'TestAsset','shape':'sphere:name:Ball',
+         'viewport':{'target':[1.,2.,3.],'up':[0.,0.,1.],'yaw':.3,'pitch':.2,'distance':25.,'changedOnly':True},
                                'properties':{'filter':'radius','selected':'/geometry/radius','changedOnly':True}}}}
   saved=run('--before',root/('before'+version+'.uasset'),'--after',root/('after'+version+'.uasset'),
             '--view','collisions','--document-action','view-state:'+json.dumps(state),'--save-workspace',workspace)

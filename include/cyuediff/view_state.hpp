@@ -167,6 +167,7 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
         } else if (kind == "collision") {
+            child("viewport", "mesh");
             string({"body", "shape"}, true);
             child("properties", "property");
         } else if (kind == "asset") {

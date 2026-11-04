@@ -56,6 +56,8 @@ int main() {
         check(!view.empty() && view.next_changed_shape(), "Navigate changed stored shape");
         auto saved = view.view_state();
         check(saved["shape"] == "sphere:name:Ball", "Changed shape uses its name");
+        saved["viewport"] = {{"target", {1., 2., 3.}}, {"up", {0., 0., 1.}}, {"yaw", .3}, {"pitch", .2},
+                             {"distance", 25.},        {"changedOnly", true}};
         saved["properties"]["filter"] = "radius";
         saved["properties"]["selected"] = "/geometry/radius";
         view.restore_view_state(saved);
@@ -64,7 +66,7 @@ int main() {
         restored.restore_view_state(saved);
         check(restored.view_state() == saved, "Collision selection and property filter round trip");
         auto bad = saved;
-        bad["properties"]["changedOnly"] = 1;
+        bad["viewport"]["distance"] = -1;
         bool rejected = false;
         try {
             restored.restore_view_state(bad);
@@ -101,6 +103,25 @@ int main() {
               "Missing body does not select a shape from another body");
         view.restore_view_state(saved);
         const auto original = before.to_json();
+        check(viewport.set_camera_view(CollisionCameraView::front), "Front collision camera preset");
+        auto camera_saved = viewport.view_state();
+        check(camera_saved["yaw"] == 0. && camera_saved["pitch"] == 0.,
+              "Preset retains body fit and uses Z up");
+        auto camera_bad = camera_saved;
+        camera_bad["up"] = {0., 0., 0.};
+        rejected = false;
+        try {
+            viewport.restore_view_state(camera_bad);
+        } catch (const Error &) {
+            rejected = true;
+        }
+        check(rejected && viewport.view_state() == camera_saved, "Bad camera is rejected atomically");
+        CollisionViewport camera_restored;
+        camera_restored.set_models(collision_wireframe(before), collision_wireframe(after), &a, &b, true);
+        camera_restored.select("SM.Body", "sphere:name:Ball");
+        camera_restored.restore_view_state(camera_saved);
+        check(camera_restored.view_state() == camera_saved, "Orbit camera state round trip");
+
         for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
             cyui::Config config;
             config.themeKey = theme;
@@ -141,6 +162,66 @@ int main() {
                         ++frames;
                     }
         }
+        // Drive real ImGui mouse events against the after pane, then verify that an orbit
+        // delta is applied once although the same camera is displayed twice.
+        cyui::setLocale("en");
+        io.ConfigInputTrickleEventQueue = false;
+        ImVec2 pane_low{}, pane_high{};
+        auto input_frame = [&] {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0, 0});
+            ImGui::SetNextWindowSize(io.DisplaySize);
+            ImGui::Begin("Collision mouse test", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            viewport.draw();
+            pane_low = ImGui::GetItemRectMin();
+            pane_high = ImGui::GetItemRectMax();
+            ImGui::End();
+            ImGui::Render();
+            ++frames;
+        };
+        viewport.restore_view_state(
+            {{"target", {1., 2., 3.}}, {"up", {0., 0., 1.}}, {"yaw", .7}, {"pitch", .35}, {"distance", 30.}});
+        input_frame();
+        input_frame();
+        cyui::OrbitCamera shown;
+        shown.target = {1., 2., 3.};
+        shown.yaw = .7;
+        shown.pitch = .35;
+        shown.distance = 30.;
+        shown.up = {0., 0., 1.};
+        const auto matrix = cyui::cameraViewMatrix(shown);
+        // Use the midpoint of the first sampled line of the after sphere.
+        const double angle = 3.14159265358979323846 / 32.;
+        CollisionPoint sample{1 + 7 * std::cos(angle), 2 + 7 * std::sin(angle), 3};
+        const double x = matrix[0] * sample[0] + matrix[4] * sample[1] + matrix[8] * sample[2] + matrix[12],
+                     y = matrix[1] * sample[0] + matrix[5] * sample[1] + matrix[9] * sample[2] + matrix[13],
+                     z = matrix[2] * sample[0] + matrix[6] * sample[1] + matrix[10] * sample[2] + matrix[14];
+        const float height = pane_high.y - pane_low.y - ImGui::GetTextLineHeightWithSpacing(),
+                    width = pane_high.x - pane_low.x;
+        const ImVec2 click{pane_low.x + float((x / (-z * .41421356237) * (height / width) + 1) * .5 * width),
+                           pane_low.y + ImGui::GetTextLineHeightWithSpacing() +
+                               float((1 - y / (-z * .41421356237)) * .5 * height)};
+        io.AddMousePosEvent(click.x, click.y);
+        input_frame();
+        io.AddMouseButtonEvent(0, true);
+        input_frame();
+        check(viewport.take_picked_shape() == "sphere:name:Ball",
+              "Clicking a rendered after wire picks its stored shape");
+        io.AddMouseButtonEvent(0, false);
+        input_frame();
+        io.AddKeyEvent(ImGuiMod_Alt, true);
+        io.AddMouseButtonEvent(0, true);
+        input_frame();
+        const double yaw_before = viewport.view_state()["yaw"].get<double>();
+        io.AddMousePosEvent(click.x + 10, click.y);
+        input_frame();
+        const double yaw_after = viewport.view_state()["yaw"].get<double>();
+        check(std::abs((yaw_after - yaw_before) + .07) < 1e-6,
+              "Shared split camera applies orbit delta once");
+        check(viewport.take_picked_shape().empty(), "Alt orbit does not pick a shape");
+        io.AddMouseButtonEvent(0, false);
+        io.AddKeyEvent(ImGuiMod_Alt, false);
+        input_frame();
         check(before.to_json() == original, "Collision views never mutate package data");
         ImGui::DestroyContext();
         std::cout << checks << " collision view checks passed\n"
