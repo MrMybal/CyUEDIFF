@@ -1,4 +1,5 @@
 #include <cyuediff/core.hpp>
+#include <cyuediff/collision.hpp>
 #include <cyuediff/catalog.hpp>
 #include <cyuediff/hdr.hpp>
 #include <cyuediff/container.hpp>
@@ -32,6 +33,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff hdr-diff BEFORE AFTER [--threshold SAMPLE_DELTA] [--heatmap MASK.png] [--codec "
                "MODULE.dll]\n"
                "  preview accepts --exposure EV for HDR source display.\n"
+               "  cyuediff collision ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff collision-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff material ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff material-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff mesh ASSET [--project PROJECT] [--out FILE]\n"
@@ -124,8 +127,8 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "mesh-diff" || command == "material-diff" || command == "hdr-diff" ||
-                     command == "container-read" || command == "container-diff")
+                     command == "collision-diff" || command == "mesh-diff" || command == "material-diff" ||
+                     command == "hdr-diff" || command == "container-read" || command == "container-diff")
                         ? 2u
                         : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
@@ -568,8 +571,9 @@ int run(const std::vector<std::string> &args) {
         throw Error("git-unavailable", "Configure CYUEDIFF_BUILD_GIT=ON to enable Git commands");
 #endif
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
-               command == "mesh" || command == "material") {
-        if ((command == "graph" || command == "texture" || command == "mesh" || command == "material") &&
+               command == "mesh" || command == "material" || command == "collision") {
+        if ((command == "graph" || command == "texture" || command == "mesh" || command == "material" ||
+             command == "collision") &&
             flags.contains("--metadata"))
             throw Error("arguments", "Graph/texture inspection requires properties");
         if (flags.contains("--metadata"))
@@ -583,6 +587,8 @@ int run(const std::vector<std::string> &args) {
             output = package.mesh_snapshot();
         else if (command == "material")
             output = package.material_snapshot();
+        else if (command == "collision")
+            output = package.collision_snapshot();
         else
             output = (command == "textconv" || flags.contains("--snapshot")) ? package.semantic_snapshot()
                                                                              : package.to_json();
@@ -679,6 +685,14 @@ int run(const std::vector<std::string> &args) {
             output["lod"] = lod;
             exit_code = comparison.changes.empty() ? 0 : 1;
         }
+    } else if (command == "collision-diff") {
+        if (flags.contains("--metadata"))
+            throw Error("arguments", "Collision comparison requires properties");
+        const auto before = read(positional[0], "--before-project", options);
+        const auto after = read(positional[1], "--after-project", options);
+        const auto comparison = compare_collisions(before, after);
+        output = comparison.to_json();
+        exit_code = !comparison.complete ? 2 : comparison.changes.empty() ? 0 : 1;
     } else if (command == "material-diff") {
         if (flags.contains("--metadata"))
             throw Error("arguments", "Material comparison requires properties");
@@ -731,16 +745,31 @@ int run(const std::vector<std::string> &args) {
     auto destination = (command == "preview" || command == "export-mesh" || command == "container-read")
                            ? fs::path{}
                            : path_option("--out");
-    auto same_file = [](const fs::path &a, const fs::path &b) {
-        return fs::weakly_canonical(fs::absolute(a)) == fs::weakly_canonical(fs::absolute(b)) ||
+    auto guarded_path = [](const fs::path &path) {
+        auto existing = fs::absolute(path).lexically_normal();
+        fs::path suffix;
+        // MSVC's weakly_canonical can fail fast for a missing child under an 8.3 parent.
+        // Canonicalize the nearest existing ancestor, then append the missing components.
+        while (!fs::exists(existing)) {
+            const auto parent = existing.parent_path();
+            if (parent == existing || parent.empty())
+                throw Error("output-path","Cannot resolve output ancestor");
+            suffix = existing.filename() / suffix;
+            existing = parent;
+        }
+        const auto resolved = fs::canonical(existing);
+        return suffix.empty() ? resolved : resolved / suffix;
+    };
+    auto same_file = [&](const fs::path &a, const fs::path &b) {
+        return guarded_path(a) == guarded_path(b) ||
                (fs::exists(a) && fs::exists(b) && fs::equivalent(a, b));
     };
     for (const auto &target : {destination, png_destination, obj_destination, raw_destination}) {
         if (target.empty())
             continue;
         for (const auto &directory : protected_directories) {
-            auto base = fs::weakly_canonical(fs::absolute(directory));
-            auto resolved = fs::weakly_canonical(fs::absolute(target));
+            auto base = guarded_path(directory);
+            auto resolved = guarded_path(target);
             auto relative = resolved.lexically_relative(base);
             bool within = resolved == base || (!relative.empty() && *relative.begin() != "..");
             for (auto parent = resolved; !within && !parent.empty();) {

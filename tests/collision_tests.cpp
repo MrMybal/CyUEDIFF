@@ -1,9 +1,10 @@
-#include "collision_fixture.hpp"
+#include "collision_file_fixture.hpp"
+#include <chrono>
 #include <iostream>
 #include <limits>
 using namespace cyuediff;
 using namespace cyuediff::test;
-int main() {
+int main(int argc, char **argv) {
     int checks = 0;
     try {
         auto check = [&](bool good, const char *message) {
@@ -20,6 +21,44 @@ int main() {
             }
             check(failed, "Collision operation rejects invalid budget/input");
         };
+        if (argc == 3 && std::string(argv[1]) == "--write-fixtures") {
+            const auto root = fs::u8path(argv[2]);
+            fs::create_directories(root);
+            for (int version : {1009, 1013}) {
+                auto before = collision_extended_fixture(), after = before, reordered = before,
+                     incomplete = before;
+                after.exports[0]
+                    .properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Radius"]["value"] = 7.;
+                auto &array = reordered.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"];
+                std::swap(array[0], array[1]);
+                incomplete.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0].erase(
+                    "Radius");
+                const auto suffix = version == 1009 ? "53" : "55";
+                save(root, std::string("before") + suffix, collision_file_fixture(before, version));
+                save(root, std::string("after") + suffix, collision_file_fixture(after, version));
+                save(root, std::string("reordered") + suffix, collision_file_fixture(reordered, version));
+                save(root, std::string("incomplete") + suffix, collision_file_fixture(incomplete, version));
+            }
+            save(root, "no-collision", fixture(1013));
+            return 0;
+        }
+        const auto temporary = fs::current_path() /
+                               ("build-collision-roundtrip-" +
+                                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        fs::create_directories(temporary);
+        for (int version : {1009, 1013}) {
+            auto source = collision_extended_fixture();
+            auto read = Package::open(save(temporary, "roundtrip", collision_file_fixture(source, version)));
+            auto projection = read.collision_snapshot();
+            check(read.exports[0].class_name == "/Script/Engine.BodySetup" && projection["complete"],
+                  "Classic reflected collision package round trip");
+            check(projection["bodies"]["TestAsset"]["shapes"].size() == 6,
+                  "All five collision kinds read from tagged bytes");
+            check(projection["bodies"]["TestAsset"]["shapes"]["convex:name:Hull"]["geometry"]["indices"]
+                          .size() == 12,
+                  "Convex triangle indices survive the package reader");
+        }
+        fs::remove_all(temporary);
         auto package = collision_fixture();
         const auto original = package.to_json();
         auto snapshot = package.collision_snapshot();

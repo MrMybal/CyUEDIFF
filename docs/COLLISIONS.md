@@ -13,3 +13,9 @@ Stored tapered capsules retain both radii and segment length. Convex elements ex
 ## Stable collision comparisons - 0.75
 
 The collision-diff projection matches unique exact stored shape names within their kind. Reordering those shapes changes their inspection sourceIndex but does not produce a collision geometry change. Anonymous/duplicate names remain explicitly index-based and order-sensitive. Radius/dimension/transform/topology changes, opaque fingerprints and local body references use escaped JSON-pointer paths. Incomplete projections report incomplete rather than equality. General package comparisons expose collisionChanges, and inspection exposes a collisions section.
+
+## Collision CLI and tagged package integration - 0.76
+
+collision ASSET emits the stored collision model; collision-diff BEFORE AFTER emits stable named-shape changes (exit 0 identical, 1 changed, 2 incomplete/error). Shared project/engine contexts and input/output protection apply. Independent classic UE 5.3/5.5-style tagged fixtures exercise all five supported shape kinds through the real package reader, including named reorderings, missing geometry, generic inspect/diff integration and source preservation.
+
+CLI output protection also handles missing companion paths under Windows short-name temporary directories without the MSVC weakly_canonical failure. Output aliases through hard links are rejected. The regression exercises collision-diff, ordinary diff and material-diff; input and companion bytes remain unchanged.

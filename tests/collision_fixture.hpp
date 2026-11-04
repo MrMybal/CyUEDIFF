@@ -40,4 +40,26 @@ inline Package collision_fixture() {
     p.exports.push_back(body);
     return p;
 }
+inline Package collision_extended_fixture() {
+    auto p = collision_fixture();
+    auto &agg = p.exports[0].properties["AggGeom"]["value"];
+    agg["SphereElems"]["value"].push_back(collision_shape("sphere", "Second"));
+    auto tapered = collision_shape("capsule", "Taper");
+    tapered.erase("Radius");
+    tapered["Radius0"] = collision_property(2.);
+    tapered["Radius1"] = collision_property(4.);
+    agg["TaperedCapsuleElems"] = collision_property(Json::array({tapered}), "ArrayProperty");
+    Json convex = {
+        {"Name", collision_property("Hull", "NameProperty")},
+        {"VertexData", collision_property(Json::array({Json::array({0., 0., 0.}), Json::array({1., 0., 0.}),
+                                                       Json::array({0., 1., 0.}), Json::array({0., 0., 1.})}),
+                                          "ArrayProperty")},
+        {"IndexData", collision_property(Json::array({0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3}), "ArrayProperty")},
+        {"Transform",
+         collision_property(
+             {{"rotation", {0., 0., 0., 1.}}, {"translation", {2., 3., 4.}}, {"scale", {1., 1., 1.}}},
+             "StructProperty")}};
+    agg["ConvexElems"] = collision_property(Json::array({convex}), "ArrayProperty");
+    return p;
+}
 } // namespace cyuediff::test
