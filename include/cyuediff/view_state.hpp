@@ -104,6 +104,11 @@ inline void validate(const Json &v, std::string_view kind) {
             string({"filter"});
             string({"selected"}, true);
             flag({"changedOnly"});
+        } else if (kind == "graph-inspection") {
+            string({"filter"});
+            string({"selected"}, true);
+            flag({"changedOnly"});
+            child("properties", "property");
         } else if (kind == "canvas" || kind == "texture") {
             if (key == "pan") {
                 vector(x, 2);
@@ -119,6 +124,7 @@ inline void validate(const Json &v, std::string_view kind) {
             child("layout", "graph-layout");
             string({"selected"}, true);
             entries("views", "canvas");
+            entries("inspectors", "graph-inspection");
         } else if (kind == "mesh") {
             if (key == "target" || key == "up") {
                 vector(x, 3);

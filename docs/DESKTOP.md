@@ -240,3 +240,7 @@ The existing property inspector compares stored date/time ticks, styles, timezon
 ## Generator fingerprints and native geometry - 0.67
 
 Supported text generator histories expose the resolved generator name and opaque contents byte count/SHA-256. Select contents/sha256 for the full before/after preview; identical-size binary changes remain visible. Unknown payload contents are not evaluated. Blueprint friendly/default pin texts use the same structured text decoder, so their metadata changes participate in stable node highlighting. Classic tagged boxes/spheres/combined bounds and matrices/planes also appear in the property inspector without a USMAP. Mapped values require an explicit matching context. Matrix cells use row/column paths, while planes retain normal components and distance; filters/selections survive workspace restart in English/French.
+
+## Shared graph inspection - 0.68
+
+The embeddable UI now has a shared read-only GraphInspector with stable snapshot identities, title/identity search, changed-node navigation, typed before/after node details and bounded validated state. Canvas identifiers are excluded from saved state. Node properties are prepared on selection and reused while drawing. This milestone supplies the component; Blueprint and Material hosts are integrated next.
