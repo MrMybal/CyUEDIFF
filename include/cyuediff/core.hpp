@@ -213,6 +213,7 @@ struct Package {
     Json mesh_snapshot() const;
     Json material_snapshot() const;
     Json collision_snapshot() const;
+    Json skeleton_snapshot() const;
     const MeshSource &mesh_source(const std::string &object = "", std::uint32_t lod = 0) const;
     Json to_json() const;
 };
@@ -224,6 +225,7 @@ struct DiffResult {
     Json mesh_changes = Json::array();
     Json material_changes = Json::array();
     Json collision_changes = Json::array();
+    Json skeleton_changes = Json::array();
     std::vector<std::string> diagnostics;
     std::string status() const;
     Json to_json() const;

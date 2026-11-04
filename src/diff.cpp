@@ -1,5 +1,6 @@
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
+#include <cyuediff/skeleton.hpp>
 namespace cyuediff {
 namespace {
 std::string pointer_token(const std::string &input) {
@@ -42,7 +43,7 @@ std::string DiffResult::status() const {
     if (!complete_input)
         return "incomplete";
     if (!changes.empty() || !graph_changes.empty() || !texture_changes.empty() || !mesh_changes.empty() ||
-        !material_changes.empty() || !collision_changes.empty())
+        !material_changes.empty() || !collision_changes.empty() || !skeleton_changes.empty())
         return "changed";
     if (!binary_comparison_available)
         return "unverified";
@@ -60,6 +61,7 @@ Json DiffResult::to_json() const {
             {"meshChanges", mesh_changes},
             {"materialChanges", material_changes},
             {"collisionChanges", collision_changes},
+            {"skeletonChanges", skeleton_changes},
             {"diagnostics", diagnostics}};
 }
 std::string MaterialComparison::status() const {
@@ -108,6 +110,26 @@ CollisionComparison compare_collisions(const Package &before, const Package &aft
     walk(a, b, "", result.changes, options.control);
     return result;
 }
+std::string SkeletonComparison::status() const {
+    return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
+}
+Json SkeletonComparison::to_json() const {
+    return {{"schema", "cyuediff.skeleton-diff/1"},
+            {"complete", complete},
+            {"status", status()},
+            {"scope", "stored raw hierarchy, local pose and remaining native fingerprints"},
+            {"changes", changes}};
+}
+SkeletonComparison compare_skeletons(const Package &before, const Package &after,
+                                     const SkeletonOptions &options) {
+    auto normalized = options;
+    normalized.source_indices = false;
+    const auto a = skeleton_snapshot(before, normalized), b = skeleton_snapshot(after, normalized);
+    SkeletonComparison result;
+    result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>();
+    walk(a, b, "", result.changes, options.control);
+    return result;
+}
 MeshComparison compare_meshes(const MeshGeometry &before, const MeshGeometry &after) {
     MeshComparison result;
     walk(before.to_json(), after.to_json(), "", result.changes);
@@ -130,6 +152,11 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
     collision_options.source_indices = false;
     walk(collision_snapshot(before, collision_options), collision_snapshot(after, collision_options), "",
          result.collision_changes, control);
+    SkeletonOptions skeleton_options;
+    skeleton_options.source_indices = false;
+    skeleton_options.control = control;
+    walk(skeleton_snapshot(before, skeleton_options), skeleton_snapshot(after, skeleton_options), "",
+         result.skeleton_changes, control);
     result.diagnostics.push_back(
         "Opaque hashes identify changed bytes. Texture source metadata is projected separately; "
         "pixel comparison is available through image-diff for supported sources. "
