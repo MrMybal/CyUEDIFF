@@ -1,4 +1,5 @@
 #include "archive.hpp"
+#include "string_value.hpp"
 #include "descriptor.hpp"
 #include <iomanip>
 #include <sstream>
@@ -198,6 +199,20 @@ std::string Archive::string() {
         utf8(s, c);
     }
     return s;
+}
+std::string Archive::byte_string(bool ascii) {
+    const auto n = get<std::int32_t>();
+    if (n < 0)
+        throw Error("string-length", "Negative byte string length", tell() - 4);
+    if (static_cast<std::uint32_t>(n) > options_.max_string_bytes)
+        throw Error("limit", "Byte string exceeds configured limit", tell() - 4);
+    if (static_cast<std::uint32_t>(n) > read_limit_ - position_)
+        throw Error("bounds", "Truncated byte string", tell());
+    std::string value(static_cast<std::size_t>(n), '\0');
+    const auto offset = tell();
+    read(value.data(), value.size());
+    validate_byte_string(value, ascii, options_.control, "string-encoding", offset);
+    return value;
 }
 std::string Archive::guid() {
     std::ostringstream s;

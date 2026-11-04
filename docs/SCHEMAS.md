@@ -49,7 +49,7 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Explicit native struct | Host-bound math/color/GUID wire layouts; component values and layout provenance |
 | Unsupported/unbound native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
 
-Supported text histories and persistent delegate/weak values are described below. Legacy asset references and newer string values still require additional readers. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
+Supported text histories and persistent delegate/weak values are described below. Legacy asset references still require an additional reader. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
 
 Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
@@ -257,3 +257,9 @@ Segments, owner resolution, nested arrays/maps/optionals and canonical identitie
 Existing CLI and desktop schema contexts forward these profile-selected layouts; no new manifest version is required. Typed snapshots retain optional presence and nested field/owner identity. The property inspector unwraps only property metadata, so an optional's own `value` stays in the selection path. Search, changed-only filtering and workspace persistence use those stable paths. Invalid bindings/values never publish a partial decoded property tree.
 
 The installed schema consumer forwards the modern field-path layout and enables the binary optional layout for a UE 5.5 context. Its standalone buffers have no name table or object resolver: distribution validation uses empty/null field paths, set/unset optional integers and an optional empty field path. A host reading nonempty paths must supply the matching package names and owner resolver. Neither schema bytes nor engine headers are distributed with the SDK.
+
+## Counted byte strings - 0.53
+
+Standalone readers select ByteStringLayout::counted_utf8_ascii for Utf8StrProperty/AnsiStrProperty. The checked UE 5.5 Zen profile supplies it; UE 5.3 leaves nonzero byte strings opaque. These values use a nonnegative int32 byte count with no serialized terminator, unlike FString. Empty and zero-masked values stay empty, and embedded NUL bytes are preserved in JSON. UTF-8 validation rejects malformed, truncated, overlong, surrogate and out-of-range sequences without replacement or normalization. ANSI support is the unambiguous ASCII subset; high bytes require a host character-set decoder and stay opaque.
+
+Classic tagged readers also decode these properties for the supported UE 5.5-or-later package layouts. Bounds apply before allocation, and text/work limits and cancellation remain active. A failed tagged property retains its exact fingerprint and the next property is still readable; a failed mapped read retains the whole opaque export. Local UE 5.5 Utf8String.cpp, AnsiString.cpp and String.cpp.inl establish the byte-count contract. No engine implementation is bundled.

@@ -83,6 +83,8 @@ enum class ScriptReferenceLayout { unspecified, package_indices };
 enum class OptionalLayout { unspecified, bool32_value };
 // Serialized FName array followed by a persistent owner object reference.
 enum class FieldPathLayout { unspecified, owner_and_names };
+// Signed nonnegative byte count without a serialized terminator; ANSI scope is ASCII.
+enum class ByteStringLayout { unspecified, counted_utf8_ascii };
 struct UnversionedReadOptions {
     const std::vector<std::string> *names = nullptr;
     std::function<Json(std::int32_t)> reference;
@@ -99,6 +101,7 @@ struct UnversionedReadOptions {
     ScriptReferenceLayout script_reference_layout = ScriptReferenceLayout::unspecified;
     OptionalLayout optional_layout = OptionalLayout::unspecified;
     FieldPathLayout field_path_layout = FieldPathLayout::unspecified;
+    ByteStringLayout byte_string_layout = ByteStringLayout::unspecified;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     OperationControl control;

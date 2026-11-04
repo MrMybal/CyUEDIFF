@@ -52,6 +52,7 @@ class Archive {
     }
     std::uint32_t count(std::uint32_t limit = 0);
     std::string string();
+    std::string byte_string(bool ascii);
     std::string guid();
     std::string hash(std::uint64_t offset, std::uint64_t bytes);
 };

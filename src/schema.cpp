@@ -1,4 +1,5 @@
 #include <cyuediff/schema.hpp>
+#include "string_value.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -989,6 +990,30 @@ struct PropertyReader {
             const auto &base = (*options.names)[static_cast<std::size_t>(index)];
             text(base.size() + 12);
             return number ? base + "_" + std::to_string(number - 1) : base;
+        }
+        case 29:
+        case 30: {
+            if (zero)
+                return "";
+            if (options.byte_string_layout != ByteStringLayout::counted_utf8_ascii)
+                throw Error("schema-context", "Byte string requires an explicit counted layout", r.pos);
+            const auto count = r.i32();
+            if (count < 0)
+                throw Error("schema-value", "Negative byte string length", r.pos - 4);
+            text(static_cast<std::uint32_t>(count));
+            r.range(static_cast<std::uint32_t>(count));
+            const auto offset = r.pos;
+            std::string value;
+            for (std::uint32_t at = 0; at < static_cast<std::uint32_t>(count);) {
+                auto size = std::min<std::uint32_t>(4096, static_cast<std::uint32_t>(count) - at);
+                options.control.check();
+                value.append(reinterpret_cast<const char *>(r.data.data() + r.pos), size);
+                r.pos += size;
+                at += size;
+            }
+            detail::validate_byte_string(value, type.kind == 30, options.control,
+                                         type.kind == 30 ? "schema-type" : "schema-value", offset);
+            return value;
         }
         case 10: {
             if (zero)

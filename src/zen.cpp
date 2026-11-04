@@ -547,8 +547,10 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                         if (recorded && !modern)
                             props.field_path_layout = FieldPathLayout::unspecified;
                     }
-                    if (options.profile == ZenProfile::unreal_5_5)
+                    if (options.profile == ZenProfile::unreal_5_5) {
                         props.optional_layout = OptionalLayout::bool32_value;
+                        props.byte_string_layout = ByteStringLayout::counted_utf8_ascii;
+                    }
                     // An explicit older editor version cannot certify the modern None layout.
                     if (!p.versioning.is_null() &&
                         p.versioning["customVersions"].value("e4b068edf49442e9a231da0b2e46bb41", 32) < 32)

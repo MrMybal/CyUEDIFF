@@ -257,6 +257,12 @@ class PropertyReader {
                 return a.get<std::uint8_t>();
             return fname(a, p);
         }
+        if (n == "Utf8StrProperty" || n == "AnsiStrProperty") {
+            if (p.summary.ue5_version < 1013)
+                throw Error("string-layout", "Byte string requires a checked UE 5.5 or later layout",
+                            a.tell());
+            return a.byte_string(n == "AnsiStrProperty");
+        }
         if (n == "StrProperty")
             return a.string();
         if (n == "TextProperty") {
