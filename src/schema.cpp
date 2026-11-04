@@ -7,7 +7,7 @@
 #include <fstream>
 namespace cyuediff {
 namespace {
-enum class NativeShape { array, transform, guid, ticks };
+enum class NativeShape { array, transform, guid, ticks, box3, sphere, box_sphere };
 struct NativeLayoutInfo {
     NativeStructLayout layout;
     const char *name;
@@ -33,7 +33,13 @@ constexpr NativeLayoutInfo native_layouts[] = {
     {NativeStructLayout::int_point, "int-point", 2, 2},
     {NativeStructLayout::int_vector, "int-vector", 2, 3},
     {NativeStructLayout::date_time_i64, "date-time-i64", 21, 1, NativeShape::ticks},
-    {NativeStructLayout::timespan_i64, "timespan-i64", 21, 1, NativeShape::ticks}};
+    {NativeStructLayout::timespan_i64, "timespan-i64", 21, 1, NativeShape::ticks},
+    {NativeStructLayout::box3_f32, "box3-f32", 3, 6, NativeShape::box3},
+    {NativeStructLayout::box3_f64, "box3-f64", 7, 6, NativeShape::box3},
+    {NativeStructLayout::sphere_f32, "sphere-f32", 3, 4, NativeShape::sphere},
+    {NativeStructLayout::sphere_f64, "sphere-f64", 7, 4, NativeShape::sphere},
+    {NativeStructLayout::box_sphere_f32, "box-sphere-f32", 3, 7, NativeShape::box_sphere},
+    {NativeStructLayout::box_sphere_f64, "box-sphere-f64", 7, 7, NativeShape::box_sphere}};
 const NativeLayoutInfo &native_layout_info(NativeStructLayout layout) {
     for (const auto &info : native_layouts)
         if (info.layout == layout)
@@ -784,6 +790,22 @@ struct PropertyReader {
                     read_value(SchemaType{static_cast<std::uint8_t>(info.kind), {}, {}}, zero, nesting + 1));
             return result;
         };
+        if (info.shape == NativeShape::box3) {
+            auto minimum = values(3), maximum = values(3);
+            auto validity = read_value(SchemaType{0, {}, {}}, zero, nesting + 1);
+            return {
+                {"min", std::move(minimum)}, {"max", std::move(maximum)}, {"isValid", std::move(validity)}};
+        }
+        if (info.shape == NativeShape::sphere) {
+            auto center = values(3), radius = values(1);
+            return {{"center", std::move(center)}, {"radius", std::move(radius[0])}};
+        }
+        if (info.shape == NativeShape::box_sphere) {
+            auto origin = values(3), extent = values(3), radius = values(1);
+            return {{"origin", std::move(origin)},
+                    {"boxExtent", std::move(extent)},
+                    {"sphereRadius", std::move(radius[0])}};
+        }
         if (info.shape == NativeShape::ticks)
             return {{"ticks", read_value(SchemaType{21, {}, {}}, zero, nesting + 1)}};
         if (info.shape == NativeShape::transform) {

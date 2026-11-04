@@ -72,7 +72,13 @@ enum class NativeStructLayout {
     int_point,
     int_vector,
     date_time_i64,
-    timespan_i64
+    timespan_i64,
+    box3_f32,
+    box3_f64,
+    sphere_f32,
+    sphere_f64,
+    box_sphere_f32,
+    box_sphere_f64
 };
 const char *native_struct_layout_name(NativeStructLayout);
 NativeStructLayout parse_native_struct_layout(const std::string &);
