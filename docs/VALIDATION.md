@@ -324,3 +324,15 @@ The extracted 0.40 archive is checked with its CLI, WARP workspace save/reopen a
 ## 0.41-0.42 milestones: layout contract and reusable views
 
 The 47 existing suites pass for the version-three contract, including 49 state-model and 110 workspace-file checks. Version-one/version-two migration, exact column counts, finite positive weights, sidebar/preview bounds and invalid nested state are checked. The UI integration adds a dedicated layout suite with 725 checks across 72 frames: five themes, English/French, 1280x800 and 640x480, actual column proportions, exact no-drift snapshots, retained section expansion, narrow-screen sidebar bounds and a real mouse resize captured/restored on an already resized table. The 143-check restored-view suite passes after adding explicit diagnostic layout to its saved graph states; all other existing suites also pass.
+
+
+## 0.43 milestone: native layout persistence
+
+Windows Release passes all 48 suites with 3,008 reported checks and 724 renderer-free UI frames. Desktop without Git passes 40 suites; Core without Git/UI/Desktop/Oodle passes 23. The layout suite now reports 730 checks across 104 frames, additionally exercising real mouse drags on the sidebar edge and preview divider, lower-bound clamping, closing a restored expanded section and a 2x DPI transition without changing saved logical width. Native persistence reports 86 checks with Git / 84 without Git: independent per-document layouts, inactive/pending preservation, exact inspector proportions, blank-document save/restart, version-two migration, mixed invalid state rejected before mutation and failure-state preservation join the existing restart/input-protection cases.
+
+Twenty-one hidden Direct3D11/WARP captures exercise restored inspector layouts in all five themes and both languages, Pak member columns, mapped Zen properties, failed imports and the previous real texture/Blueprint/material/static-mesh fixtures. Representative captures of all five themes and each real view were inspected. The validation script checks saved/restored camera poses, nonempty draws, source/companion/codec SHA-256 and an untouched preference profile. Captures and private corpus files remain in ignored build folders. The new input scroll region and sidebar resize edge share per-document identity scopes.
+
+The Core SDK excludes the UI layout adapter. Layout capture's read-only ImGui internal dependency is isolated in `ui/view_layout.cpp`; serialized state contains no ImGui IDs or INI text. General scroll, native window geometry, active gestures and dialog layouts remain outside this contract. Reader/cooked native coverage is unchanged.
+
+
+The extracted 0.43 archive passes CLI startup, WARP workspace save/open with pending inspector state and shell layout, notice/input exclusion checks, four installed Core consumers and the local Git history consumer. Native executables and SDK validation use the extracted files. Private corpus data, codecs, mappings, captures and debug symbols are excluded from the archive. The three milestone commits remain local; no hosted CI run or push is claimed.

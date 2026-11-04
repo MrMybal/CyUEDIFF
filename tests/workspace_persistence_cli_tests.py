@@ -51,6 +51,14 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
         'comparison':{'query':'Value','split':False,'scroll':0}}}
     configured['documents'][1]['viewState']={'container':{'filter':'B.bin','member':'Content/B.bin','changedOnly':False,'packagesOnly':False}}
     configured['documents'][2]['viewState']={'container':zen_state}
+    configured['documents'][0]['viewState']['layout']={'sidebarWidth':420,'project':True,'diagnostics':False}
+    configured['documents'][0]['viewState']['asset']['layout']={'objectColumns':[2,5]}
+    configured['documents'][0]['viewState']['asset']['before']['properties']['TestAsset']['layout']={'comparisonColumns':[3,1,2,2,1],'previewFraction':.45}
+    configured['documents'][1]['viewState']['layout']={'sidebarWidth':200,'schema':False}
+    configured['documents'][1]['viewState']['container']['layout']={'memberColumns':[4,2,1,1],'diagnostics':True}
+    configured['documents'][2]['viewState']['layout']={'sidebarWidth':620,'schema':True}
+    configured['documents'][2]['viewState']['container']['layout']={'objectColumns':[1,3],'diagnostics':True}
+
     zen_state['objectFilter']='Example';zen_state['propertyMode']=True
     zen_state['values']={'filter':'Health','selected':'/DemoAsset.Health','changedOnly':False}
     configured_file=root/'configured.json';configured_file.write_text(json.dumps(configured),encoding='utf-8')
@@ -58,6 +66,8 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
     documents=loaded['workspace']['documents'];asset_state=documents[0]['viewState']['asset']
     assert asset_state['filter']=='TestAsset' and asset_state['selected']=='TestAsset' and asset_state['comparison']['split'] is False
     assert asset_state['before']['properties']['TestAsset']['selected']=='/properties/Value'
+    assert documents[0]['viewState']['layout']==configured['documents'][0]['viewState']['layout']
+    assert asset_state['layout']=={'objectColumns':[2,5]} and asset_state['before']['properties']['TestAsset']['layout']=={'comparisonColumns':[3,1,2,2,1],'previewFraction':.45};checks+=1
     assert documents[1]['viewState']==configured['documents'][1]['viewState'] and documents[2]['viewState']==configured['documents'][2]['viewState']
     checks+=1
     pending_file=root/'pending.json';run('--workspace',configured_file,'--save-workspace',pending_file)
@@ -83,6 +93,26 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
     legacy_file=root/'legacy.json';legacy_file.write_text(json.dumps(legacy),encoding='utf-8')
     upgraded=root/'upgraded.json';run('--workspace',legacy_file,'--save-workspace',upgraded)
     assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/3';checks+=1
+    version_two=json.loads(workspace.read_text(encoding='utf-8'));version_two['schema']='cyuediff.workspace/2'
+    def remove_layout(value):
+        if isinstance(value,dict):
+            value.pop('layout',None)
+            for child in value.values():remove_layout(child)
+        elif isinstance(value,list):
+            for child in value:remove_layout(child)
+    for d in version_two['documents']:remove_layout(d['viewState'])
+    version_two_file=root/'version-two.json';version_two_file.write_text(json.dumps(version_two),encoding='utf-8')
+    run('--workspace',version_two_file,'--save-workspace',upgraded)
+    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/3';checks+=1
+    blank_layout={'layout':{'sidebarWidth':500,'project':True}}
+    blank_file=root/'blank-layout.json'
+    blank=run(*actions('view-state:'+json.dumps(blank_layout),'workspace-save:'+str(blank_file)))
+    assert blank['workspace']['documents'][0]['viewState']==blank_layout;checks+=1
+    blank_reopened=run('--workspace',blank_file)
+    assert blank_reopened['workspace']['documents'][0]['viewState']==blank_layout and blank_reopened['document'] is None;checks+=1
+    invalid_layout='view-state:'+json.dumps({'layout':{'sidebarWidth':250},'asset':{'layout':{'objectColumns':[1,0]}}})
+    invalid_layout_result=run('--workspace',configured_file,*actions(invalid_layout),code=2)
+    assert invalid_layout_result['workspace']['documents'][0]['viewState']==loaded['workspace']['documents'][0]['viewState'];checks+=1
     invalid_state=json.loads(configured_file.read_text(encoding='utf-8'))
     invalid_state['documents'][0]['viewState']['asset']['before']['mesh']={'distance':-1}
     invalid_file=root/'invalid-state.json';invalid_file.write_text(json.dumps(invalid_state),encoding='utf-8')

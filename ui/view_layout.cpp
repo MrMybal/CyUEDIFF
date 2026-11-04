@@ -75,16 +75,22 @@ void ViewLayout::resize_preview(float height) {
     if (height <= 0)
         return;
     auto fraction = preview_fraction(std::min(cyui::dp(180) / height, .4f));
+    bool changed = !state_.contains("previewFraction");
     const auto position = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("##preview-resize",
                            {std::max(1.f, ImGui::GetContentRegionAvail().x), cyui::dp(6)});
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-    if (ImGui::IsItemActive())
+    if (ImGui::IsItemActive() && ImGui::GetIO().MouseDelta.y != 0) {
         fraction = std::clamp(fraction - ImGui::GetIO().MouseDelta.y / height, .1f, .7f);
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+        changed = true;
+    }
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
         fraction = std::min(cyui::dp(180) / height, .4f);
-    state_["previewFraction"] = std::clamp(fraction, .1f, .7f);
+        changed = true;
+    }
+    if (changed)
+        state_["previewFraction"] = std::clamp(fraction, .1f, .7f);
     const auto color = ImGui::IsItemActive() ? cyui::palette().accent : cyui::palette().lineStrong;
     ImGui::GetWindowDrawList()->AddLine({position.x, position.y + cyui::dp(3)},
                                         {position.x + ImGui::GetItemRectSize().x, position.y + cyui::dp(3)},
@@ -96,10 +102,13 @@ float ViewLayout::sidebar_width() const {
     return std::clamp(state_.value("sidebarWidth", 310.f), std::min(180.f, maximum), maximum);
 }
 void ViewLayout::resize_sidebar() {
+    if (!state_.contains("sidebarWidth"))
+        state_["sidebarWidth"] = 310;
     const auto old_cursor = ImGui::GetCursorScreenPos();
     const auto pos = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
-    ImGui::SetCursorScreenPos({pos.x + size.x - cyui::dp(6), pos.y});
-    ImGui::InvisibleButton("##sidebar-resize", {cyui::dp(6), std::max(1.f, size.y)});
+    const auto padding = ImGui::GetStyle().WindowPadding;
+    ImGui::SetCursorScreenPos({pos.x + size.x - padding.x - cyui::dp(6), pos.y + padding.y});
+    ImGui::InvisibleButton("##sidebar-resize", {cyui::dp(6), std::max(1.f, size.y - padding.y * 2)});
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     if (ImGui::IsItemActive())

@@ -28,7 +28,7 @@ The smoke harness also accepts `workspace-save:PATH` and `workspace-open:PATH` t
 
 ## Presentation state — 0.38–0.40
 
-Version two adds a `viewState` object to each saved document. Version-one files remain readable and acquire an empty presentation state; their next explicit save upgrades to version two. Older applications that understand only version one cannot read the new format. The outer file keeps the eight-document/1-MiB limits. Presentation strings/identity keys are limited to 4,096 UTF-8 bytes, each identity map to 128 entries and each state object to 256 KiB. Unknown fields, invalid types, control characters, non-finite/out-of-range transforms and invalid camera vectors are rejected before applying state.
+Version two adds a `viewState` object to each saved document. Version-one files remain readable and acquire an empty presentation state; their next explicit save upgrades to the current version. Older applications that understand only version one cannot read the new format. The outer file keeps the eight-document/1-MiB limits. Presentation strings/identity keys are limited to 4,096 UTF-8 bytes, each identity map to 128 entries and each state object to 256 KiB. Unknown fields, invalid types, control characters, non-finite/out-of-range transforms and invalid camera vectors are rejected before applying state.
 
 The desktop restores object filters, before/after display choices, raw/typed inspection, the selected export by object path, and the current inspector's search/change filter and selected property path on each side. Blueprint graphs use their stable graph identity; material documents and texture sources use object paths. Their pan/zoom and the mesh's orbit camera are restored after model preparation and preview binding. The texture difference switch only applies when a comparable difference preview exists. Unfitted views retain their normal fit behavior. Captures keep at most 128 graph/image transforms, prioritizing the selected item. Asset property inspectors are saved for the current object on each side, rather than for every export ever visited.
 
@@ -38,7 +38,7 @@ Restoration runs on the owner thread outside drawing. The desktop retains pendin
 
 The embedding APIs expose `view_state()` and `restore_view_state(Json)` on the individual views and `AssetView`; bind data and GPU previews first, then restore. The header-only contract in `cyuediff/view_state.hpp` has no ImGui/CyUI dependency. It never contains resource handles or invokes readers/codecs. Hosts still own decoding, scheduling and resources. `--document-action view-state:JSON` exercises these same APIs in hidden validation; reports expose each document's current or pending `viewState`.
 
-This is bounded presentation restoration, not a complete ImGui layout dump. Table column widths, expanded diagnostic trees, general panel scroll, selected nodes, active drag/edit gestures and content-browser/history dialogs are not persisted. Diff split/search/vertical scroll are recorded, but numeric hunk/row selections are not. Camera/canvas coordinates retain the saved pose rather than automatically refitting for another window size; the existing Fit controls remain available. No automatic last-session restoration is enabled.
+This is bounded presentation restoration, not a complete ImGui layout dump. General panel scroll, native window geometry, selected nodes, active drag/edit gestures and content-browser/history dialogs are not persisted. Version three adds the bounded panel/column and diagnostic/context layouts described below. Diff split/search/vertical scroll are recorded, but numeric hunk/row selections are not. Camera/canvas coordinates retain the saved pose rather than automatically refitting for another window size; the existing Fit controls remain available. No automatic last-session restoration is enabled.
 
 
 ## Layout contract - 0.41
@@ -50,4 +50,34 @@ Version three accepts bounded layout metadata inside `viewState.layout` and each
 
 The asset object/property split, typed property columns, material parameter columns, container member columns and cooked object/property split now use resizable stretch proportions. Single-value and comparison tables keep separate column configurations. Property previews have a draggable horizontal divider; double-click it to restore the default height. Blueprint/material/container diagnostic expansion is part of each view's snapshot. Locale changes do not change table identities.
 
-Restore validated layout state after binding data. A restore also resets the corresponding live table instance so saved proportions replace any previous interactive resize. The implementation reads ImGui's resulting stretch weights in one isolated UI adapter; only numeric proportions are serialized. Core and the installed Core SDK do not depend on this adapter or CyUI. Native sidebar integration follows separately.
+Restore validated layout state after binding data. A restore also resets the corresponding live table instance so saved proportions replace any previous interactive resize. The implementation reads ImGui's resulting stretch weights in one isolated UI adapter; only numeric proportions are serialized. Core and the installed Core SDK do not depend on this adapter or CyUI. The desktop integrates these snapshots with explicit workspace save/open.
+
+
+## Native layout restoration - 0.43
+
+Each document keeps its own sidebar width and project, historical project, LFS, schema, context-change and diagnostic section flags. The sidebar can be dragged at its inner right edge; double-click this handle to restore 310 logical units. Its displayed width is capped at 45% of the viewport, preserving the requested width for a later larger window or different DPI. The input controls have a scrolling child region when they exceed the available height. Table columns use stretch proportions and adapt to the remaining width.
+
+Shell layout applies immediately when importing a workspace, independently of asset preparation. Pending view state for unvisited or failed documents remains available for saving. This prevents a slow or failed read from discarding the sidebar layout or overwriting edits made while loading. Layout-only state can also be saved for an empty document. Entire state validation precedes any mutation, including mixed shell/view updates. No automatic session restoration is enabled.
+
+For example, the following document `viewState` keeps an expanded project section, an object/property split and comparison inspector columns:
+
+```json
+{
+  "layout": {"sidebarWidth": 390, "project": true},
+  "asset": {
+    "layout": {"objectColumns": [1, 2]},
+    "before": {
+      "properties": {
+        "TestAsset": {
+          "layout": {
+            "comparisonColumns": [2, 1, 2, 2, 1],
+            "previewFraction": 0.45
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Single-value tables use `singleColumns` with three weights, comparison tables `comparisonColumns` with five, container members `memberColumns` with four, and object/property splits `objectColumns` with two. Weights are relative; an unchanged saved layout is retained exactly rather than rewritten with floating-point rounding on every frame. Material layouts share a view's parameter column configuration; node selection and canvas poses retain the existing independent contracts.

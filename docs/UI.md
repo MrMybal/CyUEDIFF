@@ -79,3 +79,8 @@ L’hôte peut charger un `GitComparison` via `CyUEDiff::Git`, puis fournir ses 
 `PropertyView` displays tagged and unversioned property types, decoded leaf labels and stable escaped paths. Search includes the path, type and displayed before/after previews. Selecting a visible row opens a wrapped preview panel with clipboard actions for its path and displayed values. Previews retain the model's text limits; copying a preview does not export the complete serialized value.
 
 Independent hosts call `PropertyView::register_translations()` once. `set_filter`, `set_changed_only`, `select_row`, `visible_count` and `selected_row` expose the prepared state. Selection is cleared when its row is filtered out. JSON traversal occurs when values change, filtering when the filter changes, and clipboard writes only on explicit clicks.
+
+
+## View layout state - 0.42-0.43
+
+`view_state()` / `restore_view_state(Json)` also include supported `layout` objects: asset and cooked object splits, property preview fractions, single/comparison property and material columns, member columns and graph/container diagnostics. Bind data first and restore outside drawing. Column identities are stable across English/French; proportions adapt to the content area and do not serialize pixel coordinates. A restore replaces the live table's previous resize state. See [workspace layout contracts](WORKSPACES.md) for fields, validation and the independent desktop sidebar state. No reader, codec, resource upload or filesystem access runs while drawing layout controls.

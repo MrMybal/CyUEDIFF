@@ -148,6 +148,79 @@ int main() {
         draw_drag();
         draw_drag();
         check(columns.snapshot() == dragged, "Captured mouse resize restores without drift");
+        ImVec2 sidebar_handle{}, preview_handle{}, section_handle{};
+        auto draw_handles = [&] {
+            ImGui::NewFrame();
+            if (cyui::beginSidebar("##resizable-sidebar", shell.sidebar_width())) {
+                if (ImGui::BeginChild("##inputs", {-cyui::dp(6), 0}))
+                    ImGui::TextUnformatted("Inputs");
+                ImGui::EndChild();
+                shell.resize_sidebar();
+                const auto a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+                sidebar_handle = {(a.x + b.x) * .5f, (a.y + b.y) * .5f};
+            }
+            cyui::endSidebar();
+            const auto *vp = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(vp->WorkPos);
+            ImGui::SetNextWindowSize(vp->WorkSize);
+            ImGui::Begin("Handle validation", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            const bool open = sections.section("diagnostics", "Graph diagnostics", false, true);
+            auto a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+            section_handle = {a.x + 8, (a.y + b.y) * .5f};
+            if (open) {
+                ImGui::TextUnformatted("Diagnostic");
+                ImGui::TreePop();
+            }
+            ImGui::Dummy({0, 120});
+            preview.resize_preview(300);
+            a = ImGui::GetItemRectMin();
+            b = ImGui::GetItemRectMax();
+            preview_handle = {(a.x + b.x) * .5f, (a.y + b.y) * .5f};
+            ImGui::End();
+            ImGui::Render();
+            ++frames;
+        };
+        draw_handles();
+        draw_handles();
+        auto drag_handle = [&](ImVec2 origin, ImVec2 delta) {
+            io.AddMousePosEvent(origin.x, origin.y);
+            draw_handles();
+            draw_handles();
+            io.AddMouseButtonEvent(0, true);
+            draw_handles();
+            io.AddMousePosEvent(origin.x + delta.x, origin.y + delta.y);
+            draw_handles();
+            draw_handles();
+            io.AddMouseButtonEvent(0, false);
+            draw_handles();
+            draw_handles();
+        };
+        const auto original_width = shell.sidebar_width();
+        drag_handle(sidebar_handle, {-60, 0});
+        check(shell.sidebar_width() < original_width - 20,
+              "Sidebar edge is draggable beside its scrolling content");
+        const auto original_fraction = preview.preview_fraction(.2);
+        drag_handle(preview_handle, {0, 30});
+        check(preview.preview_fraction(.2) < original_fraction - .05,
+              "Preview divider changes its saved fraction");
+        drag_handle(preview_handle, {0, 1000});
+        check(near(preview.preview_fraction(.2), .1), "Preview divider clamps its lower bound");
+        drag_handle(section_handle, {0, 0});
+        check(sections.snapshot()["diagnostics"] == false,
+              "A mouse click can close a restored expanded section");
+        const auto handle_state = shell.snapshot();
+        cyui::Config scaled;
+        scaled.dpiScale = 2;
+        cyui::apply(scaled);
+        cyui::loadFonts();
+        unsigned char *scaled_pixels;
+        int sw, sh;
+        io.Fonts->GetTexDataAsRGBA32(&scaled_pixels, &sw, &sh);
+        draw_handles();
+        draw_handles();
+        check(shell.sidebar_width() * cyui::dp(1) <= io.DisplaySize.x * .45f + .1f &&
+                  shell.snapshot() == handle_state,
+              "DPI changes clamp drawn width without changing the saved logical width");
         check(!ImGui::GetIO().WantSaveIniSettings || io.IniFilename == nullptr,
               "No automatic INI file persistence is required");
         ImGui::DestroyContext();

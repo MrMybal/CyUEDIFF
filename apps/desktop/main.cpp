@@ -717,6 +717,7 @@ struct DocumentContext {
     std::string cooked_view;
 };
 struct DocumentPresentation : DocumentContext {
+    ViewLayout layout;
     Json pending_view_state = Json::object();
     std::shared_ptr<const Document> displayed;
     AssetView view;
@@ -729,6 +730,13 @@ struct DocumentPresentation : DocumentContext {
         images.clear();
     }
 };
+void pending_state(DocumentPresentation &p, const Json &state) {
+    p.pending_view_state = state;
+    if (state.contains("layout")) {
+        p.layout.restore(state["layout"], "shell-layout");
+        p.pending_view_state.erase("layout");
+    }
+}
 class Shell {
     DocumentWorkspace session_;
     DocumentTabsView document_tabs_;
@@ -777,7 +785,7 @@ class Shell {
             state->initial_tab = tab(entry.view);
             state->container_tab = entry.container_tab;
             state->cooked_view = entry.cooked_view;
-            state->pending_view_state = entry.view_state;
+            pending_state(*state, entry.view_state);
             state->container_view.set_filter(entry.container_filter);
             state->container_view.set_changed_only(entry.container_changes_only);
             presentations_[id] = std::move(state);
@@ -981,15 +989,21 @@ class Shell {
         }
     }
     Json presentation_state(const DocumentPresentation &p) const {
-        if (!p.displayed)
-            return p.pending_view_state;
-        return p.displayed->container ? Json{{"container", p.container_view.view_state()}}
-                                      : Json{{"asset", p.view.view_state()}};
+        Json result = !p.displayed             ? p.pending_view_state
+                      : p.displayed->container ? Json{{"container", p.container_view.view_state()}}
+                                               : Json{{"asset", p.view.view_state()}};
+        if (!p.layout.snapshot().empty())
+            result["layout"] = p.layout.snapshot();
+        return result;
     }
     void apply_presentation_state(const Json &state) {
         cyuediff::view_state::validate(state);
-        if (!current().displayed)
+        if (!current().displayed && (state.contains("asset") || state.contains("container")))
             throw Error("desktop-document", "No displayed document view");
+        if (state.contains("layout"))
+            current().layout.restore(state["layout"], "shell-layout");
+        if (!current().displayed)
+            return;
         if (current().displayed->container) {
             if (state.contains("container"))
                 current().container_view.restore_view_state(state["container"]);
@@ -1050,7 +1064,7 @@ class Shell {
             state->initial_tab = tab(d.view);
             state->container_tab = d.container_tab;
             state->cooked_view = d.cooked_view;
-            state->pending_view_state = d.view_state;
+            pending_state(*state, d.view_state);
             presentations_[id] = std::move(state);
             if (d.settings.ready())
                 session_.request(id, d.settings.request());
@@ -1507,228 +1521,232 @@ class Shell {
             }
         }
         cyui::endStatusBar();
-        if (cyui::beginSidebar("##inputs", 310)) {
+        if (cyui::beginSidebar("##inputs", current().layout.sidebar_width())) {
             const auto key = std::to_string(session_.active_id());
             cyui::ScopedID document_scope(key.c_str());
-            if (!preferences_diagnostic_.empty()) {
-                cyui::callout(cyui::Tone::warning, cyui::tr("Preferences could not be loaded.").c_str());
-                ImGui::TextWrapped("%s", preferences_diagnostic_.c_str());
-            }
-            cyui::heading(
-                cyui::tr(current().settings.source == 2 ? "Containers" : "Compare packages").c_str(), 3);
-            const auto local_label = cyui::tr("Local files"), container_label = cyui::tr("Containers");
+            const bool sidebar_content = ImGui::BeginChild("##input-content", ImVec2(-cyui::dp(6), 0));
+            if (sidebar_content) {
+                if (!preferences_diagnostic_.empty()) {
+                    cyui::callout(cyui::Tone::warning, cyui::tr("Preferences could not be loaded.").c_str());
+                    ImGui::TextWrapped("%s", preferences_diagnostic_.c_str());
+                }
+                cyui::heading(
+                    cyui::tr(current().settings.source == 2 ? "Containers" : "Compare packages").c_str(), 3);
+                const auto local_label = cyui::tr("Local files"), container_label = cyui::tr("Containers");
 #ifdef CYUEDIFF_HAS_GIT
-            const auto git_label = cyui::tr("Git revisions");
-            const char *sources[] = {local_label.c_str(), git_label.c_str(), container_label.c_str()};
-            cyui::segmented("##source", sources, 3, &current().settings.source, cyui::dp(-1));
+                const auto git_label = cyui::tr("Git revisions");
+                const char *sources[] = {local_label.c_str(), git_label.c_str(), container_label.c_str()};
+                cyui::segmented("##source", sources, 3, &current().settings.source, cyui::dp(-1));
 #else
-            const char *sources[] = {local_label.c_str(), container_label.c_str()};
-            int mode = current().settings.source == 2 ? 1 : 0;
-            if (cyui::segmented("##source", sources, 2, &mode, cyui::dp(-1)))
-                current().settings.source = mode ? 2 : 0;
+                const char *sources[] = {local_label.c_str(), container_label.c_str()};
+                int mode = current().settings.source == 2 ? 1 : 0;
+                if (cyui::segmented("##source", sources, 2, &mode, cyui::dp(-1)))
+                    current().settings.source = mode ? 2 : 0;
 #endif
-            if (current().settings.source == 2) {
-                if (cyui::button(cyui::trLabel("Open container...").c_str()))
-                    action = Action::open_container;
-                if (cyui::beginProperties("##container-input", 95)) {
-                    cyui::property(cyui::tr("Container file").c_str());
-                    field("##container-file", current().settings.container_path);
-                    cyui::property(cyui::tr("Cooked profile").c_str());
-                    const auto bytes = cyui::tr("Byte inspection");
-                    const char *profiles[] = {bytes.c_str(), "UE 5.3", "UE 5.5"};
-                    ImGui::Combo("##cooked-profile", &current().settings.cooked_profile, profiles, 3);
-                    cyui::property(cyui::tr("Global script TOC").c_str());
-                    field("##script-toc", current().settings.script_objects);
-                    cyui::property(cyui::tr("After container").c_str());
-                    field("##after-container-file", current().settings.after_container_path);
-                    cyui::property(cyui::tr("After cooked profile").c_str());
-                    ImGui::Combo("##after-cooked-profile", &current().settings.after_cooked_profile, profiles,
-                                 3);
-                    cyui::property(cyui::tr("After global script TOC").c_str());
-                    field("##after-script-toc", current().settings.after_script_objects);
-                    cyui::property(cyui::tr("Codec module").c_str());
-                    field("##container-codec", current().settings.codec);
-                    cyui::endProperties();
-                }
-                if (cyui::beginSection(cyui::trLabel("Schema contexts (optional)").c_str(),
-                                       !current().settings.container_schema.empty() ||
-                                           !current().settings.after_container_schema.empty())) {
-                    if (cyui::beginProperties("##schema-input", 95)) {
-                        cyui::property(cyui::tr("Before schema").c_str());
-                        field("##schema-before", current().settings.container_schema);
-                        cyui::property(cyui::tr("After schema").c_str());
-                        field("##schema-after", current().settings.after_container_schema);
+                if (current().settings.source == 2) {
+                    if (cyui::button(cyui::trLabel("Open container...").c_str()))
+                        action = Action::open_container;
+                    if (cyui::beginProperties("##container-input", 95)) {
+                        cyui::property(cyui::tr("Container file").c_str());
+                        field("##container-file", current().settings.container_path);
+                        cyui::property(cyui::tr("Cooked profile").c_str());
+                        const auto bytes = cyui::tr("Byte inspection");
+                        const char *profiles[] = {bytes.c_str(), "UE 5.3", "UE 5.5"};
+                        ImGui::Combo("##cooked-profile", &current().settings.cooked_profile, profiles, 3);
+                        cyui::property(cyui::tr("Global script TOC").c_str());
+                        field("##script-toc", current().settings.script_objects);
+                        cyui::property(cyui::tr("After container").c_str());
+                        field("##after-container-file", current().settings.after_container_path);
+                        cyui::property(cyui::tr("After cooked profile").c_str());
+                        ImGui::Combo("##after-cooked-profile", &current().settings.after_cooked_profile,
+                                     profiles, 3);
+                        cyui::property(cyui::tr("After global script TOC").c_str());
+                        field("##after-script-toc", current().settings.after_script_objects);
+                        cyui::property(cyui::tr("Codec module").c_str());
+                        field("##container-codec", current().settings.codec);
                         cyui::endProperties();
                     }
-                    if (cyui::button(cyui::trLabel("Choose before schema...").c_str()))
-                        action = Action::before_schema;
-                    {
-                        cyui::ScopedDisabled unavailable(current().settings.after_container_path.empty());
-                        if (cyui::button(cyui::trLabel("Choose after schema...").c_str()))
-                            action = Action::after_schema;
-                    }
-                    cyui::endSection();
-                }
-                ImGui::TextWrapped(
-                    "%s", cyui::tr("Choose an explicit UE profile for Zen object inspection.").c_str());
-                {
-                    cyui::ScopedDisabled unavailable(current().settings.after_container_path.empty());
-                    ImGui::Checkbox(cyui::trLabel("Compare all decoded members").c_str(),
-                                    &current().settings.compare_container_payloads);
-                }
-                cyui::textDim("%s", cyui::tr("Up to 512 MiB total; 64 MiB per member.").c_str());
-                cyui::ScopedDisabled disabled(!current().settings.ready());
-                if (cyui::primaryButton(cyui::trLabel(current().settings.after_container_path.empty()
-                                                          ? "Index container"
-                                                          : "Index comparison")
-                                            .c_str(),
-                                        cyui::dp(-1, 0)))
-                    action = Action::container_index;
-            } else {
-                if (current().settings.source == 1) {
-#ifdef CYUEDIFF_HAS_GIT
-                    {
-                        cyui::ScopedDisabled disabled(current().settings.repository.empty());
-                        if (cyui::button(cyui::trLabel("Browse history...").c_str()))
-                            action = Action::history;
-                    }
-#endif
-                    if (cyui::beginProperties("##git", 76)) {
-                        cyui::property(cyui::tr("Repository").c_str());
-                        field("##repository", current().settings.repository);
-                        cyui::property(cyui::tr("Before ref").c_str());
-                        field("##before-revision", current().settings.before_revision);
-                        cyui::property(cyui::tr("After ref").c_str());
-                        field("##after-revision", current().settings.after_revision);
-                        cyui::endProperties();
+                    if (current().layout.section("schema", "Schema contexts (optional)",
+                                                 !current().settings.container_schema.empty() ||
+                                                     !current().settings.after_container_schema.empty())) {
+                        if (cyui::beginProperties("##schema-input", 95)) {
+                            cyui::property(cyui::tr("Before schema").c_str());
+                            field("##schema-before", current().settings.container_schema);
+                            cyui::property(cyui::tr("After schema").c_str());
+                            field("##schema-after", current().settings.after_container_schema);
+                            cyui::endProperties();
+                        }
+                        if (cyui::button(cyui::trLabel("Choose before schema...").c_str()))
+                            action = Action::before_schema;
+                        {
+                            cyui::ScopedDisabled unavailable(current().settings.after_container_path.empty());
+                            if (cyui::button(cyui::trLabel("Choose after schema...").c_str()))
+                                action = Action::after_schema;
+                        }
+                        cyui::endSection();
                     }
                     ImGui::TextWrapped(
-                        "%s",
-                        cyui::tr(
-                            "Use paths relative to the repository, or /Game/... with a historical project.")
-                            .c_str());
-                }
-                if (cyui::beginProperties("##files", 76)) {
-                    cyui::property(
-                        cyui::tr(current().settings.source == 1 ? "Before path" : "Before").c_str());
-                    field("##before", current().settings.before);
-                    cyui::property(cyui::tr(current().settings.source == 1 ? "After path" : "After").c_str());
-                    field("##after", current().settings.after);
-                    if (current().settings.source == 1 && current().settings.after.empty())
-                        cyui::textFaint("%s", cyui::tr("Same path when empty").c_str());
-                    cyui::endProperties();
-                }
-                cyui::space();
-                if (cyui::beginSection(cyui::trLabel(current().settings.source == 1
-                                                         ? "Historical project (optional)"
-                                                         : "Project (optional)")
-                                           .c_str(),
-                                       false)) {
-                    if (cyui::beginProperties("##context", 66)) {
-                        cyui::property(
-                            cyui::tr(current().settings.source == 1 ? "Project path" : "Project file")
-                                .c_str());
-                        field("##project", current().settings.project);
-                        cyui::property(cyui::tr("Engine root").c_str());
-                        field("##engine", current().settings.engine);
-                        cyui::property(cyui::tr("After project").c_str());
-                        field("##after-project", current().settings.after_project);
-                        cyui::property(cyui::tr("After engine").c_str());
-                        field("##after-engine", current().settings.after_engine);
-                        cyui::endProperties();
+                        "%s", cyui::tr("Choose an explicit UE profile for Zen object inspection.").c_str());
+                    {
+                        cyui::ScopedDisabled unavailable(current().settings.after_container_path.empty());
+                        ImGui::Checkbox(cyui::trLabel("Compare all decoded members").c_str(),
+                                        &current().settings.compare_container_payloads);
                     }
-                    cyui::textDim("%s", cyui::tr("Empty after context inherits the before context.").c_str());
-                    if (current().settings.source == 1)
-                        cyui::toggleSwitch(cyui::trLabel("Discover engine").c_str(),
-                                           &current().settings.discover_engine);
-                    if (current().settings.source == 0 &&
-                        cyui::button(cyui::trLabel("Choose project").c_str()))
-                        action = Action::project;
-                    cyui::endSection();
-                }
-                if (current().settings.source == 1 &&
-                    cyui::beginSection(cyui::trLabel("LFS cache (optional)").c_str(), false)) {
-                    if (cyui::beginProperties("##lfs", 76)) {
-                        cyui::property(cyui::tr("LFS objects").c_str());
-                        field("##lfs-objects", current().settings.lfs_objects);
-                        cyui::endProperties();
-                    }
-                    cyui::endSection();
-                }
-                {
-                    cyui::ScopedDisabled disabled(!current().settings.browse_ready());
-                    if (cyui::button(cyui::trLabel("Browse content...").c_str(), cyui::Variant::secondary,
-                                     cyui::dp(-1, 0)))
-                        action = Action::browse;
-                }
-                if (current().settings.source == 0 && current().settings.project.empty())
-                    ImGui::TextWrapped("%s", cyui::tr("Choose a project to browse its content.").c_str());
-                cyui::toggleSwitch(cyui::trLabel("Load previews").c_str(), &current().settings.previews);
-                {
+                    cyui::textDim("%s", cyui::tr("Up to 512 MiB total; 64 MiB per member.").c_str());
                     cyui::ScopedDisabled disabled(!current().settings.ready());
-                    if (cyui::primaryButton(cyui::trLabel("Load").c_str(), cyui::dp(-1, 0)))
-                        action = Action::load;
-                }
-                {
-                    cyui::ScopedDisabled disabled(current().settings.source == 0
-                                                      ? current().settings.after.empty()
-                                                      : !current().settings.ready());
-                    if (cyui::button(
-                            cyui::trLabel(current().settings.source == 1 ? "Swap revisions" : "Swap files")
-                                .c_str(),
-                            cyui::Variant::secondary, cyui::dp(-1, 0)))
-                        action = Action::swap;
-                }
-            }
-            if (session_.active_busy()) {
-                const auto progress = session_.progress();
-                float fraction =
-                    progress.total ? float(double(progress.completed) / double(progress.total)) : 0.f;
-                ImGui::ProgressBar(std::clamp(fraction, 0.f, 1.f), cyui::dp(-1, 0),
-                                   cyui::tr(progress.phase.c_str()).c_str());
-                if (cyui::button(cyui::trLabel("Cancel loading").c_str(), cyui::Variant::secondary,
-                                 cyui::dp(-1, 0)))
-                    action = Action::cancel_load;
-            }
-            if (current().displayed && !current().displayed->container) {
-                cyui::divider();
-                const auto &present =
-                    current().displayed->before ? current().displayed->before : current().displayed->after;
-                cyui::textDim(cyui::tr("%zu exported objects").c_str(), present->exports.size());
+                    if (cyui::primaryButton(cyui::trLabel(current().settings.after_container_path.empty()
+                                                              ? "Index container"
+                                                              : "Index comparison")
+                                                .c_str(),
+                                            cyui::dp(-1, 0)))
+                        action = Action::container_index;
+                } else {
+                    if (current().settings.source == 1) {
 #ifdef CYUEDIFF_HAS_GIT
-                if (current().displayed->git) {
-                    for (const auto *revision :
-                         {&current().displayed->git->before, &current().displayed->git->after}) {
-                        cyui::textMono(
-                            "%s: %.12s",
-                            cyui::tr(revision == &current().displayed->git->before ? "Before" : "After")
-                                .c_str(),
-                            revision->commit.c_str());
-                        cyui::tooltip(revision->commit.c_str());
+                        {
+                            cyui::ScopedDisabled disabled(current().settings.repository.empty());
+                            if (cyui::button(cyui::trLabel("Browse history...").c_str()))
+                                action = Action::history;
+                        }
+#endif
+                        if (cyui::beginProperties("##git", 76)) {
+                            cyui::property(cyui::tr("Repository").c_str());
+                            field("##repository", current().settings.repository);
+                            cyui::property(cyui::tr("Before ref").c_str());
+                            field("##before-revision", current().settings.before_revision);
+                            cyui::property(cyui::tr("After ref").c_str());
+                            field("##after-revision", current().settings.after_revision);
+                            cyui::endProperties();
+                        }
+                        ImGui::TextWrapped("%s", cyui::tr("Use paths relative to the repository, or "
+                                                          "/Game/... with a historical project.")
+                                                     .c_str());
                     }
-                    if (!current().context_details.empty() &&
-                        cyui::beginSection(cyui::trLabel("Project context changes").c_str(), false)) {
-                        ImGui::TextWrapped("%s", current().context_details.c_str());
+                    if (cyui::beginProperties("##files", 76)) {
+                        cyui::property(
+                            cyui::tr(current().settings.source == 1 ? "Before path" : "Before").c_str());
+                        field("##before", current().settings.before);
+                        cyui::property(
+                            cyui::tr(current().settings.source == 1 ? "After path" : "After").c_str());
+                        field("##after", current().settings.after);
+                        if (current().settings.source == 1 && current().settings.after.empty())
+                            cyui::textFaint("%s", cyui::tr("Same path when empty").c_str());
+                        cyui::endProperties();
+                    }
+                    cyui::space();
+                    if (current().layout.section(
+                            current().settings.source == 1 ? "historicalProject" : "project",
+                            current().settings.source == 1 ? "Historical project (optional)"
+                                                           : "Project (optional)")) {
+                        if (cyui::beginProperties("##context", 66)) {
+                            cyui::property(
+                                cyui::tr(current().settings.source == 1 ? "Project path" : "Project file")
+                                    .c_str());
+                            field("##project", current().settings.project);
+                            cyui::property(cyui::tr("Engine root").c_str());
+                            field("##engine", current().settings.engine);
+                            cyui::property(cyui::tr("After project").c_str());
+                            field("##after-project", current().settings.after_project);
+                            cyui::property(cyui::tr("After engine").c_str());
+                            field("##after-engine", current().settings.after_engine);
+                            cyui::endProperties();
+                        }
+                        cyui::textDim("%s",
+                                      cyui::tr("Empty after context inherits the before context.").c_str());
+                        if (current().settings.source == 1)
+                            cyui::toggleSwitch(cyui::trLabel("Discover engine").c_str(),
+                                               &current().settings.discover_engine);
+                        if (current().settings.source == 0 &&
+                            cyui::button(cyui::trLabel("Choose project").c_str()))
+                            action = Action::project;
+                        cyui::endSection();
+                    }
+                    if (current().settings.source == 1 &&
+                        current().layout.section("lfs", "LFS cache (optional)")) {
+                        if (cyui::beginProperties("##lfs", 76)) {
+                            cyui::property(cyui::tr("LFS objects").c_str());
+                            field("##lfs-objects", current().settings.lfs_objects);
+                            cyui::endProperties();
+                        }
+                        cyui::endSection();
+                    }
+                    {
+                        cyui::ScopedDisabled disabled(!current().settings.browse_ready());
+                        if (cyui::button(cyui::trLabel("Browse content...").c_str(), cyui::Variant::secondary,
+                                         cyui::dp(-1, 0)))
+                            action = Action::browse;
+                    }
+                    if (current().settings.source == 0 && current().settings.project.empty())
+                        ImGui::TextWrapped("%s", cyui::tr("Choose a project to browse its content.").c_str());
+                    cyui::toggleSwitch(cyui::trLabel("Load previews").c_str(), &current().settings.previews);
+                    {
+                        cyui::ScopedDisabled disabled(!current().settings.ready());
+                        if (cyui::primaryButton(cyui::trLabel("Load").c_str(), cyui::dp(-1, 0)))
+                            action = Action::load;
+                    }
+                    {
+                        cyui::ScopedDisabled disabled(current().settings.source == 0
+                                                          ? current().settings.after.empty()
+                                                          : !current().settings.ready());
+                        if (cyui::button(cyui::trLabel(current().settings.source == 1 ? "Swap revisions"
+                                                                                      : "Swap files")
+                                             .c_str(),
+                                         cyui::Variant::secondary, cyui::dp(-1, 0)))
+                            action = Action::swap;
+                    }
+                }
+                if (session_.active_busy()) {
+                    const auto progress = session_.progress();
+                    float fraction =
+                        progress.total ? float(double(progress.completed) / double(progress.total)) : 0.f;
+                    ImGui::ProgressBar(std::clamp(fraction, 0.f, 1.f), cyui::dp(-1, 0),
+                                       cyui::tr(progress.phase.c_str()).c_str());
+                    if (cyui::button(cyui::trLabel("Cancel loading").c_str(), cyui::Variant::secondary,
+                                     cyui::dp(-1, 0)))
+                        action = Action::cancel_load;
+                }
+                if (current().displayed && !current().displayed->container) {
+                    cyui::divider();
+                    const auto &present = current().displayed->before ? current().displayed->before
+                                                                      : current().displayed->after;
+                    cyui::textDim(cyui::tr("%zu exported objects").c_str(), present->exports.size());
+#ifdef CYUEDIFF_HAS_GIT
+                    if (current().displayed->git) {
+                        for (const auto *revision :
+                             {&current().displayed->git->before, &current().displayed->git->after}) {
+                            cyui::textMono(
+                                "%s: %.12s",
+                                cyui::tr(revision == &current().displayed->git->before ? "Before" : "After")
+                                    .c_str(),
+                                revision->commit.c_str());
+                            cyui::tooltip(revision->commit.c_str());
+                        }
+                        if (!current().context_details.empty() &&
+                            current().layout.section("contextChanges", "Project context changes")) {
+                            ImGui::TextWrapped("%s", current().context_details.c_str());
+                            cyui::endSection();
+                        }
+                    }
+#endif
+                    if (current().layout.section("diagnostics", "Diagnostics")) {
+                        for (const auto *package :
+                             {current().displayed->before.get(), current().displayed->after.get()})
+                            if (package)
+                                for (const auto &message : package->diagnostics)
+                                    ImGui::TextWrapped("%s", message.c_str());
+                        if (current().displayed->project)
+                            for (const auto &message : current().displayed->project->diagnostics)
+                                ImGui::TextWrapped("%s", message.c_str());
+                        for (const auto &message : current().displayed->diagnostics)
+                            ImGui::TextWrapped("%s", message.c_str());
+                        for (const auto &message : current().gpu_diagnostics)
+                            ImGui::TextWrapped("%s", message.c_str());
                         cyui::endSection();
                     }
                 }
-#endif
-                if (cyui::beginSection(cyui::trLabel("Diagnostics").c_str(), false)) {
-                    for (const auto *package :
-                         {current().displayed->before.get(), current().displayed->after.get()})
-                        if (package)
-                            for (const auto &message : package->diagnostics)
-                                ImGui::TextWrapped("%s", message.c_str());
-                    if (current().displayed->project)
-                        for (const auto &message : current().displayed->project->diagnostics)
-                            ImGui::TextWrapped("%s", message.c_str());
-                    for (const auto &message : current().displayed->diagnostics)
-                        ImGui::TextWrapped("%s", message.c_str());
-                    for (const auto &message : current().gpu_diagnostics)
-                        ImGui::TextWrapped("%s", message.c_str());
-                    cyui::endSection();
-                }
             }
+            ImGui::EndChild();
+            current().layout.resize_sidebar();
         }
         cyui::endSidebar();
         const auto *viewport = ImGui::GetMainViewport();
