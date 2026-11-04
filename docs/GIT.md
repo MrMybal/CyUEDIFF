@@ -104,3 +104,14 @@ Références de format et de commandes : [ls-tree](https://git-scm.com/docs/git-
 ## Contextes de projets 0.7
 
 `git-project` inspecte un `.uproject` historique. `git-inspect` et `git-diff` acceptent `--project` et les noms `/Game`, de plugins ou `/Engine`. Le diff peut prendre des projets et racines moteur distincts par côté ; `contextChanges` décrit alors les différences même avec un asset identique. Les contenus du moteur sélectionné restent identifiés comme locaux. Voir [PROJECTS.md](PROJECTS.md) pour le contrat, les bornes et les limites du catalogue de plugins.
+
+## Commit history — 0.23
+
+`GitRepository::history(revision, GitHistoryOptions)` reads one topologically ordered, newest-first page of local commit metadata. Each row contains a full object ID, parent IDs, author, author ISO date and subject. `head` resolves the starting revision once; pass that returned ID, `next_skip` and the same page size for subsequent pages. A moving branch does not change those pinned pages. `has_more` is established by one additional record. Dates are author dates, not the history ordering criterion. Shallow repositories expose only their available ancestry.
+
+```powershell
+cyuediff git-history D:/Projects/Game HEAD --max-commits 100
+cyuediff git-history D:/Projects/Game COMMIT_ID --skip 100 --max-commits 100 --out history.json
+```
+
+Pages accept 1–1,000 commits, skip up to 1,000,000 and 1–64 MiB of metadata (8 MiB by default). Individual fields are limited to 128 KiB. The existing per-process timeout, cancellation and output bounds apply. NUL-delimited records preserve subjects containing punctuation; malformed or non-UTF-8 metadata is rejected. SHA-1 and SHA-256 repository IDs are supported. History does not read package blobs, verify LFS payloads, fetch, check out or run filters. CLI output retains the adapter's Git-storage protections.

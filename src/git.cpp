@@ -1,5 +1,6 @@
 #include "git_process.hpp"
 #include "git_project.hpp"
+#include "git_history.hpp"
 #include "descriptor.hpp"
 #include <algorithm>
 #include <cctype>
@@ -335,6 +336,11 @@ GitRevision GitRepository::materialize(const std::string &revision,
         result.files.push_back(extract(pair.second, options_, root_, workspace, target, total, get_lfs));
     }
     return result;
+}
+GitHistory GitRepository::history(const std::string &revision, const GitHistoryOptions &options) const {
+    detail::GitWorkspace workspace(options_.temporary_root);
+    const auto commit = resolve_commit(options_, root_, revision, workspace);
+    return detail::read_history(options_, root_, commit, options, workspace);
 }
 AssetCatalog GitRepository::catalog(const std::string &revision, const CatalogOptions &options) const {
     if (!options.max_assets || !options.max_entries || !options.max_path_bytes ||

@@ -15,6 +15,22 @@ struct GitOptions {
     std::uint32_t timeout_ms = 30'000; // Per Git process.
     OperationControl control;
 };
+struct GitHistoryOptions {
+    std::uint32_t max_commits = 100, skip = 0;
+    std::uint64_t max_bytes = 8 * 1024 * 1024;
+};
+struct GitCommit {
+    std::string id, author, authored_at, subject;
+    std::vector<std::string> parents;
+    Json to_json() const;
+};
+struct GitHistory {
+    std::string head;
+    std::uint32_t skip = 0, next_skip = 0;
+    bool has_more = false;
+    std::vector<GitCommit> commits;
+    Json to_json() const;
+};
 struct GitFile {
     std::string path, blob_oid, lfs_oid;
     std::uint64_t blob_bytes = 0, content_bytes = 0;
@@ -82,6 +98,8 @@ class GitRepository {
         return common_directory_;
     }
     fs::path lfs_objects() const;
+    // Newest-first topological history. Pass the returned head for stable subsequent pages.
+    GitHistory history(const std::string &revision = "HEAD", const GitHistoryOptions &options = {}) const;
     // Repository-wide metadata listing. Does not materialize blobs or inspect LFS content.
     AssetCatalog catalog(const std::string &revision, const CatalogOptions &options = {}) const;
     // Commit-ish resolves once to an immutable commit. No checkout, filters or fetch.

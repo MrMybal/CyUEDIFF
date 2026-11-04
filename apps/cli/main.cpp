@@ -40,6 +40,7 @@ int run(const std::vector<std::string> &args) {
                "FILE]\n"
                "  preview and image-diff also accept --codec MODULE.dll\n"
 #ifdef CYUEDIFF_HAS_GIT
+               "  cyuediff git-history REPO REV [--max-commits N] [--skip N] [--out FILE]\n"
                "  cyuediff git-catalog REPO REV [--max-assets N] [--max-entries N] [--out FILE]\n"
                "  cyuediff git-project REPO REV PROJECT [--engine-root ROOT] [--out FILE]\n"
                "  cyuediff git-inspect REPO REV PATH [--out FILE] [--lfs-objects DIR]\n"
@@ -101,6 +102,8 @@ int run(const std::vector<std::string> &args) {
                                           "--lfs-objects",
                                           "--git-temp",
                                           "--after-path",
+                                          "--max-commits",
+                                          "--skip",
                                           "--before-engine-root",
                                           "--after-engine-root"};
     for (std::size_t i = 1; i < args.size(); ++i) {
@@ -125,7 +128,7 @@ int run(const std::vector<std::string> &args) {
                         ? 2u
                         : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
-                             command == "git-catalog";
+                             command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
     const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog";
     if (zen_command)
@@ -134,13 +137,21 @@ int run(const std::vector<std::string> &args) {
                                    command == "container-hash" || command == "container-diff";
     const bool catalog_command = command == "catalog" || command == "git-catalog";
     if (git_command)
-        required = command == "git-diff" ? 4u : (command == "git-catalog" ? 2u : 3u);
+        required =
+            command == "git-diff" ? 4u : ((command == "git-catalog" || command == "git-history") ? 2u : 3u);
     if (positional.size() != required)
         throw Error("arguments", "Wrong number of arguments; use --help");
     const bool image_command = command == "preview" || command == "image-diff" || command == "hdr-diff";
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (command == "git-history") {
+            if (key != "--out" && key != "--git-temp" && key != "--max-commits" && key != "--skip")
+                throw Error("arguments", "Unsupported history option: " + key);
+            continue;
+        }
+        if (key == "--max-commits" || key == "--skip")
+            throw Error("arguments", key + " requires git-history");
         if (schema_command) {
             if (key != "--out" && key != "--codec")
                 throw Error("arguments", "Unsupported USMAP option: " + key);
@@ -553,7 +564,14 @@ int run(const std::vector<std::string> &args) {
                 for (const auto &file : revision.files)
                     protected_files.push_back(fs::u8path(file.path));
         };
-        if (command == "git-catalog") {
+        if (command == "git-history") {
+            GitHistoryOptions history_options;
+            if (flags.contains("--max-commits"))
+                history_options.max_commits = integer_option("--max-commits", 1000);
+            if (flags.contains("--skip"))
+                history_options.skip = integer_option("--skip", 1'000'000);
+            output = repo.history(positional[1], history_options).to_json();
+        } else if (command == "git-catalog") {
             auto catalog = repo.catalog(positional[1], catalog_options());
             for (const auto &asset : catalog.assets)
                 protect(asset.path);
