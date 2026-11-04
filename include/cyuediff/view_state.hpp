@@ -104,6 +104,9 @@ inline void validate(const Json &v, std::string_view kind) {
             string({"filter"});
             string({"selected"}, true);
             flag({"changedOnly"});
+        } else if (kind == "list-filter") {
+            string({"filter"});
+            flag({"changedOnly"});
         } else if (kind == "graph-inspection") {
             string({"filter"});
             string({"selected"}, true);
@@ -125,6 +128,7 @@ inline void validate(const Json &v, std::string_view kind) {
             string({"selected"}, true);
             entries("views", "canvas");
             entries("inspectors", "graph-inspection");
+            entries("parameterFilters", "list-filter");
         } else if (kind == "mesh") {
             if (key == "target" || key == "up") {
                 vector(x, 3);

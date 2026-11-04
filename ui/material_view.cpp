@@ -16,21 +16,24 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
         prepared.outputs_known = graph.value().at("outputDefinitionsComplete");
         prepared.diagnostics = graph.value().at("diagnostics").get<std::vector<std::string>>();
         GraphChanges delta;
+        const Json *match =
+            peer && other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
         if (peer) {
-            const Json *match =
-                other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
             delta = after ? graph_changes(match, &graph.value()) : graph_changes(&graph.value(), match);
             prepared.counts = delta.node_counts;
             prepared.comparing = true;
         }
         cyui::ItemId next = 1;
         std::map<std::string, cyui::ItemId> pins;
+        std::vector<GraphInspectionItem> inspection;
         for (auto node = graph.value().at("nodes").begin(); node != graph.value().at("nodes").end(); ++node) {
             cyui::Node item;
             item.id = next++;
             if (peer)
                 prepared.changes[item.id] = delta.nodes.at(node.key());
             item.label = node.value().at("title");
+            inspection.push_back(
+                {item.id, node.key(), item.label, peer ? delta.nodes.at(node.key()) : ChangeKind::unchanged});
             item.colorIndex = node.key() == "$result" ? 4 : (node.value().at("comment") == true ? 6 : 0);
             item.position = {node.value().at("position").at("x").get<double>(),
                              node.value().at("position").at("y").get<double>()};
@@ -71,6 +74,10 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
                 prepared.links.push_back(
                     {next++, a->second, b->second, link.at("kind") == "named-reroute" ? 5 : 0});
         }
+        const auto *local_nodes = &graph.value().at("nodes");
+        const auto *peer_nodes = match ? &match->at("nodes") : nullptr;
+        prepared.inspector.set_nodes(after ? peer_nodes : local_nodes, after ? local_nodes : peer_nodes,
+                                     std::move(inspection), peer != nullptr);
         documents_.push_back(std::move(prepared));
     }
     for (auto instance = model.at("instances").begin(); instance != model.at("instances").end(); ++instance) {
@@ -125,8 +132,44 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
             prepared.counts.add(change);
         }
         prepared.diagnostics = instance.value().at("diagnostics").get<std::vector<std::string>>();
+        rebuild_parameters(prepared);
         documents_.push_back(std::move(prepared));
     }
+}
+void MaterialView::rebuild_parameters(Document &document) {
+    document.visible_parameters.clear();
+    for (std::size_t i = 0; i < document.parameters.size(); ++i) {
+        const auto &p = document.parameters[i];
+        if ((!document.changed_parameters_only || p.change != ChangeKind::unchanged) &&
+            document.parameter_filter.matches(p.name,
+                                              p.kind + " " + p.identity + " " + p.before + " " + p.after))
+            document.visible_parameters.push_back(i);
+    }
+}
+bool MaterialView::set_parameter_filter(std::string query, bool changed_only) {
+    if (documents_.empty() || !documents_[selected_].instance)
+        return false;
+    auto &document = documents_[selected_];
+    document.parameter_filter.query = std::move(query);
+    document.changed_parameters_only = document.comparing && changed_only;
+    rebuild_parameters(document);
+    return true;
+}
+std::size_t MaterialView::visible_parameter_count() const {
+    return documents_.empty() ? 0 : documents_[selected_].visible_parameters.size();
+}
+bool MaterialView::select_node(const std::string &material, const std::string &node) {
+    for (std::size_t i = 0; i < documents_.size(); ++i)
+        if (!documents_[i].instance && documents_[i].path == material &&
+            documents_[i].inspector.select_node(node)) {
+            selected_ = i;
+            return true;
+        }
+    return false;
+}
+bool MaterialView::next_changed_node(bool previous) {
+    return !documents_.empty() && !documents_[selected_].instance &&
+           documents_[selected_].inspector.next_change(previous);
 }
 bool MaterialView::select_object(const std::string &path) {
     for (std::size_t i = 0; i < documents_.size(); ++i)
@@ -137,8 +180,15 @@ bool MaterialView::select_object(const std::string &path) {
     return false;
 }
 Json MaterialView::view_state() const {
-    Json views = Json::object();
+    Json views = Json::object(), inspectors = Json::object(), filters = Json::object();
     auto add = [&](const auto &g) {
+        auto state = g.inspector.view_state();
+        if (!state.empty() && inspectors.size() < 128)
+            inspectors[g.path] = std::move(state);
+        if (g.instance && (!g.parameter_filter.query.empty() || g.changed_parameters_only) &&
+            filters.size() < 128)
+            filters[g.path] = {{"filter", g.parameter_filter.query},
+                               {"changedOnly", g.changed_parameters_only}};
         if (!g.needs_fit && views.size() < 128)
             views[g.path] = {{"pan", {g.state.canvas.view.origin.x, g.state.canvas.view.origin.y}},
                              {"zoom", g.state.canvas.view.zoom}};
@@ -149,6 +199,10 @@ Json MaterialView::view_state() const {
         add(g);
     Json result = {{"selected", documents_.empty() ? Json(nullptr) : Json(documents_[selected_].path)},
                    {"views", views}};
+    if (!inspectors.empty())
+        result["inspectors"] = std::move(inspectors);
+    if (!filters.empty())
+        result["parameterFilters"] = std::move(filters);
     if (!layout_.snapshot().empty())
         result["layout"] = layout_.snapshot();
     return result;
@@ -164,6 +218,23 @@ void MaterialView::restore_view_state(const Json &state) {
                 selected_ = i;
                 break;
             }
+    }
+    for (auto &g : documents_) {
+        if (state.contains("inspectors")) {
+            auto it = state["inspectors"].find(g.path);
+            if (it != state["inspectors"].end() && !g.instance)
+                g.inspector.restore_view_state(*it);
+        }
+        if (state.contains("parameterFilters")) {
+            auto it = state["parameterFilters"].find(g.path);
+            if (it != state["parameterFilters"].end() && g.instance) {
+                if (it->contains("filter"))
+                    g.parameter_filter.query = it->at("filter").get<std::string>();
+                if (it->contains("changedOnly"))
+                    g.changed_parameters_only = g.comparing && it->at("changedOnly").get<bool>();
+                rebuild_parameters(g);
+            }
+        }
     }
     if (state.contains("views"))
         for (auto &g : documents_) {
@@ -209,6 +280,19 @@ void MaterialView::draw(const char *id) {
             ImGui::TextUnformatted(cyui::tr("Changes").c_str());
             detail::change_legend(document.counts);
         }
+        bool update = cyui::filterBox("##parameter-filter", document.parameter_filter);
+        if (document.comparing)
+            update =
+                ImGui::Checkbox(cyui::trLabel("Changed only").c_str(), &document.changed_parameters_only) ||
+                update;
+        if (update)
+            rebuild_parameters(document);
+        if (document.visible_parameters.empty()) {
+            cyui::emptyState(cyui::tr("No matching parameter").c_str(),
+                             cyui::tr("Change the filter or show unchanged parameters.").c_str(),
+                             cyui::icon::filter);
+            return;
+        }
         if (layout_.begin_table("##parameters", document.comparing ? "comparisonColumns" : "singleColumns",
                                 document.comparing ? 5 : 3,
                                 ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg,
@@ -223,10 +307,11 @@ void MaterialView::draw(const char *id) {
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
             ImGuiListClipper clipper;
-            clipper.Begin(static_cast<int>(document.parameters.size()));
+            clipper.Begin(static_cast<int>(document.visible_parameters.size()));
             while (clipper.Step())
                 for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
-                    const auto &parameter = document.parameters[i];
+                    const auto &parameter =
+                        document.parameters[document.visible_parameters[static_cast<std::size_t>(i)]];
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     ImGui::TextUnformatted(parameter.name.c_str());
@@ -258,19 +343,7 @@ void MaterialView::draw(const char *id) {
         detail::change_legend(document.counts);
     if (!document.outputs_known)
         cyui::textDim("%s", cyui::tr("Some output ports are inferred from saved connections.").c_str());
-    auto available = ImGui::GetContentRegionAvail();
-    if (available.x <= 0 || available.y <= 0)
-        return;
-    if (document.needs_fit && !document.nodes.empty()) {
-        document.state.canvas.view.fit(document.low, document.high, available, cyui::dp(24));
-        document.needs_fit = false;
-    }
-    cyui::NodeOptions options;
-    options.readOnly = true;
-    options.revision = 1;
-    options.drawBody = [&](const cyui::Node &node, const cyui::Rect &rect) {
-        detail::node_marker(node, rect, document.changes);
-    };
-    cyui::nodeEditor("##material-canvas", document.state, document.nodes, document.links, available, options);
+    document.inspector.draw(document.state, document.nodes, document.links, document.changes,
+                            document.needs_fit, document.low, document.high);
 }
 } // namespace cyuediff

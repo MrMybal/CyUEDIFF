@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/view_layout.hpp>
+#include <cyuediff/graph_inspector.hpp>
 #include <cyuediff/view_state.hpp>
 #include <cyuediff/visual_diff.hpp>
 #include <cyui/modules/Nodes.h>
@@ -16,17 +17,22 @@ class MaterialView {
             ChangeKind change;
         };
         std::vector<ParameterRow> parameters;
+        cyui::TextFilter parameter_filter;
+        bool changed_parameters_only = false;
+        std::vector<std::size_t> visible_parameters;
         std::map<cyui::ItemId, ChangeKind> changes;
         ChangeCounts counts;
         bool comparing = false;
         std::vector<cyui::Node> nodes;
         std::vector<cyui::NodeLink> links;
         cyui::NodeState state;
+        GraphInspector inspector;
         cyui::Point low{}, high{};
         std::size_t pins = 0;
     };
     std::vector<Document> documents_;
     std::size_t selected_ = 0;
+    static void rebuild_parameters(Document &);
 
   public:
     // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
@@ -37,6 +43,10 @@ class MaterialView {
         return documents_.empty();
     }
     bool select_object(const std::string &path);
+    bool select_node(const std::string &material, const std::string &node);
+    bool next_changed_node(bool previous = false);
+    bool set_parameter_filter(std::string query, bool changed_only = false);
+    std::size_t visible_parameter_count() const;
     void draw(const char *id = "Material");
 };
 } // namespace cyuediff

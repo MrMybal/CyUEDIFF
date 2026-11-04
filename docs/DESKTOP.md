@@ -248,3 +248,7 @@ The embeddable UI now has a shared read-only GraphInspector with stable snapshot
 ## Blueprint node navigation - 0.69
 
 Blueprint graphs now embed the shared inspector. Select a node on the canvas or in the searchable node list, navigate changed nodes and focus a selected node. The typed comparison includes stored pin text metadata, defaults, references and node properties. Search limits navigation results while retaining the complete graph and its connections. Selection, filters and property previews are saved by graph/node identity in explicit workspace files, independently for each side; restoring selection preserves saved pan/zoom.
+
+## Material expression and override navigation - 0.70
+
+Material expression graphs now use the searchable node inspector, including typed expression properties, saved inputs/outputs and before/after values. Changed-expression navigation uses snapshot identity and retains the full read-only graph. Stored material-instance overrides support name/kind/value/association search and a changed-only filter, separately per instance. These states survive explicit workspace save/restore. This inspects saved serialization only; parent materials and shader execution are not evaluated.

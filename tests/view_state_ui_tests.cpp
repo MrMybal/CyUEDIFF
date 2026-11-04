@@ -218,6 +218,54 @@ int main() {
         material_state["layout"] = {{"diagnostics", true}};
         material_view.restore_view_state(material_state);
         check(material_view.view_state() == material_state, "Material graph camera round trip");
+        auto material_peer = materials;
+        material_peer.exports[1].properties["DefaultValue"] = {{"type", {{"name", "FloatProperty"}}}, {"value", 0.75}};
+        MaterialView compared_material;
+        compared_material.set_package(materials, &material_peer);
+        check(compared_material.next_changed_node(), "Navigate changed material expression");
+        auto selected_expression = compared_material.view_state()["inspectors"]["M"]["selected"];
+        check(material_view.select_node("M", selected_expression.get<std::string>()),
+              "Select material expression by snapshot identity");
+        material_state = material_view.view_state();
+        material_view.restore_view_state(material_state);
+        MaterialView restored_material;
+        restored_material.set_package(materials);
+        restored_material.restore_view_state(material_state);
+        check(restored_material.view_state() == material_state, "Material expression selection round trip");
+        ObjectExport mi;
+        mi.path = mi.name = "MI";
+        mi.class_name = "/Script/Engine.MaterialInstanceConstant";
+        mi.coverage = "properties";
+        mi.properties = {
+            {"ScalarParameterValues",
+             {{"value",
+               Json::array(
+                   {{{"ParameterName", {{"value", "Power"}}}, {"ParameterValue", {{"value", 0.5}}}},
+                    {{"ParameterName", {{"value", "Stable"}}}, {"ParameterValue", {{"value", 1.0}}}}})}}}};
+        auto instances = materials;
+        instances.exports.push_back(mi);
+        auto peer_instances = instances;
+        peer_instances.exports.back()
+            .properties["ScalarParameterValues"]["value"][0]["ParameterValue"]["value"] = 0.9;
+        MaterialView parameter_view;
+        parameter_view.set_package(instances, &peer_instances);
+        check(parameter_view.select_object("MI") && parameter_view.visible_parameter_count() == 2,
+              "Instance override union prepared");
+        check(parameter_view.set_parameter_filter("Power", true) &&
+                  parameter_view.visible_parameter_count() == 1,
+              "Instance filters select changed named override");
+        auto parameter_state = parameter_view.view_state();
+        MaterialView resumed_parameters;
+        resumed_parameters.set_package(instances, &peer_instances);
+        resumed_parameters.restore_view_state(parameter_state);
+        check(resumed_parameters.visible_parameter_count() == 1 &&
+                  resumed_parameters.view_state() == parameter_state,
+              "Per-instance filter persists by object path");
+        check(parameter_view.set_parameter_filter("Stable", true) &&
+                  parameter_view.visible_parameter_count() == 0,
+              "Unchanged override is hidden when requested");
+        check(parameter_view.set_parameter_filter("missing") && parameter_view.visible_parameter_count() == 0,
+              "Missing parameter produces an explicit empty state");
         const auto original_package = package->to_json();
         int frames = 0;
         for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
@@ -264,7 +312,9 @@ int main() {
         }
         check(blueprint.view_state()["views"] == graph_state["views"] &&
                   blueprint.view_state()["inspectors"][graph_key]["selected"] == std::string(32, 'a') &&
-                  material_view.view_state() == material_state && mesh_view.view_state() == camera,
+                  material_view.view_state()["views"] == material_state["views"] &&
+                  material_view.view_state()["inspectors"]["M"]["selected"] == selected_expression &&
+                  mesh_view.view_state() == camera,
               "Drawing restored views does not auto-fit over saved navigation");
         check(package->to_json() == original_package, "Restoring views never modifies package data");
         ImGui::DestroyContext();
