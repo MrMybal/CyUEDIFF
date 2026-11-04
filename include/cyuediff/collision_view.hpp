@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/collision.hpp>
+#include <cyuediff/collision_viewport.hpp>
 #include <cyuediff/property_view.hpp>
 namespace cyuediff {
 class CollisionView {
@@ -7,6 +8,7 @@ class CollisionView {
     std::vector<std::string> bodies_, shapes_;
     std::string body_, shape_;
     PropertyView properties_;
+    CollisionViewport viewport_;
     bool comparing_ = false, complete_ = false;
     const Json *selected(const Json &, bool shape = true) const;
     void bind(bool retain = true);

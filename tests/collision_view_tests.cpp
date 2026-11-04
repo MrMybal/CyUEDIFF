@@ -19,6 +19,38 @@ int main() {
         AssetView::register_translations();
         auto before = collision_extended_fixture(), after = before;
         after.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Radius"]["value"] = 7.;
+        CollisionOptions snapshot_options;
+        snapshot_options.source_indices = false;
+        auto a = collision_snapshot(before, snapshot_options),
+             b = collision_snapshot(after, snapshot_options);
+        CollisionViewport viewport;
+        viewport.set_models(collision_wireframe(before), collision_wireframe(after), &a, &b, true);
+        viewport.select("SM.Body");
+        check(viewport.changes().modified == 1 && viewport.changes().unchanged == 5,
+              "Wireframe colors follow stable stored shape identity");
+        viewport.set_changed_only(true);
+        check(viewport.visible_edge_count() == 96 && viewport.visible_edge_count(true) == 96,
+              "Changed-only includes just the changed sphere on both sides");
+        check(viewport.focus_changes(), "Fit changed shape bounds");
+        viewport.select("");
+        check(viewport.visible_edge_count() == 0, "Distinct body coordinate systems are not overlaid");
+        viewport.select("SM.Body", "sphere:name:Ball");
+        check(viewport.visible_edge_count() == 96, "Typed selection filters the prepared geometry");
+        CollisionViewport added_viewport;
+        added_viewport.set_models({}, collision_wireframe(after), nullptr, &b, true);
+        added_viewport.select("SM.Body");
+        check(added_viewport.changes().added == 6 && added_viewport.visible_edge_count() == 0 &&
+                  added_viewport.visible_edge_count(true) > 0,
+              "Added package has an explicit empty before pane");
+        auto reordered_package = before;
+        auto &spheres = reordered_package.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"];
+        std::swap(spheres[0], spheres[1]);
+        auto reorder_snapshot = collision_snapshot(reordered_package, snapshot_options);
+        CollisionViewport reorder_viewport;
+        reorder_viewport.set_models(collision_wireframe(before), collision_wireframe(reordered_package), &a,
+                                    &reorder_snapshot, true);
+        reorder_viewport.select("SM.Body");
+        check(!reorder_viewport.changes().changed(), "Named reorder does not recolor geometry");
         CollisionView view;
         view.set_packages(&before, &after);
         check(!view.empty() && view.next_changed_shape(), "Navigate changed stored shape");
@@ -78,7 +110,7 @@ int main() {
             int w, h;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
             for (const auto *locale : {"en", "fr"})
-                for (int scene = 0; scene < 5; ++scene)
+                for (int scene = 0; scene < 7; ++scene)
                     for (int n = 0; n < 2; ++n) {
                         cyui::setLocale(locale);
                         ImGui::NewFrame();
@@ -95,10 +127,17 @@ int main() {
                             added.draw();
                         if (scene == 4)
                             incomplete.draw();
+                        if (scene == 5)
+                            viewport.draw();
+                        if (scene == 6)
+                            added_viewport.draw();
                         ImGui::End();
                         ImGui::Render();
                         check(ImGui::GetDrawData()->TotalVtxCount > 0,
                               "Collision view draws in each theme and language");
+                        if (scene == 5)
+                            check(viewport.rendered_edges() == 192,
+                                  "Both changed sphere wireframes render in every theme and language");
                         ++frames;
                     }
         }

@@ -46,3 +46,7 @@ The Core exposes collision_wireframe and a dependency-free line/bounds model for
 ## Transformed convex source wireframes - 0.79
 
 Convex previews deduplicate the edges of stored triangles and apply signed scale, a stored unit quaternion and translation in that order. Missing indices or transforms remain unavailable; no hull or identity transform is generated. Quaternions outside a 1e-4 unit-length tolerance are diagnosed rather than repaired; accepted rounding error is normalized for display. Per-shape bounds allow independent framing, while aggregate bounds remain body-local. Tests cover tetrahedral edges, negative scale, rotated bounds, missing topology/transforms, zero quaternions, cancellation and per-shape progress.
+
+## CyUI before/after collision geometry - 0.80
+
+The Collisions tab now draws prepared body-local wireframes beside the typed properties. Both sides share camera scale/orientation; stored shape changes color the geometry, and a changed-shapes filter and fit-changes action isolate differences. Body selection prevents overlaying unrelated skeleton/body coordinate systems. Missing geometry stays labeled rather than reconstructed. Geometry is prepared outside draw; English/French and five themes were checked with 140 UI frames and thirteen actual desktop captures. This preview is not a Chaos simulation.

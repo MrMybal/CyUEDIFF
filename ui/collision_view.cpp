@@ -26,6 +26,7 @@ void CollisionView::bind(bool retain) {
                 keys.insert(it.key());
     }
     shapes_.assign(keys.begin(), keys.end());
+    viewport_.select(body_, shape_);
     properties_.set_values(selected(before_), selected(after_), comparing_);
     if (retain)
         properties_.restore_view_state(saved);
@@ -39,6 +40,9 @@ void CollisionView::set_packages(const Package *before, const Package *after, bo
     complete_ = (!before || before_.at("complete").get<bool>()) &&
                 (!after || after_.at("complete").get<bool>()) &&
                 (comparing_ ? before && after : before || after);
+    viewport_.set_models(before ? collision_wireframe(*before) : CollisionWireframe{},
+                         after ? collision_wireframe(*after) : CollisionWireframe{}, &before_, &after_,
+                         comparing_);
     std::set<std::string> keys;
     for (const auto *model : {&before_, &after_})
         if (!model->is_null())
@@ -160,6 +164,14 @@ void CollisionView::draw(const char *id) {
         ImGui::SameLine();
         if (cyui::button(cyui::trLabel("Next changed shape").c_str()))
             next_changed_shape();
+    }
+    const float available = ImGui::GetContentRegionAvail().y;
+    if (available > cyui::dp(160)) {
+        ImGui::BeginChild("Collision geometry panel",
+                          {0, std::clamp(available * .48f, cyui::dp(140), cyui::dp(450))},
+                          ImGuiChildFlags_Borders);
+        viewport_.draw();
+        ImGui::EndChild();
     }
     properties_.draw("Collision properties");
 }

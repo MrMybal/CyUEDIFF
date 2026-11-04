@@ -1,0 +1,203 @@
+#include <cyuediff/collision_viewport.hpp>
+#include "diff_style.hpp"
+#include <algorithm>
+#include <cmath>
+#include <set>
+namespace cyuediff {
+namespace {
+const Json *shape_value(const Json *snapshot, const std::string &body, const std::string &key) {
+    if (!snapshot || snapshot->is_null())
+        return nullptr;
+    auto b = snapshot->at("bodies").find(body);
+    if (b == snapshot->at("bodies").end())
+        return nullptr;
+    auto s = b->at("shapes").find(key);
+    return s == b->at("shapes").end() ? nullptr : &*s;
+}
+void include(CollisionBounds &out, const CollisionBounds &other) {
+    if (!other.valid)
+        return;
+    if (!out.valid) {
+        out = other;
+        return;
+    }
+    for (unsigned i = 0; i < 3; ++i) {
+        out.low[i] = std::min(out.low[i], other.low[i]);
+        out.high[i] = std::max(out.high[i], other.high[i]);
+    }
+}
+} // namespace
+void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe after, const Json *a,
+                                   const Json *b, bool comparing) {
+    changes_.clear();
+    comparing_ = comparing;
+    for (const auto *model : {&before, &after})
+        for (const auto &s : model->shapes)
+            changes_[{s.body, s.identity}] = comparing ? classify_change(shape_value(a, s.body, s.identity),
+                                                                         shape_value(b, s.body, s.identity))
+                                                       : ChangeKind::unchanged;
+    before_ = std::move(before);
+    after_ = std::move(after);
+    body_.clear();
+    shape_.clear();
+    changed_only_ = false;
+    fit_pending_ = true;
+    fit_changes_ = false;
+    navigation_pane_ = 0;
+    camera_ = {};
+    camera_.camera.up = {0, 0, 1};
+    camera_.camera.yaw = .7;
+    camera_.camera.pitch = .35;
+}
+void CollisionViewport::select(const std::string &body, const std::string &shape) {
+    if (body_ == body && shape_ == shape)
+        return;
+    body_ = body;
+    shape_ = shape;
+    fit_pending_ = true;
+    fit_changes_ = false;
+}
+bool CollisionViewport::visible(const CollisionWireShape &shape, bool changes) const {
+    if (body_.empty() || shape.body != body_ || (!shape_.empty() && shape.identity != shape_))
+        return false;
+    auto found = changes_.find({shape.body, shape.identity});
+    return !((changed_only_ || changes) && comparing_) ||
+           (found != changes_.end() && found->second != ChangeKind::unchanged);
+}
+CollisionBounds CollisionViewport::bounds(bool changes) const {
+    CollisionBounds result;
+    for (const auto *model : {&before_, &after_})
+        for (const auto &s : model->shapes)
+            if (visible(s, changes))
+                include(result, s.bounds);
+    return result;
+}
+void CollisionViewport::fit(float aspect) {
+    auto box = bounds(fit_changes_);
+    if (box.valid) {
+        CollisionPoint diagonal{};
+        for (unsigned i = 0; i < 3; ++i)
+            diagonal[i] = box.high[i] - box.low[i];
+        camera_.camera.target = {(box.low[0] + box.high[0]) * .5, (box.low[1] + box.high[1]) * .5,
+                                 (box.low[2] + box.high[2]) * .5};
+        const double radius =
+            std::max(1e-5, std::hypot(std::hypot(diagonal[0], diagonal[1]), diagonal[2]) * .5);
+        camera_.camera.distance = radius * 3 / std::max(.1f, std::min(1.f, aspect));
+    }
+    fit_pending_ = fit_changes_ = false;
+}
+void CollisionViewport::set_changed_only(bool value) { changed_only_ = comparing_ && value; }
+bool CollisionViewport::focus_changes() {
+    if (!comparing_ || !bounds(true).valid)
+        return false;
+    fit_pending_ = fit_changes_ = true;
+    return true;
+}
+std::size_t CollisionViewport::visible_edge_count(bool after) const {
+    std::size_t count = 0;
+    for (const auto &s : (after ? after_ : before_).shapes)
+        if (visible(s))
+            count += s.lines.size();
+    return count;
+}
+ChangeCounts CollisionViewport::changes() const {
+    ChangeCounts result;
+    for (const auto &entry : changes_)
+        if (entry.first.first == body_ && (shape_.empty() || entry.first.second == shape_))
+            result.add(entry.second);
+    return result;
+}
+void CollisionViewport::pane(const char *label, const CollisionWireframe &model, ImVec2 size, int pane_id,
+                             const cyui::OrbitCamera &shown) {
+    cyui::ScopedID scope(label);
+    ImGui::BeginGroup();
+    cyui::textDim("%s", cyui::tr(label).c_str());
+    size.y = std::max(cyui::dp(40), size.y - ImGui::GetTextLineHeightWithSpacing());
+    const auto origin = ImGui::GetCursorScreenPos();
+    const auto &io = ImGui::GetIO();
+    const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+                         ImGui::IsMouseHoveringRect(origin, {origin.x + size.x, origin.y + size.y});
+    if (hovered && ((io.KeyAlt && ImGui::IsMouseClicked(0)) || ImGui::IsMouseClicked(2)))
+        navigation_pane_ = pane_id;
+    cyui::viewport("##collision-camera", camera_, {}, size,
+                   navigation_pane_ == pane_id || (!navigation_pane_ && hovered));
+    const auto matrix = cyui::cameraViewMatrix(shown);
+    auto project = [&](const CollisionPoint &p, ImVec2 &screen) {
+        const double x = matrix[0] * p[0] + matrix[4] * p[1] + matrix[8] * p[2] + matrix[12],
+                     y = matrix[1] * p[0] + matrix[5] * p[1] + matrix[9] * p[2] + matrix[13],
+                     z = matrix[2] * p[0] + matrix[6] * p[1] + matrix[10] * p[2] + matrix[14];
+        if (z >= -std::max(1e-12, shown.distance * 1e-6))
+            return false;
+        const double sx = x / (-z * .41421356237) * (size.y / size.x), sy = y / (-z * .41421356237);
+        if (!std::isfinite(sx) || !std::isfinite(sy) || std::abs(sx) > 1e5 || std::abs(sy) > 1e5)
+            return false;
+        screen = {origin.x + float((sx + 1) * .5 * size.x), origin.y + float((1 - sy) * .5 * size.y)};
+        return true;
+    };
+    auto *draw = ImGui::GetWindowDrawList();
+    draw->PushClipRect(origin, {origin.x + size.x, origin.y + size.y}, true);
+    std::size_t unavailable = 0, ready = 0;
+    for (const auto &shape : model.shapes)
+        if (visible(shape)) {
+            if (!shape.ready()) {
+                ++unavailable;
+                continue;
+            }
+            ++ready;
+            const auto change = changes_.at({shape.body, shape.identity});
+            for (const auto &edge : shape.lines) {
+                ImVec2 a, b;
+                if (project(edge.a, a) && project(edge.b, b)) {
+                    draw->AddLine(a, b, comparing_ ? detail::change_color(change) : cyui::palette().accent,
+                                  cyui::dp(change == ChangeKind::unchanged ? 1.f : 2.f));
+                    ++rendered_edges_;
+                }
+            }
+        }
+    const char *notice = unavailable ? "Some shapes have no supported stored geometry."
+                         : !ready    ? "No visible collision geometry"
+                                     : nullptr;
+    if (notice)
+        draw->AddText({origin.x + cyui::dp(10), origin.y + cyui::dp(10)}, cyui::palette().text,
+                      cyui::tr(notice).c_str());
+    draw->PopClipRect();
+    ImGui::EndGroup();
+}
+void CollisionViewport::draw(const char *id) {
+    cyui::ScopedID scope(id);
+    rendered_edges_ = 0;
+    if (body_.empty()) {
+        cyui::textDim("%s", cyui::tr("Select a body to preview its local geometry.").c_str());
+        return;
+    }
+    cyui::textDim("%s", cyui::tr("Body-local preview; bone and component placement is unavailable.").c_str());
+    if (comparing_) {
+        detail::change_legend(changes());
+        ImGui::Checkbox(cyui::trLabel("Changed shapes only").c_str(), &changed_only_);
+        ImGui::SameLine();
+        if (cyui::button(cyui::trLabel("Fit changed geometry").c_str()))
+            focus_changes();
+        ImGui::SameLine();
+    }
+    if (cyui::button(cyui::trLabel("Fit collision geometry").c_str())) {
+        fit_pending_ = true;
+        fit_changes_ = false;
+    }
+    auto size = ImGui::GetContentRegionAvail();
+    if (size.x < cyui::dp(20) || size.y < cyui::dp(50))
+        return;
+    const bool split = comparing_;
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
+    const float width = split ? (size.x - gap) * .5f : size.x;
+    if (fit_pending_)
+        fit(width / std::max(cyui::dp(1), size.y - ImGui::GetTextLineHeightWithSpacing()));
+    const auto shown = camera_.camera;
+    pane(comparing_ ? "Before" : "Collision geometry", before_, {width, size.y}, 1, shown);
+    if (split) {
+        ImGui::SameLine();
+        pane("After", after_, {width, size.y}, 2, shown);
+    }
+    if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(2))
+        navigation_pane_ = 0;
+}
+} // namespace cyuediff

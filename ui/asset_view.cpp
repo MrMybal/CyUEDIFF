@@ -5,6 +5,16 @@ void AssetView::register_translations() {
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Collisions", "Collisions"},
+               {"Collision geometry", "G\u00e9om\u00e9trie de collision"},
+               {"Changed shapes only", "Formes modifi\u00e9es uniquement"},
+               {"Fit collision geometry", "Cadrer les collisions"},
+               {"Some shapes have no supported stored geometry.",
+                "Certaines formes ne disposent pas de g\u00e9om\u00e9trie enregistr\u00e9e prise en charge."},
+               {"No visible collision geometry", "Aucune g\u00e9om\u00e9trie de collision visible"},
+               {"Select a body to preview its local geometry.",
+                "S\u00e9lectionnez un corps pour afficher sa g\u00e9om\u00e9trie locale."},
+               {"Body-local preview; bone and component placement is unavailable.",
+                "Aper\u00e7u local au corps ; placement des os et composants indisponible."},
                {"Collision body", "Corps de collision"},
                {"Collision shape", "Forme de collision"},
                {"All bodies and references", "Tous les corps et r\u00e9f\u00e9rences"},
