@@ -57,6 +57,19 @@ int main() {
         request.after = request.before;
         document = load_document(request);
         check(document->diff->status() == "identical", "Self comparison");
+        ImageRgba8 pixels{2, 1, {0, 0, 0, 255, 0, 0, 0, 255}}, changed = pixels;
+        changed.pixels[4] = 128;
+        auto masks = compare_previews({{"BeforeTexture", false, pixels}, {"AfterTexture", true, changed}});
+        check(masks.size() == 1 && masks[0].comparison.changed_pixels == 1 &&
+                  masks[0].comparison.max_channel_delta == 128,
+              "Sole texture previews paired across object renames");
+        check(masks[0].comparison.heatmap.pixels[0] == 0 && masks[0].comparison.heatmap.pixels[4] == 255,
+              "Heatmap marks exactly the changed pixel");
+        check(compare_previews({{"OnlyBefore", false, pixels}}).empty(),
+              "Missing texture side has no invented difference");
+        auto mismatched = compare_previews({{"A", false, pixels}, {"A", true, {1, 1, {0, 0, 0, 255}}}});
+        check(!mismatched[0].comparison.comparable && mismatched[0].comparison.heatmap.pixels.empty(),
+              "Different image dimensions explicitly incomparable");
         error([&] { load_document({}); }, "desktop-input");
         auto missing = request;
         missing.after = (root / "missing.uasset").u8string();

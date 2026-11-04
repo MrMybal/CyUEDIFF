@@ -1,22 +1,34 @@
 #include <cyuediff/material_view.hpp>
+#include "diff_style.hpp"
 #include <algorithm>
 #include <map>
 namespace cyuediff {
-void MaterialView::set_package(const Package &package) {
+void MaterialView::set_package(const Package &package, const Package *peer, bool after) {
     documents_.clear();
     selected_ = 0;
     auto model = package.material_snapshot();
+    auto other = peer ? peer->material_snapshot() : Json{};
     for (auto graph = model.at("graphs").begin(); graph != model.at("graphs").end(); ++graph) {
         Document prepared;
         prepared.path = graph.key();
         prepared.complete = graph.value().at("complete");
         prepared.outputs_known = graph.value().at("outputDefinitionsComplete");
         prepared.diagnostics = graph.value().at("diagnostics").get<std::vector<std::string>>();
+        GraphChanges delta;
+        if (peer) {
+            const Json *match =
+                other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
+            delta = after ? graph_changes(match, &graph.value()) : graph_changes(&graph.value(), match);
+            prepared.counts = delta.node_counts;
+            prepared.comparing = true;
+        }
         cyui::ItemId next = 1;
         std::map<std::string, cyui::ItemId> pins;
         for (auto node = graph.value().at("nodes").begin(); node != graph.value().at("nodes").end(); ++node) {
             cyui::Node item;
             item.id = next++;
+            if (peer)
+                prepared.changes[item.id] = delta.nodes.at(node.key());
             item.label = node.value().at("title");
             item.colorIndex = node.key() == "$result" ? 4 : (node.value().at("comment") == true ? 6 : 0);
             item.position = {node.value().at("position").at("x").get<double>(),
@@ -66,7 +78,51 @@ void MaterialView::set_package(const Package &package) {
         prepared.instance = true;
         prepared.complete = instance.value().at("complete");
         prepared.parent = instance.value().at("parent");
-        prepared.parameters = instance.value().at("parameters");
+        prepared.comparing = peer != nullptr;
+        Json empty = Json::object();
+        const auto &local = instance.value().at("parameters");
+        const auto &remote = peer && other.at("instances").contains(instance.key())
+                                 ? other.at("instances").at(instance.key()).at("parameters")
+                                 : empty;
+        using Entry = std::pair<std::string, const Json *>;
+        std::map<std::string, Entry> a, b;
+        auto collect = [](const Json &data, auto &target) {
+            for (auto kind = data.begin(); kind != data.end(); ++kind)
+                for (const auto &parameter : kind.value()) {
+                    auto key = Json::array({kind.key(), parameter.at("association"), parameter.at("index"),
+                                            parameter.at("name")})
+                                   .dump();
+                    target.emplace(key, Entry{kind.key(), &parameter});
+                }
+        };
+        collect(after ? remote : local, a);
+        collect(after ? local : remote, b);
+        if (!peer)
+            b = a;
+        std::map<std::string, bool> all;
+        for (const auto &p : a)
+            all[p.first] = true;
+        for (const auto &p : b)
+            all[p.first] = true;
+        auto render = [](const Json *p) {
+            if (!p)
+                return std::string{};
+            Json value = {{"value", p->at("value")},
+                          {"override", p->at("override")},
+                          {"decoded", p->value("valueDecoded", false)}};
+            return value.dump();
+        };
+        for (const auto &key : all) {
+            auto x = a.find(key.first), y = b.find(key.first);
+            const Json *av = x == a.end() ? nullptr : x->second.second,
+                       *bv = y == b.end() ? nullptr : y->second.second;
+            auto &entry = x == a.end() ? y->second : x->second;
+            auto p = av ? av : bv;
+            auto change = classify_change(av, bv);
+            prepared.parameters.push_back(
+                {p->at("name").get<std::string>(), entry.first, key.first, render(av), render(bv), change});
+            prepared.counts.add(change);
+        }
         prepared.diagnostics = instance.value().at("diagnostics").get<std::vector<std::string>>();
         documents_.push_back(std::move(prepared));
     }
@@ -105,31 +161,43 @@ void MaterialView::draw(const char *id) {
         cyui::textDim(cyui::tr("Parent: %s").c_str(), document.parent.c_str());
         cyui::callout(cyui::Tone::info,
                       cyui::tr("Stored overrides only. Parent values are not evaluated.").c_str());
-        if (ImGui::BeginTable("##parameters", 4, ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+        if (document.comparing) {
+            ImGui::TextUnformatted(cyui::tr("Changes").c_str());
+            detail::change_legend(document.counts);
+        }
+        if (ImGui::BeginTable("##parameters", document.comparing ? 5 : 3,
+                              ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg,
                               ImGui::GetContentRegionAvail())) {
-            for (const auto *label : {"Parameter", "Kind", "Value", "Override"})
+            for (const auto *label : {"Parameter", "Kind", document.comparing ? "Before" : "Value"})
                 ImGui::TableSetupColumn(cyui::tr(label).c_str());
+            if (document.comparing) {
+                ImGui::TableSetupColumn(cyui::tr("After").c_str());
+                ImGui::TableSetupColumn(cyui::tr("Change").c_str());
+            }
+            ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
-            for (auto kind = document.parameters.begin(); kind != document.parameters.end(); ++kind)
-                for (const auto &parameter : kind.value()) {
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(document.parameters.size()));
+            while (clipper.Step())
+                for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+                    const auto &parameter = document.parameters[i];
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
-                    ImGui::TextUnformatted(parameter.at("name").get_ref<const std::string &>().c_str());
-                    if (ImGui::IsItemHovered()) {
-                        auto identity =
-                            Json::array({parameter.at("association"), parameter.at("index")}).dump();
-                        ImGui::SetTooltip("%s", identity.c_str());
-                    }
+                    ImGui::TextUnformatted(parameter.name.c_str());
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", parameter.identity.c_str());
                     ImGui::TableSetColumnIndex(1);
-                    ImGui::TextUnformatted(cyui::tr(kind.key().c_str()).c_str());
+                    ImGui::TextUnformatted(cyui::tr(parameter.kind.c_str()).c_str());
                     ImGui::TableSetColumnIndex(2);
-                    auto serialized = parameter.at("value").dump();
-                    ImGui::TextUnformatted(parameter.value("valueDecoded", false)
-                                               ? serialized.c_str()
-                                               : cyui::tr("Unavailable").c_str());
-                    ImGui::TableSetColumnIndex(3);
-                    auto override_value = parameter.at("override").dump();
-                    ImGui::TextUnformatted(override_value.c_str());
+                    ImGui::TextUnformatted(parameter.before.c_str());
+                    if (document.comparing) {
+                        ImGui::TableSetColumnIndex(3);
+                        ImGui::TextUnformatted(parameter.after.c_str());
+                        ImGui::TableSetColumnIndex(4);
+                        ImGui::PushStyleColor(ImGuiCol_Text, detail::change_color(parameter.change));
+                        ImGui::TextUnformatted(cyui::tr(change_name(parameter.change)).c_str());
+                        ImGui::PopStyleColor();
+                    }
                 }
             ImGui::EndTable();
         }
@@ -140,6 +208,8 @@ void MaterialView::draw(const char *id) {
     ImGui::SameLine();
     cyui::textDim(cyui::tr("%zu nodes / %zu pins / %zu links").c_str(), document.nodes.size(), document.pins,
                   document.links.size());
+    if (document.comparing)
+        detail::change_legend(document.counts);
     if (!document.outputs_known)
         cyui::textDim("%s", cyui::tr("Some output ports are inferred from saved connections.").c_str());
     auto available = ImGui::GetContentRegionAvail();
@@ -152,6 +222,9 @@ void MaterialView::draw(const char *id) {
     cyui::NodeOptions options;
     options.readOnly = true;
     options.revision = 1;
+    options.drawBody = [&](const cyui::Node &node, const cyui::Rect &rect) {
+        detail::node_marker(node, rect, document.changes);
+    };
     cyui::nodeEditor("##material-canvas", document.state, document.nodes, document.links, available, options);
 }
 } // namespace cyuediff

@@ -488,6 +488,24 @@ class Shell {
                 gpu_diagnostics_.push_back(e.what());
             }
         }
+        for (const auto &difference : displayed_->texture_differences) {
+            try {
+                cyui::ImageData binding{};
+                Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> image;
+                if (difference.comparison.comparable) {
+                    image = renderer.upload(difference.comparison.heatmap);
+                    binding = {ImTextureID(reinterpret_cast<std::uintptr_t>(image.Get())),
+                               int(difference.comparison.heatmap.width),
+                               int(difference.comparison.heatmap.height)};
+                }
+                if (view_.set_texture_difference(difference.before_object, difference.after_object, binding,
+                                                 difference.comparison) &&
+                    image)
+                    images_.push_back(std::move(image));
+            } catch (const std::exception &e) {
+                gpu_diagnostics_.push_back(e.what());
+            }
+        }
     }
     std::string status() const {
         if (browser_.busy())

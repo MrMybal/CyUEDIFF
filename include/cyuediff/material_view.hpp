@@ -1,5 +1,5 @@
 #pragma once
-#include <cyuediff/core.hpp>
+#include <cyuediff/visual_diff.hpp>
 #include <cyui/modules/Nodes.h>
 namespace cyuediff {
 // Serialized material graphs and instance overrides, prepared outside the render loop.
@@ -8,7 +8,14 @@ class MaterialView {
         std::string path, parent;
         bool instance = false, complete = false, outputs_known = false, needs_fit = true;
         std::vector<std::string> diagnostics;
-        Json parameters = Json::object();
+        struct ParameterRow {
+            std::string name, kind, identity, before, after;
+            ChangeKind change;
+        };
+        std::vector<ParameterRow> parameters;
+        std::map<cyui::ItemId, ChangeKind> changes;
+        ChangeCounts counts;
+        bool comparing = false;
         std::vector<cyui::Node> nodes;
         std::vector<cyui::NodeLink> links;
         cyui::NodeState state;
@@ -19,7 +26,7 @@ class MaterialView {
     std::size_t selected_ = 0;
 
   public:
-    void set_package(const Package &);
+    void set_package(const Package &, const Package *peer = nullptr, bool after = false);
     bool empty() const {
         return documents_.empty();
     }

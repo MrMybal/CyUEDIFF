@@ -1,4 +1,5 @@
 #include <cyuediff/blueprint_view.hpp>
+#include "diff_style.hpp"
 #include <algorithm>
 #include <map>
 namespace cyuediff {
@@ -34,21 +35,32 @@ int pin_color(const Json &pin) {
     return 6;
 }
 } // namespace
-void BlueprintView::set_package(const Package &package) {
+void BlueprintView::set_package(const Package &package, const Package *peer, bool after) {
     graphs_.clear();
     selected_ = 0;
     auto model = package.blueprint_snapshot();
+    auto other = peer ? peer->blueprint_snapshot() : Json{};
     for (auto graph = model.at("graphs").begin(); graph != model.at("graphs").end(); ++graph) {
         Graph prepared;
         prepared.id = graph.key();
         prepared.path = graph.value().at("path");
         prepared.complete = graph.value().at("complete");
         prepared.diagnostics = graph.value().at("diagnostics").get<std::vector<std::string>>();
+        GraphChanges delta;
+        if (peer) {
+            const Json *match =
+                other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
+            delta = after ? graph_changes(match, &graph.value()) : graph_changes(&graph.value(), match);
+            prepared.counts = delta.node_counts;
+            prepared.comparing = true;
+        }
         cyui::ItemId next = 1;
         std::map<std::string, cyui::ItemId> pins;
         for (auto node = graph.value().at("nodes").begin(); node != graph.value().at("nodes").end(); ++node) {
             cyui::Node item;
             item.id = next++;
+            if (peer)
+                prepared.changes[item.id] = delta.nodes.at(node.key());
             item.label = node_title(node.value());
             item.position = {node.value().at("position").at("x").get<double>(),
                              node.value().at("position").at("y").get<double>()};
@@ -107,6 +119,8 @@ void BlueprintView::draw(const char *id) {
     ImGui::SameLine();
     cyui::textDim(cyui::tr("%zu nodes / %zu pins / %zu links").c_str(), graph.nodes.size(), graph.pins,
                   graph.links.size());
+    if (graph.comparing)
+        detail::change_legend(graph.counts);
     if (!graph.complete) {
         cyui::callout(
             cyui::Tone::warning,
@@ -127,6 +141,9 @@ void BlueprintView::draw(const char *id) {
     cyui::NodeOptions options;
     options.readOnly = true;
     options.revision = 1;
+    options.drawBody = [&](const cyui::Node &node, const cyui::Rect &rect) {
+        detail::node_marker(node, rect, graph.changes);
+    };
     cyui::nodeEditor("##graph-canvas", graph.state, graph.nodes, graph.links, available, options);
 }
 } // namespace cyuediff

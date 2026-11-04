@@ -145,6 +145,32 @@ int main() {
     view.set_mesh_geometry(mesh);
     if (mesh_view.empty())
         return 7;
+    auto changed_mesh = std::make_shared<cyuediff::MeshGeometry>(*mesh);
+    changed_mesh->vertices[0].position[2] = 0.5;
+    mesh_view.set_mesh(mesh, changed_mesh);
+    if (mesh_view.changes().modified != 2 || mesh_view.changes().unchanged != 1)
+        return 18;
+    changed_mesh->instances[0].uvs = {{{0.25, 0.5}}};
+    mesh_view.set_mesh(mesh, changed_mesh);
+    if (mesh_view.changes().modified != 3)
+        return 19;
+    mesh_view.set_mesh(mesh, {}, false, true);
+    if (mesh_view.changes().removed != 3)
+        return 20;
+    mesh_view.set_mesh(mesh, changed_mesh);
+    view.set_mesh_geometry(changed_mesh, true);
+    auto before_graph_change = std::make_shared<cyuediff::Package>(*before);
+    before_graph_change->exports[2].properties["NodePosX"]["value"] = 120;
+    graph_view.set_package(*before, before_graph_change.get());
+    material_view.set_package(*before, before_graph_change.get());
+    instance_view.set_package(*before, before_graph_change.get());
+    if (!instance_view.select_object("MI"))
+        return 21;
+    auto image_difference = cyuediff::compare_images({2, 1, {0, 0, 0, 255, 0, 0, 0, 255}},
+                                                     {2, 1, {0, 0, 0, 255, 255, 0, 0, 255}});
+    if (!view.set_texture_difference("ExampleTexture", "ExampleTexture", {(ImTextureID)43, 2, 1},
+                                     image_difference))
+        return 22;
     auto mesh_unchanged = mesh->to_json();
     int frames = 0;
     const cyuediff::AssetTab tabs[] = {cyuediff::AssetTab::properties, cyuediff::AssetTab::blueprint,

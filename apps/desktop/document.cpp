@@ -1,5 +1,27 @@
 #include "document.hpp"
 namespace cyuediff::desktop {
+std::vector<TextureDifference> compare_previews(const std::vector<Preview> &previews) {
+    std::vector<const Preview *> a, b;
+    for (const auto &preview : previews)
+        (preview.after ? b : a).push_back(&preview);
+    std::vector<TextureDifference> result;
+    for (auto before : a) {
+        const Preview *after = nullptr;
+        for (auto candidate : b)
+            if (candidate->object_path == before->object_path) {
+                after = candidate;
+                break;
+            }
+        if (!after && a.size() == 1 && b.size() == 1)
+            after = b.front();
+        if (!after)
+            continue;
+        bool same = before->image.width == after->image.width && before->image.height == after->image.height;
+        result.push_back(
+            {before->object_path, after->object_path, compare_images(before->image, after->image, 0, same)});
+    }
+    return result;
+}
 std::string Document::status() const {
 #ifdef CYUEDIFF_HAS_GIT
     if (git)
@@ -24,6 +46,10 @@ Json Document::report() const {
                           {"after", preview.after},
                           {"width", preview.image.width},
                           {"height", preview.image.height}});
+    Json differences = Json::array();
+    for (const auto &d : texture_differences)
+        differences.push_back(
+            {{"before", d.before_object}, {"after", d.after_object}, {"comparison", d.comparison.to_json()}});
     auto mesh = [](const std::shared_ptr<const MeshGeometry> &m) -> Json {
         return m ? Json{{"vertices", m->vertices.size()}, {"triangles", m->triangles.size()}} : Json(nullptr);
     };
@@ -33,6 +59,7 @@ Json Document::report() const {
                    {"project", project ? project->to_json() : Json(nullptr)},
                    {"diff", diff ? diff->to_json() : Json(nullptr)},
                    {"previews", images},
+                   {"textureDifferences", differences},
                    {"beforeMesh", mesh(before_mesh)},
                    {"afterMesh", mesh(after_mesh)},
                    {"diagnostics", diagnostics}};
@@ -162,6 +189,7 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     };
     previews(document->before, false);
     previews(document->after, true);
+    document->texture_differences = compare_previews(document->previews);
     return document;
 }
 DocumentSession::DocumentSession(Loader loader) : loader_(std::move(loader)) {

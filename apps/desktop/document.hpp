@@ -25,12 +25,17 @@ struct Preview {
     bool after = false;
     ImageRgba8 image;
 };
+struct TextureDifference {
+    std::string before_object, after_object;
+    ImageComparison comparison;
+};
 struct Document {
     LoadRequest request;
     std::shared_ptr<const Package> before, after;
     std::optional<ProjectContext> project;
     std::optional<DiffResult> diff;
     std::vector<Preview> previews;
+    std::vector<TextureDifference> texture_differences;
     std::shared_ptr<const MeshGeometry> before_mesh, after_mesh;
     std::vector<std::string> diagnostics;
     std::vector<fs::path> protected_files, protected_directories;
@@ -41,6 +46,8 @@ struct Document {
     std::string status() const;
     Json report() const;
 };
+// Pair equal object paths, or the sole decoded texture on each side.
+std::vector<TextureDifference> compare_previews(const std::vector<Preview> &);
 std::shared_ptr<const Document> load_document(const LoadRequest &);
 // One worker, one pending request. A newer request supersedes results from older requests.
 // Only request/poll/accessors on the owner thread; the worker never calls ImGui or the GPU.
@@ -53,9 +60,15 @@ class DocumentSession {
     DocumentSession &operator=(const DocumentSession &) = delete;
     void request(LoadRequest);
     bool poll();
-    bool busy() const { return busy_; }
-    const std::string &error() const { return error_; }
-    const std::shared_ptr<const Document> &document() const { return document_; }
+    bool busy() const {
+        return busy_;
+    }
+    const std::string &error() const {
+        return error_;
+    }
+    const std::shared_ptr<const Document> &document() const {
+        return document_;
+    }
 
   private:
     struct Work {

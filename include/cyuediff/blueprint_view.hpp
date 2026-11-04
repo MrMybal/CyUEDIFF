@@ -1,5 +1,5 @@
 #pragma once
-#include <cyuediff/core.hpp>
+#include <cyuediff/visual_diff.hpp>
 #include <cyui/modules/Nodes.h>
 namespace cyuediff {
 // Prepared read-only graph view. set_package performs all model conversion;
@@ -10,6 +10,9 @@ class BlueprintView {
         bool complete = false, needs_fit = true;
         std::vector<std::string> diagnostics;
         std::vector<cyui::Node> nodes;
+        std::map<cyui::ItemId, ChangeKind> changes;
+        ChangeCounts counts;
+        bool comparing = false;
         std::vector<cyui::NodeLink> links;
         cyui::NodeState state;
         cyui::Point low{}, high{};
@@ -19,7 +22,7 @@ class BlueprintView {
     std::size_t selected_ = 0;
 
   public:
-    void set_package(const Package &package);
+    void set_package(const Package &package, const Package *peer = nullptr, bool after = false);
     bool empty() const {
         return graphs_.empty();
     }

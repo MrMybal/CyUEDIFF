@@ -1,4 +1,5 @@
 #include <cyuediff/mesh_view.hpp>
+#include "diff_style.hpp"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -11,8 +12,31 @@ void MeshView::fit(float aspect) {
     state_.camera.pitch = .35;
     fit_pending_ = false;
 }
-void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh) {
-    std::vector<std::array<cyui::Vec3, 2>> edges;
+void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_ptr<const MeshGeometry> peer,
+                        bool after, bool comparing) {
+    std::vector<Edge> edges;
+    comparing_ = comparing || bool(peer);
+    counts_ = {};
+    Json current = mesh ? mesh->to_json() : Json{};
+    Json remote = peer ? peer->to_json() : Json{};
+    std::set<std::pair<std::uint32_t, std::uint32_t>> peer_edges;
+    if (peer) {
+        std::map<std::uint32_t, std::uint32_t> instances;
+        for (const auto &i : peer->instances)
+            instances[i.id] = i.vertex;
+        for (const auto &t : peer->triangles)
+            for (unsigned c = 0; c < 3; ++c) {
+                auto a = instances.find(t.instances[c]), b = instances.find(t.instances[(c + 1) % 3]);
+                if (a == instances.end() || b == instances.end())
+                    throw Error("mesh-view", "Invalid peer triangle");
+                peer_edges.insert(std::minmax(a->second, b->second));
+            }
+    }
+    auto different = [&](const char *table, std::uint32_t id) {
+        auto key = std::to_string(id);
+        return !peer || !remote.at(table).contains(key) ||
+               current.at(table).at(key) != remote.at(table).at(key);
+    };
     bool truncated = false;
     if (mesh) {
         std::map<std::uint32_t, cyui::Vec3> vertices;
@@ -34,19 +58,40 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh) {
         for (const auto &i : mesh->instances)
             if (!vertices.count(i.vertex) || !instances.emplace(i.id, i.vertex).second)
                 throw Error("mesh-view", "Invalid preview instance");
-        std::set<std::pair<std::uint32_t, std::uint32_t>> unique;
+        std::map<std::pair<std::uint32_t, std::uint32_t>, std::size_t> unique;
         for (const auto &t : mesh->triangles)
             for (unsigned c = 0; c < 3; ++c) {
                 auto a = instances.find(t.instances[c]), b = instances.find(t.instances[(c + 1) % 3]);
                 if (a == instances.end() || b == instances.end())
                     throw Error("mesh-view", "Preview triangle references a missing instance");
                 auto key = std::minmax(a->second, b->second);
-                if (edges.size() >= 100000) {
+                auto found = unique.find(key);
+                if (found == unique.end() && edges.size() >= 100000) {
                     truncated = true;
                     continue;
                 }
-                if (unique.emplace(key.first, key.second).second)
-                    edges.push_back({vertices.at(key.first), vertices.at(key.second)});
+                ChangeKind change = ChangeKind::unchanged;
+                if (comparing_) {
+                    if (!peer_edges.count(key))
+                        change = after ? ChangeKind::added : ChangeKind::removed;
+                    else {
+                        bool changed = different("vertices", key.first) ||
+                                       different("vertices", key.second) || different("triangles", t.id);
+                        for (auto instance : t.instances)
+                            changed = changed || different("instances", instance);
+                        auto group = std::to_string(t.group);
+                        const auto &slots = current.at("materialSlots"), &other = remote.at("materialSlots");
+                        changed = changed || slots.contains(group) != other.contains(group) ||
+                                  (slots.contains(group) && slots.at(group) != other.at(group));
+                        if (changed)
+                            change = ChangeKind::modified;
+                    }
+                }
+                if (found == unique.end()) {
+                    unique.emplace(key, edges.size());
+                    edges.push_back({{vertices.at(key.first), vertices.at(key.second)}, change});
+                } else if (change != ChangeKind::unchanged)
+                    edges[found->second].change = change;
             }
         center_ = {(low.x + high.x) * .5, (low.y + high.y) * .5, (low.z + high.z) * .5};
         radius_ = std::max(1e-5, std::sqrt((high.x - low.x) * (high.x - low.x) +
@@ -54,6 +99,8 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh) {
                                            (high.z - low.z) * (high.z - low.z)) *
                                      .5);
     }
+    for (const auto &edge : edges)
+        counts_.add(edge.change);
     rendered_edges_ = 0;
     mesh_ = std::move(mesh);
     edges_ = std::move(edges);
@@ -72,6 +119,8 @@ void MeshView::draw(const char *id) {
     }
     cyui::textDim(cyui::tr("%zu vertices / %zu triangles / %zu material groups").c_str(),
                   mesh_->vertices.size(), mesh_->triangles.size(), mesh_->material_slots.size());
+    if (comparing_)
+        detail::change_legend(counts_);
     if (ImGui::Button(cyui::trLabel("Fit mesh").c_str()))
         fit_pending_ = true;
     ImGui::SameLine();
@@ -102,8 +151,9 @@ void MeshView::draw(const char *id) {
     };
     for (const auto &edge : edges_) {
         ImVec2 a, b;
-        if (project(edge[0], a) && project(edge[1], b)) {
-            draw->AddLine(a, b, cyui::palette().accent, cyui::dp(1));
+        if (project(edge.points[0], a) && project(edge.points[1], b)) {
+            draw->AddLine(a, b, comparing_ ? detail::change_color(edge.change) : cyui::palette().accent,
+                          cyui::dp(edge.change == ChangeKind::unchanged ? 1.f : 2.f));
             ++rendered_edges_;
         }
     }

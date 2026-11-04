@@ -1,9 +1,25 @@
 #include <cyuediff/asset_view.hpp>
+#include "diff_style.hpp"
 namespace cyuediff {
 void AssetView::register_translations() {
     cyui::registerTranslations(
         "fr",
-        {{"Added package", "Package ajouté"},
+        {{"Pixel difference mask", "Masque des pixels modifiés"},
+         {"%llu changed pixels | maximum delta: %u", "%llu pixels modifiés | écart maximal : %u"},
+         {"Images have different dimensions.", "Les images ont des dimensions différentes."},
+         {"Added", "Ajouté"},
+         {"Removed", "Supprimé"},
+         {"Modified", "Modifié"},
+         {"Unchanged", "Inchangé"},
+         {"Change", "Changement"},
+         {"Changes", "Changements"},
+         {"Type", "Type"},
+         {"Property", "Propriété"},
+         {"Changed only", "Modifiés uniquement"},
+         {"Raw JSON", "JSON brut"},
+         {"Property table reached its display limit.",
+          "Le tableau des propriétés a atteint sa limite d'affichage."},
+         {"Added package", "Package ajouté"},
          {"Removed package", "Package supprimé"},
          {"Asset inspection", "Inspection des assets"},
          {"Objects", "Objets"},
@@ -94,6 +110,40 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     };
     before_properties_ = prepare_inspection(before_);
     after_properties_ = prepare_inspection(after_);
+    auto inspections = [&](const auto &local, const auto &peer, bool after) {
+        std::vector<PropertyView> views;
+        std::map<std::string, const ObjectExport *> objects;
+        if (peer)
+            for (const auto &entry : peer->exports)
+                objects[entry.path] = &entry;
+        auto data = [](const ObjectExport &entry) {
+            return Json{
+                {"properties", entry.properties}, {"opaque", entry.opaque}, {"native", entry.native_data}};
+        };
+        if (local)
+            for (const auto &entry : local->exports) {
+                auto it = objects.find(entry.path);
+                auto a = data(entry), b = it == objects.end() ? Json{} : data(*it->second);
+                const Json *match = it == objects.end() ? nullptr : &b;
+                PropertyView view;
+                view.set_values(after ? match : &a, after ? &a : match, comparison_);
+                views.push_back(std::move(view));
+            }
+        return views;
+    };
+    before_inspection_ = inspections(before_, after_, false);
+    after_inspection_ = inspections(after_, before_, true);
+    const auto &initial = properties_after_ ? after_inspection_ : before_inspection_;
+    if (comparison_)
+        for (std::size_t i = 0; i < initial.size(); ++i)
+            if (!initial[i].table().rows.empty() &&
+                initial[i].table().rows.front().change != ChangeKind::unchanged) {
+                selected_ = i;
+                break;
+            }
+
+    before_geometry_.reset();
+    after_geometry_.reset();
     graph_after_ = texture_after_ = mesh_after_ = material_after_ = !before_;
     before_mesh_.set_mesh({});
     after_mesh_.set_mesh({});
@@ -110,10 +160,13 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     };
     load(before_, before_textures_);
     load(after_, after_textures_);
-    before_material_.set_package(before_ ? *before_ : Package{});
-    after_material_.set_package(after_ ? *after_ : Package{});
-    before_graph_.set_package(before_ ? *before_ : Package{});
-    after_graph_.set_package(after_ ? *after_ : Package{});
+    const Package empty;
+    const auto *before_peer = comparison_ ? (after_ ? after_.get() : &empty) : nullptr;
+    const auto *after_peer = comparison_ ? (before_ ? before_.get() : &empty) : nullptr;
+    before_material_.set_package(before_ ? *before_ : empty, before_peer, false);
+    after_material_.set_package(after_ ? *after_ : empty, after_peer, true);
+    before_graph_.set_package(before_ ? *before_ : empty, before_peer, false);
+    after_graph_.set_package(after_ ? *after_ : empty, after_peer, true);
     document_ = {};
     diff_state_ = {};
     if (comparison_) {
@@ -134,6 +187,17 @@ bool AssetView::set_texture_preview(const std::string &path, const cyui::ImageDa
             return view.set_preview(image);
     return false;
 }
+bool AssetView::set_texture_difference(const std::string &before_path, const std::string &after_path,
+                                       const cyui::ImageData &image, const ImageComparison &comparison) {
+    bool found = false;
+    for (auto &view : before_textures_)
+        if (view.object_path() == before_path)
+            found = view.set_difference(image, comparison) || found;
+    for (auto &view : after_textures_)
+        if (view.object_path() == after_path)
+            found = view.set_difference(image, comparison) || found;
+    return found;
+}
 bool AssetView::clear_texture_preview(const std::string &path, bool after) {
     auto &views = after ? after_textures_ : before_textures_;
     for (auto &view : views)
@@ -144,7 +208,9 @@ bool AssetView::clear_texture_preview(const std::string &path, bool after) {
     return false;
 }
 void AssetView::set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after) {
-    (after ? after_mesh_ : before_mesh_).set_mesh(std::move(geometry));
+    (after ? after_geometry_ : before_geometry_) = std::move(geometry);
+    before_mesh_.set_mesh(before_geometry_, after_geometry_, false, comparison_);
+    after_mesh_.set_mesh(after_geometry_, before_geometry_, true, comparison_);
 }
 void AssetView::draw(const char *id, bool show_language) {
     cyui::ScopedID scope(id);
@@ -202,19 +268,31 @@ void AssetView::draw(const char *id, bool show_language) {
                         const auto &entry = package->exports[i];
                         if (!filter_.matches(entry.path.c_str(), entry.class_name.c_str()))
                             continue;
+                        const auto &table =
+                            (properties_after_ ? after_inspection_ : before_inspection_)[i].table();
+                        bool changed = comparison_ && !table.rows.empty() &&
+                                       table.rows.front().change != ChangeKind::unchanged;
+                        if (changed)
+                            ImGui::PushStyleColor(ImGuiCol_Text,
+                                                  detail::change_color(table.rows.front().change));
                         if (ImGui::Selectable(entry.path.c_str(), selected_ == i))
                             selected_ = i;
+                        if (changed)
+                            ImGui::PopStyleColor();
                     }
                 ImGui::EndChild();
                 ImGui::TableSetColumnIndex(1);
                 const auto &entry = package->exports[selected_];
                 cyui::textDim("%s", entry.class_name.c_str());
                 cyui::textDim("%s", entry.coverage.c_str());
-                if (ImGui::BeginChild("##properties", {}, ImGuiChildFlags_None,
-                                      ImGuiWindowFlags_HorizontalScrollbar)) {
-                    ImGui::TextUnformatted(inspection[selected_].c_str());
-                }
-                ImGui::EndChild();
+                ImGui::Checkbox(cyui::trLabel("Raw JSON").c_str(), &raw_properties_);
+                if (raw_properties_) {
+                    if (ImGui::BeginChild("##properties", {}, ImGuiChildFlags_None,
+                                          ImGuiWindowFlags_HorizontalScrollbar))
+                        ImGui::TextUnformatted(inspection[selected_].c_str());
+                    ImGui::EndChild();
+                } else
+                    (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
                 ImGui::EndTable();
             }
             ImGui::EndTabItem();
