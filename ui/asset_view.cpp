@@ -3,7 +3,9 @@ namespace cyuediff {
 void AssetView::register_translations() {
     cyui::registerTranslations(
         "fr",
-        {{"Asset inspection", "Inspection des assets"},
+        {{"Added package", "Package ajouté"},
+         {"Removed package", "Package supprimé"},
+         {"Asset inspection", "Inspection des assets"},
          {"Objects", "Objets"},
          {"Properties", "Propriétés"},
          {"Comparison", "Comparaison"},
@@ -72,11 +74,13 @@ void AssetView::register_translations() {
          {"Empty package", "Package vide"},
          {"This package has no exported objects.", "Ce package ne contient aucun objet exporté."}});
 }
-void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after) {
+void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after,
+                             bool compare_missing_side) {
     before_ = std::move(before);
     after_ = std::move(after);
     selected_ = 0;
-    properties_after_ = false;
+    comparison_ = (before_ && after_) || (compare_missing_side && (before_ || after_));
+    properties_after_ = !before_;
     auto prepare_inspection = [](const std::shared_ptr<const Package> &package) {
         std::vector<std::string> result;
         if (package)
@@ -90,7 +94,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     };
     before_properties_ = prepare_inspection(before_);
     after_properties_ = prepare_inspection(after_);
-    graph_after_ = texture_after_ = mesh_after_ = material_after_ = false;
+    graph_after_ = texture_after_ = mesh_after_ = material_after_ = !before_;
     before_mesh_.set_mesh({});
     after_mesh_.set_mesh({});
     texture_selected_ = 0;
@@ -112,9 +116,11 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     after_graph_.set_package(after_ ? *after_ : Package{});
     document_ = {};
     diff_state_ = {};
-    if (before_ && after_) {
-        document_.setTexts(before_->semantic_snapshot().dump(2), after_->semantic_snapshot().dump(2),
-                           cyui::CodeLanguage::json);
+    if (comparison_) {
+        auto snapshot = [](const auto &package) {
+            return package ? package->semantic_snapshot().dump(2) : Json{{"absent", true}}.dump(2);
+        };
+        document_.setTexts(snapshot(before_), snapshot(after_), cyui::CodeLanguage::json);
         if (!document_.hunks().empty()) {
             diff_state_.hunk = 0;
             diff_state_.focus = document_.hunks().front();
@@ -148,13 +154,16 @@ void AssetView::draw(const char *id, bool show_language) {
                 cyui::setLocale(locale.code.c_str());
         ImGui::EndCombo();
     }
-    if (!before_) {
+    if (!before_ && !after_) {
         cyui::emptyState(cyui::tr("No asset loaded").c_str(),
                          cyui::tr("Open an Unreal package in the host application.").c_str(),
                          cyui::icon::document);
         return;
     }
-    cyui::panelHeader(cyui::tr("Asset inspection").c_str(), before_->source.filename().u8string().c_str());
+    const auto &present = before_ ? before_ : after_;
+    cyui::panelHeader(cyui::tr("Asset inspection").c_str(), present->source.filename().u8string().c_str());
+    if (comparison_ && (!before_ || !after_))
+        cyui::badge(cyui::tr(before_ ? "Removed package" : "Added package").c_str());
     cyui::callout(
         cyui::Tone::warning,
         cyui::tr("Some payloads are opaque. Their hashes remain available for comparison.").c_str());
@@ -165,7 +174,7 @@ void AssetView::draw(const char *id, bool show_language) {
             return requested == tab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
         };
         if (ImGui::BeginTabItem(cyui::trLabel("Properties").c_str(), nullptr, flags(AssetTab::properties))) {
-            if (after_) {
+            if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !properties_after_)) {
                     properties_after_ = false;
                     selected_ = 0;
@@ -212,7 +221,7 @@ void AssetView::draw(const char *id, bool show_language) {
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Blueprint graphs").c_str(), nullptr,
                                 flags(AssetTab::blueprint))) {
-            if (after_) {
+            if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !graph_after_))
                     graph_after_ = false;
                 ImGui::SameLine();
@@ -223,7 +232,7 @@ void AssetView::draw(const char *id, bool show_language) {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Materials").c_str(), nullptr, flags(AssetTab::materials))) {
-            if (after_) {
+            if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !material_after_))
                     material_after_ = false;
                 ImGui::SameLine();
@@ -234,7 +243,7 @@ void AssetView::draw(const char *id, bool show_language) {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Textures").c_str(), nullptr, flags(AssetTab::textures))) {
-            if (after_) {
+            if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !texture_after_)) {
                     texture_after_ = false;
                     texture_selected_ = 0;
@@ -261,7 +270,7 @@ void AssetView::draw(const char *id, bool show_language) {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Meshes").c_str(), nullptr, flags(AssetTab::meshes))) {
-            if (after_) {
+            if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !mesh_after_))
                     mesh_after_ = false;
                 ImGui::SameLine();
@@ -271,7 +280,7 @@ void AssetView::draw(const char *id, bool show_language) {
             (mesh_after_ ? after_mesh_ : before_mesh_).draw();
             ImGui::EndTabItem();
         }
-        if (after_ &&
+        if (comparison_ &&
             ImGui::BeginTabItem(cyui::trLabel("Comparison").c_str(), nullptr, flags(AssetTab::comparison))) {
             cyui::diffViewer("##semantic-diff", diff_state_, document_, ImGui::GetContentRegionAvail());
             ImGui::EndTabItem();

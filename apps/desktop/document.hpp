@@ -1,15 +1,24 @@
 #pragma once
 #include <cyuediff/core.hpp>
+#ifdef CYUEDIFF_HAS_GIT
+#include <cyuediff/git.hpp>
+#endif
 #include <condition_variable>
 #include <mutex>
 #include <optional>
 #include <thread>
 
 namespace cyuediff::desktop {
+struct GitSource {
+    fs::path repository, lfs_objects;
+    std::string before_revision = "HEAD~1", after_revision = "HEAD";
+    bool discover_engine = true;
+};
 struct LoadRequest {
     std::string before, after;
     fs::path project, engine_root, codec;
     bool previews = true;
+    std::optional<GitSource> git;
 };
 struct Preview {
     std::string object_path;
@@ -24,6 +33,12 @@ struct Document {
     std::vector<Preview> previews;
     std::shared_ptr<const MeshGeometry> before_mesh, after_mesh;
     std::vector<std::string> diagnostics;
+    std::vector<fs::path> protected_files, protected_directories;
+#ifdef CYUEDIFF_HAS_GIT
+    // Own materialized files while packages and previews can still use them.
+    std::shared_ptr<const GitComparison> git;
+#endif
+    std::string status() const;
     Json report() const;
 };
 std::shared_ptr<const Document> load_document(const LoadRequest &);
@@ -38,15 +53,9 @@ class DocumentSession {
     DocumentSession &operator=(const DocumentSession &) = delete;
     void request(LoadRequest);
     bool poll();
-    bool busy() const {
-        return busy_;
-    }
-    const std::string &error() const {
-        return error_;
-    }
-    const std::shared_ptr<const Document> &document() const {
-        return document_;
-    }
+    bool busy() const { return busy_; }
+    const std::string &error() const { return error_; }
+    const std::shared_ptr<const Document> &document() const { return document_; }
 
   private:
     struct Work {

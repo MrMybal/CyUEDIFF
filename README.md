@@ -4,7 +4,7 @@
 
 A reusable C++17 engine for inspecting Unreal Engine packages and comparing serialized asset data **without launching Unreal Editor**. A separate [CyUI](https://github.com/MrMybal/CyUI) library and an optional Windows desktop app provide inspection, graph, image, mesh and diff views.
 
-Version **0.9** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes local Git/LFS revision reading, project/engine contexts and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
+Version **0.10** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes local Git/LFS revision reading, project/engine contexts and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
 
 This is an asset reader and comparison engine. Format coverage is explicit; it is not a universal Unreal serializer or an asset writer.
 
@@ -16,7 +16,7 @@ This is an asset reader and comparison engine. Format coverage is explicit; it i
 | `CyUEDiff::Git` | Optional local Git/LFS adapter: revisions, companion files, verified LFS content and temporary-file ownership. |
 | `CyUEDiff::UI` | Embeddable CyUI views for objects, properties, Blueprint/material graphs, images, wireframe meshes and side-by-side diffs. |
 | `cyuediff` | JSON command-line interface for inspection, specialized diffs, project resolution and Git revisions. |
-| `cyuediff_desktop` | Optional Windows application using Win32, Direct3D 11 and CyUI, with background loading. |
+| `cyuediff_desktop` | Optional Windows application using Win32, Direct3D 11 and CyUI, with background loading and local Git/LFS revision comparisons. |
 
 The Core vendors nlohmann/json 3.12.0 and stb under their MIT licenses. Builds do not download dependencies. UI builds use a host-provided CyUI checkout. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
@@ -155,19 +155,22 @@ The general diff also exposes `graphChanges`, `textureChanges`, `meshChanges` an
 ```powershell
 build-native/Release/cyuediff_desktop.exe before/BP_Player.uasset after/BP_Player.uasset
 build-native/Release/cyuediff_desktop.exe Content/BP_Player.uasset --locale fr --view blueprint
+build-native/Release/cyuediff_desktop.exe --repo D:/Projects/MyGame --before-revision HEAD~1 --after-revision HEAD --before Content/BP_Player.uasset --view comparison
 ```
 
-The Windows app provides file selection, background loading, a shared optional project/engine context, inspection, graph views, images, wireframe navigation and JSON comparison focused on the first change. It prepares the first texture source and the first mesh source/LOD of each side. It does not yet include a content browser, multi-document workspace, Git revision picker or cancellation inside an active decoder.
+The Windows app provides file selection, background loading, a shared optional project/engine context, inspection, graph views, images, wireframe navigation and JSON comparison focused on the first change. It prepares the first texture source and the first mesh source/LOD of each side. Select **Git revisions** to enter a local repository, two commit-ish references and repository-relative asset paths. An empty after path reuses the before path. Historical project descriptors enable `/Game/...` resolution; additions/removals, resolved commits and context-only changes are displayed explicitly. LFS content must already be available locally. See the English [desktop guide](docs/DESKTOP.md) for the controls, CLI options and limits.
+
+The app does not yet include a content browser, commit history browser, multi-document workspace or cancellation inside an active decoder.
 
 The embeddable `CyUEDiff::UI` remains separate. Hosts own their window, graphics backend, asynchronous loading and GPU resources. Five CyUI themes and English/French controls are supported.
 
 ## Validation and documentation
 
-The verified Windows Release build passes **12 CTest suites**, with **544 checks**, 30 renderer-free UI frames and a native DX11/WARP smoke test. A separate run verified **21 native captures**, seven rejected invocations/output overlaps, matching desktop/CLI diff results and unchanged input assets. The Core-only configuration is also tested without Git, UI, Desktop or Oodle. Proprietary assets, codec binaries, generated captures and build outputs are excluded from the repository.
+The verified Windows Release build passes **13 CTest suites**, with **571 checks**, 30 renderer-free UI frames and a native DX11/WARP smoke test. A separate run verified **21 native captures**, seven rejected invocations/output overlaps, matching desktop/CLI diff results and unchanged input assets. A separate Git/LFS run verified **22 native captures**, six output/option refusals, desktop/CLI Git diff parity and an unchanged checkout. The desktop configuration also passes with Git disabled. The Core-only configuration is also tested without Git, UI, Desktop or Oodle. Proprietary assets, codec binaries, generated captures and build outputs are excluded from the repository.
 
 Detailed implementation notes are currently available in French:
 
-[Architecture](docs/ARCHITECTURE.md) · [Blueprints](docs/BLUEPRINTS.md) · [Textures](docs/TEXTURES.md) · [Meshes](docs/MESHES.md) · [Materials](docs/MATERIALS.md) · [Git/LFS](docs/GIT.md) · [Projects](docs/PROJECTS.md) · [Decoders](docs/DECODERS.md) · [Desktop](docs/DESKTOP.md) · [UI integration](docs/UI.md) · [Codecs](docs/CODECS.md) · [Validation](docs/VALIDATION.md)
+[Architecture](docs/ARCHITECTURE.md) · [Blueprints](docs/BLUEPRINTS.md) · [Textures](docs/TEXTURES.md) · [Meshes](docs/MESHES.md) · [Materials](docs/MATERIALS.md) · [Git/LFS](docs/GIT.md) · [Projects](docs/PROJECTS.md) · [Decoders](docs/DECODERS.md) · [UI integration](docs/UI.md) · [Codecs](docs/CODECS.md) · [Validation](docs/VALIDATION.md)
 
 See the English [GitHub publishing guide](docs/GITHUB.md) for the remote, repository description and reproducible Gitleaks checks.
 

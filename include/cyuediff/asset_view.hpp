@@ -17,7 +17,7 @@ class AssetView {
     cyui::DiffState diff_state_;
     cyui::TextFilter filter_;
     std::size_t selected_ = 0;
-    bool properties_after_ = false;
+    bool properties_after_ = false, comparison_ = false;
     std::vector<std::string> before_properties_, after_properties_;
     std::optional<AssetTab> requested_tab_;
     BlueprintView before_graph_, after_graph_;
@@ -31,13 +31,13 @@ class AssetView {
 
   public:
     static void register_translations();
-    void set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after = {});
+    // compare_missing_side enables an addition/removal diff when one side is absent.
+    void set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after = {},
+                      bool compare_missing_side = false);
     bool set_texture_preview(const std::string &object_path, const cyui::ImageData &, bool after = false);
     bool clear_texture_preview(const std::string &object_path, bool after = false);
     void set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after = false);
-    void select_tab(AssetTab tab) {
-        requested_tab_ = tab;
-    }
+    void select_tab(AssetTab tab) { requested_tab_ = tab; }
     void draw(const char *id = "CyUEDiff", bool show_language = true);
 };
 } // namespace cyuediff

@@ -101,6 +101,9 @@ int main() {
     graph_view.set_package(*before);
     if (graph_view.empty())
         return 2;
+    cyuediff::AssetView addition, removal;
+    addition.set_packages({}, after, true);
+    removal.set_packages(before, {}, true);
     cyuediff::AssetView view;
     view.set_packages(before, after);
     if (!view.set_texture_preview("ExampleTexture", {(ImTextureID)42, 2, 1}) ||
@@ -172,6 +175,18 @@ int main() {
                 ImGui::SetNextWindowSize(io.DisplaySize);
                 ImGui::Begin("Instance host");
                 instance_view.draw();
+                ImGui::End();
+                ImGui::SetNextWindowPos(ImVec2(0, 0));
+                ImGui::SetNextWindowSize(io.DisplaySize);
+                ImGui::Begin("Addition host");
+                addition.select_tab(tabs[frames % 6]);
+                addition.draw();
+                ImGui::End();
+                ImGui::SetNextWindowPos(ImVec2(0, 0));
+                ImGui::SetNextWindowSize(io.DisplaySize);
+                ImGui::Begin("Removal host");
+                removal.select_tab(tabs[frames % 6]);
+                removal.draw();
                 ImGui::End();
                 cyui::renderNotifications();
                 ImGui::Render();

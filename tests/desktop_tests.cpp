@@ -64,6 +64,11 @@ int main() {
         auto engine_without_project = request;
         engine_without_project.engine_root = root;
         error([&] { load_document(engine_without_project); }, "desktop-project");
+#ifndef CYUEDIFF_HAS_GIT
+        auto unsupported_git = request;
+        unsupported_git.git = GitSource{};
+        error([&] { load_document(unsupported_git); }, "desktop-git");
+#endif
         auto bad_codec = request;
         bad_codec.codec = root / "missing.dll";
         bad_codec.previews = false;

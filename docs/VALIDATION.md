@@ -16,10 +16,11 @@ Environnement vérifié : Windows x64, MSVC 19.40, CMake 3.31.6, configuration R
 - `git` : **57 vérifications** de révisions, compagnons, LFS local, durée de vie, chemins, contextes Git et limites ; nécessite Git 2.45+ pour être exécuté.
 - `git_project` : **56 vérifications** des contextes historiques, plugins et moteurs sélectionnés par côté.
 - `desktop_model` : **28 vérifications** du chargement, contexte, erreurs, reprise et priorité des demandes asynchrones.
+- `desktop_git` : **27 vérifications** du chargement de révisions, LFS local/externe, compagnons, ajouts/suppressions, renommage, contexte historique, durée de vie et conservation du document après erreur.
 - `desktop_renderer` : fenêtre cachée rendue avec le backend Direct3D 11/WARP réel.
 - `ui_smoke` : **30 frames ImGui**, cinq thèmes et langues anglais/français, avec inspecteur, comparaison, graphes Blueprint et matériau, tableau d’instance, image et filaire mesh préparés. Test sans renderer : production des commandes de dessin, sans revue visuelle native.
 
-Les douze tests passent (544 vérifications, 30 frames UI sans renderer et un test de rendu natif). Les fixtures binaires synthétiques sont générées pendant le test et supprimées après réussite. Aucun asset propriétaire n'est inclus dans les sources.
+Les treize tests passent (571 vérifications, 30 frames UI sans renderer et un test de rendu natif). Les fixtures binaires synthétiques sont générées pendant le test et supprimées après réussite. Aucun asset propriétaire n'est inclus dans les sources.
 
 ## Essais sur six fichiers réels locaux
 
@@ -121,3 +122,9 @@ Les douze suites passent en Release, dont le worker asynchrone (28 vérification
 `scripts/validate_desktop.py` produit 21 captures PNG depuis le back buffer réel : cinq thèmes et deux langues sur le Blueprint, puis inspecteur, chemin Unicode, états vide/erreur, comparaison, texture source 512 × 512, mesh de 686 triangles et graphe de matériau. Les captures ont été inspectées visuellement. Le diff d’une copie de Blueprint (`NodePosX` de 256 à 320) correspond au résultat de la CLI, et la vue se positionne sur ce premier changement. Sept refus de paramètres/sorties et les empreintes inchangées des entrées sont vérifiés. Rapports conservés dans `build-native/desktop-validation/validation.json` et captures à côté.
 
 Cette validation concerne le renderer WARP et les fichiers indiqués. L’interaction manuelle avec les dialogues Windows, les transitions DPI et le backend matériel ne sont pas certifiés par ces captures. Les aperçus de cette tranche ciblent la première source de chaque côté ; l’annulation en cours de décodage et la navigation Git dans la fenêtre restent à ajouter. Détails : [DESKTOP.md](DESKTOP.md).
+
+## Desktop Git/LFS 0.10 — 4 novembre 2026
+
+`scripts/validate_desktop_git.py` crée un dépôt jetable à partir de copies d’assets explicitement fournis, sans remote. Les 22 captures natives couvrent les cinq thèmes et deux langues, les propriétés et comparaisons d’ajouts/suppressions, l’égalité, un changement de contexte seul, un cache LFS externe, les aperçus texture/mesh et une erreur LFS. Six refus couvrent les options invalides et les sorties vers les métadonnées Git, le cache LFS ou des liens physiques vers les entrées. Le résultat Git correspond à la CLI ; l’index, le checkout et les assets sources restent inchangés. Rapports/captures ignorés dans `build-native/desktop-git-validation/`.
+
+La configuration desktop sans Git passe dix suites, dont le rejet explicite d’une demande Git non prise en charge. Les vues embarquées restent utilisables indépendamment de l’adaptateur Git et de l’hôte Windows.
