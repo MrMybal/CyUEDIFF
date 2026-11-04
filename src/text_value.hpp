@@ -7,8 +7,45 @@ struct TextWireReader {
     std::function<Json(TextScalar, unsigned)> scalar;
     std::function<void(unsigned)> check;
     std::function<std::uint64_t()> position;
+    std::function<std::uint32_t()> remaining;
     bool invariant_marker = true;
-    const char *type_error = "text-history", *value_error = "text-value";
+    const char *type_error = "text-history", *value_error = "text-value", *limit_error = "limit",
+               *identity_error = "text-identity";
+    std::uint32_t count(unsigned depth) {
+        const auto n = scalar(TextScalar::int32, depth + 1).get<std::int32_t>();
+        if (n < 0)
+            throw Error(value_error, "Negative text argument count", position());
+        if (static_cast<std::uint32_t>(n) > remaining())
+            throw Error(limit_error, "Text arguments exceed remaining work", position());
+        return static_cast<std::uint32_t>(n);
+    }
+    Json argument(unsigned depth) {
+        check(depth);
+        const int id = scalar(TextScalar::int8, depth + 1).get<int>();
+        static const char *tokens[] = {"int64", "uint64", "float32", "float64", "text", "gender"};
+        if (id < 0 || id > 5)
+            throw Error(type_error, "Unsupported text argument type", position());
+        Json value;
+        switch (id) {
+        case 0:
+            value = scalar(TextScalar::int64, depth + 1);
+            break;
+        case 1:
+        case 5:
+            value = scalar(TextScalar::uint64, depth + 1);
+            break;
+        case 2:
+            value = scalar(TextScalar::float32, depth + 1);
+            break;
+        case 3:
+            value = scalar(TextScalar::float64, depth + 1);
+            break;
+        case 4:
+            value = text(depth + 1);
+            break;
+        }
+        return {{"argumentType", tokens[id]}, {"value", std::move(value)}};
+    }
     Json text(unsigned depth, bool account = true) {
         if (account)
             check(depth);
@@ -26,6 +63,23 @@ struct TextWireReader {
             value["namespace"] = read(TextScalar::string);
             value["key"] = read(TextScalar::string);
             value["source"] = read(TextScalar::string);
+        } else if (history == 1 || history == 2) {
+            const bool named = history == 1;
+            value["kind"] = named ? "named-format" : "ordered-format";
+            value["format"] = text(depth + 1);
+            const auto size = count(depth);
+            Json arguments = named ? Json::object() : Json::array();
+            for (std::uint32_t i = 0; i < size; ++i) {
+                if (named) {
+                    auto name = scalar(TextScalar::string, depth + 2).get<std::string>();
+                    if (arguments.contains(name))
+                        throw Error(identity_error, "Duplicate named text argument", position());
+                    arguments[std::move(name)] = argument(depth + 2);
+                } else {
+                    arguments.push_back(argument(depth + 2));
+                }
+            }
+            value["arguments"] = std::move(arguments);
         } else if (history == 11) {
             value["kind"] = "string-table";
             value["table"] = read(TextScalar::name);

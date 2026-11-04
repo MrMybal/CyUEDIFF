@@ -47,4 +47,34 @@ inline Bytes transform_text_value(const Bytes &source = text_value(), unsigned o
     value.put<std::uint8_t>(static_cast<std::uint8_t>(operation));
     return value;
 }
+inline Bytes text_argument(unsigned kind, const Bytes &payload) {
+    Bytes value;
+    value.put<std::int8_t>(static_cast<std::int8_t>(kind));
+    value.append(payload);
+    return value;
+}
+inline Bytes ordered_text_value(const std::vector<Bytes> &arguments,
+                                const Bytes &format = text_value("{0}")) {
+    Bytes value;
+    value.i(0);
+    value.put<std::int8_t>(2);
+    value.append(format);
+    value.i(static_cast<int>(arguments.size()));
+    for (const auto &argument : arguments)
+        value.append(argument);
+    return value;
+}
+inline Bytes named_text_value(const std::vector<std::pair<std::string, Bytes>> &arguments,
+                              const Bytes &format = text_value("{Count}: {Label}")) {
+    Bytes value;
+    value.i(0);
+    value.put<std::int8_t>(1);
+    value.append(format);
+    value.i(static_cast<int>(arguments.size()));
+    for (const auto &argument : arguments) {
+        value.string(argument.first);
+        value.append(argument.second);
+    }
+    return value;
+}
 } // namespace cyuediff::test

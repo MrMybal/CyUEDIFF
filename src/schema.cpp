@@ -903,6 +903,9 @@ struct PropertyReader {
             detail::TextWireReader reader;
             reader.type_error = "schema-type";
             reader.value_error = "schema-value";
+            reader.limit_error = "schema-limit";
+            reader.identity_error = "schema-identity";
+            reader.remaining = [&] { return options.max_values - result.values_read; };
             reader.position = [&] { return r.pos; };
             reader.check = [&](unsigned level) {
                 depth(level);

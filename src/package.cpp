@@ -5,6 +5,7 @@
 #include "native.hpp"
 #include "decoders.hpp"
 #include "text_value.hpp"
+#include "string_value.hpp"
 #include <cmath>
 #include <memory>
 #include <set>
@@ -271,6 +272,7 @@ class PropertyReader {
             reader.invariant_marker =
                 p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 32;
             reader.position = [&] { return a.tell(); };
+            reader.remaining = [&] { return options.max_properties - text_nodes_; };
             reader.check = [&](unsigned level) {
                 depth_check(level);
                 options.control.check();
@@ -304,8 +306,12 @@ class PropertyReader {
                         throw Error("text-value", "Non-finite text argument", a.tell());
                     return v;
                 }
-                case detail::TextScalar::string:
-                    return a.string();
+                case detail::TextScalar::string: {
+                    const auto offset = a.tell();
+                    auto text = a.string();
+                    detail::validate_byte_string(text, false, options.control, "text-value", offset);
+                    return text;
+                }
                 case detail::TextScalar::name:
                     return fname(a, p);
                 }
