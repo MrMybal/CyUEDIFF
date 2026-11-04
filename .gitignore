@@ -1,0 +1,39 @@
+# Build outputs and local tooling
+/build*/
+/.vs/
+/.cache/
+/out/
+__pycache__/
+*.py[cod]
+*.user
+/.test-tmp-*/
+
+# Local credentials and configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+/.aws/
+/.codex/
+/.agents/
+
+# Generated binaries and symbols
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Host-owned Unreal packages, payloads and generated capture/reports
+*.uasset
+*.umap
+*.uexp
+*.ubulk
+*.uptnl
+*.upayload
+/gitleaks-report.*

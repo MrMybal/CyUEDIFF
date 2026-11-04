@@ -1,0 +1,1 @@
+Reusable C++17 engine for inspecting and diffing Unreal Engine assets without Unreal Editor, with local Git/LFS support and a separate multilingual CyUI desktop interface.

@@ -1,0 +1,282 @@
+#include <cyuediff/asset_view.hpp>
+namespace cyuediff {
+void AssetView::register_translations() {
+    cyui::registerTranslations(
+        "fr",
+        {{"Asset inspection", "Inspection des assets"},
+         {"Objects", "Objets"},
+         {"Properties", "Propriétés"},
+         {"Comparison", "Comparaison"},
+         {"No asset loaded", "Aucun asset chargé"},
+         {"Open an Unreal package in the host application.",
+          "Ouvrez un fichier Unreal depuis l'application hôte."},
+         {"Some payloads are opaque. Their hashes remain available for comparison.",
+          "Certains blocs restent opaques. Leurs empreintes permettent de les comparer."},
+         {"Language", "Langue"},
+         {"Blueprint graphs", "Graphes Blueprint"},
+         {"Graph", "Graphe"},
+         {"Textures", "Textures"},
+         {"Materials", "Matériaux"},
+         {"Material", "Matériau"},
+         {"No material", "Aucun matériau"},
+         {"This package has no material graph or instance.",
+          "Ce package ne contient aucun graphe ni instance de matériau."},
+         {"Some material data could not be resolved.",
+          "Certaines données du matériau n'ont pas pu être résolues."},
+         {"Parent: %s", "Parent : %s"},
+         {"Stored overrides only. Parent values are not evaluated.",
+          "Surcharges enregistrées uniquement. Les valeurs du parent ne sont pas évaluées."},
+         {"Parameter", "Paramètre"},
+         {"Kind", "Type"},
+         {"Value", "Valeur"},
+         {"Override", "Surcharge"},
+         {"Unavailable", "Indisponible"},
+         {"scalar", "scalaire"},
+         {"vector", "vecteur"},
+         {"double-vector", "vecteur double"},
+         {"texture", "texture"},
+         {"virtual-texture", "texture virtuelle"},
+         {"volume-texture", "texture volumique"},
+         {"font", "police"},
+         {"static-switch", "commutateur statique"},
+         {"static-mask", "masque statique"},
+         {"Some output ports are inferred from saved connections.",
+          "Certains ports de sortie sont déduits des connexions enregistrées."},
+         {"Meshes", "Meshes"},
+         {"Mesh preview unavailable", "Aperçu du mesh indisponible"},
+         {"Load a supported source mesh in the application.",
+          "Chargez un mesh source pris en charge dans l'application."},
+         {"%zu vertices / %zu triangles / %zu material groups",
+          "%zu sommets / %zu triangles / %zu groupes de matériaux"},
+         {"Fit mesh", "Cadrer le mesh"},
+         {"Alt + drag: orbit | Middle drag: pan | Wheel: zoom",
+          "Alt + glisser : orbite | Bouton central : déplacement | Molette : zoom"},
+         {"Preview is limited to 100,000 edges.", "L'aperçu est limité à 100 000 arêtes."},
+         {"No texture source", "Aucune source de texture"},
+         {"This package has no decoded Texture2D source.",
+          "Ce package ne contient aucune source Texture2D décodée."},
+         {"Preview unavailable", "Aperçu indisponible"},
+         {"Load a supported source preview in the application.",
+          "Chargez un aperçu source pris en charge dans l'application."},
+         {"Fit image", "Cadrer l'image"},
+         {"Pixel: %d, %d", "Pixel : %d, %d"},
+         {"Fit graph", "Cadrer le graphe"},
+         {"Before", "Avant"},
+         {"After", "Après"},
+         {"No Blueprint graph", "Aucun graphe Blueprint"},
+         {"This package has no decoded editor graph.", "Ce package ne contient aucun graphe éditeur décodé."},
+         {"%zu nodes / %zu pins / %zu links", "%zu nœuds / %zu pins / %zu connexions"},
+         {"This graph is incomplete. Some pins or connections could not be resolved.",
+          "Ce graphe est incomplet. Certains pins ou connexions n'ont pas pu être résolus."},
+         {"Graph diagnostics", "Diagnostics du graphe"},
+         {"Empty package", "Package vide"},
+         {"This package has no exported objects.", "Ce package ne contient aucun objet exporté."}});
+}
+void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after) {
+    before_ = std::move(before);
+    after_ = std::move(after);
+    selected_ = 0;
+    properties_after_ = false;
+    auto prepare_inspection = [](const std::shared_ptr<const Package> &package) {
+        std::vector<std::string> result;
+        if (package)
+            for (const auto &entry : package->exports) {
+                Json data = {{"properties", entry.properties}, {"opaque", entry.opaque}};
+                if (!entry.native_data.empty())
+                    data["native"] = entry.native_data;
+                result.push_back(data.dump(2));
+            }
+        return result;
+    };
+    before_properties_ = prepare_inspection(before_);
+    after_properties_ = prepare_inspection(after_);
+    graph_after_ = texture_after_ = mesh_after_ = material_after_ = false;
+    before_mesh_.set_mesh({});
+    after_mesh_.set_mesh({});
+    texture_selected_ = 0;
+    before_textures_.clear();
+    after_textures_.clear();
+    auto load = [](const std::shared_ptr<const Package> &package, std::vector<TextureView> &views) {
+        if (package)
+            for (const auto &texture : package->textures) {
+                TextureView view;
+                view.set_source(texture);
+                views.push_back(std::move(view));
+            }
+    };
+    load(before_, before_textures_);
+    load(after_, after_textures_);
+    before_material_.set_package(before_ ? *before_ : Package{});
+    after_material_.set_package(after_ ? *after_ : Package{});
+    before_graph_.set_package(before_ ? *before_ : Package{});
+    after_graph_.set_package(after_ ? *after_ : Package{});
+    document_ = {};
+    diff_state_ = {};
+    if (before_ && after_) {
+        document_.setTexts(before_->semantic_snapshot().dump(2), after_->semantic_snapshot().dump(2),
+                           cyui::CodeLanguage::json);
+        if (!document_.hunks().empty()) {
+            diff_state_.hunk = 0;
+            diff_state_.focus = document_.hunks().front();
+        }
+    }
+}
+bool AssetView::set_texture_preview(const std::string &path, const cyui::ImageData &image, bool after) {
+    auto &views = after ? after_textures_ : before_textures_;
+    for (auto &view : views)
+        if (view.object_path() == path)
+            return view.set_preview(image);
+    return false;
+}
+bool AssetView::clear_texture_preview(const std::string &path, bool after) {
+    auto &views = after ? after_textures_ : before_textures_;
+    for (auto &view : views)
+        if (view.object_path() == path) {
+            view.clear_preview();
+            return true;
+        }
+    return false;
+}
+void AssetView::set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after) {
+    (after ? after_mesh_ : before_mesh_).set_mesh(std::move(geometry));
+}
+void AssetView::draw(const char *id, bool show_language) {
+    cyui::ScopedID scope(id);
+    if (show_language && ImGui::BeginCombo(cyui::trLabel("Language").c_str(), cyui::locale().c_str())) {
+        for (const auto &locale : cyui::availableLocales())
+            if (ImGui::Selectable(locale.name.c_str(), cyui::locale() == locale.code))
+                cyui::setLocale(locale.code.c_str());
+        ImGui::EndCombo();
+    }
+    if (!before_) {
+        cyui::emptyState(cyui::tr("No asset loaded").c_str(),
+                         cyui::tr("Open an Unreal package in the host application.").c_str(),
+                         cyui::icon::document);
+        return;
+    }
+    cyui::panelHeader(cyui::tr("Asset inspection").c_str(), before_->source.filename().u8string().c_str());
+    cyui::callout(
+        cyui::Tone::warning,
+        cyui::tr("Some payloads are opaque. Their hashes remain available for comparison.").c_str());
+    if (ImGui::BeginTabBar("##asset-tabs")) {
+        auto requested = requested_tab_;
+        requested_tab_.reset();
+        auto flags = [&](AssetTab tab) {
+            return requested == tab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+        };
+        if (ImGui::BeginTabItem(cyui::trLabel("Properties").c_str(), nullptr, flags(AssetTab::properties))) {
+            if (after_) {
+                if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !properties_after_)) {
+                    properties_after_ = false;
+                    selected_ = 0;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton(cyui::trLabel("After").c_str(), properties_after_)) {
+                    properties_after_ = true;
+                    selected_ = 0;
+                }
+            }
+            const auto &package = properties_after_ ? after_ : before_;
+            const auto &inspection = properties_after_ ? after_properties_ : before_properties_;
+            cyui::filterBox("##objects-filter", filter_);
+            if (package->exports.empty())
+                cyui::emptyState(cyui::tr("Empty package").c_str(),
+                                 cyui::tr("This package has no exported objects.").c_str(),
+                                 cyui::icon::document);
+            else if (ImGui::BeginTable("##inspection", 2, ImGuiTableFlags_Resizable)) {
+                ImGui::TableSetupColumn("##objects", ImGuiTableColumnFlags_WidthFixed, cyui::dp(300));
+                ImGui::TableSetupColumn("##properties");
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                if (ImGui::BeginChild("##objects"))
+                    for (std::size_t i = 0; i < package->exports.size(); ++i) {
+                        const auto &entry = package->exports[i];
+                        if (!filter_.matches(entry.path.c_str(), entry.class_name.c_str()))
+                            continue;
+                        if (ImGui::Selectable(entry.path.c_str(), selected_ == i))
+                            selected_ = i;
+                    }
+                ImGui::EndChild();
+                ImGui::TableSetColumnIndex(1);
+                const auto &entry = package->exports[selected_];
+                cyui::textDim("%s", entry.class_name.c_str());
+                cyui::textDim("%s", entry.coverage.c_str());
+                if (ImGui::BeginChild("##properties", {}, ImGuiChildFlags_None,
+                                      ImGuiWindowFlags_HorizontalScrollbar)) {
+                    ImGui::TextUnformatted(inspection[selected_].c_str());
+                }
+                ImGui::EndChild();
+                ImGui::EndTable();
+            }
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(cyui::trLabel("Blueprint graphs").c_str(), nullptr,
+                                flags(AssetTab::blueprint))) {
+            if (after_) {
+                if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !graph_after_))
+                    graph_after_ = false;
+                ImGui::SameLine();
+                if (ImGui::RadioButton(cyui::trLabel("After").c_str(), graph_after_))
+                    graph_after_ = true;
+            }
+            (graph_after_ ? after_graph_ : before_graph_).draw("##blueprint");
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(cyui::trLabel("Materials").c_str(), nullptr, flags(AssetTab::materials))) {
+            if (after_) {
+                if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !material_after_))
+                    material_after_ = false;
+                ImGui::SameLine();
+                if (ImGui::RadioButton(cyui::trLabel("After").c_str(), material_after_))
+                    material_after_ = true;
+            }
+            (material_after_ ? after_material_ : before_material_).draw("##material");
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(cyui::trLabel("Textures").c_str(), nullptr, flags(AssetTab::textures))) {
+            if (after_) {
+                if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !texture_after_)) {
+                    texture_after_ = false;
+                    texture_selected_ = 0;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton(cyui::trLabel("After").c_str(), texture_after_)) {
+                    texture_after_ = true;
+                    texture_selected_ = 0;
+                }
+            }
+            auto &views = texture_after_ ? after_textures_ : before_textures_;
+            if (views.empty())
+                TextureView{}.draw();
+            else {
+                if (ImGui::BeginCombo("##texture-selection",
+                                      views[texture_selected_].object_path().c_str())) {
+                    for (std::size_t i = 0; i < views.size(); ++i)
+                        if (ImGui::Selectable(views[i].object_path().c_str(), i == texture_selected_))
+                            texture_selected_ = i;
+                    ImGui::EndCombo();
+                }
+                views[texture_selected_].draw();
+            }
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(cyui::trLabel("Meshes").c_str(), nullptr, flags(AssetTab::meshes))) {
+            if (after_) {
+                if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !mesh_after_))
+                    mesh_after_ = false;
+                ImGui::SameLine();
+                if (ImGui::RadioButton(cyui::trLabel("After").c_str(), mesh_after_))
+                    mesh_after_ = true;
+            }
+            (mesh_after_ ? after_mesh_ : before_mesh_).draw();
+            ImGui::EndTabItem();
+        }
+        if (after_ &&
+            ImGui::BeginTabItem(cyui::trLabel("Comparison").c_str(), nullptr, flags(AssetTab::comparison))) {
+            cyui::diffViewer("##semantic-diff", diff_state_, document_, ImGui::GetContentRegionAvail());
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+}
+} // namespace cyuediff

@@ -1,0 +1,185 @@
+#include "native.hpp"
+#include <set>
+namespace cyuediff::detail {
+namespace {
+constexpr const char *framework_id = "cffc743f43b04480939114df171d2073";
+constexpr const char *blueprints_id = "b0d832e41f894f0daccf7eb736fd4aa2";
+constexpr const char *release_id = "9c54d522a8264fbe9421074661b482d0";
+constexpr const char *main5_id = "697dd581e64f41abaa4a51ecbeb7b628";
+constexpr const char *release5_id = "d89b5e4224bd4d468412aca8df641779";
+constexpr const char *editor_id = "e4b068edf49442e9a231da0b2e46bb41";
+int version(const Package &p, const char *id) {
+    return p.summary.custom_versions.value(id, -1);
+}
+bool nonzero_guid(const std::string &guid) {
+    return guid != std::string(32, '0');
+}
+class PinReader {
+    Archive &a;
+    const Package &p;
+    const ReadOptions &options;
+    std::size_t owner;
+    std::uint32_t references = 0;
+    bool editor;
+
+  public:
+    PinReader(Archive &archive, const Package &package, std::size_t index, const ReadOptions &o)
+        : a(archive), p(package), options(o), owner(index), editor(!(p.summary.flags & 0x80000000u)) {}
+    bool boolean() {
+        auto v = a.get<std::uint32_t>();
+        if (v > 1)
+            throw Error("pin-boolean", "Invalid native boolean", a.tell() - 4);
+        return v != 0;
+    }
+    std::string name() {
+        auto index = a.get<std::int32_t>(), number = a.get<std::int32_t>();
+        if (index < 0 || static_cast<std::size_t>(index) >= p.names.size() || number < 0)
+            throw Error("pin-name", "Invalid native FName", a.tell() - 8);
+        return p.names[index] + (number ? "_" + std::to_string(number - 1) : "");
+    }
+    Json text() {
+        auto flags = a.get<std::uint32_t>();
+        auto history = a.get<std::int8_t>();
+        Json result = {{"flags", flags}, {"history", history}};
+        if (history == -1) {
+            result["source"] = "";
+            if (version(p, editor_id) >= 32 && boolean())
+                result["source"] = a.string();
+        } else if (history == 0) {
+            result["namespace"] = a.string();
+            result["key"] = a.string();
+            result["source"] = a.string();
+        } else
+            throw Error("pin-text-history", "Unsupported FText history in pin", a.tell() - 1);
+        return result;
+    }
+    Json reference() {
+        if (++references > options.max_properties)
+            throw Error("limit", "Pin reference budget exceeded", a.tell());
+        if (boolean())
+            return nullptr;
+        auto index = a.get<std::int32_t>();
+        auto guid = a.guid();
+        if (!nonzero_guid(guid))
+            throw Error("pin-reference", "Zero pin reference GUID", a.tell() - 16);
+        return {{"node", p.reference(index)}, {"pin", guid}};
+    }
+    Json reference_array() {
+        auto n = a.count(options.max_properties);
+        Json result = Json::array();
+        for (std::uint32_t i = 0; i < n; ++i)
+            result.push_back(reference());
+        return result;
+    }
+    Json terminal_type() {
+        Json type;
+        type["category"] = name();
+        type["subcategory"] = name();
+        type["object"] = p.reference(a.get<std::int32_t>());
+        type["const"] = boolean();
+        type["weak"] = boolean();
+        if (version(p, release_id) >= 32)
+            type["objectWrapper"] = boolean();
+        return type;
+    }
+    Json pin_type() {
+        Json type;
+        type["category"] = name();
+        type["subcategory"] = name();
+        type["object"] = p.reference(a.get<std::int32_t>());
+        auto container = a.get<std::uint8_t>();
+        if (container > 3)
+            throw Error("pin-container", "Unsupported pin container", a.tell() - 1);
+        type["container"] = container;
+        if (container == 3)
+            type["valueType"] = terminal_type();
+        type["reference"] = boolean();
+        type["weak"] = boolean();
+        Json member;
+        member["parent"] = p.reference(a.get<std::int32_t>());
+        member["name"] = name();
+        member["guid"] = a.guid();
+        type["member"] = std::move(member);
+        type["const"] = boolean();
+        if (version(p, release_id) >= 32)
+            type["objectWrapper"] = boolean();
+        if (version(p, release5_id) >= 36)
+            type["singlePrecisionDefault"] = boolean();
+        return type;
+    }
+    Json pin(const Json &declared) {
+        auto node = a.get<std::int32_t>();
+        auto id = a.guid();
+        if (node != static_cast<std::int32_t>(owner + 1) || declared.at("node") != p.exports[owner].path ||
+            declared.at("pin") != id)
+            throw Error("pin-owner", "Pin owner or GUID disagrees with owning array", a.tell());
+        Json result;
+        result["id"] = id;
+        result["name"] = name();
+        if (editor)
+            result["friendlyName"] = text();
+        if (version(p, main5_id) >= 50)
+            result["sourceIndex"] = a.get<std::int32_t>();
+        result["tooltip"] = a.string();
+        auto direction = a.get<std::uint8_t>();
+        if (direction > 1)
+            throw Error("pin-direction", "Invalid pin direction", a.tell() - 1);
+        result["direction"] = direction ? "output" : "input";
+        result["type"] = pin_type();
+        result["defaultValue"] = a.string();
+        result["autogeneratedDefaultValue"] = a.string();
+        result["defaultObject"] = p.reference(a.get<std::int32_t>());
+        result["defaultText"] = text();
+        result["linkedTo"] = reference_array();
+        result["subPins"] = reference_array();
+        result["parentPin"] = reference();
+        result["passThrough"] = reference();
+        if (editor) {
+            result["persistentGuid"] = a.guid();
+            auto flags = a.get<std::uint32_t>();
+            if (flags & ~63u)
+                throw Error("pin-flags", "Unknown persistent pin flags", a.tell() - 4);
+            result["flags"] = flags;
+        }
+        return result;
+    }
+};
+void profile(const Package &p) {
+    auto fw = version(p, framework_id), bp = version(p, blueprints_id), rel = version(p, release_id);
+    auto main = version(p, main5_id), release5 = version(p, release5_id), ed = version(p, editor_id);
+    if (fw < 31 || fw > 37 || bp < 4 || bp > 10 || rel < 32 || rel > 44 || main > 119 || release5 > 51 ||
+        ed > 40 || (p.summary.ue5_version && (main < 50 || release5 < 36 || ed < 32)))
+        throw Error("pin-profile", "EdGraph native serialization profile is not supported");
+}
+} // namespace
+bool is_edgraph_node(const ObjectExport &object) {
+    return object.properties.contains("NodeGuid") &&
+           (object.class_name.find("K2Node_") != std::string::npos ||
+            object.class_name.find("EdGraphNode") != std::string::npos ||
+            object.class_name.find("AnimGraphNode_") != std::string::npos);
+}
+NativeDecodeResult decode_edgraph_node(Archive &archive, const Package &package, std::size_t index,
+                                       std::uint64_t end, const ReadOptions &options) {
+    profile(package);
+    Archive::ReadLimit window(archive, end);
+    PinReader reader(archive, package, index, options);
+    Json data = {{"kind", "edgraph-node"}, {"pins", Json::object()}, {"pinOrder", Json::array()}};
+    if (reader.boolean())
+        data["objectGuid"] = archive.guid();
+    auto count = archive.count(options.max_properties);
+    for (std::uint32_t i = 0; i < count; ++i) {
+        auto declared = reader.reference();
+        if (declared.is_null()) {
+            data["pinOrder"].push_back(nullptr);
+            continue;
+        }
+        auto pin = reader.pin(declared);
+        auto id = pin.at("id").get<std::string>();
+        if (data["pins"].contains(id))
+            throw Error("pin-id", "Duplicate pin GUID in node", archive.tell());
+        data["pinOrder"].push_back(id);
+        data["pins"][id] = std::move(pin);
+    }
+    return {std::move(data), archive.tell()};
+}
+} // namespace cyuediff::detail

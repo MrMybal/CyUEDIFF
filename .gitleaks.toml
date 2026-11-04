@@ -1,0 +1,5 @@
+title = "CyUEDiff secret scanning"
+
+# Keep all bundled Gitleaks rules. No project-wide exclusions or baselines.
+[extend]
+useDefault = true
