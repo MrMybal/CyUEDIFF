@@ -38,3 +38,7 @@ Completeness describes the supported stored projection, never simulated collisio
 Shape identity uses the exact stored name when unique within its kind, otherwise the collection index. Body identity uses its object path. The ordinary package diff retains serialized order changes while collisionChanges omits inspection-only sourceIndex changes for unique named shapes. Unsupported raw properties and native payload hashes remain visible.
 
 Export outer containment is reported separately from bodyReferences. A child BodySetup can be discovered through its exact export outer while an owner reference stored in unread native data remains unavailable. This does not reconstruct that reference or resolve external assets.
+
+## Bounded body-local primitive wireframes - 0.78
+
+The Core exposes collision_wireframe and a dependency-free line/bounds model for stored spheres, boxes, capsules and tapered capsules. Box dimensions are halved before the stored Unreal pitch/yaw/roll rotation; capsule length excludes the end caps. Tapered previews sample the convex envelope of the two stored end spheres, including containing-sphere degeneracy. Sampling and edge budgets are explicit; missing geometry is diagnosed, and cancellation or coordinate overflow aborts without returning partial geometry. No bone, component, archetype or world placement is inferred. Convex preview is still unavailable in this milestone.
