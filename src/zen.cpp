@@ -4,6 +4,17 @@
 #include <array>
 #include <set>
 namespace cyuediff {
+std::string ZenSchemaContext::fingerprint() const {
+    Json bindings_json = Json::object();
+    for (const auto &pair : bindings)
+        bindings_json[pair.first] = {{"schema", pair.second.schema}, {"offset", pair.second.property_offset}};
+    auto text = Json{{"profile", static_cast<unsigned>(profile)},
+                     {"usmap", schemas ? schemas->sha256() : std::string{}},
+                     {"bindings", bindings_json},
+                     {"reflectedStructs", reflected_structs}}
+                    .dump();
+    return sha256_bytes(std::vector<std::uint8_t>(text.begin(), text.end()));
+}
 namespace {
 constexpr std::uint64_t null_index = ~0ull, index_mask = (1ull << 62) - 1;
 void require(bool condition, const char *message) {
@@ -477,6 +488,21 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
     };
     for (auto ref : raw_imports)
         p.imports.push_back(reference(ref));
+    if (options.schema_context) {
+        const auto &context = *options.schema_context;
+        if (!context.schemas || context.profile != options.profile)
+            throw Error("schema-context",
+                        "Schema context must supply mappings for the selected cooked profile");
+        const auto &recorded = context.schemas->versioning();
+        if (!recorded.is_null()) {
+            auto ue5 = recorded.at("ue5").get<int>();
+            if (recorded.at("ue4") != 522 ||
+                (options.profile == ZenProfile::unreal_5_3 ? ue5 != 1009 : (ue5 < 1012 || ue5 > 1013)))
+                throw Error("schema-context", "USMAP recorded engine version disagrees with cooked profile");
+        }
+        p.schema_context_sha256 = context.fingerprint();
+    }
+    std::uint32_t property_work = 0;
     for (auto &e : p.exports) {
         e.references = {{"outer", reference(e.outer_index)},
                         {"class", reference(e.class_index)},
@@ -486,6 +512,69 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                            ? p.exports[static_cast<std::size_t>(e.class_index)].path
                            : external_name(e.class_index);
         e.sha256 = detail::hash_range(bytes, e.offset, e.size, options.control);
+        if (options.schema_context) {
+            const auto &context = *options.schema_context;
+            auto binding = context.bindings.find(e.class_name);
+            if (binding != context.bindings.end()) {
+                const auto &b = binding->second;
+                try {
+                    if (!p.unversioned_properties)
+                        throw Error("schema-context", "USMAP decoding requires unversioned properties");
+                    if (b.property_offset > e.size)
+                        throw Error("bounds", "Property offset exceeds cooked export", e.offset);
+                    UnversionedReadOptions props;
+                    props.names = &p.names;
+                    props.reflected_structs = context.reflected_structs;
+                    props.max_values = options.max_property_values;
+                    props.charge = [&](std::uint32_t work, std::uint64_t text) {
+                        if (work > options.max_property_values - property_work)
+                            throw Error("schema-limit", "Cooked package property work exceeds limit");
+                        property_work += work;
+                        budget.add(static_cast<std::size_t>(text));
+                    };
+                    props.max_depth = options.max_depth;
+                    props.max_text_bytes = options.max_text_bytes - budget.text;
+                    props.control = options.control;
+                    props.reference = [&](std::int32_t index) -> Json {
+                        if (index > 0) {
+                            auto at = static_cast<std::uint32_t>(index - 1);
+                            if (at >= p.exports.size())
+                                throw Error("schema-context", "Invalid property export index");
+                            return {{"kind", "export"}, {"path", p.exports[at].path}};
+                        }
+                        if (index < 0) {
+                            auto at = static_cast<std::uint64_t>(-static_cast<std::int64_t>(index) - 1);
+                            if (at >= p.imports.size())
+                                throw Error("schema-context", "Invalid property import index");
+                            return p.imports[static_cast<std::size_t>(at)];
+                        }
+                        return nullptr;
+                    };
+                    auto decoded =
+                        decode_unversioned(bytes, e.offset + b.property_offset, e.size - b.property_offset,
+                                           *context.schemas, b.schema, props);
+                    e.property_read = {{"status", "decoded"},
+                                       {"schema", b.schema},
+                                       {"offset", b.property_offset},
+                                       {"consumedBytes", decoded.consumed_bytes},
+                                       {"properties", std::move(decoded.properties)},
+                                       {"defaultsResolved", false},
+                                       {"mappingVerified", false},
+                                       {"nativePayloadDecoded", false}};
+                    ++p.property_exports_decoded;
+                } catch (const Error &error) {
+                    // Budgets and cancellation are operation-wide failures, never opaque fallbacks.
+                    if (error.code == "cancelled" || error.code == "schema-limit" ||
+                        error.code == "zen-limit")
+                        throw;
+                    e.property_read = {{"status", "opaque"},
+                                       {"schema", b.schema},
+                                       {"error", error.code},
+                                       {"message", error.what()}};
+                    ++p.property_exports_failed;
+                }
+            }
+        }
     }
     std::vector<std::pair<std::uint64_t, std::uint64_t>> dependency_ranges;
     for (const auto &d : dependency_headers) {
@@ -553,8 +642,9 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
     p.sha256 = sha256_bytes(bytes, options.control);
     p.header_sha256 = detail::hash_range(bytes, 0, p.header_size, options.control);
     p.diagnostics.push_back(
-        "Object tables and references are decoded; export bodies remain opaque and require schemas/native "
-        "readers. External bulk data is not included in package-chunk equality.");
+        "Object tables and references are decoded. Property regions require explicit matching schema "
+        "bindings; "
+        "native payloads remain opaque. External bulk data is not included in package-chunk equality.");
     if (!unresolved_scripts.empty())
         p.diagnostics.push_back(
             std::to_string(unresolved_scripts.size()) +
@@ -582,11 +672,12 @@ Json ZenExport::to_json() const {
               {"super", hex(super_index)},
               {"template", hex(template_index)}}},
             {"coverage", "opaque-body"},
+            {"propertyRead", property_read},
             {"sha256", sha256}};
 }
 Json ZenPackage::snapshot() const {
     Json objects = Json::object(), deps = Json::object(), gaps = Json::array();
-    for (const auto &e : exports)
+    for (const auto &e : exports) {
         objects[e.path] = {{"name", e.name},
                            {"class", e.class_name},
                            {"references", e.references},
@@ -594,6 +685,13 @@ Json ZenPackage::snapshot() const {
                            {"filterFlags", e.filter_flags},
                            {"publicExportHash", hex(e.public_hash)},
                            {"opaque", {{"size", e.size}, {"sha256", e.sha256}}}};
+        if (!e.property_read.is_null()) {
+            if (e.property_read.at("status") == "decoded")
+                objects[e.path]["properties"] = e.property_read.at("properties");
+            else
+                objects[e.path]["propertyRead"] = e.property_read;
+        }
+    }
     for (const auto &d : dependencies)
         deps[d.at("object").get<std::string>()] = d.at("commandGroups");
     for (const auto &gap : other_payload)
@@ -607,7 +705,8 @@ Json ZenPackage::to_json() const {
     for (const auto &e : exports)
         es.push_back(e.to_json());
     return {{"schema", "cyuediff.zen-package/1"},
-            {"coverage", "object-tables-and-opaque-bodies"},
+            {"coverage", property_exports_decoded ? "object-tables-properties-and-opaque-bodies"
+                                                  : "object-tables-and-opaque-bodies"},
             {"name", name},
             {"profile", profile},
             {"scriptObjectsSha256", script_objects_sha256},
@@ -617,7 +716,10 @@ Json ZenPackage::to_json() const {
             {"cookedHeaderSize", cooked_header_size},
             {"flags", flags},
             {"unversionedProperties", unversioned_properties},
-            {"propertiesDecoded", false},
+            {"propertiesDecoded", property_exports_decoded != 0},
+            {"propertyExportsDecoded", property_exports_decoded},
+            {"propertyExportsFailed", property_exports_failed},
+            {"schemaContextSha256", schema_context_sha256},
             {"externalBulkCompared", false},
             {"versioning", versioning},
             {"names", names},
@@ -693,27 +795,35 @@ Json compare_zen_packages(const ZenPackage &before, const ZenPackage &after,
     bool binary = before.sha256 != after.sha256;
     auto status = changes.empty() ? (binary ? "binary-only" : "identical") : "changed";
     control.checkpoint("cooked-diff", 1, 1);
-    return {{"schema", "cyuediff.zen-diff/1"},
-            {"status", status},
-            {"coverage", "object-tables-and-opaque-bodies"},
-            {"binaryChanged", binary},
-            {"headerBinaryChanged", before.header_sha256 != after.header_sha256},
-            {"propertiesDecoded", false},
-            {"externalBulkCompared", false},
-            {"beforeProfile", before.profile},
-            {"afterProfile", after.profile},
-            {"contextChanged",
-             before.profile != after.profile || before.script_objects_sha256 != after.script_objects_sha256},
-            {"beforeScriptObjectsSha256", before.script_objects_sha256},
-            {"afterScriptObjectsSha256", after.script_objects_sha256},
-            {"changes", changes}};
+    return {
+        {"schema", "cyuediff.zen-diff/1"},
+        {"status", status},
+        {"coverage", before.property_exports_decoded || after.property_exports_decoded
+                         ? "object-tables-properties-and-opaque-bodies"
+                         : "object-tables-and-opaque-bodies"},
+        {"binaryChanged", binary},
+        {"headerBinaryChanged", before.header_sha256 != after.header_sha256},
+        {"propertiesDecoded", before.property_exports_decoded != 0 || after.property_exports_decoded != 0},
+        {"beforePropertyExportsDecoded", before.property_exports_decoded},
+        {"afterPropertyExportsDecoded", after.property_exports_decoded},
+        {"beforeSchemaContextSha256", before.schema_context_sha256},
+        {"afterSchemaContextSha256", after.schema_context_sha256},
+        {"externalBulkCompared", false},
+        {"beforeProfile", before.profile},
+        {"afterProfile", after.profile},
+        {"contextChanged", before.profile != after.profile ||
+                               before.script_objects_sha256 != after.script_objects_sha256 ||
+                               before.schema_context_sha256 != after.schema_context_sha256},
+        {"beforeScriptObjectsSha256", before.script_objects_sha256},
+        {"afterScriptObjectsSha256", after.script_objects_sha256},
+        {"changes", changes}};
 }
 Json catalog_zen_packages(const Container &container, const ZenReadOptions &options,
                           const ContainerReadOptions &read_options,
                           const ZenCatalogOptions &catalog_options) {
     profile_check(options.profile);
     Json packages = Json::array(), errors = Json::array();
-    std::uint64_t exports = 0, unversioned = 0, total = 0, done = 0;
+    std::uint64_t exports = 0, unversioned = 0, total = 0, done = 0, decoded = 0, failed = 0;
     for (const auto &e : container.entries())
         if (e.chunk_type == 1)
             ++total;
@@ -775,6 +885,8 @@ Json catalog_zen_packages(const Container &container, const ZenReadOptions &opti
             report_bytes += bytes;
             packages.push_back(std::move(record));
             exports += p.exports.size();
+            decoded += p.property_exports_decoded;
+            failed += p.property_exports_failed;
             if (p.unversioned_properties)
                 ++unversioned;
         } catch (const Error &error) {
@@ -810,11 +922,16 @@ Json catalog_zen_packages(const Container &container, const ZenReadOptions &opti
         {"scriptObjectsSha256", options.script_objects ? options.script_objects->sha256() : std::string{}},
         {"scriptObjectCount", options.script_objects ? options.script_objects->size() : 0},
         {"complete", errors.empty()},
-        {"coverage", "object-tables-and-opaque-bodies"},
+        {"coverage",
+         decoded ? "object-tables-properties-and-opaque-bodies" : "object-tables-and-opaque-bodies"},
         {"packageCount", packages.size()},
         {"exportCount", exports},
         {"unversionedPackages", unversioned},
-        {"propertiesDecoded", false},
+        {"propertiesDecoded", decoded != 0},
+        {"schemaContextSha256",
+         options.schema_context ? options.schema_context->fingerprint() : std::string{}},
+        {"propertyExportsDecoded", decoded},
+        {"propertyExportsFailed", failed},
         {"externalBulkCompared", false},
         {"packages", packages},
         {"errors", errors}};

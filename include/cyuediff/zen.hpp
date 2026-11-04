@@ -1,15 +1,29 @@
 #pragma once
 #include <cyuediff/container.hpp>
+#include <cyuediff/schema.hpp>
 namespace cyuediff {
 // Unversioned cooked headers require an explicit layout; no automatic engine execution.
 enum class ZenProfile { unspecified, unreal_5_3, unreal_5_5 };
 class ScriptObjects;
+struct ZenSchemaBinding {
+    std::string schema;
+    std::uint64_t property_offset = 0;
+};
+struct ZenSchemaContext {
+    ZenProfile profile = ZenProfile::unspecified;
+    std::shared_ptr<const UnversionedSchemas> schemas;
+    std::map<std::string, ZenSchemaBinding> bindings;
+    std::set<std::string> reflected_structs;
+    std::string fingerprint() const;
+};
 struct ZenReadOptions {
     ZenProfile profile = ZenProfile::unspecified;
     std::uint64_t max_package_bytes = 256ull * 1024 * 1024, max_header_bytes = 64ull * 1024 * 1024;
     std::uint64_t max_text_bytes = 64ull * 1024 * 1024;
     std::uint32_t max_entries = 1'000'000, max_name_bytes = 65536, max_depth = 128;
     std::shared_ptr<const ScriptObjects> script_objects;
+    std::shared_ptr<const ZenSchemaContext> schema_context;
+    std::uint32_t max_property_values = 1'000'000;
     OperationControl control;
 };
 class ScriptObjects {
@@ -33,19 +47,23 @@ struct ZenExport {
     std::uint32_t flags = 0;
     std::uint8_t filter_flags = 0;
     Json references = Json::object();
+    // Null means no explicit binding. Failed reads retain the whole opaque body.
+    Json property_read = nullptr;
     Json to_json() const;
 };
 struct ZenPackage {
-    std::string name, profile, sha256, header_sha256, script_objects_sha256;
+    std::string name, profile, sha256, header_sha256, script_objects_sha256, schema_context_sha256;
     std::uint32_t header_size = 0, cooked_header_size = 0, flags = 0;
     bool unversioned_properties = false;
+    std::uint32_t property_exports_decoded = 0, property_exports_failed = 0;
     Json versioning = nullptr;
     std::vector<std::string> names, imported_package_names;
     std::vector<ZenExport> exports;
     Json imports = Json::array(), bulk_data = Json::array(), dependencies = Json::array();
     Json other_payload = Json::array();
     std::vector<std::string> diagnostics;
-    // Zen export-bundle bytes, not classic loose .uasset bytes. Export bodies stay opaque.
+    // Zen export-bundle bytes, not classic loose .uasset bytes. Explicit schema bindings
+    // can decode property regions; complete export-body hashes are always retained.
     static ZenPackage parse(const std::vector<std::uint8_t> &, const ZenReadOptions &);
     Json snapshot() const;
     Json to_json() const;

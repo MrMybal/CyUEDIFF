@@ -55,14 +55,15 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff container-hash INPUT [--codec MODULE.dll] [--out REPORT.json]\n"
                "  cyuediff container-diff BEFORE AFTER [--codec MODULE.dll] [--out REPORT.json]\n"
                "  Container comparisons cover decoded bytes, not cooked object semantics.\n"
+               "  cyuediff usmap MAPPINGS.usmap [--codec MODULE] [--out FILE]\n"
                "  cyuediff zen-inspect CONTAINER ENTRY --cooked-profile ue5.3|ue5.5 [--script-objects "
                "GLOBAL.utoc] [--codec MODULE.dll] [--out FILE]\n"
                "  cyuediff zen-diff BEFORE BEFORE_ENTRY AFTER AFTER_ENTRY --cooked-profile PROFILE "
                "[--after-cooked-profile PROFILE] [--out FILE]\n"
                "  cyuediff zen-catalog CONTAINER --cooked-profile PROFILE [--script-objects GLOBAL.utoc] "
                "[--codec MODULE.dll] [--out FILE]\n"
-               "  zen-diff accepts --script-objects, --after-script-objects and --codec. Export bodies "
-               "remain opaque.\n"
+               "  Cooked commands accept --schema CONTEXT.json; zen-diff accepts --after-schema.\n"
+               "  zen-diff accepts --script-objects, --after-script-objects and --codec.\n"
                "  zen-inspect/zen-catalog accept --snapshot; zen-catalog accepts --max-packages and "
                "--max-exports.\n"
                "  cyuediff textconv ASSET\n"
@@ -77,6 +78,8 @@ int run(const std::vector<std::string> &args) {
     Json flags = Json::object();
     const std::set<std::string> valued = {"--max-packages",
                                           "--max-exports",
+                                          "--schema",
+                                          "--after-schema",
                                           "--cooked-profile",
                                           "--after-cooked-profile",
                                           "--script-objects",
@@ -123,6 +126,7 @@ int run(const std::vector<std::string> &args) {
                         : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog";
+    const bool schema_command = command == "usmap";
     const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog";
     if (zen_command)
         required = command == "zen-diff" ? 4u : (command == "zen-inspect" ? 2u : 1u);
@@ -137,17 +141,24 @@ int run(const std::vector<std::string> &args) {
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (schema_command) {
+            if (key != "--out" && key != "--codec")
+                throw Error("arguments", "Unsupported USMAP option: " + key);
+            continue;
+        }
         if (zen_command) {
             if (key != "--out" && key != "--codec" && key != "--cooked-profile" &&
-                key != "--script-objects" && !(key == "--snapshot" && command != "zen-diff") &&
+                key != "--script-objects" && key != "--schema" &&
+                !(key == "--snapshot" && command != "zen-diff") &&
                 !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
-                !(command == "zen-diff" &&
-                  (key == "--after-cooked-profile" || key == "--after-script-objects")))
+                !(command == "zen-diff" && (key == "--after-cooked-profile" ||
+                                            key == "--after-script-objects" || key == "--after-schema")))
                 throw Error("arguments", "Unsupported cooked option: " + key);
             continue;
         }
-        if (key == "--cooked-profile" || key == "--after-cooked-profile" || key == "--script-objects" ||
-            key == "--after-script-objects" || key == "--max-packages" || key == "--max-exports")
+        if (key == "--schema" || key == "--after-schema" || key == "--cooked-profile" ||
+            key == "--after-cooked-profile" || key == "--script-objects" || key == "--after-script-objects" ||
+            key == "--max-packages" || key == "--max-exports")
             throw Error("arguments", key + " requires a cooked command");
         if (container_command) {
             if (key != "--out" && !(key == "--codec" && command != "container"))
@@ -279,7 +290,14 @@ int run(const std::vector<std::string> &args) {
     fs::path png_destination;
     int exit_code = 0;
     ReadOptions options;
-    if (zen_command) {
+    if (schema_command) {
+        auto input = fs::u8path(positional[0]);
+        protected_files.push_back(input);
+        SchemaReadOptions schema_options;
+        if (decoder)
+            schema_options.decoder = container_block_decoder(decoder);
+        output = UnversionedSchemas::read(input, schema_options).to_json();
+    } else if (zen_command) {
         auto profile = [&](const std::string &key, ZenProfile fallback) {
             if (!flags.contains(key))
                 return fallback;
@@ -333,7 +351,90 @@ int run(const std::vector<std::string> &args) {
                 throw Error("zen-entry", "No matching cooked entry");
             return found;
         };
+        auto schema_context = [&](const fs::path &path) -> std::shared_ptr<const ZenSchemaContext> {
+            if (path.empty())
+                return {};
+            protected_files.push_back(path);
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file)
+                throw Error("file-open", "Cannot open schema context: " + path.u8string());
+            auto bytes = file.tellg();
+            if (bytes < 0 || bytes > 2 * 1024 * 1024)
+                throw Error("schema-limit", "Schema context exceeds 2 MiB");
+            std::string text(static_cast<std::size_t>(bytes), '\0');
+            file.seekg(0);
+            if (!file.read(text.data(), static_cast<std::streamsize>(text.size())))
+                throw Error("file-read", "Cannot read schema context");
+            std::vector<std::set<std::string>> keys;
+            auto manifest = Json::parse(text, [&](int depth, Json::parse_event_t event, Json &value) {
+                if (depth > 48)
+                    throw Error("schema-limit", "Schema context nesting exceeds limit");
+                if (event == Json::parse_event_t::object_start)
+                    keys.emplace_back();
+                if (event == Json::parse_event_t::key && !keys.back().insert(value.get<std::string>()).second)
+                    throw Error("schema-context", "Duplicate schema context key");
+                if (event == Json::parse_event_t::object_end)
+                    keys.pop_back();
+                return true;
+            });
+            auto fields = [](const Json &object, const std::set<std::string> &allowed) {
+                if (!object.is_object())
+                    throw Error("schema-context", "Expected schema context object");
+                for (auto it = object.begin(); it != object.end(); ++it)
+                    if (!allowed.count(it.key()))
+                        throw Error("schema-context", "Unknown schema context field: " + it.key());
+            };
+            fields(manifest, {"format", "profile", "usmap", "sha256", "bindings", "reflectedStructs"});
+            if (manifest.at("format") != "cyuediff.zen-schema/1")
+                throw Error("schema-context", "Unsupported schema context format");
+            auto context = std::make_shared<ZenSchemaContext>();
+            auto selected = manifest.at("profile").get<std::string>();
+            if (selected == "ue5.3")
+                context->profile = ZenProfile::unreal_5_3;
+            else if (selected == "ue5.5")
+                context->profile = ZenProfile::unreal_5_5;
+            else
+                throw Error("schema-context", "Unsupported schema context profile");
+            auto mapping_path = fs::u8path(manifest.at("usmap").get<std::string>());
+            if (mapping_path.empty())
+                throw Error("schema-context", "Empty USMAP path");
+            if (mapping_path.is_relative())
+                mapping_path = path.parent_path() / mapping_path;
+            protected_files.push_back(mapping_path);
+            SchemaReadOptions schema_options;
+            schema_options.decoder = read_options.decoder;
+            context->schemas =
+                std::make_shared<UnversionedSchemas>(UnversionedSchemas::read(mapping_path, schema_options));
+            if (manifest.at("sha256").get<std::string>() != context->schemas->sha256())
+                throw Error("schema-context", "USMAP fingerprint disagrees with schema context");
+            const auto &bindings = manifest.at("bindings");
+            if (!bindings.is_object() || bindings.size() > 100'000)
+                throw Error("schema-context", "Invalid schema bindings");
+            for (auto it = bindings.begin(); it != bindings.end(); ++it) {
+                fields(it.value(), {"schema", "offset"});
+                if (it.key().empty() || it.key()[0] != '/' || it.key().find('.') == std::string::npos)
+                    throw Error("schema-context", "Bindings require exact qualified class paths");
+                auto name = it.value().at("schema").get<std::string>();
+                context->schemas->schema(name);
+                const auto &offset = it.value().at("offset");
+                if (!offset.is_number_unsigned())
+                    throw Error("schema-context", "Property offset must be an unsigned integer");
+                context->bindings.emplace(it.key(), ZenSchemaBinding{name, offset.get<std::uint64_t>()});
+            }
+            if (manifest.contains("reflectedStructs")) {
+                if (!manifest.at("reflectedStructs").is_array())
+                    throw Error("schema-context", "Expected reflectedStructs array");
+                for (const auto &value : manifest.at("reflectedStructs")) {
+                    auto name = value.get<std::string>();
+                    context->schemas->schema(name);
+                    if (!context->reflected_structs.insert(name).second)
+                        throw Error("schema-context", "Duplicate reflected struct binding");
+                }
+            }
+            return context;
+        };
         before_options.script_objects = scripts(path_option("--script-objects"));
+        before_options.schema_context = schema_context(path_option("--schema"));
         auto input = open(fs::u8path(positional[0]));
         if (command == "zen-catalog") {
             ZenCatalogOptions catalog_options;
@@ -354,6 +455,8 @@ int run(const std::vector<std::string> &args) {
                 after_options.profile = profile("--after-cooked-profile", before_options.profile);
                 if (flags.contains("--after-script-objects"))
                     after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema"))
+                    after_options.schema_context = schema_context(path_option("--after-schema"));
                 auto other = open(fs::u8path(positional[2]));
                 auto after =
                     read_zen_package(other, select(other, positional[3]), after_options, read_options);

@@ -104,5 +104,20 @@ if args.consumer:
  result=subprocess.run([str(executable),str(toc),'ue5.3'],capture_output=True,check=True,env=env,timeout=20)
  parsed=json.loads(result.stdout);body=parsed['packages'][0]['snapshot']['objects']['/Game/Consumer.Consumer']['opaque']
  if body['sha256']!=hashlib.sha256(b'core').hexdigest():raise RuntimeError('Installed cooked Zen consumer failed')
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked consumers' if args.consumer else '')+' validated')
+ if not (prefix/'include/cyuediff/schema.hpp').is_file():raise RuntimeError('Missing USMAP API in SDK')
+ schema_build=target/'schema-consumer'
+ configure=[cmake,'-S',str(root/'examples/schema_consumer'),'-B',str(schema_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(schema_build),'--config','Release','--parallel','2'],check=True,env=env)
+ # Minimal USMAP v0 and one unversioned int, independent of native fixtures.
+ payload=u32(2)+bytes([8])+b'Consumer'+bytes([5])+b'Value'+u32(0)+u32(1)
+ payload+=u32(0)+struct.pack('<iHHHBiB',-1,1,1,0,1,1,2)
+ mappings=target/'consumer.usmap'
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ values=target/'consumer-values.bin';values.write_bytes(struct.pack('<Hi',0x0300,42))
+ executable=schema_build/'Release'/('schema_consumer'+suffix) if os.name=='nt' else schema_build/'schema_consumer'
+ result=subprocess.run([str(executable),str(mappings),str(values)],capture_output=True,check=True,env=env,timeout=20)
+ if json.loads(result.stdout)['Consumer.Value']['value']!=42:raise RuntimeError('Installed USMAP consumer failed')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

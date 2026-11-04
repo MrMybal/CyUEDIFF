@@ -15,7 +15,7 @@ The supported header is the 52-byte Zen layout with export dependencies (Zen ver
 
 Implemented metadata includes batched ANSI/UTF-16 names, numeric FName suffixes, optional recorded/custom versions, imports/public export hashes, local/script/package references, exports, create/serialize commands, dependency groups, imported package names when present and bulk-resource descriptors. Invalid ranges, indices, command ownership, outer cycles, Unicode and overlapping exports are rejected. Export overlap is checked before hashing so corrupt tables cannot multiply payload hashing work.
 
-Every export body remains opaque, even if `PKG_UnversionedProperties` is absent. `propertiesDecoded:false` is explicit in package/catalogue/diff reports. Unversioned property values need a matching schema such as a supported `.usmap`; neither schema loading nor cooked native texture/mesh/Blueprint payload decoding is implemented here. The classic loose-package property reader is separate.
+Without an explicit schema context, export bodies remain opaque, including packages without `PKG_UnversionedProperties`. Version 0.17 adds supported unversioned property-region decoding through exact class/schema/offset bindings and USMAP mappings. See [schema contracts](SCHEMAS.md) for types, provenance, defaults, limits and CLI examples. Complete body fingerprints remain present; cooked native texture/mesh/Blueprint payload decoding is still unsupported. The classic loose-package property reader is separate.
 
 ## CLI
 
@@ -31,7 +31,7 @@ Select a package by its exact inventory path or chunk ID. `zen-inspect`/`zen-dif
 
 `zen-inspect --snapshot` emits the normalized object projection. `zen-catalog --snapshot` includes that projection in every package entry. The normal catalogue reports package names, export/class counts, property-versioning flags and fingerprints. `--max-packages N` limits examined packages, including failed ones; `--max-exports N` limits accepted export totals. Limits or individual read failures retain partial results with `complete:false` and exit code 2. Cancellation propagates as an error.
 
-Diff exit codes are 0 for identical, 1 for changed or binary-only, and 2 for errors. Output guards protect both selected containers, all UCAS partitions and both script-object containers, including hard-link aliases. No member name becomes an extraction path.
+Diff exit codes are 0 for identical, 1 for changed or binary-only, and 2 for errors. Output guards protect both selected containers, all UCAS partitions, both script-object containers and supplied schema context/mapping files, including hard-link aliases. No member name becomes an extraction path.
 
 ## Object comparison
 
