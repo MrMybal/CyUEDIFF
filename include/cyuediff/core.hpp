@@ -211,6 +211,7 @@ struct Package {
     Json texture_snapshot() const;
     Json mesh_snapshot() const;
     Json material_snapshot() const;
+    Json collision_snapshot() const;
     const MeshSource &mesh_source(const std::string &object = "", std::uint32_t lod = 0) const;
     Json to_json() const;
 };
