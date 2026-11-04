@@ -1,5 +1,6 @@
 #include <cyuediff/schema.hpp>
 #include "string_value.hpp"
+#include "archive.hpp"
 #include "text_value.hpp"
 #include <algorithm>
 #include <cmath>
@@ -941,6 +942,16 @@ struct PropertyReader {
             reader.check = [&](unsigned level) {
                 depth(level);
                 charge();
+            };
+            reader.payload = [&](std::uint32_t bytes, unsigned level) -> Json {
+                depth(level);
+                charge();
+                text(bytes);
+                text(64);
+                r.range(bytes);
+                auto hash = detail::hash_range(r.data, r.pos, bytes, options.control);
+                r.skip(bytes);
+                return {{"bytes", bytes}, {"sha256", std::move(hash)}};
             };
             reader.scalar = [&](detail::TextScalar kind, unsigned level) -> Json {
                 unsigned type = 0;

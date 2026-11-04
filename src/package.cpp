@@ -149,6 +149,7 @@ class PropertyReader {
     const ObjectExport &object;
     const ReadOptions &options;
     std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0;
+    std::uint64_t text_blob_bytes_ = 0;
     void depth_check(unsigned depth) const {
         if (depth > options.max_depth)
             throw Error("limit", "Property nesting exceeds limit", a.tell());
@@ -285,6 +286,15 @@ class PropertyReader {
                 options.control.check();
                 if (++text_nodes_ > options.max_properties)
                     throw Error("limit", "Text work exceeds configured limit", a.tell());
+            };
+            reader.payload = [&](std::uint32_t bytes, unsigned level) -> Json {
+                reader.check(level);
+                if (bytes > options.max_string_bytes || bytes > options.max_property_bytes - text_blob_bytes_)
+                    throw Error("limit", "Text generator buffers exceed configured byte limit", a.tell());
+                text_blob_bytes_ += bytes;
+                auto hash = a.hash(a.tell(), bytes);
+                a.skip(bytes);
+                return {{"bytes", bytes}, {"sha256", std::move(hash)}};
             };
             reader.scalar = [&](detail::TextScalar kind, unsigned level) -> Json {
                 reader.check(level);

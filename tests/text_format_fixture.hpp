@@ -136,6 +136,20 @@ inline Bytes data_text_value(const std::vector<std::pair<std::string, Bytes>> &a
     }
     return value;
 }
+inline Bytes generator_text_value(int nameIndex = 2,
+                                  const std::vector<unsigned char> &contents = {0, 1, 255, 7},
+                                  int suffix = 0) {
+    Bytes value;
+    value.i(0);
+    value.put<std::int8_t>(12);
+    value.i(nameIndex);
+    value.i(suffix);
+    if (nameIndex != 0 || suffix != 0) {
+        value.i(static_cast<int>(contents.size()));
+        value.data.insert(value.data.end(), contents.begin(), contents.end());
+    }
+    return value;
+}
 inline Bytes format_text_payload(const std::string &mode) {
     const bool changed = mode.find("changed-") == 0;
     const auto type = changed ? mode.substr(8) : mode;
@@ -195,7 +209,7 @@ inline Bytes format_text_payload(const std::string &mode) {
     if (type == "unsupported") {
         Bytes value;
         value.i(0);
-        value.put<std::int8_t>(12);
+        value.put<std::int8_t>(42);
         return value;
     }
     const auto format = text_value(changed ? "{Label}: {Count}" : "{Count}: {Label}");

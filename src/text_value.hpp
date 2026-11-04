@@ -8,6 +8,8 @@ struct TextWireReader {
     std::function<void(unsigned)> check;
     std::function<std::uint64_t()> position;
     std::function<std::uint32_t()> remaining;
+    // Fingerprint a bounded opaque generator buffer, without executing a factory.
+    std::function<Json(std::uint32_t, unsigned)> payload;
     bool invariant_marker = true, always_sign = true;
     bool argument_data_enabled = false, argument_data_variant = true, argument_data_int64 = true;
     const char *type_error = "text-history", *value_error = "text-value", *limit_error = "limit",
@@ -170,6 +172,18 @@ struct TextWireReader {
                 value["customPattern"] = read(TextScalar::string);
             value["timeZone"] = read(TextScalar::string);
             value["culture"] = read(TextScalar::string);
+        } else if (history == 12) {
+            value["kind"] = "text-generator";
+            value["generator"] = read(TextScalar::name);
+            value["contents"] = nullptr;
+            if (value["generator"] != "None") {
+                const auto bytes = read(TextScalar::int32).get<std::int32_t>();
+                if (bytes < 0)
+                    throw Error(value_error, "Negative text generator buffer size", position());
+                if (!payload)
+                    throw Error(type_error, "Text generator buffer reader is unavailable", position());
+                value["contents"] = payload(static_cast<std::uint32_t>(bytes), depth + 1);
+            }
         } else if (history == 11) {
             value["kind"] = "string-table";
             value["table"] = read(TextScalar::name);
