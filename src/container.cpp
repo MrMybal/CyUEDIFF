@@ -649,10 +649,8 @@ Json ContainerEntry::to_json() const {
             {"encrypted", encrypted},
             {"deleted", deleted}};
 }
-Json Container::to_json() const {
-    Json es = Json::array(), paths = Json::array();
-    for (const auto &e : impl_->entries)
-        es.push_back(e.to_json());
+Json Container::metadata() const {
+    Json paths = Json::array();
     for (const auto &p : impl_->files)
         paths.push_back(p.u8string());
     return {{"schema", "cyuediff.container/1"},
@@ -661,9 +659,17 @@ Json Container::to_json() const {
             {"mountPoint", impl_->mount},
             {"files", paths},
             {"compressionMethods", impl_->methods},
-            {"entries", es},
+            {"entryCount", impl_->entries.size()},
             {"diagnostics", impl_->diagnostics},
             {"coverage", "container-bytes"}};
+}
+Json Container::to_json() const {
+    auto result = metadata();
+    result.erase("entryCount");
+    auto &entries = result["entries"] = Json::array();
+    for (const auto &entry : impl_->entries)
+        entries.push_back(entry.to_json());
+    return result;
 }
 ContainerBlockDecoder container_block_decoder(BlockDecoder decoder) {
     return [decoder = std::move(decoder)](const std::string &name, const std::uint8_t *src, std::size_t n,

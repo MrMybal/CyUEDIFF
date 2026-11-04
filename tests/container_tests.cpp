@@ -113,6 +113,14 @@ int main(int argc, char **argv) {
               "Unaligned chunk crosses partitions");
         check(container.read(1) == std::vector<std::uint8_t>({'c', 'd'}), "Shared block subrange");
         check(container.to_json()["coverage"] == "container-bytes", "Honest format coverage");
+        check(container.metadata()["entryCount"] == container.entries().size() &&
+                  !container.metadata().contains("entries"),
+              "Summary does not serialize entry rows");
+        auto summary = container.metadata();
+        summary.erase("entryCount");
+        auto full = container.to_json();
+        full.erase("entries");
+        check(summary == full, "Summary preserves existing container metadata");
         check(compare_containers(container, container)["unchanged"] == 2, "Decoded-byte self comparison");
         auto other = root / "other.utoc";
         toc("Changed.bin").save(other);

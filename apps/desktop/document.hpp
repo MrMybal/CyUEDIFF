@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/cache.hpp>
 #include <cyuediff/hdr.hpp>
+#include "container_document.hpp"
 #ifdef CYUEDIFF_HAS_GIT
 #include <cyuediff/git.hpp>
 #endif
@@ -25,6 +26,7 @@ struct LoadRequest {
     // Empty fields inherit the before-side project/engine selection.
     fs::path after_project, after_engine_root;
     std::shared_ptr<PackageCache> cache;
+    std::optional<ContainerSource> container;
 };
 struct Preview {
     std::string object_path;
@@ -40,6 +42,7 @@ struct TextureDifference {
 };
 struct Document {
     LoadRequest request;
+    std::shared_ptr<const ContainerDocument> container;
     std::shared_ptr<const Package> before, after;
     std::optional<ProjectContext> project, after_project;
     std::optional<DiffResult> diff;

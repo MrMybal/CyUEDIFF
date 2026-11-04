@@ -74,3 +74,7 @@ python scripts/validate_containers.py --input D:/build/Game-Windows.pak --input 
 ```
 
 The script independently parses indexes and reconstructs every member through a Python byte reader, using the same explicitly supplied codec implementation for decompression. It compares all decoded SHA-256 values to Core, checks self-diffs and extracted samples, rejects writes onto original sources/truncated copies, and verifies original file hashes before/after. It is an independent container parser, not an independent codec implementation. Reports and sample bytes remain in an ignored workspace build directory; no proprietary input is distributed.
+
+## Summary API — 0.25
+
+`Container::metadata()` returns the format, version, mounts, source files, compression methods, diagnostics and `entryCount` without serializing the member table. `entries()` supplies typed rows to applications. The existing `to_json()` contract retains its full `entries` array. This avoids constructing a second large JSON catalogue for interactive browsing.

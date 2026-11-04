@@ -39,6 +39,8 @@ class Container {
     const std::vector<ContainerEntry> &entries() const;
     const std::vector<fs::path> &files() const;
     std::vector<std::uint8_t> read(std::size_t entry, const ContainerReadOptions & = {}) const;
+    // Summary without serializing every entry; suitable for catalogue interfaces.
+    Json metadata() const;
     Json to_json() const;
 };
 // Decoded-byte comparison paired by virtual path or chunk ID if unnamed.

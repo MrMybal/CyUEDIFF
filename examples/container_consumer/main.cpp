@@ -9,6 +9,9 @@ int run(const std::vector<std::string> &arguments) {
     try {
         auto container = cyuediff::Container::open(cyuediff::fs::u8path(arguments[0]));
         auto output = container.to_json();
+        auto summary = container.metadata();
+        if (summary.contains("entries") || summary.at("entryCount") != container.entries().size())
+            throw std::runtime_error("Unexpected container summary");
         if (!container.entries().empty() && !container.entries()[0].deleted) {
             auto data = container.read(0); // This example selects uncompressed inputs.
             output["firstMemberSha256"] = cyuediff::sha256_bytes(data);

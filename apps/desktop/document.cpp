@@ -45,6 +45,8 @@ std::vector<TextureDifference> compare_previews(const std::vector<Preview> &prev
     return result;
 }
 std::string Document::status() const {
+    if (container)
+        return "ready";
 #ifdef CYUEDIFF_HAS_GIT
     if (git)
         return git->status();
@@ -54,6 +56,8 @@ std::string Document::status() const {
     return before && before->complete_input ? "ready" : "incomplete";
 }
 Json Document::report() const {
+    if (container)
+        return {{"status", status()}, {"container", container->report()}};
     auto package = [](const std::shared_ptr<const Package> &p) -> Json {
         if (!p)
             return nullptr;
@@ -97,7 +101,7 @@ Json Document::report() const {
     return result;
 }
 std::shared_ptr<const Document> load_document(const LoadRequest &request) {
-    if (request.before.empty())
+    if (request.before.empty() && !request.container)
         throw Error("desktop-input", "Choose a package before loading");
     request.control.checkpoint("Opening document");
     ReadOptions read;
@@ -106,6 +110,13 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     document->request = request;
     document->request.cache.reset();
     document->request.control = {}; // Do not retain session callbacks in a completed document.
+    if (request.container) {
+        if (request.git || !request.before.empty() || !request.after.empty())
+            throw Error("desktop-container", "Container requests cannot include loose or Git packages");
+        document->container = load_container_document(*request.container, request.codec, request.control);
+        document->protected_files = document->container->protected_files;
+        return document;
+    }
     if (request.git) {
 #ifdef CYUEDIFF_HAS_GIT
         const auto &source = *request.git;
