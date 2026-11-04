@@ -536,6 +536,17 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
                     props.text_layout = TextLayout::ue5_history;
                     props.script_reference_layout = ScriptReferenceLayout::package_indices;
+                    props.field_path_layout = FieldPathLayout::owner_and_names;
+                    if (!p.versioning.is_null()) {
+                        const auto &versions = p.versioning["customVersions"];
+                        const char *release = "9c54d522a8264fbe9421074661b482d0";
+                        const char *fortnite = "601d1886ac644f84aa16d3de0deac7d6";
+                        const bool recorded = versions.contains(release) || versions.contains(fortnite);
+                        const bool modern =
+                            versions.value(release, -1) >= 30 || versions.value(fortnite, -1) >= 33;
+                        if (recorded && !modern)
+                            props.field_path_layout = FieldPathLayout::unspecified;
+                    }
                     if (options.profile == ZenProfile::unreal_5_5)
                         props.optional_layout = OptionalLayout::bool32_value;
                     // An explicit older editor version cannot certify the modern None layout.

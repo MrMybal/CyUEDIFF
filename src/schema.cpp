@@ -1030,6 +1030,18 @@ struct PropertyReader {
             }
             return value;
         }
+        case 27: {
+            if (!zero && options.field_path_layout != FieldPathLayout::owner_and_names)
+                throw Error("schema-context", "Field path requires an explicit owner/name layout", r.pos);
+            const auto count = zero ? 0 : r.count(options.max_values - result.values_read);
+            Json path = Json::array();
+            for (unsigned j = 0; j < count; ++j) {
+                path.push_back(read_value(SchemaType{5, {}, {}}, false, nesting + 1));
+                options.control.checkpoint("unversioned-field-path", j + 1, count);
+            }
+            auto owner = read_value(SchemaType{4, {}, {}}, zero, nesting + 1);
+            return {{"kind", "field-path"}, {"path", std::move(path)}, {"owner", std::move(owner)}};
+        }
         case 28: {
             if (!zero && options.optional_layout != OptionalLayout::bool32_value)
                 throw Error("schema-context", "Optional requires an explicit unversioned binary layout",

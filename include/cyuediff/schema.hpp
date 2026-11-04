@@ -81,6 +81,8 @@ enum class TextLayout { unspecified, ue5_history };
 enum class ScriptReferenceLayout { unspecified, package_indices };
 // Binary structured-archive presence bool (uint32), followed by an untagged value.
 enum class OptionalLayout { unspecified, bool32_value };
+// Serialized FName array followed by a persistent owner object reference.
+enum class FieldPathLayout { unspecified, owner_and_names };
 struct UnversionedReadOptions {
     const std::vector<std::string> *names = nullptr;
     std::function<Json(std::int32_t)> reference;
@@ -96,6 +98,7 @@ struct UnversionedReadOptions {
     TextLayout text_layout = TextLayout::unspecified;
     ScriptReferenceLayout script_reference_layout = ScriptReferenceLayout::unspecified;
     OptionalLayout optional_layout = OptionalLayout::unspecified;
+    FieldPathLayout field_path_layout = FieldPathLayout::unspecified;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     OperationControl control;

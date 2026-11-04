@@ -47,7 +47,7 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Explicit native struct | Host-bound math/color/GUID wire layouts; component values and layout provenance |
 | Unsupported/unbound native type | Whole bound property read fails; Zen retains the complete opaque export and a reason |
 
-Supported text histories and persistent delegate/weak values are described below. Legacy asset references, field paths and newer string values still require additional readers. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
+Supported text histories and persistent delegate/weak values are described below. Legacy asset references and newer string values still require additional readers. Native structs such as vectors/transforms are not inferred from their schema name. A zero-masked unsupported scalar or unbound native struct also fails explicitly. Empty supported arrays/maps/sets need no bytes from their absent element types.
 
 Only present properties are returned. A skipped property can inherit an archetype/default value; it is not synthesized as zero. Present zero-masked values carry `serializedZero:true`, and absent properties do not appear. Keys include the declaring schema identity (qualified when available) and property name, plus `[index]` for static arrays, so inherited property names stay distinct.
 
@@ -241,3 +241,11 @@ Standalone readers opt into `OptionalLayout::bool32_value`: a uint32 binary stru
 The checked UE 5.5 Zen profile enables this layout. UE 5.3 keeps nonzero optional properties opaque until that layout is independently verified for the profile. Nested optionals, collections, references and explicitly bound structs use the same recursive limits and cancellation. Invalid markers, unsupported present inner values or truncation discard the complete bound property read. Presence changes appear at `/value/isSet`; inner changes appear under `/value/value`.
 
 The binary shape was checked against local UE 5.5 PropertyOptional.cpp and BinaryArchiveFormatter.h and the primary [optional property serializer](https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/CoreUObject/UObject/FOptionalProperty/SerializeItem?application_version=5.5). No in-memory intrusive-optional representation or tagged optional conversion is inferred.
+
+## Persistent field paths - 0.51
+
+`FieldPathLayout::owner_and_names` reads a bounded array of package FNames, followed by the signed persistent owner object reference. The result is `{kind:"field-path",path:[...],owner:REFERENCE}`. Serialized segment order, numeric suffixes, stored `None` segments and paths with null owners remain intact. The reader neither resolves the field nor applies the engine loader's runtime cleanup, reversal, owner discovery or redirections. Zero masks consume no payload and return an empty path/null owner. Nonzero empty paths still consume the count and owner index.
+
+Both supported Zen profiles select the modern owner/name layout. An explicitly recorded ReleaseObjectVersion below 30 or FortniteMainBranchObjectVersion below 33 disables it unless the other recorded version certifies the modern layout, matching the engine's OR condition. With neither custom version recorded, the explicit supported profile supplies the modern layout. Legacy full-object-path serialization remains opaque; standalone hosts must opt into the layout themselves. The contract was checked against local UE 5.5 FieldPath.cpp and FieldPathProperty.cpp.
+
+Segments, owner resolution, nested arrays/maps/optionals and canonical identities use the existing work/text/depth budgets and cancellation. A segment change appears under `/value/path/INDEX`; an owner change under `/value/owner`. Missing maps/resolvers, invalid counts/names/owners, legacy versions and truncation discard the complete bound property read, retaining the opaque export hash.
