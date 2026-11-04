@@ -174,3 +174,9 @@ cyuediff_desktop.exe --container Before.utoc --after-container After.utoc --cont
 ```
 
 Mapped UI coverage currently uses synthetic fixtures. The supplied CyTrace build still has no matching USMAP; no real mapped-value or native cooked-payload coverage is implied.
+
+## Document workspace model — 0.32
+
+The desktop model now exposes `DocumentWorkspace`: stable document IDs, independent retained snapshots/errors and a single `DocumentSession` worker. At most one pending request is kept per document. A newer request replaces queued work for that ID; different documents queue in order. Selecting a tab does not load files, and failures retain only that document's previous snapshot. All requests share the existing bounded worker package cache unless a host explicitly supplies another cache.
+
+The default maximum is eight open documents, configurable from one to 32 by an embedding host. This bounds document count and queue size, not aggregate decoded/GPU memory. Cancelling or closing a running document invalidates its publication and advances the queue after cooperative cancellation. Closing queued work drops it before decoding. Completed snapshots transfer out of the worker so it does not keep a closed document alive. Saved requests retain context data without callback/cache closures.

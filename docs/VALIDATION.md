@@ -262,3 +262,7 @@ Typed UI tests verify Health 42-to-99 differences, unbound/opaque regions, one-s
 Eighteen native DX11/WARP captures cover all ten theme/language combinations plus single/paired/partial properties, opaque failure, schema provenance, object details, empty properties, metadata-only mapping selection and context-only differences. Representative captures in all five themes and the partial/provenance/failure views are visually inspected. These mapped values are synthetic; the supplied real CyTrace corpus still has no matching USMAP. Native cooked payloads and defaults remain outside semantic coverage.
 
 The extracted 0.31 distribution is checked with its CLI/WARP host, four separately built Core consumers and the installed Git history consumer. The independent Python SDK fixture additionally exercises manifest loading, relative mapping resolution and a bound integer through the installed schema consumer. Proprietary mappings/assets/codecs, captures and reports remain outside Git and distribution archives. Hosted CI has not been run or published.
+
+## 0.32 milestone: document workspace lifecycle
+
+The desktop configuration without Git passes 33 suites. New model checks cover stable/non-reused IDs, per-document snapshots/errors, sequential decoding, queued request replacement, external progress, cancellation/close during work, discarded closed requests, tab limits, adjacent selection, empty workspaces, snapshot release and absence of retained request callback/cache closures. Combined native tab/distribution validation follows the next milestones.

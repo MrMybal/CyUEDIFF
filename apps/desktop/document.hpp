@@ -83,6 +83,10 @@ class DocumentSession {
     const std::string &error() const {
         return error_;
     }
+    // Owner-thread transfer for a workspace; releases the worker's snapshot ownership.
+    std::shared_ptr<const Document> take_document() {
+        return std::move(document_);
+    }
     const std::shared_ptr<const Document> &document() const {
         return document_;
     }
