@@ -256,16 +256,22 @@ std::string category(const std::string &c) {
         return "data";
     return "object";
 }
-std::string hash_bytes(const std::vector<std::uint8_t> &bytes, const OperationControl &control) {
+std::string hash_range(const std::vector<std::uint8_t> &bytes, std::uint64_t offset, std::uint64_t size,
+                       const OperationControl &control) {
+    if (offset > bytes.size() || size > bytes.size() - offset)
+        throw Error("bounds", "Hash range exceeds its source", offset);
     Sha256 hash;
     control.check();
-    for (std::size_t at = 0; at < bytes.size();) {
-        auto count = std::min<std::size_t>(bytes.size() - at, 1024 * 1024);
-        hash.update(bytes.data() + at, count);
+    for (std::uint64_t at = 0; at < size;) {
+        auto count = static_cast<std::size_t>(std::min<std::uint64_t>(size - at, 1024 * 1024));
+        hash.update(bytes.data() + static_cast<std::size_t>(offset + at), count);
         at += count;
-        control.checkpoint("Hashing data", at, bytes.size());
+        control.checkpoint("Hashing data", at, size);
     }
     return hash.finish();
+}
+std::string hash_bytes(const std::vector<std::uint8_t> &bytes, const OperationControl &control) {
+    return hash_range(bytes, 0, bytes.size(), control);
 }
 } // namespace detail
 std::string sha256_bytes(const std::vector<std::uint8_t> &bytes, const OperationControl &control) {

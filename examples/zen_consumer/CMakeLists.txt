@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(CyUEDiffZenConsumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(zen_consumer main.cpp)
+target_link_libraries(zen_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(zen_consumer PRIVATE /EHsc /utf-8)
+endif()

@@ -81,5 +81,28 @@ if args.consumer:
  executable=container_build/'Release'/('container_consumer'+suffix) if os.name=='nt' else container_build/'container_consumer'
  result=subprocess.run([str(executable),str(toc)],capture_output=True,check=True,env=env,timeout=20)
  if json.loads(result.stdout).get('firstMemberSha256')!=hashlib.sha256(b'core').hexdigest():raise RuntimeError('Installed container consumer failed')
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container consumers' if args.consumer else '')+' validated')
+ if not (prefix/'include/cyuediff/zen.hpp').is_file():raise RuntimeError('Missing cooked Zen API in SDK')
+ zen_build=target/'zen-consumer'
+ configure=[cmake,'-S',str(root/'examples/zen_consumer'),'-B',str(zen_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(zen_build),'--config','Release','--parallel','2'],check=True,env=env)
+ names=[b'/Game/Consumer',b'Consumer'];u32=lambda v:struct.pack('<I',v);u64=lambda v:struct.pack('<Q',v)
+ batch=u32(2)+u32(sum(map(len,names)))+bytes(24)+b''.join(len(n).to_bytes(2,'big') for n in names)+b''.join(names)
+ payload=bytearray(52)+batch+u64(0);offsets=[len(payload)]*3
+ payload+=u64(0)+u64(4)+u32(1)+u32(0)+u64(0xffffffffffffffff)+u64(0x4000000000000001)+u64(0xffffffffffffffff)*2+u64(0)+u32(3)+bytes(4)
+ offsets.append(len(payload));payload+=u32(0)+u32(0)+u32(0)+u32(1)
+ offsets.append(len(payload));payload+=bytes(20)
+ offsets.extend([len(payload),len(payload)]);payload+=u32(0)
+ struct.pack_into('<6I',payload,0,0,len(payload),0,0,0x2000,0)
+ struct.pack_into('<7I',payload,24,*offsets);payload+=b'core'
+ header=bytearray(144);header[:16]=b'-==--==--==--==-';header[16]=5
+ struct.pack_into('<9I',header,20,144,1,1,12,0,32,65536,0,1);struct.pack_into('<Q',header,88,0xffffffffffffffff)
+ block=bytes(5)+len(payload).to_bytes(3,'little')*2+bytes(1)
+ toc=target/'zen-consumer.utoc';toc.write_bytes(header+bytes(11)+bytes([1])+bytes(5)+len(payload).to_bytes(5,'big')+block+bytes(33));toc.with_suffix('.ucas').write_bytes(payload)
+ executable=zen_build/'Release'/('zen_consumer'+suffix) if os.name=='nt' else zen_build/'zen_consumer'
+ result=subprocess.run([str(executable),str(toc),'ue5.3'],capture_output=True,check=True,env=env,timeout=20)
+ parsed=json.loads(result.stdout);body=parsed['packages'][0]['snapshot']['objects']['/Game/Consumer.Consumer']['opaque']
+ if body['sha256']!=hashlib.sha256(b'core').hexdigest():raise RuntimeError('Installed cooked Zen consumer failed')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

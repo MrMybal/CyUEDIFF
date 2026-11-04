@@ -57,4 +57,6 @@ class Archive {
 };
 std::string category(const std::string &class_name);
 Json load_json(const fs::path &path);
+std::string hash_range(const std::vector<std::uint8_t> &, std::uint64_t offset, std::uint64_t size,
+                       const OperationControl &control);
 } // namespace cyuediff::detail

@@ -2,6 +2,7 @@
 #include <cyuediff/catalog.hpp>
 #include <cyuediff/hdr.hpp>
 #include <cyuediff/container.hpp>
+#include <cyuediff/zen.hpp>
 #include <cmath>
 #include <locale>
 #include <sstream>
@@ -54,6 +55,16 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff container-hash INPUT [--codec MODULE.dll] [--out REPORT.json]\n"
                "  cyuediff container-diff BEFORE AFTER [--codec MODULE.dll] [--out REPORT.json]\n"
                "  Container comparisons cover decoded bytes, not cooked object semantics.\n"
+               "  cyuediff zen-inspect CONTAINER ENTRY --cooked-profile ue5.3|ue5.5 [--script-objects "
+               "GLOBAL.utoc] [--codec MODULE.dll] [--out FILE]\n"
+               "  cyuediff zen-diff BEFORE BEFORE_ENTRY AFTER AFTER_ENTRY --cooked-profile PROFILE "
+               "[--after-cooked-profile PROFILE] [--out FILE]\n"
+               "  cyuediff zen-catalog CONTAINER --cooked-profile PROFILE [--script-objects GLOBAL.utoc] "
+               "[--codec MODULE.dll] [--out FILE]\n"
+               "  zen-diff accepts --script-objects, --after-script-objects and --codec. Export bodies "
+               "remain opaque.\n"
+               "  zen-inspect/zen-catalog accept --snapshot; zen-catalog accepts --max-packages and "
+               "--max-exports.\n"
                "  cyuediff textconv ASSET\n"
                "  cyuediff catalog PROJECT [--include-engine] [--max-assets N] [--max-entries N] [--out "
                "FILE]\n"
@@ -64,7 +75,13 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--max-assets",
+    const std::set<std::string> valued = {"--max-packages",
+                                          "--max-exports",
+                                          "--cooked-profile",
+                                          "--after-cooked-profile",
+                                          "--script-objects",
+                                          "--after-script-objects",
+                                          "--max-assets",
                                           "--max-entries",
                                           "--exposure",
                                           "--project",
@@ -106,6 +123,9 @@ int run(const std::vector<std::string> &args) {
                         : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog";
+    const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog";
+    if (zen_command)
+        required = command == "zen-diff" ? 4u : (command == "zen-inspect" ? 2u : 1u);
     const bool container_command = command == "container" || command == "container-read" ||
                                    command == "container-hash" || command == "container-diff";
     const bool catalog_command = command == "catalog" || command == "git-catalog";
@@ -117,6 +137,18 @@ int run(const std::vector<std::string> &args) {
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (zen_command) {
+            if (key != "--out" && key != "--codec" && key != "--cooked-profile" &&
+                key != "--script-objects" && !(key == "--snapshot" && command != "zen-diff") &&
+                !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
+                !(command == "zen-diff" &&
+                  (key == "--after-cooked-profile" || key == "--after-script-objects")))
+                throw Error("arguments", "Unsupported cooked option: " + key);
+            continue;
+        }
+        if (key == "--cooked-profile" || key == "--after-cooked-profile" || key == "--script-objects" ||
+            key == "--after-script-objects" || key == "--max-packages" || key == "--max-exports")
+            throw Error("arguments", key + " requires a cooked command");
         if (container_command) {
             if (key != "--out" && !(key == "--codec" && command != "container"))
                 throw Error("arguments", "Unsupported container option: " + key);
@@ -247,7 +279,89 @@ int run(const std::vector<std::string> &args) {
     fs::path png_destination;
     int exit_code = 0;
     ReadOptions options;
-    if (container_command) {
+    if (zen_command) {
+        auto profile = [&](const std::string &key, ZenProfile fallback) {
+            if (!flags.contains(key))
+                return fallback;
+            auto value = flags.at(key).get<std::string>();
+            if (value == "ue5.3")
+                return ZenProfile::unreal_5_3;
+            if (value == "ue5.5")
+                return ZenProfile::unreal_5_5;
+            throw Error("zen-profile", "Supported cooked profiles are ue5.3 and ue5.5");
+        };
+        ZenReadOptions before_options;
+        before_options.profile = profile("--cooked-profile", ZenProfile::unspecified);
+        if (before_options.profile == ZenProfile::unspecified)
+            throw Error("zen-profile", "Cooked reads require --cooked-profile");
+        ContainerReadOptions read_options;
+        if (decoder)
+            read_options.decoder = container_block_decoder(decoder);
+        auto open = [&](const fs::path &path) {
+            auto container = Container::open(path);
+            for (const auto &file : container.files())
+                protected_files.push_back(file);
+            return container;
+        };
+        auto scripts = [&](const fs::path &path) -> std::shared_ptr<const ScriptObjects> {
+            if (path.empty())
+                return {};
+            auto container = open(path);
+            std::size_t found = container.entries().size();
+            for (std::size_t j = 0; j < container.entries().size(); ++j)
+                if (container.entries()[j].chunk_type == 5) {
+                    if (found != container.entries().size())
+                        throw Error("zen-entry", "Ambiguous global script object table");
+                    found = j;
+                }
+            if (found == container.entries().size())
+                throw Error("zen-entry", "No script object chunk in the selected container");
+            return std::make_shared<ScriptObjects>(
+                ScriptObjects::parse(container.read(found, read_options), before_options));
+        };
+        auto select = [&](const Container &container, const std::string &key) {
+            std::size_t found = container.entries().size();
+            for (std::size_t j = 0; j < container.entries().size(); ++j) {
+                const auto &entry = container.entries()[j];
+                if (entry.id == key || (!entry.path.empty() && entry.path == key)) {
+                    if (found != container.entries().size())
+                        throw Error("zen-entry", "Ambiguous cooked entry");
+                    found = j;
+                }
+            }
+            if (found == container.entries().size())
+                throw Error("zen-entry", "No matching cooked entry");
+            return found;
+        };
+        before_options.script_objects = scripts(path_option("--script-objects"));
+        auto input = open(fs::u8path(positional[0]));
+        if (command == "zen-catalog") {
+            ZenCatalogOptions catalog_options;
+            catalog_options.include_snapshots = flags.contains("--snapshot");
+            if (flags.contains("--max-packages"))
+                catalog_options.max_packages = integer_option("--max-packages", 1'000'000);
+            if (flags.contains("--max-exports"))
+                catalog_options.max_exports = integer_option("--max-exports", 1'000'000);
+            output = catalog_zen_packages(input, before_options, read_options, catalog_options);
+            if (!output.at("complete").get<bool>())
+                exit_code = 2;
+        } else {
+            auto before = read_zen_package(input, select(input, positional[1]), before_options, read_options);
+            if (command == "zen-inspect")
+                output = flags.contains("--snapshot") ? before.snapshot() : before.to_json();
+            else {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects"))
+                    after_options.script_objects = scripts(path_option("--after-script-objects"));
+                auto other = open(fs::u8path(positional[2]));
+                auto after =
+                    read_zen_package(other, select(other, positional[3]), after_options, read_options);
+                output = compare_zen_packages(before, after);
+                exit_code = output.at("status") == "identical" ? 0 : 1;
+            }
+        }
+    } else if (container_command) {
         auto input = Container::open(fs::u8path(positional[0]));
         for (const auto &file : input.files())
             protected_files.push_back(file);

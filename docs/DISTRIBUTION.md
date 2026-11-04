@@ -12,7 +12,7 @@ cd build-native
 cpack -C Release -G ZIP
 ```
 
-Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and compile/run the catalogue and container consumers. Use `--static-runtime` when validating the static-CRT CI archives. The check retains its extraction under an ignored build directory.
+Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and compile/run the catalogue, container and cooked Zen consumers. Use `--static-runtime` when validating the static-CRT CI archives. The check retains its extraction under an ignored build directory.
 
 The ZIP contains the selected CLI/desktop executables, the reusable Core SDK (plus Git when enabled), public Core headers, CMake import targets and documentation/notices. UI headers/library are integrated from source by hosts; they are not advertised as an installed standalone UI SDK. The optional Oodle module is deliberately excluded even if it was built locally.
 
@@ -20,7 +20,7 @@ Windows archives built with the default dynamic MSVC runtime require the matchin
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` builds/tests Core+CLI on Windows 2022 and Ubuntu 24.04, each with Git enabled and disabled. It also installs the SDK and compiles external Core-only catalogue and container consumers. CPack archives are downloadable as workflow artifacts. A separate job runs Gitleaks 8.30.1 over all publishable files and the complete fetched Git history. Actions use commit-pinned official implementations; the Gitleaks download has a pinned SHA-256 verified against the upstream release metadata.
+`.github/workflows/ci.yml` builds/tests Core+CLI on Windows 2022 and Ubuntu 24.04, each with Git enabled and disabled. It also installs the SDK and compiles external Core-only catalogue, container and cooked Zen consumers. CPack archives are downloadable as workflow artifacts. A separate job runs Gitleaks 8.30.1 over all publishable files and the complete fetched Git history. Actions use commit-pinned official implementations; the Gitleaks download has a pinned SHA-256 verified against the upstream release metadata.
 
 The hosted workflow takes effect only after these files are pushed. Local validation does not certify a hosted run. This workflow does not publish a GitHub Release or change repository visibility. For a release, inspect the CI results and archives, then attach the selected archives to a draft release with the corresponding version tag.
 

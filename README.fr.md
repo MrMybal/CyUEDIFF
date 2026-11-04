@@ -158,3 +158,7 @@ La CI Windows/Linux est préparée et les archives exécutables/SDK se construis
 ## Ajouts 0.15 : conteneurs Pak / IoStore
 
 Le Core lit les conteneurs Pak 10/11 avec index de répertoires complet et IoStore TOC 3–5 avec leurs partitions UCAS. La CLI fournit l’inventaire, la lecture d’un membre, les empreintes des contenus décompressés et leur comparaison. Un codec reste explicite pour les blocs compressés. Le build CyTrace fourni valide 6 219 membres, avec un second lecteur indépendant et des sources inchangées. Le décodage sémantique des objets cooked/Zen reste à implémenter ; les empreintes BLAKE3 stockées dans IoStore et les signatures ne sont pas vérifiées. Contrats et exemples dans [CONTAINERS.md](docs/CONTAINERS.md).
+
+## Ajouts 0.16 : tables d’objets cooked/Zen
+
+Le Core et la CLI lisent les tables de noms/imports/exports Zen, résolvent les classes avec la table globale et comparent les corps opaques par objet. Les profils UE 5.3 et 5.5 sont explicites ; le profil 5.3 est validé sur les 3 507 packages et 7 502 exports du build CyTrace. Les propriétés non versionnées et les payloads natifs cooked restent à décoder avec leurs schémas. Voir [ZEN.md](docs/ZEN.md).

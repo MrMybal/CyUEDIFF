@@ -11,7 +11,7 @@ Version 0.15 adds a standalone container layer to `CyUEDiff::Core`. It inventori
 | Compression | Copy blocks work without a codec. Hosts provide a named-method callback for compressed blocks. The explicit bulk-codec adapter maps Oodle and LZ4 names to their correct numeric ABI identifiers. |
 | Diffs | Pair members by their relative virtual path, or chunk ID when unnamed; report added, removed and modified decoded contents. Deleted Pak records are absent content. |
 
-Container bytes are separate from UObject serialization. IoStore export-bundle chunks are cooked Zen data, not classic loose `.uasset` files. This layer does not yet decode their object tables, unversioned properties or native payloads, and the desktop asset browser does not yet mount containers. It does not implement encryption, path-hash-only Pak indexes, other TOC versions, virtualized resources or signature authentication. Unknown codecs fail explicitly; Zlib/Gzip are not built in.
+Container bytes are separate from UObject serialization. IoStore export-bundle chunks are cooked Zen data, not classic loose `.uasset` files. The separate [cooked Zen reader](ZEN.md) now decodes supported object tables and compares opaque object bodies. Unversioned property values and cooked native payloads remain undecoded, and the desktop asset browser does not yet mount containers. It does not implement encryption, path-hash-only Pak indexes, other TOC versions, virtualized resources or signature authentication. Unknown codecs fail explicitly; Zlib/Gzip are not built in.
 
 The supplied CyTrace UE 5.3 build validates real Pak 11 and TOC 5 data. Other accepted versions are covered by synthetic fixtures, not a broad real-build certification.
 

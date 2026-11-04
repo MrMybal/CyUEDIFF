@@ -4,7 +4,7 @@
 
 A reusable C++17 engine for inspecting Unreal Engine packages and comparing serialized asset data **without launching Unreal Editor**. A separate [CyUI](https://github.com/MrMybal/CyUI) library and an optional Windows desktop app provide inspection, graph, image, mesh and diff views.
 
-Version **0.15** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes visual change highlighting, a typed inspector, source-float HDR comparisons, Pak/IoStore container byte reading and diffs, project/Git asset catalogues, local Git/LFS revision reading, independent project/engine contexts, cancellable loading, a verified package cache and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
+Version **0.16** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes visual change highlighting, a typed inspector, source-float HDR comparisons, Pak/IoStore container byte reading and diffs, cooked Zen object tables and opaque body diffs, project/Git asset catalogues, local Git/LFS revision reading, independent project/engine contexts, cancellable loading, a verified package cache and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
 
 This is an asset reader and comparison engine. Format coverage is explicit; it is not a universal Unreal serializer or an asset writer.
 
@@ -105,7 +105,7 @@ auto diff = cyuediff::compare(before, after);
 std::cout << diff.to_json().dump(2);
 ```
 
-Installed SDKs also support `find_package(CyUEDiff CONFIG REQUIRED)`. See [the container consumer](examples/container_consumer/), [the catalogue consumer](examples/catalog_consumer/), [the Core consumer](examples/consumer/), [the Git consumer](examples/git_consumer/) and [the custom-decoder consumer](examples/decoder_consumer/).
+Installed SDKs also support `find_package(CyUEDiff CONFIG REQUIRED)`. See [the cooked consumer](examples/zen_consumer/), [the container consumer](examples/container_consumer/), [the catalogue consumer](examples/catalog_consumer/), [the Core consumer](examples/consumer/), [the Git consumer](examples/git_consumer/) and [the custom-decoder consumer](examples/decoder_consumer/).
 
 Application-specific native structs and export tails can be decoded with `SerializationProfile`, `AssetDecoder` and `DecoderRegistry` from `<cyuediff/decoders.hpp>`. Callbacks receive bounded input, match explicit type/version requirements, and produce schema-identified JSON. Ambiguity or failure preserves the original opaque range and fingerprint. The same `ReadOptions` can be used by Git revision reads.
 
@@ -114,6 +114,7 @@ Application-specific native structs and export tails can be decoded with `Serial
 | Data | Implemented scope |
 | --- | --- |
 | Containers | Pak 10/11 full directory indexes, IoStore TOC 3–5, UCAS partitions, decoded member reads and byte diffs; explicit codecs. |
+| Cooked Zen | Explicit UE 5.3/5.5 layouts, names/imports/exports, script class resolution, bulk/dependency metadata, object catalogues and opaque body diffs. Property values remain undecoded. |
 | Packages | Classic loose `.uasset` / `.umap`, name/import/export tables, custom versions and object references; monolithic or split `.uexp` exports. |
 | Properties | Primitive values, names, strings, references, soft paths, supported localized text histories, GUIDs, vectors/colors, transforms/ticks, tagged structs, decodable arrays and stored map/set deltas; host-defined native decoders. |
 | Blueprints | Serialized editor objects, positions, native pins, connections and GUID identities; bytecode remains opaque. |
@@ -126,7 +127,7 @@ Implemented file-version branches cover UE4 **518–522** and UE5 **1000–1018*
 
 Present companions `.uexp`, `.ubulk`, `.uptnl`, `.m.ubulk`, `.o.ubulk` and `.upayload` are fingerprinted. Unknown properties and native regions retain their byte counts and SHA-256 hashes. These hashes can change because internal indices or serialization change even when functional content is equivalent.
 
-Unversioned properties, licensee serialization, package-level compression, virtualized resources, cooked UObject/Zen data and unsupported native layouts require additional schemas or backends. Parent materials, external material functions and shaders are not evaluated. Skeletal meshes, render sections and Nanite rendering are not implemented. Source files and external dependencies are not loaded automatically.
+Unversioned properties, licensee serialization, package-level compression, virtualized resources, cooked property/native payload decoding and unsupported native layouts require additional schemas or backends. Parent materials, external material functions and shaders are not evaluated. Skeletal meshes, render sections and Nanite rendering are not implemented. Source files and external dependencies are not loaded automatically.
 
 ## Understand a diff
 
@@ -153,6 +154,8 @@ A controlled edit on a copy of a real Blueprint produced this change:
 
 Pak/IoStore use separate `container`, `container-read`, `container-hash` and `container-diff` commands. Container diffs compare decoded bytes; stored IoStore BLAKE3 hashes and signatures are not authenticated. See [container contracts and examples](docs/CONTAINERS.md).
 
+Cooked IoStore packages have separate `zen-inspect`, `zen-catalog` and `zen-diff` commands with explicit `--cooked-profile` selection. Names, classes and object references are readable; export bodies remain opaque. See [cooked Zen contracts](docs/ZEN.md).
+
 The general diff also exposes `graphChanges`, `textureChanges`, `meshChanges` and `materialChanges`. `image-diff` explicitly compares supported decoded pixels, and `mesh-diff` compares source geometry. CLI diff exit codes are `0` for identical, `1` for changed, and `2` for errors/incomplete/unverified results. Paths use JSON Pointer escaping.
 
 ## Desktop and UI
@@ -175,7 +178,7 @@ The embeddable `CyUEDiff::UI` remains separate. Hosts own their window, graphics
 
 ## Validation and documentation
 
-The verified Windows Release build passes **21 CTest suites**, with **1,011 checks**, 30 renderer-free UI frames and a native DX11/WARP smoke test. A separate run verified **21 native captures**, seven rejected invocations/output overlaps, matching desktop/CLI diff results and unchanged input assets. A separate Git/LFS run verified **22 native captures**, six output/option refusals, desktop/CLI Git diff parity and an unchanged checkout. Content-browser validation adds **21 native captures**, five output refusals, CLI catalogue parity, local/Git selection and unchanged source/checkout fingerprints. The desktop configuration also passes with Git disabled (18 suites), and an external consumer compiles and runs against the installed Core-only catalogue SDK. The Core-only configuration passes fourteen suites without Git, UI, Desktop or Oodle. The CyTrace UE 5.3 corpus adds 150 original packages, 12 rejected truncated headers and source/companion hash checks; partial/opaque exports remain explicitly reported. A CPack desktop archive was extracted and tested, including its CLI, DX11/WARP host and a consumer linked against the packaged Core SDK. The supplied cooked build adds 6,219 reconstructed container members (231,432,265 decoded bytes), matching an independent parser with unchanged original input hashes. The hosted CI workflow is prepared but has not run before a push. Proprietary assets, codec binaries, generated captures and build outputs are excluded from the repository.
+The verified Windows Release build passes **23 CTest suites**, with **1,109 checks**, 30 renderer-free UI frames and a native DX11/WARP smoke test. A separate run verified **21 native captures**, seven rejected invocations/output overlaps, matching desktop/CLI diff results and unchanged input assets. A separate Git/LFS run verified **22 native captures**, six output/option refusals, desktop/CLI Git diff parity and an unchanged checkout. Content-browser validation adds **21 native captures**, five output refusals, CLI catalogue parity, local/Git selection and unchanged source/checkout fingerprints. The desktop configuration also passes with Git disabled (20 suites), and an external consumer compiles and runs against the installed Core-only catalogue SDK. The Core-only configuration passes sixteen suites without Git, UI, Desktop or Oodle. The CyTrace UE 5.3 corpus adds 150 original packages, 12 rejected truncated headers and source/companion hash checks; partial/opaque exports remain explicitly reported. A CPack desktop archive was extracted and tested, including its CLI, DX11/WARP host and a consumer linked against the packaged Core SDK. The supplied cooked build adds 6,219 reconstructed container members (231,432,265 decoded bytes), matching an independent parser with unchanged original input hashes. Cooked Zen validation reads 3,507 packages and 7,502 objects, matches independent metadata/body-hash parsing and locates a controlled opaque-body change in exactly one Blueprint object. The hosted CI workflow is prepared but has not run before a push. Proprietary assets, codec binaries, generated captures and build outputs are excluded from the repository.
 
 Detailed implementation notes are currently available in French:
 
