@@ -20,6 +20,8 @@ int run(const std::vector<std::string> &args) {
             schemas = *context->schemas;
             options.reflected_structs = context->reflected_structs;
             options.native_structs = context->native_structs;
+            options.text_layout = cyuediff::TextLayout::ue5_history;
+            options.script_reference_layout = cyuediff::ScriptReferenceLayout::package_indices;
         }
         std::ifstream file(cyuediff::fs::u8path(args[1]), std::ios::binary | std::ios::ate);
         if (!file || file.tellg() < 0 || file.tellg() > 1024 * 1024)

@@ -21,8 +21,12 @@ template <class F> void rejects(F f, const char *code = nullptr) {
     throw std::runtime_error("Expected text refusal");
 }
 } // namespace
-int main() {
+int main(int argc, char **argv) {
     try {
+        if (argc == 3 && std::string(argv[1]) == "--write-fixtures") {
+            write_value_fixtures(fs::u8path(argv[2]));
+            return 0;
+        }
         const std::string field = "/Script/Test.Collections.Lookup";
         auto schemas = UnversionedSchemas::parse(collection_schema_fixture(collection_type(11)).data);
         std::vector<std::string> names = {"None", "/Game/Table", "Table", "Other"};

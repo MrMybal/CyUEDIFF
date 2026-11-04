@@ -36,6 +36,9 @@ The base layout was cross-checked against the primary [UAssetAPI USMAP reader](h
 | Enum | Declared integer storage and enum type identity; no inferred display label |
 | Name / string | Package FName index and numeric suffix, ASCII narrow FString and validated UTF-16 FString |
 | Object / interface | Signed 32-bit package index through an explicit host resolver; interface addresses are not reconstructed |
+| Text | Modern localized, empty/invariant and unresolved string-table histories; explicit standalone layout |
+| Delegate / multicast | Persistent object/function bindings; original order, duplicates and null targets |
+| Weak object | Persistent package object reference; no runtime pointer validity |
 | Lazy object | Four serialized GUID words, retained as an unresolved stable identifier |
 | Soft object | Explicit UE5 top-level-name layout: package FName, asset FName and subobject FString; no referenced asset is opened |
 | Array / static array | Bounded dynamic element counts; expanded static slots retain array indices |
@@ -224,3 +227,9 @@ A single delegate is `{kind:"script-delegate", object:REFERENCE, function:"Store
 Layouts were cross-checked against local UE 5.5 ScriptDelegates.h, PropertyDelegate.cpp, PropertyMulticastDelegate.cpp, PropertyWeakObjectPtr.cpp and ArchiveUObject.cpp. In this package archive, weak references are serialized through object references. The reader does not implement memory dumps, network serializers or string-proxy archives. A changed delegate function produces a precise `/value/bindings/INDEX/function` diff; order changes remain observable.
 
 Counts, elements, nested values and host-resolved JSON identities share work/depth/text budgets and cancellation. Resolver object keys also consume text budget. Malformed UTF-8, non-finite values, unsupported resolver values and excessive reference structures fail explicitly. Missing layouts/maps/resolvers, invalid FNames/indices and truncated bindings discard the entire bound read in Zen; the opaque body hash remains. Matching-build real schema validation is still required.
+
+## Cooked values across CLI, desktop and SDK - 0.49
+
+The existing `--schema` / `--after-schema` contexts enable supported text and persistent reference values for both Zen profiles. No new manifest version is needed: the selected profile supplies the wire layout, while class/schema/offset bindings and package name/object tables remain explicit. The inspector exposes source, namespace/key/table, delegate bindings/functions and weak target paths through the existing typed table, search, selected preview and change filter. Workspace save/reopen retains the selected property path; unsupported or damaged values retain the opaque/unavailable state.
+
+The installed schema consumer selects modern text and persistent package-reference layouts when supplied its explicit context. It has no package name table or object resolver, so its standalone example can read localized/invariant text, empty multicast lists and null weak targets; nonempty named/object values require host inputs. The CLI/desktop tests instead use bounded Zen name/object resolution. No text is localized and no delegate or target is executed or loaded.

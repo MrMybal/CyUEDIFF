@@ -1,4 +1,4 @@
-# Desktop application — 0.46
+# Desktop application — 0.49
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -67,7 +67,7 @@ The main thread prepares the views and uploads images before the next frame. Rep
 
 The host prepares the first texture source and first mesh source/LOD 0 per side. Texture budgets are 16 million pixels and 128 MiB for payload/decoder data; mesh payloads are limited to 128 MiB with the Core's element limits. **Load previews** can be disabled. An optional codec must be supplied explicitly with `--codec DLL`; it is trusted host code and is never discovered from an asset or engine directory. No Oodle SDK or binary is distributed. See [CODECS.md](CODECS.md).
 
-Independent contexts per side, active cancellation/progress, verified package caching and the typed inspector are available; see [RUNTIME.md](RUNTIME.md). Commit history, multiple documents, configurable desktop decoder profiles and persistent preferences remain future work. Material evaluation, skinned mesh rendering and Nanite rendering retain the Core's documented limitations.
+Independent contexts per side, active cancellation/progress, verified package caching and the typed inspector are available; see [RUNTIME.md](RUNTIME.md). Commit history, multiple documents and persistent preferences are available as documented below. Configurable application-specific decoder profiles remain future work. Material evaluation, skinned mesh rendering and Nanite rendering retain the Core's documented limitations.
 
 ## Native validation
 
@@ -218,3 +218,7 @@ Launch with `--workspace Review.json`; do not combine it with source arguments o
 ## Native cooked property layouts - 0.46
 
 A version-two schema context can explicitly bind native math/color/GUID structs in a mapped property stream. Choose that context through the existing before/after schema inputs; class offsets and build compatibility remain the host's responsibility. The cooked object inspector shows decoded components and their changes, including translation/rotation/scale members of a transform. Search, change filters, selected previews and workspace save/restore use the same paths as other properties. Schema provenance includes the native binding names and selected serialized layouts. These layouts decode property values; skeletal/Nanite/collision/native export payload readers remain separate work. See [native schema contexts](SCHEMAS.md).
+
+## Cooked text and persistent reference values - 0.49
+
+Supported modern text histories, delegates and weak package references appear under **Cooked objects > Decoded properties** when an explicit matching schema binds the export. Compare stored text sources or namespace/key/table identities, multicast functions and object targets; search and select a leaf for its full before/after preview. Delegate order and duplicate/null bindings remain visible. A workspace preserves the selected path and filter through reopening in either language. Histories or malformed values outside the supported layout leave the complete property read opaque; details remain in the object report. These views do not perform localization, invoke functions or reconstruct live pointers. See [schema contracts](SCHEMAS.md).

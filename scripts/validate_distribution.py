@@ -179,6 +179,28 @@ if args.consumer:
  result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
  if json.loads(result.stdout)['Consumer.Value']['value']['scale']!=[0,0,0]:raise RuntimeError('Installed zero native struct consumer failed')
  print('Installed native struct and version-two context consumer validated')
+ # Independent text, empty multicast and null weak values in a raw property buffer.
+ names=[b'Consumer',b'Value',b'Bindings',b'Weak']
+ payload=u32(len(names))+b''.join(bytes([len(n)])+n for n in names)+u32(0)+u32(1)
+ payload+=u32(0)+struct.pack('<iHH',-1,3,3)
+ for index,kind in enumerate((11,13,14)):payload+=struct.pack('<HBiB',index,1,index+1,kind)
+ mappings.write_bytes(struct.pack('<HBBII',0x30c4,0,0,len(payload),len(payload))+payload)
+ def string_wire(text):
+  data=text.encode('ascii')+bytes(1)
+  return struct.pack('<i',len(data))+data
+ values.write_bytes(struct.pack('<HIb',0x0700,4,0)+string_wire('SDK namespace')+string_wire('StableKey')+string_wire('SDK source')+u32(0)+u32(0))
+ context_path.write_text(json.dumps({'format':'cyuediff.zen-schema/2','profile':'ue5.3',
+     'usmap':mappings.name,'sha256':hashlib.sha256(mappings.read_bytes()).hexdigest(),
+     'bindings':{'/Script/Consumer.Consumer':{'schema':'Consumer','offset':0}},'nativeStructs':{}}),encoding='utf-8')
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ typed=json.loads(result.stdout)
+ if typed['Consumer.Value']['value']['source']!='SDK source' or typed['Consumer.Value']['value']['key']!='StableKey':raise RuntimeError('Installed text consumer failed')
+ if typed['Consumer.Bindings']['value']['bindings'] or typed['Consumer.Weak']['value']['object'] is not None:raise RuntimeError('Installed persistent reference consumer failed')
+ source='Bonjour \u00e9';encoded=source.encode('utf-16-le')+bytes(2)
+ values.write_bytes(struct.pack('<HIbIi',0x0700,2,-1,1,-len(encoded)//2)+encoded+u32(0)+u32(0))
+ result=subprocess.run([str(executable),str(mappings),str(values),str(context_path)],capture_output=True,check=True,env=env,timeout=20)
+ if json.loads(result.stdout)['Consumer.Value']['value']['source']!=source:raise RuntimeError('Installed invariant Unicode text consumer failed')
+ print('Installed cooked text and persistent reference consumer validated')
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]

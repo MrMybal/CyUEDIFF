@@ -26,11 +26,13 @@ inline Bytes collection_enum() {
     t.i(7);
     return t;
 }
-inline Bytes collection_schema_fixture(Bytes lookup = {}, Bytes tags = {}) {
+inline Bytes collection_schema_fixture(Bytes lookup = {}, Bytes tags = {}, Bytes after = {}) {
     if (lookup.data.empty())
         lookup = map_type(collection_type(5), collection_type(2));
     if (tags.data.empty())
         tags = collection_type(25, collection_type(2));
+    if (after.data.empty())
+        after = collection_type(2);
     const std::vector<std::string> names = {"Collections", "Lookup", "Tags",         "After",
                                             "Item",        "Code",   "Native",       "Mode",
                                             "Off",         "On",     "/Script/Test", "Record"};
@@ -61,7 +63,7 @@ inline Bytes collection_schema_fixture(Bytes lookup = {}, Bytes tags = {}) {
     schema(0, 3);
     field(0, 1, lookup);
     field(1, 2, tags);
-    field(2, 3, collection_type(2));
+    field(2, 3, after);
     schema(11, 1);
     field(0, 5, collection_type(2));
     Bytes paths;

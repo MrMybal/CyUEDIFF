@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.48.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.49.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -141,6 +141,9 @@ if(BUILD_TESTING)
     if(CYUEDIFF_BUILD_CLI)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME schema_values_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_values_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_schema_text_tests>")
             add_test(NAME schema_native_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_native_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_schema_native_tests>")
@@ -224,6 +227,10 @@ if(BUILD_TESTING)
             set_tests_properties(desktop_container_cli PROPERTIES TIMEOUT 90)
         endif()
         if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_schema_values_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_values_desktop_tests.py"
+                "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_schema_text_tests>")
+            set_tests_properties(desktop_schema_values_cli PROPERTIES TIMEOUT 90)
             add_test(NAME desktop_native_schema_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_native_desktop_tests.py"
                 "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_schema_native_tests>")
