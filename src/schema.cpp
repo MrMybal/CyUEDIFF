@@ -5,6 +5,37 @@
 #include <fstream>
 namespace cyuediff {
 namespace {
+enum class NativeShape { array, transform, guid };
+struct NativeLayoutInfo {
+    NativeStructLayout layout;
+    const char *name;
+    unsigned kind, components;
+    NativeShape shape = NativeShape::array;
+};
+constexpr NativeLayoutInfo native_layouts[] = {
+    {NativeStructLayout::vector2_f32, "vector2-f32", 3, 2},
+    {NativeStructLayout::vector2_f64, "vector2-f64", 7, 2},
+    {NativeStructLayout::vector3_f32, "vector3-f32", 3, 3},
+    {NativeStructLayout::vector3_f64, "vector3-f64", 7, 3},
+    {NativeStructLayout::vector4_f32, "vector4-f32", 3, 4},
+    {NativeStructLayout::vector4_f64, "vector4-f64", 7, 4},
+    {NativeStructLayout::quat_f32, "quat-f32", 3, 4},
+    {NativeStructLayout::quat_f64, "quat-f64", 7, 4},
+    {NativeStructLayout::rotator_f32, "rotator-f32", 3, 3},
+    {NativeStructLayout::rotator_f64, "rotator-f64", 7, 3},
+    {NativeStructLayout::transform_f32, "transform-f32", 3, 10, NativeShape::transform},
+    {NativeStructLayout::transform_f64, "transform-f64", 7, 10, NativeShape::transform},
+    {NativeStructLayout::guid, "guid", 19, 4, NativeShape::guid},
+    {NativeStructLayout::linear_color_f32, "linear-color-f32", 3, 4},
+    {NativeStructLayout::color_bgra8, "color-bgra8", 0, 4},
+    {NativeStructLayout::int_point, "int-point", 2, 2},
+    {NativeStructLayout::int_vector, "int-vector", 2, 3}};
+const NativeLayoutInfo &native_layout_info(NativeStructLayout layout) {
+    for (const auto &info : native_layouts)
+        if (info.layout == layout)
+            return info;
+    throw Error("schema-context", "Unsupported native struct layout");
+}
 void require(bool condition, const char *message) {
     if (!condition)
         throw Error("schema-format", message);
@@ -76,6 +107,15 @@ void append_utf8(std::string &s, std::uint32_t cp) {
     }
 }
 } // namespace
+const char *native_struct_layout_name(NativeStructLayout layout) {
+    return native_layout_info(layout).name;
+}
+NativeStructLayout parse_native_struct_layout(const std::string &name) {
+    for (const auto &info : native_layouts)
+        if (name == info.name)
+            return info.layout;
+    throw Error("schema-context", "Unsupported native struct layout: " + name);
+}
 struct UnversionedSchemas::Impl {
     std::string hash;
     unsigned version = 0;
@@ -516,6 +556,7 @@ struct PropertyReader {
     const UnversionedSchemas &schemas;
     const UnversionedReadOptions &options;
     UnversionedProperties result;
+    std::map<std::string, NativeStructLayout> native_structs;
     void charge() {
         options.control.check();
         if (result.values_read >= options.max_values)
@@ -573,6 +614,11 @@ struct PropertyReader {
                 p.type.kind == 26 ? schemas.enumeration(p.type.name).path : schemas.schema(p.type.name).path;
             text(name.size());
             value["typeName"] = name;
+            if (p.type.kind == 9) {
+                auto native = native_structs.find(name);
+                if (native != native_structs.end())
+                    value["nativeLayout"] = native_struct_layout_name(native->second);
+            }
         }
         object[key] = std::move(value);
     }
@@ -724,6 +770,39 @@ struct PropertyReader {
                 {"replace", replace},
                 {"removed", std::move(removed)},
                 {"entries", std::move(entries)}};
+    }
+    Json native_value(NativeStructLayout layout, bool zero, unsigned nesting) {
+        const auto &info = native_layout_info(layout);
+        auto values = [&](unsigned count) {
+            Json result = Json::array();
+            for (unsigned j = 0; j < count; ++j)
+                result.push_back(
+                    read_value(SchemaType{static_cast<std::uint8_t>(info.kind), {}, {}}, zero, nesting + 1));
+            return result;
+        };
+        if (info.shape == NativeShape::transform) {
+            // Serialized quaternion, translation, scale; no in-memory SIMD padding.
+            auto rotation = values(4), translation = values(3), scale = values(3);
+            return {{"rotation", std::move(rotation)},
+                    {"translation", std::move(translation)},
+                    {"scale", std::move(scale)}};
+        }
+        if (info.shape == NativeShape::guid) {
+            text(32);
+            std::string guid;
+            static const char digits[] = "0123456789abcdef";
+            for (unsigned j = 0; j < 4; ++j) {
+                auto word = read_value(SchemaType{19, {}, {}}, zero, nesting + 1).get<std::uint32_t>();
+                std::string part(8, '0');
+                for (unsigned k = 0; k < 8; ++k) {
+                    part[7 - k] = digits[word & 15];
+                    word >>= 4;
+                }
+                guid += part;
+            }
+            return guid;
+        }
+        return values(info.components);
     }
     Json read_value(const SchemaType &type, bool zero, unsigned nesting) {
         depth(nesting);
@@ -889,6 +968,9 @@ struct PropertyReader {
             return collection(type, zero, nesting);
         case 9: {
             const auto &definition = schemas.schema(type.name);
+            auto native = native_structs.find(definition.path);
+            if (native != native_structs.end())
+                return native_value(native->second, zero, nesting);
             bool allowed = options.reflected_structs.count(definition.path) != 0;
             if (!allowed && options.reflected_structs.count(definition.name))
                 allowed = schemas.schema(definition.name).path == definition.path;
@@ -916,6 +998,16 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
     if (offset > bytes.size() || size > bytes.size() - offset)
         throw Error("bounds", "Invalid unversioned property window", offset);
     PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}};
+    for (const auto &binding : options.native_structs) {
+        reader.charge();
+        native_struct_layout_name(binding.second);
+        const auto &definition = schemas.schema(binding.first);
+        if (!reader.native_structs.emplace(definition.path, binding.second).second ||
+            options.reflected_structs.count(definition.path) ||
+            (options.reflected_structs.count(definition.name) &&
+             schemas.schema(definition.name).path == definition.path))
+            throw Error("schema-context", "Conflicting native/reflected struct binding: " + definition.path);
+    }
     reader.result.properties = reader.structure(schema, false, 0);
     reader.result.consumed_bytes = reader.r.pos - offset;
     options.control.check();

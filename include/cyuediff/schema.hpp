@@ -52,6 +52,28 @@ class UnversionedSchemas {
     const Json &versioning() const;
     const std::string &sha256() const;
 };
+// Explicit serialized layouts, independent of in-memory type size or engine aliases.
+enum class NativeStructLayout {
+    vector2_f32,
+    vector2_f64,
+    vector3_f32,
+    vector3_f64,
+    vector4_f32,
+    vector4_f64,
+    quat_f32,
+    quat_f64,
+    rotator_f32,
+    rotator_f64,
+    transform_f32,
+    transform_f64,
+    guid,
+    linear_color_f32,
+    color_bgra8,
+    int_point,
+    int_vector
+};
+const char *native_struct_layout_name(NativeStructLayout);
+NativeStructLayout parse_native_struct_layout(const std::string &);
 enum class SoftPathLayout { unspecified, ue5_top_level_names };
 struct UnversionedReadOptions {
     const std::vector<std::string> *names = nullptr;
@@ -62,6 +84,8 @@ struct UnversionedReadOptions {
     // Enables the -1 removed-key marker checked against the UE 5.5 map layout.
     // Zero-masked empty containers do not require this flag.
     bool allow_map_replacement = false;
+    // Schema identity -> wire layout. No basename inference; cannot also be reflected.
+    std::map<std::string, NativeStructLayout> native_structs;
     SoftPathLayout soft_path_layout = SoftPathLayout::unspecified;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;

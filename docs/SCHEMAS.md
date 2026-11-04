@@ -152,3 +152,21 @@ cyuediff::ZenReadOptions options;
 options.profile = manifest.profile();
 options.schema_context = context;
 ```
+
+
+## Explicit native struct values - 0.44
+
+Standalone readers can bind a schema identity to `NativeStructLayout` through `UnversionedReadOptions::native_structs`. The supported wire layouts are `vector2-f32/f64`, `vector3-f32/f64`, `vector4-f32/f64`, `quat-f32/f64`, `rotator-f32/f64`, `transform-f32/f64`, `guid`, `linear-color-f32`, `color-bgra8`, `int-point` and `int-vector` (17 tokens; each precision alternative is a separate token). `parse_native_struct_layout` and `native_struct_layout_name` convert between tokens and enum values.
+
+Bindings resolve exact qualified identities or unique short mapping names. Duplicate aliases, unknown layouts and a native/reflected conflict fail before reading the property stream. Nothing is inferred from names such as `Vector` or from EATR metadata. Float/double selection describes serialized components, not the size of an in-memory C++ type. Unreal's float/double aliases changed with [Large World Coordinates](https://dev.epicgames.com/documentation/en-us/unreal-engine/large-world-coordinates-project-conversion-guidelines-in-unreal-engine-5); the host must select the layout actually written by its build.
+
+Vectors/quaternions/rotators return component arrays (XY[ZW], quaternion XYZW, rotator pitch/yaw/roll). A transform returns `rotation`, `translation` and `scale` arrays, in that serialized order, without SIMD padding. Linear colors retain RGBA float values; `color-bgra8` retains wire BGRA bytes. Integer points/vectors retain signed 32-bit components. GUIDs retain four serialized words as 32 lowercase hexadecimal digits. Property metadata records `nativeLayout` and resolved `typeName`.
+
+No quaternion normalization, transform evaluation, color conversion or default reconstruction occurs. A zero-masked transform returns zero components, including zero scale and quaternion, rather than identity. Non-finite components and truncated windows fail the complete property read. Nested arrays/maps/sets use the same decoder, shared work/text/depth bounds and cancellation. Source ordering was checked against the local UE 5.5 Core math serializers; these original synthetic fixtures do not certify a matching real cooked build. Zen/context integration follows separately.
+
+```cpp
+cyuediff::UnversionedReadOptions options;
+options.native_structs["/Script/CoreUObject.Vector"] = cyuediff::NativeStructLayout::vector3_f64;
+options.native_structs["/Script/CoreUObject.Transform"] = cyuediff::NativeStructLayout::transform_f64;
+auto decoded = cyuediff::decode_unversioned(bytes, offset, size, schemas, "MyAsset", options);
+```
