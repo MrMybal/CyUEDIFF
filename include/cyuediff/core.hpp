@@ -222,6 +222,7 @@ struct DiffResult {
     Json texture_changes = Json::array();
     Json mesh_changes = Json::array();
     Json material_changes = Json::array();
+    Json collision_changes = Json::array();
     std::vector<std::string> diagnostics;
     std::string status() const;
     Json to_json() const;

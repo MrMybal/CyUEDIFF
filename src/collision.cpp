@@ -77,6 +77,8 @@ struct Projection {
                     {"unresolvedProperties", Json::object()},
                     {"complete", true},
                     {"diagnostics", Json::array()}};
+        if (named && !options.source_indices)
+            out.erase("sourceIndex");
         if (!properties.is_object()) {
             out["unresolvedProperties"]["element"] = copy(properties);
             out["complete"] = false;

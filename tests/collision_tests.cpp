@@ -163,6 +163,61 @@ int main() {
         extended.exports[0].properties["AggGeom"]["value"]["LevelSetElems"] = {
             {"opaque", {{"bytes", 64}, {"sha256", "opaque-native-levelset"}}}};
         check(!extended.collision_snapshot()["complete"], "Native level sets stay explicitly unsupported");
+        auto reordered = package;
+        auto &balls = reordered.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"];
+        balls.push_back(collision_shape("sphere", "Second"));
+        const auto ordered = reordered;
+        std::swap(balls[0], balls[1]);
+        auto order_diff = compare_collisions(ordered, reordered);
+        check(order_diff.complete && order_diff.changes.empty(),
+              "Unique named shapes retain identity after reordering");
+        check(!compare(ordered, reordered).changes.empty() &&
+                  compare(ordered, reordered).collision_changes.empty(),
+              "Generic serialized order changes remain distinct from collision correspondence");
+        balls[1]["Radius"]["value"] = 7.;
+        const auto radius_diff = compare_collisions(ordered, reordered);
+        check(radius_diff.status() == "changed" && radius_diff.changes.size() == 1 &&
+                  radius_diff.changes[0]["path"] == "/bodies/SM.Body/shapes/sphere:name:Ball/geometry/radius",
+              "Reordered named sphere reports only its actual radius change");
+        check(!compare(ordered, reordered).collision_changes.empty(),
+              "General package diff includes specialized collision changes");
+        auto anonymous = ordered;
+        auto &anon = anonymous.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"];
+        anon[0].erase("Name");
+        anon[1].erase("Name");
+        anon[1]["Radius"]["value"] = 9.;
+        auto flipped = anonymous;
+        std::swap(flipped.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0],
+                  flipped.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][1]);
+        check(!compare_collisions(anonymous, flipped).changes.empty(),
+              "Unnamed shape indices remain order-sensitive");
+        auto duplicates = ordered;
+        duplicates.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][1]["Name"]["value"] =
+            "Ball";
+        auto duplicate_snapshot = duplicates.collision_snapshot();
+        check(duplicate_snapshot["bodies"]["SM.Body"]["shapes"].contains("sphere:index:0") &&
+                  duplicate_snapshot["bodies"]["SM.Body"]["shapes"].contains("sphere:index:1"),
+              "Duplicate names cannot overwrite either shape");
+        check(compare_collisions(package, package).status() == "identical",
+              "Complete matching collision projection");
+        check(compare_collisions(Package{}, Package{}).status() == "incomplete",
+              "Absent collision data cannot establish equality");
+        auto unusual = package;
+        unusual.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Name"]["value"] =
+            "A/B~C";
+        auto unusual_after = unusual;
+        unusual_after.exports[0]
+            .properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Radius"]["value"] = 6.;
+        auto escaped = compare_collisions(unusual, unusual_after);
+        check(escaped.changes[0]["path"] == "/bodies/SM.Body/shapes/sphere:name:A~1B~0C/geometry/radius",
+              "Collision diff paths escape names without ambiguity");
+        bool diff_cancelled = false;
+        try {
+            compare_collisions(package, package, cancelled);
+        } catch (const Error &e) {
+            diff_cancelled = e.code == "cancelled";
+        }
+        check(diff_cancelled, "Collision comparison cooperates with cancellation");
         check(package.to_json() == original, "Projection never mutates source package");
         check(!Package{}.collision_snapshot()["complete"],
               "Absent bodies cannot establish collision equality");

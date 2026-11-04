@@ -874,6 +874,7 @@ Json Package::to_json() const {
             {"textures", texture_snapshot()},
             {"meshes", mesh_snapshot()},
             {"materials", material_snapshot()},
+            {"collisions", collision_snapshot()},
             {"coverage", coverage},
             {"fingerprints", fingerprints},
             {"completeInput", complete_input},
