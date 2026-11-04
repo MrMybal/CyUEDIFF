@@ -79,6 +79,8 @@ enum class SoftPathLayout { unspecified, ue5_top_level_names };
 enum class TextLayout { unspecified, ue5_history };
 // Persistent package object indices; never the in-memory weak index/serial pair.
 enum class ScriptReferenceLayout { unspecified, package_indices };
+// Binary structured-archive presence bool (uint32), followed by an untagged value.
+enum class OptionalLayout { unspecified, bool32_value };
 struct UnversionedReadOptions {
     const std::vector<std::string> *names = nullptr;
     std::function<Json(std::int32_t)> reference;
@@ -93,6 +95,7 @@ struct UnversionedReadOptions {
     SoftPathLayout soft_path_layout = SoftPathLayout::unspecified;
     TextLayout text_layout = TextLayout::unspecified;
     ScriptReferenceLayout script_reference_layout = ScriptReferenceLayout::unspecified;
+    OptionalLayout optional_layout = OptionalLayout::unspecified;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     OperationControl control;

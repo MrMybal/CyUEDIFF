@@ -1030,6 +1030,18 @@ struct PropertyReader {
             }
             return value;
         }
+        case 28: {
+            if (!zero && options.optional_layout != OptionalLayout::bool32_value)
+                throw Error("schema-context", "Optional requires an explicit unversioned binary layout",
+                            r.pos);
+            const auto present = zero ? 0ull : r.number(4);
+            if (present > 1)
+                throw Error("schema-value", "Invalid optional presence marker", r.pos - 4);
+            Json value = {{"kind", "optional"}, {"isSet", present != 0}};
+            if (present)
+                value["value"] = read_value(type.arguments.at(0), false, nesting + 1);
+            return value;
+        }
         case 8: {
             auto count = zero ? 0 : r.count(options.max_values - result.values_read);
             Json values = Json::array();
