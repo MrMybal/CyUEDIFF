@@ -39,4 +39,12 @@ inline Fixture text_property_fixture(const Bytes &value, const std::string &type
         },
         editor);
 }
+inline Bytes transform_text_value(const Bytes &source = text_value(), unsigned operation = 0) {
+    Bytes value;
+    value.i(0);
+    value.put<std::int8_t>(10);
+    value.append(source);
+    value.put<std::uint8_t>(static_cast<std::uint8_t>(operation));
+    return value;
+}
 } // namespace cyuediff::test

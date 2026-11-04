@@ -1,5 +1,6 @@
 #include <cyuediff/schema.hpp>
 #include "string_value.hpp"
+#include "text_value.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -897,28 +898,53 @@ struct PropertyReader {
             if (!zero && options.text_layout != TextLayout::ue5_history)
                 throw Error("schema-context", "Text property requires an explicit supported history layout",
                             r.pos);
-            const auto flags = zero ? 0ull : r.number(4);
-            const int history = zero ? -1 : static_cast<std::int8_t>(r.number(1));
-            Json value = {{"flags", flags}, {"history", history}};
-            auto string = [&] { return read_value(SchemaType{10, {}, {}}, false, nesting + 1); };
-            if (history == -1) {
-                auto present = zero ? 0ull : r.number(4);
-                if (present > 1)
-                    throw Error("schema-value", "Invalid culture-invariant text marker", r.pos - 4);
-                value["kind"] = present ? "culture-invariant" : "none";
-                value["source"] = present ? string() : Json("");
-            } else if (history == 0) {
-                value["kind"] = "localized";
-                value["namespace"] = string();
-                value["key"] = string();
-                value["source"] = string();
-            } else if (history == 11) {
-                value["kind"] = "string-table";
-                value["table"] = read_value(SchemaType{5, {}, {}}, false, nesting + 1);
-                value["key"] = string();
-            } else
-                throw Error("schema-type", "Unsupported text history: " + std::to_string(history), r.pos - 1);
-            return value;
+            if (zero)
+                return {{"flags", 0}, {"history", -1}, {"kind", "none"}, {"source", ""}};
+            detail::TextWireReader reader;
+            reader.type_error = "schema-type";
+            reader.value_error = "schema-value";
+            reader.position = [&] { return r.pos; };
+            reader.check = [&](unsigned level) {
+                depth(level);
+                charge();
+            };
+            reader.scalar = [&](detail::TextScalar kind, unsigned level) -> Json {
+                unsigned type = 0;
+                switch (kind) {
+                case detail::TextScalar::uint8:
+                    type = 0;
+                    break;
+                case detail::TextScalar::int8:
+                    type = 23;
+                    break;
+                case detail::TextScalar::int32:
+                    type = 2;
+                    break;
+                case detail::TextScalar::uint32:
+                    type = 19;
+                    break;
+                case detail::TextScalar::int64:
+                    type = 21;
+                    break;
+                case detail::TextScalar::uint64:
+                    type = 18;
+                    break;
+                case detail::TextScalar::float32:
+                    type = 3;
+                    break;
+                case detail::TextScalar::float64:
+                    type = 7;
+                    break;
+                case detail::TextScalar::string:
+                    type = 10;
+                    break;
+                case detail::TextScalar::name:
+                    type = 5;
+                    break;
+                }
+                return read_value(SchemaType{static_cast<std::uint8_t>(type), {}, {}}, false, level);
+            };
+            return reader.text(nesting, false);
         }
         case 6: {
             if (!zero && options.script_reference_layout != ScriptReferenceLayout::package_indices)

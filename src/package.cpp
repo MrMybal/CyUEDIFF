@@ -4,6 +4,7 @@
 #include "archive.hpp"
 #include "native.hpp"
 #include "decoders.hpp"
+#include "text_value.hpp"
 #include <cmath>
 #include <memory>
 #include <set>
@@ -146,7 +147,7 @@ class PropertyReader {
     const Package &p;
     const ObjectExport &object;
     const ReadOptions &options;
-    std::uint32_t count_ = 0, type_nodes_ = 0;
+    std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0;
     void depth_check(unsigned depth) const {
         if (depth > options.max_depth)
             throw Error("limit", "Property nesting exceeds limit", a.tell());
@@ -266,38 +267,51 @@ class PropertyReader {
         if (n == "StrProperty")
             return a.string();
         if (n == "TextProperty") {
-            auto flags = a.get<std::uint32_t>();
-            auto history = a.get<std::int8_t>();
-            Json result = {{"flags", flags}, {"history", history}};
-            if (history == -1) {
-                result["kind"] = "none";
-                result["source"] = "";
-                if (p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 32) {
-                    auto present = a.get<std::uint32_t>();
-                    if (present > 1)
-                        throw Error("text-boolean", "Invalid culture-invariant text flag", a.tell() - 4);
-                    if (present) {
-                        result["kind"] = "culture-invariant";
-                        result["source"] = a.string();
-                    }
+            detail::TextWireReader reader;
+            reader.invariant_marker =
+                p.summary.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) >= 32;
+            reader.position = [&] { return a.tell(); };
+            reader.check = [&](unsigned level) {
+                depth_check(level);
+                options.control.check();
+                if (++text_nodes_ > options.max_properties)
+                    throw Error("limit", "Text work exceeds configured limit", a.tell());
+            };
+            reader.scalar = [&](detail::TextScalar kind, unsigned level) -> Json {
+                reader.check(level);
+                switch (kind) {
+                case detail::TextScalar::uint8:
+                    return a.get<std::uint8_t>();
+                case detail::TextScalar::int8:
+                    return a.get<std::int8_t>();
+                case detail::TextScalar::int32:
+                    return a.get<std::int32_t>();
+                case detail::TextScalar::uint32:
+                    return a.get<std::uint32_t>();
+                case detail::TextScalar::int64:
+                    return a.get<std::int64_t>();
+                case detail::TextScalar::uint64:
+                    return a.get<std::uint64_t>();
+                case detail::TextScalar::float32: {
+                    const auto v = a.get<float>();
+                    if (!std::isfinite(v))
+                        throw Error("text-value", "Non-finite text argument", a.tell());
+                    return v;
                 }
-                return result;
-            }
-            if (history == 0) {
-                result["kind"] = "localized";
-                result["namespace"] = a.string();
-                result["key"] = a.string();
-                result["source"] = a.string();
-                return result;
-            }
-            if (history == 11) {
-                result["kind"] = "string-table";
-                result["table"] = fname(a, p);
-                result["key"] = a.string();
-                return result;
-            }
-            throw Error("text-history",
-                        "Text history requires an additional decoder: " + std::to_string(history), a.tell());
+                case detail::TextScalar::float64: {
+                    const auto v = a.get<double>();
+                    if (!std::isfinite(v))
+                        throw Error("text-value", "Non-finite text argument", a.tell());
+                    return v;
+                }
+                case detail::TextScalar::string:
+                    return a.string();
+                case detail::TextScalar::name:
+                    return fname(a, p);
+                }
+                throw Error("text-value", "Unknown text primitive", a.tell());
+            };
+            return reader.text(depth);
         }
         if (n == "ObjectProperty" || n == "ClassProperty" || n == "WeakObjectProperty")
             return p.reference(a.get<std::int32_t>());
