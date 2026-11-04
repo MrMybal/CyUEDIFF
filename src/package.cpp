@@ -3,6 +3,7 @@
 #include "texture.hpp"
 #include "archive.hpp"
 #include "native.hpp"
+#include "skeleton_native.hpp"
 #include "decoders.hpp"
 #include "archive_text.hpp"
 #include <cmath>
@@ -746,6 +747,21 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     source.diagnostics.push_back(error.code + ": " + error.what());
                     p.mesh_sources.push_back(std::move(source));
                     p.diagnostics.push_back(entry.path + ": " + error.code + ": " + error.what());
+                    data->seek(consumed);
+                }
+            }
+            if(!extension_native && options.native_skeletons && entry.class_name=="/Script/Engine.Skeleton") {
+                try {
+                    entry.native_start=consumed-base;
+                    auto decoded=detail::decode_reference_skeleton(*data,p,base+entry.size,options);
+                    entry.native_data=std::move(decoded.data);
+                    entry.native_coverage="reference-skeleton";
+                    entry.native_end=decoded.end-base;
+                    consumed=decoded.end;
+                } catch(const Error &error) {
+                    if(error.code=="cancelled") throw;
+                    entry.native_coverage="opaque";
+                    p.diagnostics.push_back(entry.path+": "+error.code+": "+error.what());
                     data->seek(consumed);
                 }
             }
