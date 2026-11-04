@@ -212,3 +212,11 @@ Ten additional native DX11/WARP captures check preferences restored in each of t
 ## 0.23 milestone: Git history API and CLI
 
 The desktop configuration passes 32 suites before the GUI history integration, and the new CLI integration adds 20 checks. History tests cover NUL record boundaries, truncation, metadata/record limits, cancellation, duplicate IDs, merge parents, Unicode and punctuation, SHA-1/SHA-256 repositories and pages pinned across a moving branch. The CLI tests hash every file in a disposable repository before and after reads and rejected output requests; the hashes remain identical.
+
+## 0.24 milestone: desktop history and combined release
+
+The combined Windows Release configuration passes 36 suites and 1,603 reported checks, plus 60 renderer-free UI frames (30 asset views, 30 history views). Core without Git/UI/Desktop/Oodle passes 22 suites; desktop without Git passes 28. History adds 108 native adapter checks, 20 CLI checks, 15 worker/model checks and 21 native desktop CLI checks. The history worker is checked for superseded requests, bounded pending work, stale publication rejection, retained pages on failure, null results and cancellation during shutdown.
+
+Native tests select two commits and compare generated packages through the same action as the dialog, verify desktop/CLI change parity, open the revision catalogue when no path is selected, compare identical commits, exercise invalid selections/revisions/options and protect Git-storage outputs. Every source and Git-storage file in the disposable repository is hashed before/after; the hashes remain equal. Ten native DX11/WARP captures cover all five themes in English/French; representative captures in each theme were visually inspected. Filtering and disabled loading/error states also have renderer-free coverage. The existing real cooked-schema coverage limitation is unchanged.
+
+Distribution validation additionally compiles and runs the installed Git SDK history consumer alongside the four Core consumers. These local checks do not certify a hosted CI run.

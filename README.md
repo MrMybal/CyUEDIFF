@@ -4,7 +4,7 @@
 
 A reusable C++17 engine for inspecting Unreal Engine packages and comparing serialized asset data **without launching Unreal Editor**. A separate [CyUI](https://github.com/MrMybal/CyUI) library and an optional Windows desktop app provide inspection, graph, image, mesh and diff views.
 
-Version **0.22** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes visual change highlighting, a searchable typed inspector with selected previews, source-float HDR comparisons, Pak/IoStore container byte reading and diffs, cooked Zen object tables, explicit USMAP property reads with module identities, supported extensions, map/set deltas and soft/interface/lazy references, opaque body diffs, project/Git asset catalogues, local Git/LFS revision reading, independent project/engine contexts, persistent desktop appearance/display preferences, cancellable loading, a verified package cache and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
+Version **0.24** supports tagged properties, Blueprint editor graphs, Texture2D source previews, static-mesh source geometry, material graphs and stored instance parameters. It also includes visual change highlighting, a searchable typed inspector with selected previews, source-float HDR comparisons, Pak/IoStore container byte reading and diffs, cooked Zen object tables, explicit USMAP property reads with module identities, supported extensions, map/set deltas and soft/interface/lazy references, opaque body diffs, project/Git asset catalogues, paginated commit history and local Git/LFS revision reading, independent project/engine contexts, persistent desktop appearance/display preferences, cancellable loading, a verified package cache and an application-defined decoder registry. Unsupported data remains visible as opaque byte ranges with SHA-256 fingerprints.
 
 USMAP support is deliberately scoped: explicit build/class/offset bindings decode supported unversioned values; native payloads and unsupported types retain their opaque fingerprints. See [schema contracts and limits](docs/SCHEMAS.md).
 
@@ -18,7 +18,7 @@ This is an asset reader and comparison engine. Format coverage is explicit; it i
 | `CyUEDiff::Git` | Optional local Git/LFS adapter: revisions, companion files, verified LFS content and temporary-file ownership. |
 | `CyUEDiff::UI` | Embeddable CyUI views for objects, properties, Blueprint/material graphs, images, wireframe meshes and side-by-side diffs. |
 | `cyuediff` | JSON command-line interface for inspection, specialized diffs, project resolution and Git revisions. |
-| `cyuediff_desktop` | Optional Windows application using Win32, Direct3D 11 and CyUI, with background loading, a content browser and local Git/LFS revision comparisons. |
+| `cyuediff_desktop` | Optional Windows application using Win32, Direct3D 11 and CyUI, with background loading, a content browser, local Git/LFS revision comparisons and a commit history browser. |
 
 The Core vendors nlohmann/json 3.12.0 and stb under their MIT licenses. Builds do not download dependencies. UI builds use a host-provided CyUI checkout. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
@@ -89,6 +89,8 @@ To compare Git revisions, including locally available LFS objects:
 build-native/Release/cyuediff.exe git-diff D:/Projects/MyGame HEAD~1 HEAD Content/M_Water.uasset
 build-native/Release/cyuediff.exe git-diff D:/Projects/MyGame HEAD~1 HEAD /Game/M_Water --project MyGame.uproject --no-engine
 ```
+
+The desktop’s **Browse history...** dialog supplies before/after commit IDs and opens the chosen asset or revision catalogue. The CLI exposes the same metadata through `git-history REPO REV`; see [history usage and limits](docs/GIT.md#commit-history--023).
 
 The adapter materializes each revision's own companions, verifies local LFS content and keeps temporary files alive through revision handles. It does not fetch missing objects, modify the checkout or configure the repository. Historical project/plugin descriptors and engine contexts can be selected per side through the API and CLI.
 
@@ -176,13 +178,13 @@ Select **Browse content...** (`Ctrl+B`) after choosing a project, or from Git mo
 
 Package loading, hashing, bulk decoding, image conversion, mesh decoding and direct Git operations support cooperative cancellation with phase progress. The desktop keeps an in-memory LRU package cache; every lookup checks full package/companion hashes, including same-size/same-timestamp edits. See [runtime controls](docs/RUNTIME.md).
 
-The app does not yet include a commit history browser or multi-document workspace. The [development status](docs/ROADMAP.md) records the remaining cooked-object, schema, advanced geometry and desktop work. CPack builds distributable executable/SDK archives with all selected dependency notices; the [distribution guide](docs/DISTRIBUTION.md) describes the local build and the prepared Windows/Linux CI workflow.
+A multi-document workspace and container browsing remain to be implemented. The [development status](docs/ROADMAP.md) records the remaining cooked-object, schema, advanced geometry and desktop work. CPack builds distributable executable/SDK archives with all selected dependency notices; the [distribution guide](docs/DISTRIBUTION.md) describes the local build and the prepared Windows/Linux CI workflow.
 
 The embeddable `CyUEDiff::UI` remains separate. Hosts own their window, graphics backend, asynchronous loading and GPU resources. Five CyUI themes and English/French controls are supported.
 
 ## Validation and documentation
 
-The verified Windows Release build passes **31 CTest suites**, with **1,439 checks**, 30 renderer-free UI frames and native DX11/WARP validation. Core without Git/UI/Desktop/Oodle passes **22 suites**; desktop without Git passes **28**. New native captures check saved appearance in all ten theme/language combinations; reference decoding, inspector selection and preference persistence have dedicated tests. The CyTrace corpus covers 150 original source packages, 6,219 reconstructed container members and 3,507 cooked Zen packages with 7,502 exports. Matching-build real mapped values remain unverified without a USMAP. The extracted CPack archive is checked with its CLI, WARP host and four separate installed Core SDK consumers. See [validation scope and evidence](docs/VALIDATION.md). Hosted CI is prepared but has not run before a push. Proprietary assets, codec binaries, generated captures and build outputs remain outside the repository.
+The verified Windows Release build passes **36 CTest suites**, with **1,603 checks**, 60 renderer-free UI frames and native DX11/WARP validation. Core without Git/UI/Desktop/Oodle passes **22 suites**; desktop without Git passes **28**. New native captures check history in all ten theme/language combinations; history parsing, selection-to-diff/catalogue navigation, cancellation, reference decoding, inspector selection and preference persistence have dedicated tests. The CyTrace corpus covers 150 original source packages, 6,219 reconstructed container members and 3,507 cooked Zen packages with 7,502 exports. Matching-build real mapped values remain unverified without a USMAP. The extracted CPack archive is checked with its CLI, WARP host and four separate installed Core SDK consumers plus a Git SDK history consumer. See [validation scope and evidence](docs/VALIDATION.md). Hosted CI is prepared but has not run before a push. Proprietary assets, codec binaries, generated captures and build outputs remain outside the repository.
 
 Detailed implementation notes are currently available in French:
 

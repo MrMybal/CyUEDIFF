@@ -12,7 +12,7 @@ cd build-native
 cpack -C Release -G ZIP
 ```
 
-Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and compile/run the catalogue, container and cooked Zen consumers. Use `--static-runtime` when validating the static-CRT CI archives. The check retains its extraction under an ignored build directory.
+Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and compile/run the catalogue, container, cooked Zen and schema Core consumers, plus the Git history consumer when the Git SDK is included. Use `--static-runtime` when validating the static-CRT CI archives. The check retains its extraction under an ignored build directory.
 
 The ZIP contains the selected CLI/desktop executables, the reusable Core SDK (plus Git when enabled), public Core headers, CMake import targets and documentation/notices. UI headers/library are integrated from source by hosts; they are not advertised as an installed standalone UI SDK. The optional Oodle module is deliberately excluded even if it was built locally.
 

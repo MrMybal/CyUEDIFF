@@ -1,4 +1,4 @@
-# Desktop application — 0.22
+# Desktop application — 0.24
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -42,7 +42,7 @@ The sidebar displays the resolved commit IDs. Added or removed assets keep the m
 
 Git/LFS reads run on the document worker. Each side owns its matching companion files and materializations for as long as the document uses their payloads. Locally available LFS objects are verified by size and SHA-256. The **LFS cache** section or `--lfs-objects DIR` selects an explicit objects directory; otherwise repository LFS settings apply. Missing objects produce an error. Reads never fetch, check out revisions, run filters or change the repository. Git 2.45+ must be available in PATH.
 
-The Git controls are present when `CYUEDIFF_BUILD_GIT=ON`. A desktop build with Git disabled remains functional for loose files and rejects Git requests explicitly. References and paths are entered as text; the content browser below can supply asset paths. A commit history browser is not implemented.
+The Git controls are present when `CYUEDIFF_BUILD_GIT=ON`. A desktop build with Git disabled remains functional for loose files and rejects Git requests explicitly. References and paths are entered as text; the content browser below can supply asset paths. The commit history browser below can supply both revision IDs.
 
 ## Content browser
 
@@ -100,3 +100,18 @@ Hidden `--smoke` validation never accesses default user preferences. An explicit
 build-native/Release/cyuediff_desktop.exe --smoke --preferences build-native/test-preferences.json --save-preferences --theme violet --locale fr
 build-native/Release/cyuediff_desktop.exe --smoke --preferences build-native/test-preferences.json --report build-native/preferences-restart.json
 ```
+
+## Git history browser — 0.24
+
+In **Git revisions**, choose a repository and select **Browse history...** (also in the File menu). **Start revision** defaults to `HEAD`; **Refresh history** resolves it again. Each page contains up to 100 local commits in newest-first topological order, with commit ID, author date, author and subject. The date column is an author timestamp, not a chronological sorting guarantee. Search filters only the current page; **Previous page** and **Next page** keep the original resolved head fixed. Refresh starts again from the typed revision.
+
+Select a row and choose **Use as before**, then choose another row and **Use as after**. Choices can come from different pages and retain their full immutable IDs. **Copy commit ID** copies the selected row's full ID. **Compare selected revisions** becomes available after both sides have been chosen: it loads the current asset paths, or opens the catalogue of those two commits when no asset is selected. The normal Git/LFS reader then compares the selected asset. History itself reads only commit metadata.
+
+```powershell
+build-native/Release/cyuediff_desktop.exe --repo D:/Projects/Game --history
+build-native/Release/cyuediff_desktop.exe --repo D:/Projects/Game --history --history-revision main
+```
+
+History runs on a separate worker. Refresh/page requests cancel earlier work, retain at most one pending request and publish only the latest result. Closing the dialog cancels active reading. Errors retain the previous page with selection actions disabled. The dialog, search and actions are available in English and French with all five themes. Builds without the Git adapter omit the controls and reject history launch requests. No checkout, fetch or history mutation occurs. Shallow repositories expose only their locally available ancestry.
+
+Hidden validation accepts `--history-filter TEXT` and, with `--smoke --history`, `--history-before ID --history-after ID --history-compare`. Both IDs must be visible on the loaded page; the latter flag exercises the same selection-to-comparison action used by the dialog. History metadata and current selection are included in the smoke JSON report. Capture, report and preference outputs retain the active history repository's Git-storage protection.

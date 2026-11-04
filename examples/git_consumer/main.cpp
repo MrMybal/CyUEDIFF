@@ -1,10 +1,14 @@
 #include <cyuediff/git.hpp>
 #include <iostream>
 int run(const std::vector<std::string> &args) {
-    if (args.size() != 4 && args.size() != 5 && args.size() != 6 && args.size() != 8)
+    if (args.size() != 2 && args.size() != 4 && args.size() != 5 && args.size() != 6 && args.size() != 8)
         return 2;
     try {
         auto repo = cyuediff::GitRepository::open(cyuediff::fs::u8path(args[0]));
+        if (args.size() == 2) {
+            std::cout << repo.history(args[1]).to_json().dump(2) << '\n';
+            return 0;
+        }
         cyuediff::GitComparison result;
         if (args.size() >= 6) {
             cyuediff::GitProjectOptions before_options, after_options;

@@ -144,6 +144,18 @@ if args.consumer:
  if collection['removed']!={'7':7} or collection['replace'] or collection['entries']['9']['value']['entries']!={'1':1,'2':2}:raise RuntimeError('Installed unversioned collection consumer failed')
  if collection['entries']['9']['value']['removed']!={'4':4}:raise RuntimeError('Installed unversioned set removal failed')
  if set(collection['entries'])!={'9','11'} or collection['entries']['11']['value']['entries']:raise RuntimeError('Installed unversioned collection tail failed')
+ if (prefix/'include/cyuediff/git.hpp').is_file():
+  git_build=target/'git-consumer'
+  configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+  subprocess.run(configure,check=True,env=env)
+  subprocess.run([cmake,'--build',str(git_build),'--config','Release','--parallel','2'],check=True,env=env)
+  git_executable=git_build/'Release'/('git_compare'+suffix) if os.name=='nt' else git_build/'git_compare'
+  result=subprocess.run([str(git_executable),str(root),'HEAD'],capture_output=True,check=True,env=env,timeout=30)
+  history=json.loads(result.stdout)
+  if history.get('schema')!='cyuediff.git-history/1' or not history.get('commits') or history['commits'][0]['id']!=history['head']:raise RuntimeError('Installed Git history consumer failed')
+  print('Installed Git SDK history consumer validated')
+
 
 
 print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema consumers' if args.consumer else '')+' validated')

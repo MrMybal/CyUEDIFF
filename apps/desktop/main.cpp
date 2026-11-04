@@ -1,6 +1,9 @@
 #include "document.hpp"
 #include "browser.hpp"
 #include "preferences.hpp"
+#ifdef CYUEDIFF_HAS_GIT
+#include "history_view.hpp"
+#endif
 #include <cyuediff/catalog_view.hpp>
 #include <cyuediff/asset_view.hpp>
 #include "platform_win32.hpp"
@@ -50,6 +53,8 @@ struct Options {
     bool theme_override = false, locale_override = false, previews_override = false, engine_override = false;
     std::string preferences_diagnostic;
     std::string browse_filter, browse_select;
+    bool history = false, history_parameters = false, history_compare = false;
+    std::string history_revision = "HEAD", history_before, history_after, history_filter;
     std::string theme = "mid-grey", locale = "en", view = "properties";
 };
 AssetTab tab(const std::string &name) {
@@ -79,7 +84,24 @@ Options parse(const std::vector<std::string> &args) {
         };
         if (argument == "--smoke")
             options.smoke = true;
-        else if (argument == "--browse")
+        else if (argument == "--history")
+            options.history = true;
+        else if (argument == "--history-compare") {
+            options.history_compare = true;
+            options.history_parameters = true;
+        } else if (argument == "--history-revision" || argument == "--history-before" ||
+                   argument == "--history-after" || argument == "--history-filter") {
+            auto text = value();
+            if (argument == "--history-revision")
+                options.history_revision = text;
+            else if (argument == "--history-before")
+                options.history_before = text;
+            else if (argument == "--history-after")
+                options.history_after = text;
+            else
+                options.history_filter = text;
+            options.history_parameters = true;
+        } else if (argument == "--browse")
             options.browse = true;
         else if (argument == "--browse-filter")
             options.browse_filter = value();
@@ -155,6 +177,16 @@ Options parse(const std::vector<std::string> &args) {
         throw Error("desktop-option", "Preferences require a .json path");
     if (options.save_preferences && (!options.smoke || options.preferences.empty()))
         throw Error("desktop-option", "--save-preferences requires --smoke and --preferences");
+    if (options.history_parameters && !options.history)
+        throw Error("desktop-option", "History options require --history");
+    if (options.history &&
+        (options.settings.source != 1 || options.settings.repository.empty() || options.browse))
+        throw Error("desktop-option", "--history requires --repo and conflicts with --browse");
+    if ((!options.history_before.empty() || !options.history_after.empty() || options.history_compare) &&
+        !options.smoke)
+        throw Error("desktop-option", "Automatic history selection requires --smoke");
+    if (options.history_compare && (options.history_before.empty() || options.history_after.empty()))
+        throw Error("desktop-option", "--history-compare requires two history commit IDs");
     tab(options.view);
     if ((!options.browse_filter.empty() || options.settings.include_engine ||
          !options.browse_select.empty()) &&
@@ -183,6 +215,9 @@ Options parse(const std::vector<std::string> &args) {
     return options;
 }
 void register_translations() {
+#ifdef CYUEDIFF_HAS_GIT
+    HistoryView::register_translations();
+#endif
     AssetView::register_translations();
     CatalogView::register_translations();
     cyui::registerTranslations(
@@ -310,7 +345,8 @@ bool same_path(const fs::path &a, const fs::path &b) {
     return left == right;
 }
 void protect_outputs(const Options &options, const std::shared_ptr<const Document> &document,
-                     const std::shared_ptr<const BrowseDocument> &browser = {}) {
+                     const std::shared_ptr<const BrowseDocument> &browser = {},
+                     const fs::path &history_storage = {}) {
     std::vector<fs::path> outputs;
     for (const auto &path : {options.capture, options.report})
         if (!path.empty()) {
@@ -334,12 +370,15 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         }
     };
     std::vector<fs::path> directories;
+    if (!history_storage.empty())
+        directories.push_back(history_storage);
     if (options.settings.source == 1) {
 #ifdef CYUEDIFF_HAS_GIT
         GitOptions git_options;
         git_options.lfs_objects = fs::u8path(options.settings.lfs_objects);
         auto repository = GitRepository::open(fs::u8path(options.settings.repository), git_options);
-        directories = {repository.common_directory(), repository.lfs_objects()};
+        directories.push_back(repository.common_directory());
+        directories.push_back(repository.lfs_objects());
         inputs.push_back(repository.root() / ".git");
         for (const auto &path : {options.settings.before, options.settings.after})
             if (!path.empty() && path.front() != '/')
@@ -422,11 +461,22 @@ enum class Action {
     browse,
     browser_open,
     browser_before,
-    browser_after
+    browser_after,
+    history,
+    history_event
 };
 class Shell {
     DocumentSession session_;
     BrowserSession browser_;
+#ifdef CYUEDIFF_HAS_GIT
+    HistorySession history_;
+    HistoryView history_view_;
+    std::shared_ptr<const HistoryDocument> historied_;
+    bool history_open_ = false, auto_history_compare_ = false, history_compare_request_ = false;
+    std::string history_tip_ = "HEAD", history_before_, history_after_, history_chosen_before_,
+                history_chosen_after_;
+    HistoryAction history_action_ = HistoryAction::none;
+#endif
     std::shared_ptr<const BrowseDocument> browsed_;
     CatalogView catalog_view_;
     bool browser_open_ = false, close_browser_ = false;
@@ -443,8 +493,17 @@ class Shell {
     explicit Shell(const Options &options)
         : preferences_diagnostic_(options.preferences_diagnostic), settings_(options.settings),
           initial_tab_(tab(options.view)) {
-        if (!settings_.before.empty())
+        if (!settings_.before.empty() && !options.history)
             session_.request(settings_.request());
+#ifdef CYUEDIFF_HAS_GIT
+        history_tip_ = options.history_revision;
+        history_before_ = options.history_before;
+        history_after_ = options.history_after;
+        history_compare_request_ = options.history_compare;
+        history_view_.set_filter(options.history_filter);
+        if (options.history)
+            start_history();
+#endif
         catalog_view_.set_filter(options.browse_filter);
         browse_select_ = options.browse_select;
         if (options.browse)
@@ -471,12 +530,76 @@ class Shell {
         result["open"] = browser_open_;
         return result;
     }
+    Json history_report() const {
+#ifdef CYUEDIFF_HAS_GIT
+        if (historied_) {
+            auto result = historied_->report();
+            result["open"] = history_open_;
+            result["visibleCommits"] = history_view_.visible_count();
+            result["selected"] =
+                history_view_.selected() ? Json(history_view_.selected()->id) : Json(nullptr);
+            result["beforeRevision"] = settings_.before_revision;
+            result["afterRevision"] = settings_.after_revision;
+            return result;
+        }
+#endif
+        return nullptr;
+    }
+    fs::path history_storage() const {
+#ifdef CYUEDIFF_HAS_GIT
+        if (historied_)
+            return historied_->common_directory;
+#endif
+        return {};
+    }
+#ifdef CYUEDIFF_HAS_GIT
+    bool history_can_compare() const {
+        return !history_chosen_before_.empty() && !history_chosen_after_.empty() &&
+               history_chosen_before_ == settings_.before_revision &&
+               history_chosen_after_ == settings_.after_revision;
+    }
+    void start_history(std::optional<std::uint32_t> skip = {}) {
+        if (!historied_ || !same_path(fs::u8path(settings_.repository), historied_->repository)) {
+            history_chosen_before_.clear();
+            history_chosen_after_.clear();
+        }
+        HistoryRequest request;
+        request.repository = fs::u8path(settings_.repository);
+        request.revision = history_tip_;
+        if (skip && historied_) {
+            request = historied_->request;
+            request.repository = historied_->repository;
+            request.revision = historied_->page.head;
+            request.options.skip = *skip;
+        }
+        history_open_ = true;
+        history_.request(std::move(request));
+    }
+    void select_history(const std::string &id, bool after) {
+        if (!historied_ || history_.busy() || !history_.error().empty())
+            throw Error("history-selection", "No ready history page");
+        auto selection = historied_->select(id, settings_.request().git.value_or(GitSource{}), after);
+        settings_.source = 1;
+        settings_.repository = selection.repository.u8string();
+        settings_.before_revision = selection.before_revision;
+        settings_.after_revision = selection.after_revision;
+        (after ? history_chosen_after_ : history_chosen_before_) = id;
+    }
+#endif
     bool busy() const {
+#ifdef CYUEDIFF_HAS_GIT
+        if (history_.busy())
+            return true;
+#endif
         return session_.busy() || browser_.busy();
     }
     std::string error() const {
         if (!dialog_error_.empty())
             return dialog_error_;
+#ifdef CYUEDIFF_HAS_GIT
+        if (!history_.error().empty())
+            return history_.error();
+#endif
         return !browser_.error().empty() ? browser_.error() : session_.error();
     }
     void start_browser() {
@@ -510,6 +633,29 @@ class Shell {
         return images_.size();
     }
     void poll(Renderer &renderer) {
+#ifdef CYUEDIFF_HAS_GIT
+        history_.poll();
+        if (history_.document() != historied_) {
+            historied_ = history_.document();
+            history_view_.set_document(historied_);
+            try {
+                for (bool after : {false, true}) {
+                    auto &id = after ? history_after_ : history_before_;
+                    if (!id.empty()) {
+                        if (!history_view_.select_commit(id))
+                            throw Error("history-selection",
+                                        "Requested commit is not visible on this history page");
+                        select_history(id, after);
+                        id.clear();
+                    }
+                }
+                auto_history_compare_ = history_compare_request_;
+                history_compare_request_ = false;
+            } catch (const std::exception &error) {
+                dialog_error_ = error.what();
+            }
+        }
+#endif
         browser_.poll();
         if (browser_.document() != browsed_) {
             browsed_ = browser_.document();
@@ -584,6 +730,10 @@ class Shell {
         }
     }
     std::string status() const {
+#ifdef CYUEDIFF_HAS_GIT
+        if (history_.busy())
+            return "Reading Git history...";
+#endif
         if (browser_.busy())
             return "Scanning content...";
         if (session_.busy())
@@ -626,6 +776,11 @@ class Shell {
                 if (ImGui::MenuItem(cyui::trLabel("Browse content...").c_str(), "Ctrl+B", false,
                                     settings_.browse_ready()))
                     action = Action::browse;
+#ifdef CYUEDIFF_HAS_GIT
+                if (ImGui::MenuItem(cyui::trLabel("Browse history...").c_str(), nullptr, false,
+                                    settings_.source == 1 && !settings_.repository.empty()))
+                    action = Action::history;
+#endif
                 ImGui::Separator();
                 if (ImGui::MenuItem(cyui::trLabel("Exit").c_str()))
                     quit = true;
@@ -694,6 +849,13 @@ class Shell {
             cyui::segmented("##source", sources, 2, &settings_.source, cyui::dp(-1));
 #endif
             if (settings_.source == 1) {
+#ifdef CYUEDIFF_HAS_GIT
+                {
+                    cyui::ScopedDisabled disabled(settings_.repository.empty());
+                    if (cyui::button(cyui::trLabel("Browse history...").c_str()))
+                        action = Action::history;
+                }
+#endif
                 if (cyui::beginProperties("##git", 76)) {
                     cyui::property(cyui::tr("Repository").c_str());
                     field("##repository", settings_.repository);
@@ -900,7 +1062,40 @@ class Shell {
             if (!browser_open_)
                 browser_.cancel();
         }
-        if (!browser_open_ && !ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl) {
+#ifdef CYUEDIFF_HAS_GIT
+        if (history_open_) {
+            const auto width = std::min(1100.f, ImGui::GetMainViewport()->WorkSize.x / cyui::dpi() - 40.f);
+            if (cyui::beginModal(cyui::trLabel("Git history").c_str(), &history_open_, width)) {
+                if (cyui::beginProperties("##history-start", 100)) {
+                    cyui::property(cyui::tr("Start revision").c_str());
+                    field("##history-tip", history_tip_);
+                    cyui::endProperties();
+                }
+                history_action_ =
+                    history_view_.draw(history_.busy(), history_.error(), settings_.before_revision,
+                                       settings_.after_revision, history_can_compare());
+                if (auto_history_compare_) {
+                    history_action_ = HistoryAction::compare;
+                    auto_history_compare_ = false;
+                }
+                if (history_action_ != HistoryAction::none)
+                    action = Action::history_event;
+                if (history_action_ == HistoryAction::compare || history_action_ == HistoryAction::close) {
+                    ImGui::CloseCurrentPopup();
+                    history_open_ = false;
+                }
+                cyui::endModal();
+            }
+            if (!history_open_ && history_action_ == HistoryAction::none) {
+                history_action_ = HistoryAction::close;
+                action = Action::history_event;
+            }
+        }
+        const bool modal_open = browser_open_ || history_open_;
+#else
+        const bool modal_open = browser_open_;
+#endif
+        if (!modal_open && !ImGui::GetIO().WantTextInput && ImGui::GetIO().KeyCtrl) {
             if (ImGui::IsKeyPressed(ImGuiKey_O, false))
                 action = ImGui::GetIO().KeyShift ? Action::open_after : Action::open_before;
             if (ImGui::IsKeyPressed(ImGuiKey_R, false))
@@ -916,6 +1111,38 @@ class Shell {
             if (action == Action::none)
                 return;
             dialog_error_.clear();
+#ifdef CYUEDIFF_HAS_GIT
+            if (action == Action::history) {
+                start_history();
+                return;
+            }
+            if (action == Action::history_event) {
+                const auto event = history_action_;
+                history_action_ = HistoryAction::none;
+                if (event == HistoryAction::refresh)
+                    start_history();
+                else if (event == HistoryAction::previous && historied_)
+                    start_history(historied_->page.skip > historied_->request.options.max_commits
+                                      ? historied_->page.skip - historied_->request.options.max_commits
+                                      : 0);
+                else if (event == HistoryAction::next && historied_)
+                    start_history(historied_->page.next_skip);
+                else if ((event == HistoryAction::before || event == HistoryAction::after) &&
+                         history_view_.selected())
+                    select_history(history_view_.selected()->id, event == HistoryAction::after);
+                else if (event == HistoryAction::compare) {
+                    if (!history_can_compare())
+                        throw Error("history-selection", "Choose a before and an after commit");
+                    history_.cancel();
+                    if (settings_.ready())
+                        session_.request(settings_.request());
+                    else
+                        start_browser();
+                } else if (event == HistoryAction::close)
+                    history_.cancel();
+                return;
+            }
+#endif
             if (action == Action::cancel_load) {
                 session_.cancel();
                 return;
@@ -985,6 +1212,8 @@ int run(Options options) {
                "REPO_PATH]\n"
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
+               "  --repo DIR --history [--history-revision REF] : choose commits in local history\n"
+               "  --history --smoke [--history-before ID --history-after ID --history-compare]\n"
                "  --browse [--include-engine] [--browse-filter TEXT] : browse project or revision content\n"
                "  [--codec DLL] [--no-previews] [--locale en|fr] [--theme KEY]\n"
                "  [--view properties|blueprint|materials|textures|meshes|comparison]\n"
@@ -1038,7 +1267,8 @@ int run(Options options) {
         if (!options.preference_write)
             return;
         try {
-            protect_outputs(options, shell.session().document(), shell.browser_document());
+            protect_outputs(options, shell.session().document(), shell.browser_document(),
+                            shell.history_storage());
             desktop::save_preferences(options.preferences, shell.preferences());
             preferences_saved = true;
         } catch (const std::exception &error) {
@@ -1071,7 +1301,8 @@ int run(Options options) {
             throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");
         if (finished) {
             persist();
-            protect_outputs(options, shell.session().document(), shell.browser_document());
+            protect_outputs(options, shell.session().document(), shell.browser_document(),
+                            shell.history_storage());
             if (!options.capture.empty())
                 write_png(options.capture, renderer.capture());
             Json report = {{"schema", "cyuediff.desktop/1"},
@@ -1091,6 +1322,7 @@ int run(Options options) {
                              {"values", shell.preferences().to_json()}}},
                            {"uploadedPreviews", shell.images()},
                            {"browser", shell.browser_report()},
+                           {"history", shell.history_report()},
                            {"document", shell.session().document() ? shell.session().document()->report()
                                                                    : Json(nullptr)}};
             if (!options.report.empty()) {

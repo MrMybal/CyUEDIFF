@@ -43,7 +43,14 @@ int main(int argc, char **argv) {
     auto parent = fs::weakly_canonical(fs::current_path());
     auto root = parent / (".test-tmp-history-" +
                           std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    fs::create_directory(root);
+    if (!fs::create_directory(root))
+        throw std::runtime_error("Cannot reserve history test workspace");
+    const auto cleanup = [&] {
+        const auto resolved = fs::weakly_canonical(fs::absolute(root));
+        if (resolved.parent_path() == parent &&
+            resolved.filename().u8string().rfind(".test-tmp-history-", 0) == 0)
+            fs::remove_all(resolved);
+    };
     try {
         const std::string a(40, 'a'), b(40, 'b'), c(40, 'c');
         auto bytes = record(a, b + " " + c, "100% ### [é]") + record(b, "", "");
@@ -127,9 +134,9 @@ int main(int argc, char **argv) {
         std::cout << checks << " Git history checks passed\n";
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
-        fs::remove_all(root);
+        cleanup();
         return 1;
     }
-    fs::remove_all(root);
+    cleanup();
     return 0;
 }
