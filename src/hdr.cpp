@@ -1,3 +1,4 @@
+#include "image_bounds.hpp"
 #include <cyuediff/hdr.hpp>
 #include <algorithm>
 #include <cmath>
@@ -164,6 +165,8 @@ HdrImageComparison compare_hdr_images(const ImageRgba32f &before, const ImageRgb
         result.max_sample_delta = std::max(result.max_sample_delta, maximum);
         if (maximum > threshold) {
             ++result.changed_pixels;
+            detail::include_changed_pixel(result.changed_bounds, static_cast<std::uint32_t>(i % before.width),
+                                          static_cast<std::uint32_t>(i / before.width));
             if (heatmap) {
                 result.heatmap.pixels[i * 4] = 255;
                 result.heatmap.pixels[i * 4 + 3] = 255;
@@ -183,6 +186,7 @@ Json HdrImageComparison::to_json() const {
             {"after", {{"width", after_width}, {"height", after_height}}},
             {"threshold", threshold},
             {"changedPixels", comparable ? Json(changed_pixels) : Json(nullptr)},
+            {"changedBounds", comparable && changed_pixels ? changed_bounds.to_json() : Json(nullptr)},
             {"maxSampleDelta", comparable ? Json(max_sample_delta) : Json(nullptr)},
             {"meanAbsoluteError", comparable ? Json(mean_absolute_error) : Json(nullptr)}};
 }

@@ -1,4 +1,4 @@
-# Desktop application — 0.57
+# Desktop application — 0.72
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -256,3 +256,9 @@ Material expression graphs now use the searchable node inspector, including type
 ## Changed mesh focus - 0.71
 
 Wireframe comparisons can hide unchanged edges and frame the bounds of changed geometry. Changed bounds are prepared with the bounded edge cache rather than recomputed while drawing; the existing 100,000-edge display cap remains explicit. Perspective/front/right/near-top camera presets complement orbit navigation. The changed-only preference and camera are saved per side. Empty filtered comparisons explain how to recover the full mesh; absent/unchanged geometry has no changed-focus target.
+
+## Changed texture regions - 0.72
+
+LDR and source-float HDR comparisons now return changedBounds (x/y/width/height, half-open coordinates), computed alongside thresholded changed-pixel counts even without a heatmap. Identical/incomparable images return null bounds. The texture view can frame this region, return to actual-pixel zoom and display changed percentage/mean absolute error. Bounds are validated against the bound image before navigation; image pan/zoom and mask selection remain workspace state. No new source formats or cooked texture payload decoders are implied.
+
+See [visual review](VISUAL_REVIEW.md) for the complete node/instance/mesh/texture workflow, embedding APIs, workspace state and format limits.

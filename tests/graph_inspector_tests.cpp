@@ -39,6 +39,15 @@ int main() {
         check(view.visible_count() == 1 && view.selected_node().empty(), "Filter clears hidden selection");
         check(!view.select_node("b") && view.next_change() && view.selected_node() == "a",
               "Navigation respects search");
+        view.set_filter("NoMatchingNode");
+        view.set_changed_only(true);
+        check(view.select_canvas_node(3) && view.selected_node() == "c" && view.visible_count() == 3,
+              "Explicit canvas selection reveals a node hidden by navigation filters");
+        auto canvas_selected = view.view_state();
+        check(!view.select_canvas_node(99999) && view.view_state() == canvas_selected,
+              "Unknown canvas ID does not change selection or filters");
+        view.set_filter("Power");
+        view.select_node("a");
         auto saved = view.view_state();
         auto renumbered = items;
         renumbered[0].id = 999;

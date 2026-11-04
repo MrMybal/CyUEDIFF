@@ -11,6 +11,7 @@ struct HdrImageComparison {
     std::uint64_t changed_pixels = 0;
     double max_sample_delta = 0, mean_absolute_error = 0, threshold = 0;
     ImageRgba8 heatmap;
+    ImageChangeBounds changed_bounds;
     Json to_json() const;
 };
 bool is_hdr_format(const std::string &);

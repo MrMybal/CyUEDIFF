@@ -22,6 +22,7 @@ void GraphInspector::set_nodes(const Json *before, const Json *after, std::vecto
     before_ = before ? *before : Json::object();
     after_ = after ? *after : Json::object();
     items_ = std::move(items);
+    last_canvas_size_ = {};
     comparing_ = comparing;
     filter_ = {};
     changed_only_ = false;
@@ -77,6 +78,19 @@ bool GraphInspector::select_node(const std::string &key) {
         }
     return false;
 }
+bool GraphInspector::select_canvas_node(cyui::ItemId id) {
+    if (!id)
+        return select_node("");
+    for (const auto &item : items_)
+        if (item.id == id) {
+            if (select_node(item.key))
+                return true;
+            set_filter("");
+            set_changed_only(false);
+            return select_node(item.key);
+        }
+    return false;
+}
 cyui::ItemId GraphInspector::selected_canvas_id() const {
     for (const auto &item : items_)
         if (item.key == selected_)
@@ -112,6 +126,7 @@ Json GraphInspector::view_state() const {
 }
 void GraphInspector::restore_view_state(const Json &state) {
     view_state::validate(state, "graph-inspection");
+    last_canvas_size_ = {};
     if (state.contains("filter"))
         filter_.query = state["filter"].get<std::string>();
     if (state.contains("changedOnly"))
@@ -167,6 +182,9 @@ void GraphInspector::draw(cyui::NodeState &state, const std::vector<cyui::Node> 
     }
     if (comparing_) {
         ImGui::SameLine();
+        cyui::ScopedDisabled no_changes(std::none_of(visible_.begin(), visible_.end(), [&](auto index) {
+            return items_[index].change != ChangeKind::unchanged;
+        }));
         if (cyui::iconButton(cyui::icon::undo, cyui::tr("Previous changed node").c_str()))
             next_change(true);
         ImGui::SameLine();
@@ -194,6 +212,13 @@ void GraphInspector::draw(cyui::NodeState &state, const std::vector<cyui::Node> 
         else
             canvas_size.y = available.y * .5f;
     }
+    if (!needs_fit && !focus_pending_ && last_canvas_size_.x > 0 && last_canvas_size_.y > 0) {
+        auto &v = state.canvas.view;
+        // Keep the viewed world center as inspector orientation and viewport dimensions change.
+        v.origin.x += (last_canvas_size_.x - canvas_size.x) / (2 * v.zoom);
+        v.origin.y += (last_canvas_size_.y - canvas_size.y) / (2 * v.zoom);
+    }
+    last_canvas_size_ = canvas_size;
     if (needs_fit && !nodes.empty()) {
         state.canvas.view.fit(low, high, canvas_size, cyui::dp(24));
         needs_fit = false;
@@ -222,12 +247,7 @@ void GraphInspector::draw(cyui::NodeState &state, const std::vector<cyui::Node> 
     cyui::nodeEditor("##inspection-canvas", state, nodes, links, canvas_size, options);
     const auto clicked = state.selection.empty() ? 0 : state.selection.back();
     if (clicked != selected) {
-        if (!clicked)
-            select_node("");
-        else
-            for (const auto &item : items_)
-                if (item.id == clicked)
-                    select_node(item.key);
+        select_canvas_node(clicked);
         focus_pending_ = false;
     }
     if (details) {

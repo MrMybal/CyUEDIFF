@@ -58,6 +58,19 @@ int main() {
              {{"filter", "Player"}, {"object", nullptr}, {"member", "0001"}, {"values", property}}}};
         view_state::validate(document);
         ++checks;
+        view_state::validate({{"inspectors",
+                               {{"Graph",
+                                 {{"filter", "Power"},
+                                  {"changedOnly", true},
+                                  {"selected", "node"},
+                                  {"properties", property}}}}},
+                              {"parameterFilters", {{"MI", {{"filter", "Power"}, {"changedOnly", true}}}}}},
+                             "graphs");
+        ++checks;
+        rejects({{"inspectors", {{"Graph", {{"selected", 1}}}}}}, "graphs");
+        rejects({{"inspectors", {{"Graph", {{"properties", {{"changedOnly", 1}}}}}}}}, "graphs");
+        rejects({{"parameterFilters", {{"MI", {{"filter", 1}}}}}}, "graphs");
+        rejects({{"changedOnly", 1}}, "mesh");
         rejects({{"codec", "x.dll"}}, "document");
         rejects({{"selected", 5}}, "asset");
         rejects({{"changedOnly", 1}}, "property");

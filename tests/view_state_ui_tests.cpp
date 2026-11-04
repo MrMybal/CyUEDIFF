@@ -17,6 +17,11 @@ int main() {
         io.DisplaySize = {1280, 800};
         io.DeltaTime = 1.f / 60;
         AssetView::register_translations();
+        cyui::setLocale("fr");
+        check(cyui::tr("Modified") == "Modifi\u00e9" && cyui::tr("After") == "Apr\u00e8s" &&
+                  cyui::tr("Material") == "Mat\u00e9riau" && cyui::tr("Node") == "N\u0153ud",
+              "French accents survive UTF-8 source edits");
+        cyui::setLocale("en");
         Json values = {{"Health", {{"type", "IntProperty"}, {"value", 42}}},
                        {"Mana", {{"type", "IntProperty"}, {"value", 7}}}};
         auto changed = values;
@@ -132,6 +137,30 @@ int main() {
         check(texture.set_difference({(ImTextureID)43, 2, 1}, diff), "Difference binding available");
         texture.restore_view_state(image_state);
         check(texture.view_state() == image_state, "Image transform and difference switch round trip");
+        ImageComparison focused_pixels = diff;
+        focused_pixels.changed_pixels = 1;
+        focused_pixels.changed_bounds = {1, 0, 1, 1};
+        check(texture.set_difference({(ImTextureID)43, 2, 1}, focused_pixels) && texture.focus_changes(),
+              "Changed pixel focus uses prepared bounds");
+        TextureView no_pixels;
+        no_pixels.set_source(source);
+        no_pixels.set_preview({(ImTextureID)42, 2, 1});
+        no_pixels.set_difference({(ImTextureID)43, 2, 1}, diff);
+        check(!no_pixels.focus_changes(), "Identical image cannot focus changes");
+        auto invalid_pixels = focused_pixels;
+        invalid_pixels.changed_bounds = {2, 0, 1, 1};
+        no_pixels.set_difference({(ImTextureID)43, 2, 1}, invalid_pixels);
+        check(!no_pixels.focus_changes(), "Out-of-range host-provided bounds are not applied");
+        HdrImageComparison hdr_pixels;
+        hdr_pixels.comparable = hdr_pixels.same_size = true;
+        hdr_pixels.before_width = hdr_pixels.after_width = 2;
+        hdr_pixels.before_height = hdr_pixels.after_height = 1;
+        hdr_pixels.changed_pixels = 1;
+        hdr_pixels.changed_bounds = {1, 0, 1, 1};
+        hdr_pixels.mean_absolute_error = .125;
+        hdr_pixels.max_sample_delta = .5;
+        check(no_pixels.set_difference({(ImTextureID)43, 2, 1}, hdr_pixels) && no_pixels.focus_changes(),
+              "HDR bridge retains bounds for navigation");
         auto mesh = std::make_shared<MeshGeometry>();
         mesh->vertices = {{0, {0, 0, 0}}, {1, {1, 0, 0}}, {2, {0, 1, 0}}};
         for (std::uint32_t i = 0; i < 3; ++i) {
@@ -361,7 +390,8 @@ int main() {
         check(focused_mesh.view_state()["target"][0].get<double>() < 2 &&
                   focused_mesh.view_state()["distance"].get<double>() < 10,
               "Fit changed geometry excludes distant unchanged geometry");
-        check(focused_mesh.view_state()["pitch"] == 0, "Fitting changes retains the selected camera orientation");
+        check(focused_mesh.view_state()["pitch"] == 0,
+              "Fitting changes retains the selected camera orientation");
         check(package->to_json() == original_package, "Restoring views never modifies package data");
         ImGui::DestroyContext();
         std::cout << checks << " view state UI checks passed\n"

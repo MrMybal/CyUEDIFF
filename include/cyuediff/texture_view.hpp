@@ -9,7 +9,7 @@ namespace cyuediff {
 class TextureView {
     TextureSource source_;
     cyui::ImageData image_, difference_;
-    bool show_difference_ = false;
+    bool show_difference_ = false, focus_changes_pending_ = false;
     std::optional<ImageComparison> comparison_;
     std::optional<double> hdr_delta_;
     cyui::ImageState state_;
@@ -21,6 +21,7 @@ class TextureView {
     void set_source(TextureSource source);
     bool set_preview(const cyui::ImageData &image);
     void clear_preview();
+    bool focus_changes();
     bool set_difference(const cyui::ImageData &, const ImageComparison &);
     bool set_difference(const cyui::ImageData &, const HdrImageComparison &);
     const std::string &object_path() const {

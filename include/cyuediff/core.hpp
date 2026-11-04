@@ -129,6 +129,11 @@ struct TextureDecodeOptions : BulkDecodeOptions {
     std::uint64_t max_pixels = 64ull * 1024 * 1024;
     std::uint64_t max_decoder_bytes = 512ull * 1024 * 1024;
 };
+// Half-open pixel region: [x,x+width) x [y,y+height). Zero size means no changed pixels.
+struct ImageChangeBounds {
+    std::uint32_t x = 0, y = 0, width = 0, height = 0;
+    Json to_json() const;
+};
 struct ImageComparison {
     bool comparable = false, same_size = false;
     std::uint32_t before_width = 0, before_height = 0, after_width = 0, after_height = 0;
@@ -137,6 +142,7 @@ struct ImageComparison {
     double mean_absolute_error = 0;
     std::uint8_t threshold = 0;
     ImageRgba8 heatmap;
+    ImageChangeBounds changed_bounds;
     Json to_json() const;
 };
 // LDR returns encoded RGBA8 samples. HDR uses the documented display tone map in hdr.hpp.

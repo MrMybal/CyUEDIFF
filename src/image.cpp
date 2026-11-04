@@ -1,3 +1,4 @@
+#include "image_bounds.hpp"
 #include "archive.hpp"
 #include <cyuediff/hdr.hpp>
 #include <climits>
@@ -246,6 +247,8 @@ ImageComparison compare_images(const ImageRgba8 &before, const ImageRgba8 &after
         result.max_channel_delta = std::max(result.max_channel_delta, maximum);
         if (maximum > threshold) {
             ++result.changed_pixels;
+            detail::include_changed_pixel(result.changed_bounds, static_cast<std::uint32_t>(i % before.width),
+                                          static_cast<std::uint32_t>(i / before.width));
             if (heatmap) {
                 result.heatmap.pixels[i * 4] = 255;
                 result.heatmap.pixels[i * 4 + 3] = 255;
@@ -254,6 +257,9 @@ ImageComparison compare_images(const ImageRgba8 &before, const ImageRgba8 &after
     }
     result.mean_absolute_error = static_cast<double>(sum) / (static_cast<double>(before_count) * 4.0);
     return result;
+}
+Json ImageChangeBounds::to_json() const {
+    return width && height ? Json{{"x", x}, {"y", y}, {"width", width}, {"height", height}} : Json(nullptr);
 }
 Json ImageComparison::to_json() const {
     return {{"schema", "cyuediff.image-diff/1"},
@@ -265,6 +271,7 @@ Json ImageComparison::to_json() const {
             {"after", {{"width", after_width}, {"height", after_height}}},
             {"threshold", threshold},
             {"changedPixels", comparable ? Json(changed_pixels) : Json(nullptr)},
+            {"changedBounds", comparable && changed_pixels ? changed_bounds.to_json() : Json(nullptr)},
             {"maxChannelDelta", comparable ? Json(max_channel_delta) : Json(nullptr)},
             {"meanAbsoluteError", comparable ? Json(mean_absolute_error) : Json(nullptr)}};
 }

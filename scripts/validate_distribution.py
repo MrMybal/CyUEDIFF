@@ -38,6 +38,9 @@ for name in ('LICENSE','THIRD_PARTY_NOTICES.md','licenses/nlohmann/LICENSE.MIT',
  if not (prefix/'share/CyUEDiff'/name).is_file():raise RuntimeError('Missing notice: '+name)
 for file in prefix.rglob('*.cmake'):
  if str(root).replace('\\','/') in file.read_text(encoding='utf-8').replace('\\','/'):raise RuntimeError('SDK exports a source checkout path')
+for header in (prefix/'include/cyuediff').glob('*.hpp'):
+ if '#include <cyui/' in header.read_text(encoding='utf-8'):raise RuntimeError('Core SDK contains UI-dependent header: '+header.name)
+
 env={key.upper() if os.name=='nt' else key:value for key,value in os.environ.items()}
 suffix='.exe' if os.name=='nt' else ''
 cli=prefix/'bin'/('cyuediff'+suffix)
@@ -296,6 +299,18 @@ if args.consumer:
   if native['value']!=expected or native['nativeLayout']!=token:raise RuntimeError('Installed native '+token+' consumer failed')
  print('Installed calendar/argument-data and native temporal/bounds SDK consumers validated')
 
+ image_build=target/'image-consumer'
+ configure=[cmake,'-S',str(root/'examples/image_consumer'),'-B',str(image_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(image_build),'--config','Release','--parallel','2'],check=True,env=env)
+ image_executable=image_build/'Release'/('image_consumer'+suffix) if os.name=='nt' else image_build/'image_consumer'
+ result=subprocess.run([str(image_executable)],capture_output=True,check=True,env=env,timeout=20)
+ image_data=json.loads(result.stdout)
+ for kind,bounds in (('ldr',{'x':1,'y':0,'width':1,'height':1}),('hdr',{'x':0,'y':1,'width':1,'height':1})):
+  if image_data[kind]['changedPixels']!=1 or image_data[kind]['changedBounds']!=bounds:raise RuntimeError('Installed '+kind+' changed bounds failed')
+ print('Installed independent LDR/HDR image SDK consumer validated')
+
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
   configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
@@ -310,5 +325,5 @@ if args.consumer:
 
 
 
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema consumers' if args.consumer else '')+' validated')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

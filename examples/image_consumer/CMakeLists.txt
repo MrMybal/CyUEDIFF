@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(CyUEDiffImageConsumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(image_consumer main.cpp)
+target_link_libraries(image_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(image_consumer PRIVATE /EHsc /utf-8)
+endif()
