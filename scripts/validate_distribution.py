@@ -46,7 +46,15 @@ result=subprocess.run([str(cli),'--help'],capture_output=True,check=True,env=env
 if b'CyUEDiff' not in result.stdout:raise RuntimeError('CLI did not start')
 desktop=prefix/'bin'/('cyuediff_desktop'+suffix)
 if desktop.is_file():
- subprocess.run([str(desktop),'--smoke'],check=True,env=env,timeout=45)
+ workspace_file=target/'workspace.json';workspace_report=target/'workspace-report.json'
+ subprocess.run([str(desktop),'--smoke','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
+ saved_workspace=json.loads(workspace_file.read_text(encoding='utf-8'))
+ assert saved_workspace['schema']=='cyuediff.workspace/1' and len(saved_workspace['documents'])==1
+ original_workspace=workspace_file.read_bytes()
+ subprocess.run([str(desktop),'--smoke','--workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
+ restored=json.loads(workspace_report.read_text(encoding='utf-8'))
+ assert restored['workspaceFile']['loaded'] and restored['document'] is None and workspace_file.read_bytes()==original_workspace
+ print('Extracted desktop workspace save/reopen validated')
  if not (prefix/'share/CyUEDiff/licenses/CyUI/LICENSE').is_file():raise RuntimeError('Missing CyUI license')
 if args.consumer:
  cmake=shutil.which('cmake')

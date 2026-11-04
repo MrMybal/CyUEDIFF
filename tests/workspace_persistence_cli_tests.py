@@ -66,13 +66,20 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
         retained=run('--container',pak,*actions('workspace-open:'+str(git_file)),code=2)
         assert len(retained['workspace']['documents'])==1 and retained['document']['container']['metadata']['kind']=='pak';checks+=1
         run('--workspace',git_file,code=2)
+    injected=json.loads(workspace.read_text(encoding='utf-8'))
+    injected['documents'][0]['settings']['codec']='unexpected.dll'
+    injected_file=root/'injected.json';injected_file.write_text(json.dumps(injected),encoding='utf-8')
+    retained=run('--container',pak,*actions('workspace-open:'+str(injected_file)),code=2)
+    assert len(retained['workspace']['documents'])==1 and retained['document']['container']['metadata']['kind']=='pak';checks+=1
+    draft=json.loads(workspace.read_text(encoding='utf-8'));draft['documents']=draft['documents'][1:2];draft['active']=0
+    draft['documents'][0]['settings']['container_path']='';draft_file=root/'draft.json';draft_file.write_text(json.dumps(draft),encoding='utf-8')
+    assert run('--workspace',draft_file)['document'] is None;checks+=1
     for path in [bad,root/'missing.json']:
         run('--workspace',path,code=2)
     run('--workspace',workspace,'--before',before,code=2)
     run('--workspace',workspace,'--new-document',code=2)
     run('--workspace',workspace,'--document-index','7',code=2)
-    p=subprocess.run([exe,'--save-workspace',str(copy)],env=env,capture_output=True,timeout=15)
-    assert p.returncode==2;checks+=1
+    run('--save-workspace',root/'unexpected.txt',code=2)
     before_hash=hashlib.sha256(before.read_bytes()).hexdigest()
     for input_path in [before,schema/'schema.json',schema/'test.usmap',schema/'global.ucas',root/'pak/test_s1.ucas']:
         digest=hashlib.sha256(input_path.read_bytes()).hexdigest();alias=root/'alias.json';alias.unlink(missing_ok=True);os.link(input_path,alias)
@@ -98,7 +105,13 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
         gws=root/'history.json'
         a=run('--save-workspace',gws,'--repo',repo,'--before-revision',old,'--after-revision',new,'--before','Content/A.uasset','--no-previews')
         b=run('--workspace',gws)
-        assert a['document']==b['document'] and b['document']['diff']['status']=='changed';checks+=1
+        # Materialized package directories are owned by each process and deliberately differ.
+        for result in (a,b):
+            for side in ('before','after'):
+                assert Path(result['document'][side].pop('source')).name=='A.uasset'
+        assert a['document']==b['document'] and b['document']['diff']['status']=='changed'
+        assert b['document']['git']['before']['commit']==old and b['document']['git']['after']['commit']==new
+        checks+=1
         files={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in repo.rglob('*') if p.is_file()}
         run('--workspace',gws,'--save-workspace',repo/'.git/blocked.json',code=2)
         assert not (repo/'.git/blocked.json').exists() and all(hashlib.sha256(p.read_bytes()).hexdigest()==h for p,h in files.items());checks+=1

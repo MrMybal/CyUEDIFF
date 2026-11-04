@@ -2,6 +2,7 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <limits>
 using namespace cyuediff;
 using namespace cyuediff::desktop;
 namespace {
@@ -110,7 +111,8 @@ int main() {
         write(path, relative.dump());
         auto mounted = read_workspace(path);
         check(mounted.documents[0].settings.before == "/Game/Example", "Mounted package stays mounted");
-        check(mounted.documents[0].settings.project == (root / "Project/Game.uproject").lexically_normal().u8string(),
+        check(mounted.documents[0].settings.project ==
+                  (root / "Project/Game.uproject").lexically_normal().u8string(),
               "Relative stored paths resolve against file parent");
         auto invalid = [&](const std::string &bad) {
             write(path, bad);
@@ -165,6 +167,18 @@ int main() {
         invalid(bad.dump());
         bad = relative;
         bad["documents"][0]["containerTab"] = -2;
+        invalid(bad.dump());
+        bad = relative;
+        bad["active"] = std::numeric_limits<std::uint64_t>::max();
+        invalid(bad.dump());
+        bad = relative;
+        bad["documents"][0]["settings"]["source"] = -1;
+        invalid(bad.dump());
+        bad = relative;
+        bad["documents"][0]["settings"]["cooked_profile"] = 3;
+        invalid(bad.dump());
+        bad = relative;
+        bad["documents"][0]["cookedView"] = "unsupported";
         invalid(bad.dump());
         invalid("{\"bad\":\"" + std::string(1, char(0xff)) + "\"}");
         rejects([&] { read_workspace(root / "missing.json"); });
