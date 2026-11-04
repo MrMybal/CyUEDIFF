@@ -1,4 +1,5 @@
 #include "../src/native.hpp"
+#include "text_format_fixture.hpp"
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -89,7 +90,9 @@ Package package() {
     }
     return p;
 }
-Bytes payload(int owner, unsigned pin, int peer, unsigned peer_pin, bool map = false) {
+Bytes payload(int owner, unsigned pin, int peer, unsigned peer_pin, bool map = false,
+              const cyuediff::test::Bytes *friendly = nullptr,
+              const cyuediff::test::Bytes *defaultText = nullptr) {
     Bytes b;
     b.i(0);
     b.i(1);
@@ -97,12 +100,17 @@ Bytes payload(int owner, unsigned pin, int peer, unsigned peer_pin, bool map = f
     b.i(owner);
     b.guid(pin);
     b.name(1);
-    b.i(0);
-    b.friendly_history = b.data.size();
-    b.put<std::int8_t>(0);
-    b.string("Tests");
-    b.string("FriendlyName");
-    b.string("Execute");
+    if (friendly) {
+        b.friendly_history = b.data.size() + 4;
+        b.data.insert(b.data.end(), friendly->data.begin(), friendly->data.end());
+    } else {
+        b.i(0);
+        b.friendly_history = b.data.size();
+        b.put<std::int8_t>(0);
+        b.string("Tests");
+        b.string("FriendlyName");
+        b.string("Execute");
+    }
     b.i(-1);
     b.string("Pin tooltip");
     b.direction = b.data.size();
@@ -130,7 +138,10 @@ Bytes payload(int owner, unsigned pin, int peer, unsigned peer_pin, bool map = f
     b.string("7");
     b.string("0");
     b.i(0);
-    b.empty_text();
+    if (defaultText)
+        b.data.insert(b.data.end(), defaultText->data.begin(), defaultText->data.end());
+    else
+        b.empty_text();
     b.i(1);
     b.ref(peer, peer_pin);
     b.i(0);
@@ -230,6 +241,53 @@ int main() {
         ordinary.exports.push_back(data);
         check(ordinary.blueprint_snapshot().at("graphs").size() == 1,
               "Ordinary GraphGuid property is not a Blueprint graph");
+        for (const auto &text : std::vector<cyuediff::test::Bytes>{
+                 cyuediff::test::transform_text_value(), cyuediff::test::format_text_payload("data"),
+                 cyuediff::test::calendar_text_value(), cyuediff::test::numeric_text_value(6),
+                 cyuediff::test::generator_text_value(3)}) {
+            auto data = decode(payload(2, 1, 3, 2, false, &text, &text), 1).data;
+            const auto &pin = data["pins"][guid(1)];
+            check(pin["friendlyName"] == pin["defaultText"] && pin["defaultValue"] == "7",
+                  "Shared bounded reader preserves formatted friendly/default text and following pin fields");
+            auto before = p, after = p;
+            before.exports[1].native_data = data;
+            auto edited = text;
+            if (text.data[4] == 12)
+                edited.data.back() ^= 1;
+            else
+                edited.data[0] ^= 1;
+            after.exports[1].native_data = decode(payload(2, 1, 3, 2, false, &text, &edited), 1).data;
+            const auto difference = compare(before, after);
+            check(std::any_of(difference.graph_changes.begin(), difference.graph_changes.end(),
+                              [&](const Json &c) {
+                                  return c["path"].get<std::string>().find(
+                                             "/pins/" + guid(1) + "/defaultText/") != std::string::npos;
+                              }),
+                  "Structured pin text changes retain stable node and pin identities");
+            for (std::size_t n = 0; n < text.data.size(); ++n) {
+                auto cut = text;
+                cut.data.resize(n);
+                // The explicit native end proves the text cannot read bytes from following pin fields.
+                auto wire = payload(2, 1, 3, 2, false, &cut);
+                error([&] { decode(wire, 1, wire.friendly_history - 4 + n); }, "bounds");
+            }
+        }
+        auto broken = cyuediff::test::format_text_payload("duplicate");
+        error([&] { decode(payload(2, 1, 3, 2, false, &broken), 1); }, "pin-text-identity");
+        auto recursive = cyuediff::test::text_value();
+        for (int i = 0; i < 8; ++i)
+            recursive = cyuediff::test::transform_text_value(recursive);
+        auto savedOptions = options;
+        options.max_depth = 3;
+        error([&] { decode(payload(2, 1, 3, 2, false, &recursive), 1); }, "limit");
+        options = savedOptions;
+        options.max_properties = 10;
+        error([&] { decode(payload(2, 1, 3, 2, false, &recursive), 1); }, "limit");
+        options = savedOptions;
+        unsigned polls = 0;
+        options.control.cancelled = [&] { return ++polls > 25; };
+        error([&] { decode(payload(2, 1, 3, 2, false, &recursive), 1); }, "cancelled");
+        options = savedOptions;
         auto map = decode(payload(2, 1, 3, 2, true), 1);
         check(map.data.at("pins").at(guid(1)).at("type").at("valueType").at("category") == "int",
               "Map terminal type");
@@ -240,7 +298,7 @@ int main() {
         bad.data[bad.direction] = 2;
         error([&] { decode(bad, 1); }, "pin-direction");
         bad = a;
-        bad.data[bad.friendly_history] = 4;
+        bad.data[bad.friendly_history] = 42;
         error([&] { decode(bad, 1); }, "pin-text-history");
         bad = a;
         bad.patch(12, 3);

@@ -1,4 +1,5 @@
 #include "native.hpp"
+#include "archive_text.hpp"
 #include <set>
 namespace cyuediff::detail {
 namespace {
@@ -19,7 +20,8 @@ class PinReader {
     const Package &p;
     const ReadOptions &options;
     std::size_t owner;
-    std::uint32_t references = 0;
+    std::uint32_t references = 0, text_nodes = 0;
+    std::uint64_t text_blob_bytes = 0;
     bool editor;
 
   public:
@@ -38,20 +40,9 @@ class PinReader {
         return p.names[index] + (number ? "_" + std::to_string(number - 1) : "");
     }
     Json text() {
-        auto flags = a.get<std::uint32_t>();
-        auto history = a.get<std::int8_t>();
-        Json result = {{"flags", flags}, {"history", history}};
-        if (history == -1) {
-            result["source"] = "";
-            if (version(p, editor_id) >= 32 && boolean())
-                result["source"] = a.string();
-        } else if (history == 0) {
-            result["namespace"] = a.string();
-            result["key"] = a.string();
-            result["source"] = a.string();
-        } else
-            throw Error("pin-text-history", "Unsupported FText history in pin", a.tell() - 1);
-        return result;
+        return read_archive_text(
+            a, p.summary, options, 0, text_nodes, text_blob_bytes, [&] { return name(); }, "pin-text-history",
+            "pin-text-value", "pin-text-identity");
     }
     Json reference() {
         if (++references > options.max_properties)
