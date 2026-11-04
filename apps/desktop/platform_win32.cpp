@@ -119,20 +119,22 @@ LRESULT CALLBACK NativeWindow::procedure(HWND window, UINT message, WPARAM wpara
         return 0;
     return DefWindowProcW(window, message, wparam, lparam);
 }
-std::optional<fs::path> NativeWindow::choose_file(bool project) {
+std::optional<fs::path> NativeWindow::choose_file(bool project, bool container) {
     std::vector<wchar_t> buffer(32768, 0);
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = handle;
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
-    auto filter =
-        wide(cyui::tr(project ? "Unreal project (*.uproject)" : "Unreal package (*.uasset;*.umap)"));
+    auto filter = wide(
+        cyui::tr(container ? "Unreal container (*.pak;*.utoc)"
+                           : (project ? "Unreal project (*.uproject)" : "Unreal package (*.uasset;*.umap)")));
     filter.push_back(L'\0');
-    filter += project ? L"*.uproject" : L"*.uasset;*.umap";
+    filter += container ? L"*.pak;*.utoc" : (project ? L"*.uproject" : L"*.uasset;*.umap");
     filter.append(2, L'\0');
     dialog.lpstrFilter = filter.c_str();
-    auto title = wide(cyui::tr(project ? "Choose project" : "Choose package"));
+    auto title =
+        wide(cyui::tr(container ? "Choose container" : (project ? "Choose project" : "Choose package")));
     dialog.lpstrTitle = title.c_str();
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_DONTADDTORECENT;
     if (GetOpenFileNameW(&dialog))

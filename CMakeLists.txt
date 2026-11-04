@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.25.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.26.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -97,7 +97,7 @@ if(CYUEDIFF_BUILD_DESKTOP)
         target_link_libraries(cyuediff_desktop_model PUBLIC CyUEDiff::Git)
         target_compile_definitions(cyuediff_desktop_model PUBLIC CYUEDIFF_HAS_GIT=1)
     endif()
-    add_executable(cyuediff_desktop WIN32 apps/desktop/main.cpp apps/desktop/platform_win32.cpp
+    add_executable(cyuediff_desktop WIN32 apps/desktop/main.cpp apps/desktop/platform_win32.cpp apps/desktop/container_view.cpp
         "${CYUEDIFF_IMGUI_BACKENDS_DIR}/imgui_impl_win32.cpp"
         "${CYUEDIFF_IMGUI_BACKENDS_DIR}/imgui_impl_dx11.cpp")
     if(CYUEDIFF_BUILD_GIT)
@@ -201,6 +201,16 @@ if(BUILD_TESTING)
         endif()
     endif()
     if(CYUEDIFF_BUILD_DESKTOP)
+        if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_container_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/container_desktop_cli_tests.py"
+                "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_container_tests>" "$<TARGET_FILE:cyuediff_zen_tests>")
+            set_tests_properties(desktop_container_cli PROPERTIES TIMEOUT 90)
+        endif()
+        add_executable(cyuediff_container_view_tests tests/container_view_tests.cpp apps/desktop/container_view.cpp)
+        target_link_libraries(cyuediff_container_view_tests PRIVATE cyuediff_desktop_model CyUEDiff::UI)
+        add_test(NAME desktop_container_view COMMAND cyuediff_container_view_tests)
         add_executable(cyuediff_desktop_container_tests tests/desktop_container_tests.cpp)
         target_link_libraries(cyuediff_desktop_container_tests PRIVATE cyuediff_desktop_model)
         add_test(NAME desktop_container_model COMMAND cyuediff_desktop_container_tests)

@@ -7,7 +7,11 @@
 namespace cyuediff {
 BlockDecoder load_block_decoder(const fs::path &module) {
 #ifdef _WIN32
-    auto path = fs::canonical(module);
+    std::error_code error;
+    auto path = fs::canonical(module, error);
+    if (error)
+        throw Error("codec-load", "Cannot resolve codec module path (filesystem error " +
+                                      std::to_string(error.value()) + ")");
     auto handle = LoadLibraryExW(path.c_str(), nullptr,
                                  LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!handle)

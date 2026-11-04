@@ -22,7 +22,7 @@ class NativeWindow {
     NativeWindow(const NativeWindow &) = delete;
     NativeWindow &operator=(const NativeWindow &) = delete;
     bool pump();
-    std::optional<fs::path> choose_file(bool project = false);
+    std::optional<fs::path> choose_file(bool project = false, bool container = false);
 };
 class Renderer {
     ComPtr<ID3D11Device> device_;

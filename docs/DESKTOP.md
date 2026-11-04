@@ -1,4 +1,4 @@
-# Desktop application — 0.24
+# Desktop application — 0.26
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -115,3 +115,21 @@ build-native/Release/cyuediff_desktop.exe --repo D:/Projects/Game --history --hi
 History runs on a separate worker. Refresh/page requests cancel earlier work, retain at most one pending request and publish only the latest result. Closing the dialog cancels active reading. Errors retain the previous page with selection actions disabled. The dialog, search and actions are available in English and French with all five themes. Builds without the Git adapter omit the controls and reject history launch requests. No checkout, fetch or history mutation occurs. Shallow repositories expose only their locally available ancestry.
 
 Hidden validation accepts `--history-filter TEXT` and, with `--smoke --history`, `--history-before ID --history-after ID --history-compare`. Both IDs must be visible on the loaded page; the latter flag exercises the same selection-to-comparison action used by the dialog. History metadata and current selection are included in the smoke JSON report. Capture, report and preference outputs retain the active history repository's Git-storage protection.
+
+## Pak/IoStore browser — 0.26
+
+Select **Containers**, or **File → Open container...**, and choose a supported `.pak` or `.utoc`. **Index container** lists virtual paths/chunk IDs, decoded sizes, chunk types and live/deleted/encrypted state. Search matches paths and IDs; **Zen packages only** restricts IoStore rows to export-bundle chunks. The table clips off-screen rows. Indexing reads metadata and does not load a codec or decode member payloads.
+
+Select a live member and choose **Inspect selected member** to read decoded bytes, their SHA-256 and a hex prefix limited to 64 bytes. Member names never become extraction destinations; no package is written to disk. For an IoStore export bundle, choose **UE 5.3** or **UE 5.5** explicitly. An optional **Global script TOC** resolves script classes/references from its unique type-5 chunk. **Codec module** accepts an explicit host-provided decoder; it loads only for a member read. No engine or codec is discovered or launched automatically.
+
+The **Cooked objects** tab shows exports by name, with full-path tooltips and a typed inspector for class, references, offsets, sizes and body fingerprints. **Container diagnostics** exposes format/verification limitations. This desktop path currently inspects Zen object tables and opaque bodies; it does not bind USMAP mappings, reconstruct defaults, interpret Pak-contained packages, or render cooked Blueprints, textures or meshes. Explicit mapped reads remain available in the Core/CLI. The selected engine layout never implies unsupported native payload coverage.
+
+```powershell
+build-native/Release/cyuediff_desktop.exe --container D:/Build/Content.pak
+build-native/Release/cyuediff_desktop.exe --container D:/Build/Content.utoc --container-filter BP_Player
+build-native/Release/cyuediff_desktop.exe --container D:/Build/Content.utoc --container-entry CHUNK_ID --cooked-profile ue5.3 --script-objects D:/Build/global.utoc --codec D:/Host/cyuediff_oodle.dll
+```
+
+Requests use the same cancellable background document worker as loose/Git assets. A new request reopens current indexes; no previous index is reused to read changed source files. One request waits at most, and stale results cannot publish. A failed inspection retains the previous document. All physical container partitions, global-script sources and the explicit codec path are protected against overlapping capture/report/preference outputs. No path is persisted in user preferences. Containers also work in builds without Git.
+
+Desktop limits are 100,000 indexed entries, a 64 MiB index, 64 MiB per decoded member/global-script chunk, 16 MiB Zen headers and 16 MiB Zen text. The Core has separate configurable limits. Hidden `--smoke` reports include `document.container` with summary/inspection/Zen data and `containerView` with visible rows, selected member/object and active tab. Full member tables are not duplicated in the report.

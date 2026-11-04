@@ -224,3 +224,11 @@ Distribution validation additionally compiles and runs the installed Git SDK his
 ## 0.25 milestone: desktop container model
 
 Windows Release passes 37 suites. New model checks cover metadata-only index reads without codec loading, decoded SHA-256 and bounded hex prefixes, missing/deleted members, payload limits, cancellation, explicit Zen profiles, global script class resolution, source protection and re-reading a modified source. The existing `DocumentSession` owns these requests, preserving its tested cancellation and stale-result behavior. Core checks verify summary/full metadata parity without constructing entry JSON in the summary.
+
+## 0.26 milestone: native container browsing
+
+Windows Release passes 39 suites and 1,662 checks, with 120 renderer-free UI frames (30 asset, 30 history and 60 container frames). Core without Git/UI/Desktop/Oodle passes 22 suites; desktop without Git passes 31. Container additions include 22 model checks, 35 native CLI checks and two Core summary checks. Coverage includes Unicode product paths, search/selection filtering, explicit profile refusal, Pak bytes, partitioned IoStore reads, Zen/CLI parity, script classes, bounded prefixes, missing/deleted members, invalid options and report aliases to a Pak, a secondary UCAS partition and global-script UCAS. Codec-resolution failures now produce stable English errors instead of localized filesystem bytes that could break JSON reports.
+
+Ten native container captures check all five themes in English and French; representative captures in each theme were inspected. The host-owned CyTrace corpus adds native views of its Pak and 4,695-member IoStore (3,626 named members, 3,507 Zen package chunks). The selected `BP_CyTrace_Demo_DirectionalTraces` package has 12 exports and matches the CLI report exactly with the explicit UE 5.3 profile, global script objects and local Oodle adapter. Source Pak/TOC/UCAS and codec hashes remain unchanged. Reports and captures remain in ignored build directories. This does not add real USMAP or native cooked-payload coverage.
+
+The extracted distribution and its four Core SDK consumers plus Git history consumer are checked again; the container consumer exercises the new summary API through the installed library. No source project assets or codec modules are included in the archive.
