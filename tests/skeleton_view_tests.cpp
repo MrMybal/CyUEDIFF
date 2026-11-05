@@ -127,6 +127,60 @@ int main() {
         bounded.set_models(&far, nullptr, false);
         check(bounded.visible_joint_count() == 2,
               "Coordinates beyond display camera range stay unavailable in preview only");
+        ReferencePose unknown;
+        unknown.object_path = "Missing source";
+        moves.set_models(&display_pose, &unknown, true);
+        check(moves.joint_difference("arm")->at("kind") == "unavailable",
+              "Unread opposite pose is not colored as a removed joint");
+        moves.set_models(nullptr, &display_pose, true);
+        check(moves.joint_difference("arm")->at("kind") == "added",
+              "Known absent asset side still shows added joints");
+        auto retarget_before = retarget_model(), retarget_after = retarget_before;
+        retarget_after.exports[0]
+            .native_data["retargeting"]["sources"]["A~/pose"]["localPoses"][1]["translation"][0] = 17.;
+        SkeletonView retarget_view, retarget_stale, retarget_unbound;
+        retarget_view.set_packages(&retarget_before, &retarget_after);
+        retarget_view.set_pose_preview(true);
+        check(retarget_view.select_retarget_sources("A~/pose", "A~/pose") && retarget_view.select_bone("arm"),
+              "Select independent named sources and exact bone");
+        check(retarget_view.displayed_pose().to_json()["joints"]["arm"]["position"][0] == 15. &&
+                  retarget_view.displayed_pose(true).to_json()["joints"]["arm"]["position"][0] == 17.,
+              "Displayed poses use chosen local values");
+        auto retarget_state = retarget_view.view_state();
+        retarget_state["poseCamera"] = {
+            {"target", {10., 10., 0.}}, {"up", {0., 0., 1.}}, {"yaw", .7}, {"pitch", .35}, {"distance", 60.}};
+        retarget_view.restore_view_state(retarget_state);
+        check(retarget_view.view_state() == retarget_state, "Retarget selection and pose camera round trip");
+        auto invalid_source = retarget_state;
+        invalid_source["afterRetargetSource"] = 42;
+        rejected = false;
+        try {
+            retarget_view.restore_view_state(invalid_source);
+        } catch (const Error &) {
+            rejected = true;
+        }
+        check(rejected && retarget_view.view_state() == retarget_state,
+              "Invalid saved source type rejects atomically");
+        check(retarget_view.select_retarget_sources("A~/pose", "") &&
+                  retarget_view.displayed_pose(true).retarget_source.empty() &&
+                  retarget_view.displayed_pose(true).to_json()["joints"]["arm"]["position"][0] == 10.,
+              "Independent raw-after choice");
+        retarget_view.restore_view_state(retarget_state);
+        auto deleted = retarget_after;
+        deleted.exports[0].native_data["retargeting"]["sources"].erase("A~/pose");
+        retarget_stale.set_packages(&retarget_before, &deleted);
+        retarget_stale.restore_view_state(retarget_state);
+        check(retarget_stale.view_state()["afterRetargetSource"] == "A~/pose" &&
+                  !retarget_stale.displayed_pose(true).complete &&
+                  retarget_stale.displayed_pose(true).joints.empty(),
+              "Deleted saved source remains selected and unavailable");
+        auto unbound = retarget_before;
+        unbound.exports[0].native_data["retargeting"]["sources"]["A~/pose"]["localPoses"].erase(2);
+        retarget_unbound.set_packages(&unbound);
+        retarget_unbound.set_pose_preview(true);
+        retarget_unbound.select_retarget_sources("A~/pose", "");
+        check(!retarget_unbound.displayed_pose().complete && retarget_unbound.displayed_pose().joints.empty(),
+              "Unbound source never displays raw substitutes");
         for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
             cyui::Config config;
             config.themeKey = theme;
@@ -137,7 +191,7 @@ int main() {
             io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
             for (const auto *locale : {"en", "fr"})
                 for (int width : {1200, 640})
-                    for (int scene = 0; scene < 7; ++scene)
+                    for (int scene = 0; scene < 10; ++scene)
                         for (int n = 0; n < 2; ++n) {
                             cyui::setLocale(locale);
                             io.DisplaySize = {float(width), 850};
@@ -159,6 +213,12 @@ int main() {
                                 pose_view.draw();
                             if (scene == 6)
                                 pose_missing.draw();
+                            if (scene == 7)
+                                retarget_view.draw();
+                            if (scene == 8)
+                                retarget_stale.draw();
+                            if (scene == 9)
+                                retarget_unbound.draw();
                             ImGui::End();
                             ImGui::Render();
                             ++frames;

@@ -53,12 +53,16 @@ void ReferencePoseViewport::set_models(const ReferencePose *before, const Refere
     copy(after, after_);
     // Classification is derived from the Core position comparison, separate from stored graph outlines.
     ReferencePose a, b;
+    a.complete = !before;
+    b.complete = !after; // Absent asset sides are known empty; unread selected sources are not.
     if (before) {
         a.object_path = before->object_path;
+        a.retarget_source = before->retarget_source;
         a.complete = before->complete;
     }
     if (after) {
         b.object_path = after->object_path;
+        b.retarget_source = after->retarget_source;
         b.complete = after->complete;
     }
     for (const auto &joint : before_)

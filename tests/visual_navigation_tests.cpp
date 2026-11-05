@@ -213,12 +213,26 @@ int main(int argc, char **argv) {
             reference_unavailable.set_pose_preview(true);
             reference_added.set_packages(nullptr, &pose_after, true);
             reference_added.set_pose_preview(true);
+            auto retarget_before = cyuediff::test::retarget_model(), retarget_after = retarget_before;
+            retarget_after.exports[0].native_data["retargeting"]["sources"]["A~/pose"]["localPoses"][0]
+                                                 ["translation"] = {0., 0., 5.};
+            SkeletonView retarget_view, retarget_missing;
+            retarget_view.set_packages(&retarget_before, &retarget_after);
+            retarget_view.set_pose_preview(true);
+            retarget_view.select_retarget_sources("A~/pose", "A~/pose");
+            retarget_view.select_bone("arm");
+            auto removed_source = retarget_after;
+            removed_source.exports[0].native_data["retargeting"]["sources"].erase("A~/pose");
+            retarget_missing.set_packages(&retarget_before, &removed_source);
+            retarget_missing.set_pose_preview(true);
+            retarget_missing.select_retarget_sources("A~/pose", "A~/pose");
+            retarget_missing.select_bone("arm");
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 18; ++scene) {
+                    for (int scene = 0; scene < 21; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -236,7 +250,10 @@ int main(int argc, char **argv) {
                                                "reference-pose",
                                                "reference-narrow",
                                                "reference-unavailable",
-                                               "reference-added"};
+                                               "reference-added",
+                                               "retarget",
+                                               "retarget-narrow",
+                                               "retarget-missing"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -245,9 +262,10 @@ int main(int argc, char **argv) {
                             }
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
-                            ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 || scene == 15)
-                                                         ? ImVec2{640, io.DisplaySize.y}
-                                                         : io.DisplaySize);
+                            ImGui::SetNextWindowSize(
+                                (scene == 7 || scene == 10 || scene == 13 || scene == 15 || scene == 19)
+                                    ? ImVec2{640, io.DisplaySize.y}
+                                    : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
@@ -285,6 +303,13 @@ int main(int argc, char **argv) {
                                 break;
                             case 11:
                                 collision_incomplete.draw();
+                                break;
+                            case 18:
+                            case 19:
+                                retarget_view.draw();
+                                break;
+                            case 20:
+                                retarget_missing.draw();
                                 break;
                             case 14:
                             case 15:
@@ -335,6 +360,12 @@ int main(int argc, char **argv) {
                             check(x > 100 && x < 540,
                                   "Narrow skeleton view keeps the restored selected bone visible");
                         }
+                        if (scene == 18 || scene == 19)
+                            check(retarget_view.rendered_pose_joints() == 6,
+                                  "Selected retarget sources render independent poses");
+                        if (scene == 20)
+                            check(retarget_missing.rendered_pose_joints() == 3,
+                                  "Deleted source does not display raw replacements");
                         if (scene == 14 || scene == 15)
                             check(reference_pose_view.rendered_pose_joints() == 6,
                                   "Both native pose panes render all ready joints");
@@ -354,6 +385,7 @@ int main(int argc, char **argv) {
             saved["parameters"] = parameters.view_state();
             saved["collisions"] = collision.view_state();
             saved["skeleton"] = skeleton.view_state();
+            saved["retarget"] = retarget_view.view_state();
             saved["referencePose"] = reference_pose_view.view_state();
             saved["mesh"] = changed_mesh.view_state();
             saved["texture"] = texture.view_state();

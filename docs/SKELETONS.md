@@ -83,3 +83,23 @@ ReferencePoseOptions can select an exact retarget-source key; the empty selectio
 ## Retarget pose CLI selection and installed SDK contracts - 0.96
 
 skeleton-pose accepts --retarget-source, while skeleton-pose-diff accepts independent --before-retarget-source and --after-retarget-source. An omitted after source inherits the before source; an explicitly empty after source selects raw transforms. JSON reports retain selection identities, and incomplete source correspondence keeps exit code 2 for comparisons. CLI regressions cover source keys versus display labels, sibling/source-map reordering, position tolerance, bad flag/selection cases and source/companion/hard-link output protection. The installed independent Core consumer demonstrates a named source and comparison against raw transforms. The retarget CLI suite passes 25 checks.
+
+## Independent CyUI retarget-source review and saved selections - 0.97
+
+The Skeleton pose preview offers independent before/after stored retarget-source selectors and an explicit raw-reference choice. Owned joint positions are prepared once while binding, with aggregate Core bounds; draw calls perform no decoding or pose composition. Typed bone details use the selected source values. Missing/deleted source keys remain selected and unavailable after workspace restore, without displaying raw replacements; count mismatches remain unbound. Source choices, exact bone selection, shared camera and property state survive explicit workspace save/reopen, with English/French labels and all five themes.
+
+## Retarget source contracts
+
+The optional native continuation applies to exact Skeleton exports after their checked raw reference prefix. It stores the source-map key, PoseName, ordered local transforms, the editor source mesh reference when serialized, and the distinct Skeleton GUID. The AnimPhys transition at version 15 changes a stored object reference into a soft path. Supported nonempty tables require an explicit AnimPhys version in 0–17, together with the existing checked package profiles. Empty tables do not need a source-reference layout that they never use. Filtered source-reference omission has archive-prefix fixture coverage. Remaining SmartName, marker and other bytes stay opaque.
+
+native_skeleton_retargeting can disable only this continuation; native_skeletons still controls the underlying hierarchy reader. The cache separates those profiles. Failure to decode the continuation keeps the checked raw hierarchy available, resets to its boundary and fingerprints the complete remaining suffix. A corrupt source table cannot supply a partial retarget model. This is separate from a structurally valid table whose transform count differs from the raw bone count: its values are kept as an explicitly unbound ordered array.
+
+Only equal transform/raw-bone counts receive named correspondence. The reader does not rebuild virtual bones, repair stale retarget records, synthesize default transforms, load a referenced mesh or execute a retargeting algorithm. PoseName is a stored label, not the source-map identity. Native references are retained as data.
+
+    cyuediff skeleton-pose Skeleton.uasset --retarget-source T_Pose
+    cyuediff skeleton-pose-diff before.uasset after.uasset --before-retarget-source T_Pose
+    cyuediff skeleton-pose-diff before.uasset after.uasset --before-retarget-source T_Pose --after-retarget-source A_Pose
+
+ReferencePoseOptions.retarget_source is the exact source key; an empty value selects the stored raw pose. ReferencePoseDiffOptions.after_retarget_source is optional: absent inherits the before selection, while an explicit empty string selects raw after. JSON retains both selections. Missing keys fail explicitly, while unavailable tables and unbound counts yield incomplete empty poses. Neither case silently substitutes raw values. If one pose is unread, unmatched joints report unavailable rather than an invented removal. Known absent asset sides may still display additions/removals.
+
+These are affine positions computed from the selected stored local transforms in the existing raw-reference-affine display space. They do not evaluate runtime retargeting, animation or skinning. Three local engine Skeleton assets currently verify empty source tables and their GUIDs; nonempty tables are independently encoded fixtures, rather than a claimed real nonempty retarget corpus.

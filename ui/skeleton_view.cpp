@@ -21,11 +21,14 @@ void SkeletonView::bind() {
     complete_ = (!a || a->at("complete").get<bool>()) && (!b || b->at("complete").get<bool>()) &&
                 (comparing_ ? a && b : a || b);
     metadata_.set_values(a, b, comparing_);
-    const auto pose_a = poses_before_.find(object_), pose_b = poses_after_.find(object_);
-    pose_view_.set_models(pose_a == poses_before_.end() ? nullptr : &pose_a->second,
-                          pose_b == poses_after_.end() ? nullptr : &pose_b->second, comparing_);
-    pose_selection_.clear();
-    pose_details_.set_values(nullptr, nullptr, comparing_);
+    std::set<std::string> sources;
+    for (const auto *object : {a, b})
+        if (object)
+            for (auto it = object->at("retargeting").at("sources").begin();
+                 it != object->at("retargeting").at("sources").end(); ++it)
+                sources.insert(it.key());
+    retarget_sources_.assign(sources.begin(), sources.end());
+    bind_pose();
     const auto *bones_a = a ? &a->at("bones") : nullptr, *bones_b = b ? &b->at("bones") : nullptr;
     auto value = [](const Json *model, const std::string &key) -> const Json * {
         if (!model)
@@ -109,18 +112,33 @@ void SkeletonView::set_packages(const Package *before, const Package *after, boo
     poses_before_.clear();
     poses_after_.clear();
     pose_preview_ = false;
+    source_before_.clear();
+    source_after_.clear();
     auto prepare = [&](Json &model, auto &poses, bool complete_input) {
         if (model.is_null())
             return;
         for (auto it = model["skeletons"].begin(); it != model["skeletons"].end(); ++it) {
-            try {
-                poses[it.key()] = detail::compose_reference_pose(*it, it.key(), complete_input, {});
-            } catch (const Error &error) {
-                ReferencePose unavailable;
-                unavailable.object_path = it.key();
-                unavailable.diagnostics.push_back(error.what());
-                poses[it.key()] = std::move(unavailable);
-            }
+            auto compose = [&](const std::string &source) {
+                ReferencePoseOptions pose_options;
+                pose_options.retarget_source = source;
+                try {
+                    poses[{it.key(), source}] =
+                        detail::compose_reference_pose(*it, it.key(), complete_input, pose_options);
+                } catch (const Error &error) {
+                    ReferencePose unavailable;
+                    unavailable.object_path = it.key();
+                    unavailable.retarget_source = source;
+                    unavailable.diagnostics.push_back(error.what());
+                    poses[{it.key(), source}] = std::move(unavailable);
+                }
+            };
+            compose("");
+            for (auto source = (*it)["retargeting"]["sources"].begin();
+                 source != (*it)["retargeting"]["sources"].end(); ++source)
+                compose(source.key());
+            for (auto &source : (*it)["retargeting"]["sources"])
+                for (auto &bone : source["bones"])
+                    bone.erase("sourceIndex");
             // Stored-node outlines stay independent of source array order and derived display positions.
             for (auto &bone : (*it)["bones"])
                 bone.erase("sourceIndex");
@@ -142,8 +160,39 @@ bool SkeletonView::select_object(const std::string &path) {
     if (!path.empty() && std::find(objects_.begin(), objects_.end(), path) == objects_.end())
         return false;
     object_ = path;
+    source_before_.clear();
+    source_after_.clear();
     bind();
     return true;
+}
+void SkeletonView::bind_pose() {
+    auto find = [&](const auto &poses, const std::string &source) {
+        const auto pose = poses.find({object_, source});
+        if (pose != poses.end())
+            return pose->second;
+        ReferencePose unavailable;
+        unavailable.object_path = object_;
+        unavailable.retarget_source = source;
+        unavailable.diagnostics.push_back(
+            "Selected stored source is unavailable; raw pose is not substituted");
+        return unavailable;
+    };
+    selected_before_ = find(poses_before_, source_before_);
+    selected_after_ = find(poses_after_, source_after_);
+    pose_view_.set_models(body(before_) ? &selected_before_ : nullptr,
+                          body(after_) ? &selected_after_ : nullptr, comparing_);
+    pose_selection_.clear();
+    pose_details_.set_values(nullptr, nullptr, comparing_);
+    update_pose_selection();
+}
+bool SkeletonView::select_retarget_sources(std::string before, std::string after) {
+    const auto properties = pose_details_.view_state();
+    source_before_ = std::move(before);
+    source_after_ = std::move(after);
+    bind_pose();
+    pose_details_.restore_view_state(properties);
+    return (source_before_.empty() || poses_before_.count({object_, source_before_})) &&
+           (source_after_.empty() || poses_after_.count({object_, source_after_}));
 }
 void SkeletonView::update_pose_selection() {
     const auto &selected = inspector_.selected_node();
@@ -151,23 +200,34 @@ void SkeletonView::update_pose_selection() {
         return;
     pose_selection_ = selected;
     pose_view_.select(selected);
-    auto model = [&](const Json &snapshot, const auto &poses) -> Json {
+    auto model = [&](const Json &snapshot, const ReferencePose &pose, const std::string &source) -> Json {
         const auto *object = body(snapshot);
         if (!object || !object->at("bones").contains(selected))
             return nullptr;
-        Json value = {{"stored", object->at("bones").at(selected)}};
-        auto pose = poses.find(object_);
-        if (pose != poses.end())
-            for (const auto &joint : pose->second.joints)
-                if (joint.name == selected) {
-                    value["reference"] = {{"position", joint.ready ? Json(joint.position) : Json(nullptr)},
-                                          {"ready", joint.ready},
-                                          {"diagnostics", joint.diagnostics}};
-                    break;
-                }
+        auto stored = object->at("bones").at(selected);
+        if (!source.empty()) {
+            stored.erase("localPose");
+            const auto found = object->at("retargeting").at("sources").find(source);
+            if (found != object->at("retargeting").at("sources").end() &&
+                found->at("bones").contains(selected))
+                stored["localPose"] = found->at("bones").at(selected).at("localPose");
+        }
+        Json value = {{"stored", std::move(stored)}};
+        if (!source.empty())
+            value["retargetSource"] = source;
+        for (const auto &joint : pose.joints)
+            if (joint.name == selected) {
+                value["reference"] = {{"position", joint.ready ? Json(joint.position) : Json(nullptr)},
+                                      {"ready", joint.ready},
+                                      {"diagnostics", joint.diagnostics}};
+                break;
+            }
+        if (pose.joints.empty())
+            value["reference"] = {{"position", nullptr}, {"ready", false}, {"diagnostics", pose.diagnostics}};
         return value;
     };
-    const auto a = model(before_, poses_before_), b = model(after_, poses_after_);
+    const auto a = model(before_, selected_before_, source_before_),
+               b = model(after_, selected_after_, source_after_);
     pose_details_.set_values(a.is_null() ? nullptr : &a, b.is_null() ? nullptr : &b, comparing_);
 }
 bool SkeletonView::select_bone(const std::string &name) {
@@ -193,6 +253,10 @@ Json SkeletonView::view_state() const {
     }
     if (pose_preview_)
         out["posePreview"] = true;
+    if (!source_before_.empty() || !source_after_.empty()) {
+        out["beforeRetargetSource"] = source_before_;
+        out["afterRetargetSource"] = source_after_;
+    }
     const auto pose_camera = pose_view_.view_state();
     if (!pose_camera.empty())
         out["poseCamera"] = pose_camera;
@@ -217,6 +281,9 @@ void SkeletonView::restore_view_state(const Json &state) {
         metadata_.restore_view_state(state["metadata"]);
     if (state.contains("posePreview"))
         pose_preview_ = state["posePreview"].get<bool>();
+    if (state.contains("beforeRetargetSource") || state.contains("afterRetargetSource"))
+        select_retarget_sources(state.value("beforeRetargetSource", source_before_),
+                                state.value("afterRetargetSource", source_after_));
     if (state.contains("poseCamera"))
         pose_view_.restore_view_state(state["poseCamera"]);
     update_pose_selection();
@@ -283,6 +350,29 @@ void SkeletonView::draw(const char *id) {
     if (ImGui::RadioButton(cyui::trLabel("Reference pose").c_str(), pose_preview_))
         pose_preview_ = true;
     if (pose_preview_) {
+        if (!retarget_sources_.empty() || !source_before_.empty() || !source_after_.empty()) {
+            auto choice = [&](const char *label, bool after) {
+                const auto &current = after ? source_after_ : source_before_;
+                ImGui::SetNextItemWidth(
+                    std::min(cyui::dp(360), std::max(cyui::dp(80), ImGui::GetContentRegionAvail().x * .65f)));
+                if (ImGui::BeginCombo(cyui::trLabel(label).c_str(),
+                                      current.empty() ? cyui::tr("Stored raw reference").c_str()
+                                                      : current.c_str())) {
+                    auto choose = [&](const std::string &key) {
+                        select_retarget_sources(after ? source_before_ : key, after ? key : source_after_);
+                    };
+                    if (ImGui::Selectable(cyui::trLabel("Stored raw reference").c_str(), current.empty()))
+                        choose("");
+                    for (const auto &source : retarget_sources_)
+                        if (ImGui::Selectable(source.c_str(), source == current))
+                            choose(source);
+                    ImGui::EndCombo();
+                }
+            };
+            choice(comparing_ ? "Retarget source before" : "Retarget source", !comparing_ && !body(before_));
+            if (comparing_)
+                choice("Retarget source after", true);
+        }
         update_pose_selection();
         const auto &selected = inspector_.selected_node();
         ImGui::SetNextItemWidth(std::min(cyui::dp(300), ImGui::GetContentRegionAvail().x));

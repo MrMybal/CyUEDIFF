@@ -168,6 +168,7 @@ inline void validate(const Json &v, std::string_view kind) {
             }
         } else if(kind=="skeleton") {
             flag({"posePreview"});
+            string({"beforeRetargetSource","afterRetargetSource"});
             child("poseCamera","mesh");
             child("poseProperties","property");
             string({"object"},true);

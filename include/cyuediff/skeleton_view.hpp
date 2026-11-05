@@ -11,7 +11,10 @@ class SkeletonView {
     GraphInspector inspector_;
     PropertyView metadata_, pose_details_;
     ReferencePoseViewport pose_view_;
-    std::map<std::string, ReferencePose> poses_before_, poses_after_;
+    std::map<std::pair<std::string, std::string>, ReferencePose> poses_before_, poses_after_;
+    ReferencePose selected_before_, selected_after_;
+    std::string source_before_, source_after_;
+    std::vector<std::string> retarget_sources_;
     std::string pose_selection_;
     bool pose_preview_ = false;
     cyui::NodeState state_;
@@ -23,15 +26,21 @@ class SkeletonView {
     const Json *body(const Json &) const;
     void bind();
     void update_pose_selection();
+    void bind_pose();
 
   public:
     void set_packages(const Package *before, const Package *after = nullptr, bool comparing = false);
     void set_pose_preview(bool enabled) { pose_preview_ = enabled; }
     bool pose_preview() const { return pose_preview_; }
+    const ReferencePose &displayed_pose(bool after = false) const {
+        return after ? selected_after_ : selected_before_;
+    }
     std::size_t rendered_pose_joints() const { return pose_view_.rendered_joints(); }
     bool empty() const { return objects_.empty(); }
     bool select_object(const std::string &);
     bool select_bone(const std::string &);
+    // Missing keys stay selected and unavailable; no raw-pose fallback.
+    bool select_retarget_sources(std::string before, std::string after);
     bool next_changed_bone(bool previous = false);
     void set_filter(std::string);
     void set_changed_only(bool);

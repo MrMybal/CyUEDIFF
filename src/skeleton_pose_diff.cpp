@@ -77,14 +77,17 @@ ReferencePoseComparison compare_reference_poses(const ReferencePose &before, con
         control.checkpoint("Comparing reference poses", processed++, names.size());
         const auto x = a.find(name), y = b.find(name);
         const auto *left = x == a.end() ? nullptr : x->second, *right = y == b.end() ? nullptr : y->second;
-        const bool unavailable = (left && !left->ready) || (right && !right->ready);
+        const bool unknown_membership = (!left && !before.complete) || (!right && !after.complete);
+        const bool unavailable = unknown_membership || (left && !left->ready) || (right && !right->ready);
         Json entry = {{"before", value(left)},
                       {"after", value(right)},
                       {"delta", nullptr},
                       {"distance", nullptr},
                       {"parentChanged", left && right ? Json(left->parent != right->parent) : Json(nullptr)}};
         std::string kind;
-        if (!left)
+        if (unknown_membership)
+            kind = "unavailable";
+        else if (!left)
             kind = "added";
         else if (!right)
             kind = "removed";

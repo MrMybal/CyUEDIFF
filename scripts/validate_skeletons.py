@@ -25,6 +25,7 @@ def digest(path):
   for block in iter(lambda:stream.read(1024*1024),b''):h.update(block)
  return h.hexdigest()
 profiles=Counter();coverage=Counter();classes=Counter();fingerprints={};failures=[];examples=[]
+retarget_tables=retarget_sources=retarget_bound=retarget_unbound=retarget_joints=retarget_comparisons=0
 objects=bones=ready_joints=unavailable_joints=complete=reference_complete=pose_complete=self_comparisons=0
 for file in files:
  for p in (file,*[file.with_suffix(ext) for ext in ('.uexp','.ubulk','.uptnl','.m.ubulk','.o.ubulk','.upayload')]):
@@ -47,9 +48,23 @@ for file in files:
   else:self_comparisons+=1
   ready_joints+=sum(bool(j['ready']) for j in joints.values())
   unavailable_joints+=sum(not j['ready'] for j in joints.values())
+  table=body['retargeting']
+  retarget_tables+=table['coverage']=='stored'
+  for key,source in table['sources'].items():
+   retarget_sources+=1;retarget_bound+=bool(source['complete']);retarget_unbound+=not source['complete']
+   selected=subprocess.run([str(args.cli.resolve()),'skeleton-pose',str(file),'--object',name,'--retarget-source',key],capture_output=True,env=env,timeout=45)
+   if selected.returncode:
+    failures.append({'file':str(file),'retargetError':selected.stderr.decode('utf-8','replace')[:500]});continue
+   source_pose=json.loads(selected.stdout)
+   retarget_joints+=sum(j['ready'] for j in source_pose['joints'].values())
+   compared=subprocess.run([str(args.cli.resolve()),'skeleton-pose-diff',str(file),str(file),'--before-object',name,'--after-object',name,'--before-retarget-source',key],capture_output=True,env=env,timeout=45)
+   if compared.returncode!=(0 if source_pose['complete'] else 2):
+    failures.append({'file':str(file),'retargetComparisonError':compared.stderr.decode('utf-8','replace')[:500]})
+   else:retarget_comparisons+=1
   if len(examples)<10:examples.append({'file':str(file),'object':name,'bones':len(body['bones']),'coverage':body['native']['coverage']})
 assert all(digest(Path(p))==value for p,value in fingerprints.items()),'Source or companion bytes changed'
 report={'packages':len(files),'fileProfiles':dict(profiles),'skeletonObjects':objects,'storedBones':bones,
+        'retargetStoredTables':retarget_tables,'retargetSources':retarget_sources,'retargetBoundSources':retarget_bound,'retargetUnboundSources':retarget_unbound,'retargetReadyJoints':retarget_joints,'retargetSelfComparisons':retarget_comparisons,
         'completeStoredProjections':complete,'completeRawReferences':reference_complete,'completeReferencePoses':pose_complete,'objectClasses':dict(classes),'verifiedPoseSelfComparisons':self_comparisons,'nativeCoverage':dict(coverage),'readyReferenceJoints':ready_joints,
         'unavailableReferenceJoints':unavailable_joints,'failures':failures,'examples':examples,'sourceFingerprints':fingerprints}
 (output/'summary.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

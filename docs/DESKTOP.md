@@ -282,3 +282,9 @@ In the Skeleton tab, choose Reference pose to inspect prepared affine joint posi
 Pose mode, camera, selected bone and pose property inspector state are saved in explicit workspace files. The renderer limits work to 4,096 joint identities and marks positions outside the display camera range unavailable without changing Core data. Unknown rotations or missing ancestor poses never receive defaults. Animation, skinning and mesh vertices are not evaluated.
 
 Windows output guards resolve the nearest existing ancestor before comparing missing companion/output paths. This also covers long and 8.3 temporary Git materialization directories, while existing input and hard-link protection remains active.
+
+## Stored retarget source review - 0.97
+
+The Skeleton Reference pose view adds independent Retarget source before/after selectors when stored sources are available. Stored raw reference chooses the raw local transforms explicitly. The selections use exact source-map names; the stored display pose labels remain inspectable in metadata. Prepared affine positions, moved-joint filtering, picking and typed local/derived details follow each selected source. Raw hierarchy graph outlines remain independent.
+
+Explicit workspace files retain both source keys, the selected bone, pose camera and property state. A removed saved source stays selected and unavailable. It never silently becomes the raw pose. An unread opposite pose also leaves joint correspondence unknown instead of claiming that its joints were removed. Stored sources with unbound transform counts stay unavailable for preview. No engine or referenced source mesh is opened by these controls.

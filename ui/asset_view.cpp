@@ -38,6 +38,10 @@ void AssetView::register_translations() {
     cyui::registerTranslations(
         "fr",
         {{"Reference displacement: %.6g | delta (%.6g, %.6g, %.6g)", "Déplacement de référence : %.6g | delta (%.6g, %.6g, %.6g)"},
+         {"Retarget source before","Source de retargeting avant"},
+         {"Retarget source after","Source de retargeting après"},
+         {"Retarget source","Source de retargeting"},
+         {"Stored raw reference","Référence brute enregistrée"},
          {"Hierarchy", "Hiérarchie"},
          {"Reference pose", "Pose de référence"},
          {"Bone", "Os"},

@@ -66,6 +66,12 @@ int main() {
         check(!reference_pose(mismatch, "", selected).complete &&
                   reference_pose(mismatch, "", selected).joints.empty(),
               "Count mismatch cannot borrow raw transforms");
+        ReferencePoseDiffOptions unread_options;
+        unread_options.pose.retarget_source = "A~/pose";
+        const auto unread_diff = compare_reference_poses(a, incomplete, "", "", unread_options);
+        check(unread_diff.status() == "incomplete" && unread_diff.joints["arm"]["kind"] == "unavailable" &&
+                  unread_diff.changed_joints == 0 && unread_diff.unavailable_joints == 3,
+              "Unread source joints are unknown, never claimed removed");
         auto transformed = a;
         auto &poses = transformed.exports[0].native_data["retargeting"]["sources"]["A~/pose"]["localPoses"];
         poses[0]["rotation"] = {0., 0., std::sqrt(.5), std::sqrt(.5)};

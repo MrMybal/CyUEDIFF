@@ -22,4 +22,19 @@ inline Package skeleton_model() {
     p.exports.push_back(e);
     return p;
 }
+inline Package retarget_model() {
+    auto p = skeleton_model();
+    auto local = p.exports[0].native_data["localPoses"];
+    local[1]["translation"] = {15., 0., 0.};
+    local[2]["translation"] = {0., 25., 0.};
+    auto other = local;
+    other[1]["translation"] = {20., 0., 0.};
+    p.exports[0].native_data["retargeting"] = {
+        {"coverage", "stored"},
+        {"skeletonGuid", std::string(32, '0')},
+        {"sources",
+         {{"A~/pose", {{"poseName", "Display pose"}, {"localPoses", local}}},
+          {"B", {{"poseName", "Display pose"}, {"localPoses", other}}}}}};
+    return p;
+}
 } // namespace cyuediff::test
