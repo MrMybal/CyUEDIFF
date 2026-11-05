@@ -296,3 +296,7 @@ The Curves tab supports independent stored owners and lanes, key inspection and 
 ## Animation transform curve families - 0.126
 
 The Curves tab exposes **Animation curve family** for AnimDataModel owners. Float is the default; Transform selects explicitly stored named transform groups. The lane selector labels translation, Euler rotation and scale XYZ components in the active language. Family, exact component and inspector choices persist in workspace files and process restarts. Missing component tables retain unknown opposite data and unavailable values. Cached projections prepare drawing data without loading packages during drawing.
+
+## Independent animation source frames - 0.131
+
+The Animations tab can compare shared or independent before/after source indices. Position, orientation (degrees) and scale tolerances persist in workspace files and process restarts. The selected-track summary shows local values within tolerance, changed values or unavailable comparison; raw key status and typed channel values remain separately inspectable. Both cursors appear on the cached source-key plot. Chart clicks choose the before frame in independent mode. Unknown opposite identity tables never confirm a removed named track.

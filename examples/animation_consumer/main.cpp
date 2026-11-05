@@ -44,9 +44,17 @@ int main(int argc, char **argv) {
         if (argc == 1)
             after.exports[0].properties["BoneAnimationTracks"]["value"][0]["InternalTrackData"]["value"]
                                        ["positions"][1][0] = 5.;
+        const auto after_snapshot = animation_snapshot(after);
+        const auto &models = after_snapshot.at("models");
+        const auto after_count = models.size() == 1 ? models.begin()->value("numberOfKeys", 0u) : 0u;
+        const auto selected_frame = argc == 1 ? 1u : 0u;
         std::cout << Json{{"snapshot", animation_snapshot(before)},
                           {"frame", animation_frame(before, argc == 1 ? 1 : 0)},
-                          {"comparison", compare_animation_models(before, after).to_json()}}
+                          {"comparison", compare_animation_models(before, after).to_json()},
+                          {"frameComparison",
+                           compare_animation_frames(before, after, selected_frame, selected_frame)},
+                          {"independentFrameComparison",
+                           compare_animation_frames(before, after, 0, after_count > 1 ? 1u : 0u)}}
                          .dump(2)
                   << '\n';
         return 0;

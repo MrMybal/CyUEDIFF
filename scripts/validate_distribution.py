@@ -356,6 +356,8 @@ if args.consumer:
  source=json.loads(result.stdout)
  if not source['snapshot']['complete'] or source['comparison']['status']!='changed' or len(source['comparison']['changes'])!=1:raise RuntimeError('Installed animation source comparison failed')
  if source['frame']['tracks']['name:root']['positions']!=[3.,2.,1.] or source['frame']['timeSeconds']!=1./24.:raise RuntimeError('Installed animation source frame failed')
+ if source['frameComparison']['status']!='changed' or source['frameComparison']['changedTracks']!=1 or source['frameComparison']['tracks']['name:root']['metrics']['positionDistance']!=2.:raise RuntimeError('Installed local animation frame comparison failed')
+ if source['independentFrameComparison']['beforeFrame']!=0 or source['independentFrameComparison']['afterFrame']!=1 or source['independentFrameComparison']['status']!='changed':raise RuntimeError('Installed independent animation frame comparison failed')
  print('Installed independent animation source Core consumer validated')
  curve_build=target/'curve-consumer'
  configure=[cmake,'-S',str(root/'examples/curve_consumer'),'-B',str(curve_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]

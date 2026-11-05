@@ -22,10 +22,10 @@ for file in files:
   if p.is_file():hashes[p]=hashlib.sha256(p.read_bytes()).hexdigest()
 def run(command,file,destination,*extra,code=0):
  result=subprocess.run([str(cli),command,str(file),*map(str,extra),'--out',str(destination)],capture_output=True,timeout=60)
- if result.returncode!=code:raise RuntimeError(f'{command}: {file.name}: {result.returncode}: {result.stderr.decode("utf-8","replace")}')
+ if result.returncode not in (code if isinstance(code,tuple) else (code,)):raise RuntimeError(f'{command}: {file.name}: {result.returncode}: {result.stderr.decode("utf-8","replace")}')
  return json.loads(destination.read_text(encoding='utf-8'))
 summary={'files':len(files),'models':0,'tracks':0,'storedKeys':0,'sampledFrames':0,'readyTracks':0,
-         'completeModels':0,'failures':[],'inputsUnchanged':False,'assets':[]}
+         'completeModels':0,'frameSelfComparisons':0,'completeFrameSelfComparisons':0,'comparedLocalTracks':0,'unavailableLocalTracks':0,'temporalComparisons':0,'temporallyChangedTracks':0,'temporallyUnavailableTracks':0,'failures':[],'inputsUnchanged':False,'assets':[]}
 for index,file in enumerate(files):
  try:
   root=run('animation',file,out/f'{index}-models.json')
@@ -46,7 +46,13 @@ for index,file in enumerate(files):
      rate=model.get('frameRate',{})
      if 'numerator' in rate and 'denominator' in rate:assert report['timeSeconds']==frame*rate['denominator']/rate['numerator']
      else:assert 'timeSeconds' not in report
-     sampled.append({'frame':frame,'complete':report['complete'],'readyTracks':ready})
+     comparison=run('animation-frame-diff',file,out/f'{index}-{model_index}-frame-{frame}-self.json',file,'--before-object',path,'--after-object',path,'--before-frame',frame,'--after-frame',frame,code=0 if report['complete'] else 2)
+     assert comparison['changedTracks']==0
+     summary['frameSelfComparisons']+=1;summary['completeFrameSelfComparisons']+=int(comparison['complete']);summary['comparedLocalTracks']+=comparison['comparedTracks'];summary['unavailableLocalTracks']+=comparison['unavailableTracks']
+     sampled.append({'frame':frame,'complete':report['complete'],'readyTracks':ready,'localSelfStatus':comparison['status']})
+    temporal=run('animation-frame-diff',file,out/f'{index}-{model_index}-temporal.json',file,'--before-object',path,'--after-object',path,'--before-frame',0,'--after-frame',n-1,code=(0,1,2))
+    summary['temporalComparisons']+=1;summary['temporallyChangedTracks']+=temporal['changedTracks'];summary['temporallyUnavailableTracks']+=temporal['unavailableTracks']
+
    record['models'].append({'path':path,'complete':model['complete'],'tracks':len(model['tracks']),'frames':sampled})
   summary['assets'].append(record)
  except Exception as error:summary['failures'].append({'source':str(file),'error':str(error)})

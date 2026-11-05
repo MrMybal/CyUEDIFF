@@ -64,3 +64,21 @@ animation-frame-diff accepts independent source frame indices and model contexts
 ## Retained independent frames and local comparison controls - 0.131
 
 The Animations tab now selects shared or independent before/after source frames and retains position, orientation-degree and scale tolerances. Selected-track metrics distinguish usable changes, values within tolerance and unavailable comparisons without hiding serialized key differences. Raw plots retain both frame cursors, with chart clicks controlling the before coordinate in independent mode. English/French, five themes, narrow layouts, ambiguous opposite names and atomic state validation are covered. Drawing uses owned projections and prepared samples.
+
+## Current local frame comparison contract
+
+Include animation.hpp and call compare_animation_frames(before, after, before_frame, after_frame, before_object, after_object, options). AnimationFrameDiffOptions contains AnimationOptions, position_tolerance, rotation_tolerance_degrees, scale_tolerance and max_track_pairs (100,000 by default). Selectors may be omitted only when each side contains one model. Source frames are integer key indices; they do not imply aligned seconds between clips. The API does not clamp frames, interpolate, evaluate hierarchy, bind a Skeleton, retarget or skin geometry.
+
+```powershell
+cyuediff animation-frame-diff Before.uasset After.uasset --before-frame 10 --after-frame 20 --position-tolerance 0.01 --rotation-tolerance 0.1 --scale-tolerance 0.001 --out frame-difference.json
+```
+
+Reports use cyuediff.animation-frame-diff/1. Exact named tracks pair independently of storage order and selected object paths. Each entry retains raw before/after local channel values and a ready/changed/status result. Paired usable values include signed position/scale deltas, Euclidean positionDistance, shortest sign-invariant rotationDeltaDegrees and maximum absolute scaleMaxDelta. Position tolerances use stored translation units; scale tolerances use raw axis differences; rotation tolerance is 0..180 degrees. A metric changes only when it exceeds its tolerance. Norms must already be near unit; quaternion normalization is limited to orientation measurement and does not rewrite source keys. Tiny orientation distances use a stable atan2 form; q and -q have zero orientation difference.
+
+comparedTracks counts usable paired tracks. changedTracks also includes confirmed additions/removals. unavailableTracks counts records without a usable comparison; any such record or unknown input/identity table makes the report incomplete. Empty known track arrays can compare identical, while omitted arrays stay unknown. An ambiguous or unresolved opposite name table cannot establish removal. Missing key channels, invalid quaternion norms and arithmetic overflow remain unavailable. Metadata timing gaps do not invalidate otherwise usable local key values: beforeTimeSeconds/afterTimeSeconds are emitted independently only when their own stored rational terms are present. The animation-frame schema now exposes completeInput, tracksCoverage and identitiesComplete to make this coverage explicit.
+
+The Animations tab retains independentFrames, afterFrame, positionTolerance, rotationToleranceDegrees and scaleTolerance alongside existing selections. Shared mode remains the default. In independent mode, each cursor has its own source index and chart clicks choose the before frame. The selected local comparison is separate from stored-key status and filters. Numeric metrics update when choices change; drawing uses prepared data and never loads files. Old workspace files retain shared-frame behavior. CLI comparison exit codes are 0 identical, 1 changed and 2 incomplete/error.
+
+## Read-only local frame corpora and installed SDK verification - 0.132
+
+The animation corpus validator now checks same-frame local equality and first/last-frame differences alongside raw source streams, preserving hashes and unknown coverage. The installed Core consumer demonstrates shared and independent frame comparisons. Distribution verification and SDK/CLI parity include the new reports. Configuration, real/encoded corpus, visual capture and secret-scan results are recorded in VALIDATION.md.
