@@ -151,3 +151,7 @@ Mounted Skeleton names use the separately retained historical project/plugin cat
 ## Git Skeleton controls and workspace review - 0.145
 
 The native Git input panel and command line accept explicit per-revision Skeleton bindings and independent integer source frames. Git paths remain repository-relative or mounted names in workspace format 4; local file pickers remain confined to loose files. History revision selections retain existing Git bindings. Output overlap guards resolve historical mounts for active and inactive documents before writing reports, captures or workspaces. English and French controls use the existing five themes.
+
+## Historical binding failure and review workflows - 0.146
+
+Historical source poses now distinguish absent animation sides from failed Skeleton bindings: additions and removals evaluate only present packages. Regression coverage includes branches moving between package and Skeleton loading, missing/corrupt/external LFS caches, traversal and absolute paths, unknown mounts, independent frames, history selection, duplicate/reload/reopen and output aliases across inactive tabs. Native historical workflows run through CTest.

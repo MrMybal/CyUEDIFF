@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.145.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.146.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -549,6 +549,10 @@ if(BUILD_TESTING)
                     "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff>"
                     "$<TARGET_FILE:cyuediff_git_history_tests>" "${GIT_EXECUTABLE}")
                 set_tests_properties(desktop_history_cli PROPERTIES TIMEOUT 90)
+                add_test(NAME desktop_animation_pose_git_cli COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_pose_git_desktop_tests.py"
+                    "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_animation_pose_file_tests>" "${GIT_EXECUTABLE}")
+                set_tests_properties(desktop_animation_pose_git_cli PROPERTIES TIMEOUT 180)
             endif()
             add_executable(cyuediff_history_model_tests tests/history_model_tests.cpp)
             target_link_libraries(cyuediff_history_model_tests PRIVATE cyuediff_desktop_model)

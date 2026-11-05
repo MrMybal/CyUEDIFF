@@ -93,6 +93,7 @@ int main(int argc, char **argv) {
                 id.pop_back();
             return id;
         };
+        const auto empty = commit("no main animation");
         auto clip = save(root / "Content", "Clip", animation_model_file_fixture(), true);
         auto rig = save(root / "Content", "Rig", animation_skeleton_file_fixture(), true);
         auto exports = rig;
@@ -143,6 +144,35 @@ int main(int argc, char **argv) {
               "Failed binding cannot invent removed joints");
         check(document->before_animation_pose->display_pose.complete && document->before && document->after,
               "Partial binding failure preserves package inspection and known pose");
+        auto addition = request;
+        addition.git->before_revision = empty;
+        auto added = load_document(addition);
+        check(!added->before_animation_pose && added->after_animation_pose &&
+                  added->report()["animationPose"]["complete"],
+              "Added animation evaluates only its existing side");
+        auto removal = request;
+        removal.git->after_revision = empty;
+        auto removed = load_document(removal);
+        check(removed->before_animation_pose && !removed->after_animation_pose &&
+                  removed->report()["animationPose"]["complete"],
+              "Removed animation evaluates only its existing side");
+        git({"update-ref", "refs/heads/selected-pose", before});
+        auto moving = request;
+        moving.git->before_revision = "selected-pose";
+        bool moved = false;
+        moving.control.progress = [&](const OperationProgress &p) {
+            if (!moved && p.phase == "Opening explicit animation Skeleton") {
+                moved = true;
+                git({"update-ref", "refs/heads/selected-pose", after});
+            }
+        };
+        auto pinned = load_document(moving);
+        check(moved && pinned->before_skeleton_revision->commit == before &&
+                  pinned->animation_pose_comparison["changedJoints"] == 1,
+              "Branch movement after animation load cannot change Skeleton commit");
+        added.reset();
+        removed.reset();
+        pinned.reset();
         auto mounted = request;
         mounted.project = "One/Game.uproject";
         mounted.after_project = "Two/Game.uproject";

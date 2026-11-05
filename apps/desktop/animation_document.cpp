@@ -110,8 +110,10 @@ void prepare_animation_poses(Document &document, const LoadRequest &request, con
 }
 Json animation_pose_report(const Document &document) {
     const bool requested = document.request.animation_pose.has_value();
-    bool complete =
-        requested && document.before_animation_pose && document.before_animation_pose->display_pose.complete;
+    bool complete = requested && (document.before || document.after);
+    if (document.before)
+        complete = complete && document.before_animation_pose &&
+                   document.before_animation_pose->display_pose.complete;
     if (document.after)
         complete =
             complete && document.after_animation_pose && document.after_animation_pose->display_pose.complete;

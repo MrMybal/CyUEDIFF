@@ -46,6 +46,33 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-animation-git-cli-',dir=Path.
  d=run(*base,'--pose-after-skeleton','Content/Missing.uasset');assert pose(d)['status']=='incomplete' and pose(d)['comparison']['joints']['arm~/track']['kind']=='unavailable'
  run('--repo',repo,'--before','Content/Clip.uasset','--pose-before-skeleton','Content/Rig.uasset',code=2)
  run(*base,'--pose-after-frame','2',code=2)
+ d=run(*base[:-4], '--view','animations','--pose-before-frame','0','--pose-after-frame','2');assert pose(d)['complete'] and pose(d)['before']['frame']==0 and pose(d)['after']['frame']==2
+ d=run(*base,'--history','--history-before',before,'--history-after',after,'--history-compare');assert pose(d)['complete'] and pose(d)['comparison']['changedJoints']==1
+ d=run(*base,'--before-revision',empty);assert pose(d)['complete'] and pose(d)['before'] is None and pose(d)['after'] is not None
+ d=run(*base,'--after-revision',empty);assert pose(d)['complete'] and pose(d)['after'] is None and pose(d)['before'] is not None
+ d=run(*base,'--pose-before-object','missing');assert not pose(d)['complete'] and pose(d)['after']['complete']
+ d=run(*base,'--pose-before-skeleton','../outside.uasset');assert not pose(d)['complete'] and pose(d)['after']['complete']
+ d=run(*base,'--pose-before-skeleton',fixtures/'skeleton-0.uasset');assert not pose(d)['complete'] and pose(d)['after']['complete']
+ d=run(*mounted,'--pose-after-skeleton','/Unknown/Rig');assert not pose(d)['complete'] and pose(d)['before']['complete']
+ lfs=repo/'.git/lfs/objects';external=root/'external-lfs';lfs.rename(external)
+ d=run(*base,'--lfs-objects',external);assert pose(d)['complete']
+ external.rename(lfs)
+ object_file=lfs/before_oid[:2]/before_oid[2:4]/before_oid;original_object=object_file.read_bytes();object_file.unlink()
+ d=run(*base);assert not pose(d)['complete'] and pose(d)['after']['complete'] and pose(d)['beforeBinding']['commit']==before
+ object_file.write_bytes(b'corrupt local LFS content')
+ d=run(*base);assert not pose(d)['complete'] and pose(d)['after']['complete']
+ object_file.write_bytes(original_object)
+ # Aliases exercise filesystem equivalence guards before output creation, including an inactive Git tab.
+ alias=output/'input-alias.json';os.link(repo/'Content/Rig.uasset',alias);original_alias=alias.read_bytes()
+ def protected(*args):
+  global checks
+  r=subprocess.run([exe,'--smoke','--no-preferences','--report',str(alias),*map(str,args)],env=env,capture_output=True,timeout=60)
+  assert r.returncode==2 and alias.read_bytes()==original_alias,(args,r.returncode);checks+=1
+ protected(*base)
+ protected('--before',fixtures/'animation-0-1013.uasset','--new-document',*base,'--document-index','0')
+ alias.unlink();os.link(repo/'Game.uproject',alias);original_alias=alias.read_bytes()
+ protected(*mounted)
+ alias.unlink()
  assert all(p.read_bytes()==data for p,data in originals.items()) and git('status','--porcelain=v1')==status
  assert not (root/'unused-profile').exists()
 print(f'{checks} native historical animation pose checks passed')
