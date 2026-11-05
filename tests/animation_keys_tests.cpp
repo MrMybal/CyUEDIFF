@@ -42,6 +42,24 @@ int main() {
         for (int release : {-1, 38})
             check(read(0, 1013, release).exports[0].properties["Track"].contains("opaque"),
                   "Legacy branch never guessed as bulk keys");
+        const auto quaternion = fixture(
+            1004, 1, false, 0, {"Rotation", "Quat4f"},
+            [](Bytes &b, const NameWriter &name) {
+                name(b, "Rotation");
+                name(b, "StructProperty");
+                b.i(16);
+                b.i(0);
+                name(b, "Quat4f");
+                b.zeros(16);
+                b.put<std::uint8_t>(0);
+                for (float value : {0.f, 0.f, 0.f, 1.f})
+                    b.put<float>(value);
+            },
+            -1, 38);
+        check(Package::open(save(root, "legacy-quaternion", quaternion))
+                      .exports[0]
+                      .properties["Rotation"]["value"] == Json({0., 0., 0., 1.}),
+              "Legacy reflected quaternion remains float32 in LWC packages");
         ReadOptions small;
         small.max_properties = 15;
         check(read(0, 1013, 39, small).exports[0].properties["Track"]["opaque"]["reason"] == "limit",

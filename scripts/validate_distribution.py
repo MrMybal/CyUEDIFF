@@ -50,13 +50,13 @@ if b'CyUEDiff' not in result.stdout:raise RuntimeError('CLI did not start')
 desktop=prefix/'bin'/('cyuediff_desktop'+suffix)
 if desktop.is_file():
  workspace_file=target/'workspace.json';workspace_report=target/'workspace-report.json'
- subprocess.run([str(desktop),'--smoke','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
+ subprocess.run([str(desktop),'--smoke','--no-preferences','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  saved_workspace=json.loads(workspace_file.read_text(encoding='utf-8'))
  assert saved_workspace['schema']=='cyuediff.workspace/3' and len(saved_workspace['documents'])==1
  saved_workspace['documents'][0]['viewState']={'asset':{'filter':'installed pending state'},'layout':{'sidebarWidth':500,'project':True}}
  workspace_file.write_text(json.dumps(saved_workspace),encoding='utf-8')
  original_workspace=workspace_file.read_bytes()
- subprocess.run([str(desktop),'--smoke','--workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
+ subprocess.run([str(desktop),'--smoke','--no-preferences','--workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  restored=json.loads(workspace_report.read_text(encoding='utf-8'))
  assert restored['workspaceFile']['loaded'] and restored['document'] is None and workspace_file.read_bytes()==original_workspace
  assert restored['workspaceFile']['context']['documents'][0]['viewState']==saved_workspace['documents'][0]['viewState']
@@ -346,6 +346,18 @@ if args.consumer:
  if skeleton_data['socketPose']['sockets']['Skeleton.Grip']['position']!=[11.,0.,0.] or skeleton_data['socketPoseComparison']['sockets']['Skeleton.Grip']['delta']!=[3.,0.,0.]:raise RuntimeError('Installed socket affine origin comparison failed')
  if skeleton_data['missingSocketOrigin']['complete']:raise RuntimeError('Omitted socket location was incorrectly defaulted')
  print('Installed independent skeleton/animation/attachment/socket origin Core consumer validated')
+ animation_build=target/'animation-consumer'
+ configure=[cmake,'-S',str(root/'examples/animation_consumer'),'-B',str(animation_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(animation_build),'--config','Release','--parallel','2'],check=True,env=env)
+ animation_executable=animation_build/'Release'/('animation_consumer'+suffix) if os.name=='nt' else animation_build/'animation_consumer'
+ result=subprocess.run([str(animation_executable)],capture_output=True,check=True,env=env,timeout=20)
+ source=json.loads(result.stdout)
+ if not source['snapshot']['complete'] or source['comparison']['status']!='changed' or len(source['comparison']['changes'])!=1:raise RuntimeError('Installed animation source comparison failed')
+ if source['frame']['tracks']['name:root']['positions']!=[3.,2.,1.] or source['frame']['timeSeconds']!=1./24.:raise RuntimeError('Installed animation source frame failed')
+ print('Installed independent animation source Core consumer validated')
+
 
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'
@@ -361,5 +373,5 @@ if args.consumer:
 
 
 
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton consumers' if args.consumer else '')+' validated')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton/animation consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))

@@ -49,6 +49,10 @@ jobs:
         run: cmake -S examples/schema_consumer -B build-schema-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
       - name: Link external schema consumer
         run: cmake --build build-schema-consumer --config Release --parallel 2
+      - name: Configure external animation source consumer
+        run: cmake -S examples/animation_consumer -B build-animation-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Link external animation source consumer
+        run: cmake --build build-animation-consumer --config Release --parallel 2
       - name: Package
         working-directory: build-ci
         run: cpack -C Release -G ZIP

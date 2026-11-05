@@ -17,3 +17,30 @@ animation_frame reads a selected integer source-key frame in bone-local space. E
 ## Bilingual source-track review and retained frames - 0.111
 
 The Animations desktop tab now owns normalized source projections, independent model choices, named track search and confirmed-change navigation. A shared integer frame selector displays typed stored local values before/after; shorter, missing or ambiguous channels stay unavailable. A selected channel component has overlaid source-key plots with click-to-select frames, capped at 2,048 sampled display points per side. The track union is capped at 4,096 rows. Model, track, filter, frame, component and typed inspector state round-trip through workspace files; missing model choices never fall back. Drawing performs no package loading or key projection. English/French and all five themes were checked, including narrow views. New checks cover 280 renderer-free UI frames and four native process/workspace scenarios; the extended native harness validates 1,080 hidden WARP frames and 36 scenes across themes/locales.
+
+## Public commands
+
+```powershell
+cyuediff animation Before.uasset --out stored-tracks.json
+cyuediff animation-diff Before.uasset After.uasset --out named-key-diff.json
+cyuediff animation-frame Before.uasset --frame 20 --out local-frame.json
+```
+
+`animation-diff` automatically selects the sole model in each package. Use `--before-object` and `--after-object` for packages with multiple models. `animation-frame` accepts `--object` for explicit selection. Reports use `cyuediff.animation/1`, `cyuediff.animation-diff/1` and `cyuediff.animation-frame/1`. Model paths are context for paired comparisons; track keys use exact stored names prefixed by `name:` and JSON Pointer escaping. Ambiguous tracks use `index:` records and incomplete coverage.
+
+A frame is an integer source-key index, not a time seek into compressed playback. One-key channels are constant; a channel with the full stored key count uses the selected index. Other counts remain unavailable. The snapshot preserves stored streams even when their cardinality prevents sampling. Quaternion components remain XYZW without normalization or sign canonicalization: sign-only or numerically different stored keys remain visible as changes.
+
+Stored `NumberOfFrames` and `NumberOfKeys` remain separate fields. Seconds require both stored rational frame-rate terms; omitted denominators are not replaced by engine defaults. Full metadata comparisons can therefore be incomplete even while all local keys at a selected frame are available. Other source curves, attributes, notifications, control-rig models, compressed sequences and external skeleton evaluation are outside this API’s scope. No Unreal-owned assets are distributed.
+
+## SDK
+
+```cmake
+find_package(CyUEDiff CONFIG REQUIRED)
+target_link_libraries(your_app PRIVATE CyUEDiff::Core)
+```
+
+Include `<cyuediff/animation.hpp>`. The API provides `animation_snapshot`, `compare_animation_models` and `animation_frame` with aggregate resource limits and operation control. The independent `examples/animation_consumer` project runs on a host-created model without arguments and optionally reads one or two loose assets.
+
+## Source animation corpora and installed SDK validation - 0.112
+
+The source validator hashes all input packages and existing companions before and after inspection, verifies per-model self-comparison coverage and samples first, middle and last stored frames. A new independent installed SDK consumer constructs its own complete model, compares a changed key and validates source-frame timing without Git, CyUI or Unreal. The distribution validator builds this eighth Core consumer and keeps desktop smoke checks outside user preferences. Full configuration and corpus results are recorded in VALIDATION.md.

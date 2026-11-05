@@ -180,8 +180,8 @@ struct Projection {
                 track["boneIndex"] = copy(*b);
             const auto *rawtag = field(t, "InternalTrackData"),
                        *raw = value(rawtag, "StructProperty", "RawAnimSequenceTrack");
-            const bool bulk =
-                raw && raw->is_object() && raw->value("kind", std::string()) == "raw-animation-keys";
+            const auto *kind = raw ? field(*raw, "kind") : nullptr;
+            const bool bulk = kind && kind->is_string() && *kind == "raw-animation-keys";
             for (const auto &ch :
                  {std::make_pair("PosKeys", "positions"), std::make_pair("RotKeys", "rotations"),
                   std::make_pair("ScaleKeys", "scales")}) {
@@ -214,6 +214,7 @@ Json animation_snapshot(const Package &p, const AnimationOptions &o) {
         {"schema", "cyuediff.animation/1"},
         {"scope",
          "stored AnimDataModel bone key streams; no defaults, external loading or runtime evaluation"},
+        {"completeInput", p.complete_input},
         {"complete", p.complete_input},
         {"models", Json::object()}};
     std::size_t count = 0;

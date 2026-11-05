@@ -151,6 +151,8 @@ void AnimationSourceView::set_changed_only(bool v) {
     prepare();
 }
 void AnimationSourceView::set_frame(std::uint32_t frame) {
+    if (frame > INT32_MAX)
+        throw Error("view-state", "Source frame exceeds the supported display range");
     frame_ = frame;
     sample();
 }
@@ -414,7 +416,7 @@ void AnimationSourceView::draw(const char *id) {
     ImGui::EndChild();
     if (selected_.empty())
         return;
-    ImGui::Text("%s: %s",cyui::tr("Bone").c_str(),entries_.at(selected_).name.c_str());
+    ImGui::Text("%s: %s", cyui::tr("Bone").c_str(), entries_.at(selected_).name.c_str());
     int frame = int(std::min<std::uint32_t>(frame_, INT32_MAX));
     const auto n = std::max(keys(model(false)), keys(model(true)));
     ImGui::SetNextItemWidth(std::max(cyui::dp(80), ImGui::GetContentRegionAvail().x * .65f));
