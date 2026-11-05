@@ -8,7 +8,9 @@ class CurveView {
         bool known = false;
         ChangeKind change = ChangeKind::unchanged;
     };
-    Json owners_[2], values_[2];
+    Json owners_[2][2], values_[2];
+    unsigned family_ = 0;
+    bool has_animation_ = false;
     bool present_[2]{}, input_[2]{}, comparing_ = false, changed_only_ = false, truncated_ = false;
     std::string objects_[2], lane_, selected_;
     std::map<std::string, Entry> entries_;
@@ -22,6 +24,7 @@ class CurveView {
     cyui::TextFilter filter_;
     PropertyView details_;
     const Json *owner(bool) const;
+    std::string lane_label(const std::string &) const;
     const Json *lane(bool) const;
     const Json *key(bool, const std::string &) const;
     void bind();
@@ -35,6 +38,7 @@ class CurveView {
     static void register_translations();
     void set_packages(const Package *, const Package * = nullptr, bool comparing = false);
     bool empty() const;
+    void set_animation_family(AnimationCurveFamily);
     bool select_objects(std::string, std::string);
     bool select_lane(const std::string &);
     bool select_key(const std::string &);

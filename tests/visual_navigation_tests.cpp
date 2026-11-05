@@ -3,6 +3,7 @@
 #include "animation_model.hpp"
 #include "animation_source_model.hpp"
 #include "rich_curve_model.hpp"
+#include "transform_curve_model.hpp"
 #include "attachments_model.hpp"
 #include "platform_win32.hpp"
 #include <fstream>
@@ -357,12 +358,49 @@ int main(int argc, char **argv) {
                 {"type", {{"name", "FloatProperty"}}}, {"value", 7.}};
             curve_default.set_packages(&default_curve);
             curve_default.set_range(-1, 3);
+            auto transform_before = cyuediff::test::transform_curve_model(),
+                 transform_after = transform_before;
+            transform_after.exports[0]
+                .properties["CurveData"]["value"]["TransformCurves"]["value"][0]["TranslationCurve"]["value"]
+                           ["FloatCurves"]["value"]["Keys"]["value"][1]["value"] = 4.;
+            CurveView transform_view, transform_missing, transform_duplicate, transform_default,
+                transform_float;
+            transform_view.set_packages(&transform_before, &transform_after);
+            transform_view.set_animation_family(AnimationCurveFamily::Transform);
+            transform_view.select_lane("name:Root~/control/translation.x");
+            transform_view.set_time(1.);
+            auto transform_partial = transform_before;
+            transform_partial.exports[0]
+                .properties["CurveData"]["value"]["TransformCurves"]["value"][0]
+                .erase("ScaleCurve");
+            transform_missing.set_packages(&transform_before, &transform_partial);
+            transform_missing.set_animation_family(AnimationCurveFamily::Transform);
+            transform_missing.select_lane("name:Root~/control/scale.y");
+            auto duplicate_transform = transform_before;
+            duplicate_transform.exports[0]
+                .properties["CurveData"]["value"]["TransformCurves"]["value"][1]["CurveName"]["value"] =
+                "Root~/control";
+            transform_duplicate.set_packages(&duplicate_transform);
+            transform_duplicate.set_animation_family(AnimationCurveFamily::Transform);
+            transform_duplicate.set_time(1.);
+            auto default_transform = transform_before;
+            for (auto &curve :
+                 default_transform.exports[0].properties["CurveData"]["value"]["TransformCurves"]["value"])
+                for (const char *part : {"TranslationCurve", "RotationCurve", "ScaleCurve"})
+                    for (auto &channel : curve[part]["value"]) {
+                        channel["value"]["Keys"]["value"] = Json::array();
+                        channel["value"]["DefaultValue"] = cyuediff::test::rich_tag("FloatProperty", 3.);
+                    }
+            transform_default.set_packages(&default_transform);
+            transform_default.set_animation_family(AnimationCurveFamily::Transform);
+            transform_default.set_range(-1, 3);
+            transform_float.set_packages(&transform_before);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 48; ++scene) {
+                    for (int scene = 0; scene < 54; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -410,7 +448,13 @@ int main(int argc, char **argv) {
                                                "curve-tolerance",
                                                "curve-negative-weight",
                                                "curve-cyclic",
-                                               "curve-default"};
+                                               "curve-default",
+                                               "transform",
+                                               "transform-narrow",
+                                               "transform-missing",
+                                               "transform-duplicate",
+                                               "transform-default",
+                                               "transform-float-scope"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -419,15 +463,32 @@ int main(int argc, char **argv) {
                             }
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
-                            ImGui::SetNextWindowSize(
-                                (scene == 7 || scene == 10 || scene == 13 || scene == 15 || scene == 19 ||
-                                 scene == 22 || scene == 26 || scene == 31 || scene == 37 || scene == 43)
-                                    ? ImVec2{640, io.DisplaySize.y}
-                                    : io.DisplaySize);
+                            ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
+                                                      scene == 15 || scene == 19 || scene == 22 ||
+                                                      scene == 26 || scene == 31 || scene == 37 ||
+                                                      scene == 43 || scene == 49)
+                                                         ? ImVec2{640, io.DisplaySize.y}
+                                                         : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 48:
+                            case 49:
+                                transform_view.draw();
+                                break;
+                            case 50:
+                                transform_missing.draw();
+                                break;
+                            case 51:
+                                transform_duplicate.draw();
+                                break;
+                            case 52:
+                                transform_default.draw();
+                                break;
+                            case 53:
+                                transform_float.draw();
+                                break;
                             case 42:
                             case 43:
                                 curve_range.draw();

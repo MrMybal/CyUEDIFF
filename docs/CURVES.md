@@ -74,3 +74,7 @@ evaluate_curve_components evaluates raw scalar/vector/color channels or one expl
 ## Typed file fixtures and public transform component commands - 0.125
 
 The curve commands now accept an explicit --curve-family float|transform selector for AnimDataModel scope. curve-components reports one raw vector/color group or one selected animation group at --time, retaining per-channel gaps. Independent tagged binary fixtures cover UE4 522 / UE5 0, 1004 and 1013, actual indexed FloatCurves members, stable named differences/reordering, ambiguous names, missing components, empty/omitted tables, weights, extrapolation and explicit/sentinel defaults. CLI selectors, flag ownership, exit codes and protected input/companion outputs are checked.
+
+## Bilingual transform family and component review - 0.126
+
+The Curves tab now switches cached float and transform animation families and offers translated component labels. Independent owner, exact group/component lane, key, input coordinate, range, tolerance and inspector choices persist in workspace files. Changing family does not substitute missing opposite data. Invalid family state is rejected atomically. All projections are owned and prepared at binding; drawing does not load packages. English/French labels and all five themes include changed, missing, ambiguous, empty/default and narrow transform views.

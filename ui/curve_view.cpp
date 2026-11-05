@@ -6,6 +6,22 @@
 #include <set>
 namespace cyuediff {
 void CurveView::register_translations() {
+    cyui::registerTranslations("fr",
+                               {{"Animation curve family", "Famille de courbes d’animation"},
+                                {"Float curves", "Courbes scalaires"},
+                                {"Transform curves", "Courbes de transformation"},
+                                {"Stored transform components; no bone application or runtime defaults.",
+                                 "Composantes de transformation enregistrées ; sans application aux os ni "
+                                 "valeurs par défaut du moteur."},
+                                {"translation.x", "translation X"},
+                                {"translation.y", "translation Y"},
+                                {"translation.z", "translation Z"},
+                                {"rotation.x", "rotation X (roulis)"},
+                                {"rotation.y", "rotation Y (tangage)"},
+                                {"rotation.z", "rotation Z (lacet)"},
+                                {"scale.x", "échelle X"},
+                                {"scale.y", "échelle Y"},
+                                {"scale.z", "échelle Z"}});
     cyui::registerTranslations(
         "fr",
         {{"Curves", "Courbes"},
@@ -19,8 +35,8 @@ void CurveView::register_translations() {
          {"Stored curve keys", "Clés de courbe enregistrées"},
          {"No stored rich curve", "Aucune courbe riche enregistrée"},
          {"Missing or invalid stored settings remain explicit; unavailable values have gaps.",
-          "Les champs inconnus restent explicites. Les segments pondérés et l’extrapolation sont "
-          "indisponibles."},
+          "Les réglages absents ou invalides restent explicites ; les valeurs indisponibles ont des "
+          "lacunes."},
          {"Stored tangents; supported segments use double-precision source evaluation.",
           "Tangentes enregistrées ; les segments pris en charge sont évalués en double précision."},
          {"Unknown opposite keys; absence is not a confirmed change.",
@@ -50,7 +66,7 @@ void CurveView::register_translations() {
                                  "lorsqu’ils sont disponibles."}});
 }
 const Json *CurveView::owner(bool side) const {
-    const auto &r = owners_[side];
+    const auto &r = owners_[side][family_];
     auto it = r.find(objects_[side]);
     return it == r.end() ? nullptr : &*it;
 }
@@ -68,9 +84,37 @@ const Json *CurveView::key(bool side, const std::string &id) const {
     auto it = l->at("keys").find(id);
     return it == l->at("keys").end() ? nullptr : &*it;
 }
-bool CurveView::empty() const { return owners_[0].empty() && owners_[1].empty(); }
+std::string CurveView::lane_label(const std::string &id) const {
+    const Json *l = nullptr;
+    for (bool side : {false, true})
+        if (const auto *o = owner(side)) {
+            const auto it = o->at("lanes").find(id);
+            if (it != o->at("lanes").end()) {
+                l = &*it;
+                break;
+            }
+        }
+    return l && l->contains("component")
+               ? l->value("name", l->at("curveId").get<std::string>()) + " / " +
+                     cyui::tr(l->at("component").get_ref<const std::string &>().c_str())
+               : id;
+}
+bool CurveView::empty() const { return owners_[0][family_].empty() && owners_[1][family_].empty(); }
+void CurveView::set_animation_family(AnimationCurveFamily family) {
+    if (family != AnimationCurveFamily::Float && family != AnimationCurveFamily::Transform)
+        throw Error("view-state", "Invalid animation curve family");
+    const unsigned index = family == AnimationCurveFamily::Float ? 0 : 1;
+    if (index == family_)
+        return;
+    family_ = index;
+    lane_.clear();
+    selected_.clear();
+    bind();
+}
 void CurveView::set_packages(const Package *a, const Package *b, bool comparing) {
     comparing_ = comparing || (a && b);
+    family_ = 0;
+    has_animation_ = false;
     filter_ = {};
     changed_only_ = false;
     time_ = 0;
@@ -84,13 +128,19 @@ void CurveView::set_packages(const Package *a, const Package *b, bool comparing)
         const auto *p = side ? b : a;
         present_[side] = p;
         input_[side] = p && p->complete_input;
-        if (p) {
-            CurveOptions o;
-            o.source_indices = false;
-            owners_[side] = curve_snapshot(*p, o).at("owners");
-        } else
-            owners_[side] = Json::object();
-        objects_[side] = owners_[side].empty() ? "" : owners_[side].begin().key();
+        for (unsigned family = 0; family < 2; ++family) {
+            if (p) {
+                CurveOptions o;
+                o.source_indices = false;
+                o.animation_family = family ? AnimationCurveFamily::Transform : AnimationCurveFamily::Float;
+                owners_[side][family] = curve_snapshot(*p, o).at("owners");
+            } else
+                owners_[side][family] = Json::object();
+        }
+        for (const auto &o : owners_[side][0])
+            if (o.at("class") == "/Script/Engine.AnimDataModel")
+                has_animation_ = true;
+        objects_[side] = owners_[side][0].empty() ? "" : owners_[side][0].begin().key();
     }
     bind();
 }
@@ -301,7 +351,8 @@ void CurveView::prepare_plot() {
     }
 }
 Json CurveView::view_state() const {
-    return {{"beforeObject", objects_[0]},
+    return {{"animationFamily", family_ ? "transform" : "float"},
+            {"beforeObject", objects_[0]},
             {"afterObject", objects_[1]},
             {"lane", lane_},
             {"time", time_},
@@ -320,6 +371,15 @@ void CurveView::restore_view_state(const Json &v) {
     const double begin = v.value("rangeBegin", range_begin_), end = v.value("rangeEnd", range_end_);
     if (begin > end)
         throw Error("view-state", "Curve range endpoints are reversed");
+    const unsigned family =
+        v.value("animationFamily", family_ ? std::string("transform") : std::string("float")) == "transform"
+            ? 1
+            : 0;
+    if (family != family_ && !v.contains("lane")) {
+        lane_.clear();
+        selected_.clear();
+    }
+    family_ = family;
     range_begin_ = begin;
     range_end_ = end;
     custom_range_ = v.value("customRange", custom_range_);
@@ -423,7 +483,7 @@ void CurveView::draw(const char *id) {
             std::string choice;
             bool changed = false;
             if (ImGui::BeginCombo(cyui::trLabel(label).c_str(), objects_[side].c_str())) {
-                for (auto it = owners_[side].begin(); it != owners_[side].end(); ++it)
+                for (auto it = owners_[side][family_].begin(); it != owners_[side][family_].end(); ++it)
                     if (ImGui::Selectable(it.key().c_str(), objects_[side] == it.key())) {
                         choice = it.key();
                         changed = true;
@@ -435,11 +495,26 @@ void CurveView::draw(const char *id) {
                 bind();
             }
         }
+    if (has_animation_) {
+        int family = int(family_);
+        ImGui::SetNextItemWidth(std::min(cyui::dp(260), ImGui::GetContentRegionAvail().x));
+        if (ImGui::BeginCombo(cyui::trLabel("Animation curve family").c_str(),
+                              cyui::tr(family ? "Transform curves" : "Float curves").c_str())) {
+            for (int i = 0; i < 2; ++i)
+                if (ImGui::Selectable(cyui::tr(i ? "Transform curves" : "Float curves").c_str(), family == i))
+                    set_animation_family(i ? AnimationCurveFamily::Transform : AnimationCurveFamily::Float);
+            ImGui::EndCombo();
+        }
+        if (family_)
+            ImGui::TextWrapped(
+                "%s",
+                cyui::tr("Stored transform components; no bone application or runtime defaults.").c_str());
+    }
     std::string chosen;
     ImGui::SetNextItemWidth(std::min(cyui::dp(280), ImGui::GetContentRegionAvail().x));
-    if (ImGui::BeginCombo(cyui::trLabel("Curve lane").c_str(), lane_.c_str())) {
+    if (ImGui::BeginCombo(cyui::trLabel("Curve lane").c_str(), lane_label(lane_).c_str())) {
         for (const auto &l : lanes_)
-            if (ImGui::Selectable(l.c_str(), lane_ == l))
+            if (ImGui::Selectable(lane_label(l).c_str(), lane_ == l))
                 chosen = l;
         ImGui::EndCombo();
     }

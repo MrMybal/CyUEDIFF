@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.125.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.126.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -428,6 +428,10 @@ if(BUILD_TESTING)
             set_tests_properties(desktop_animation_source_cli PROPERTIES TIMEOUT 90)
         endif()
         if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_transform_curve_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/transform_curve_desktop_tests.py"
+                "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_transform_curve_file_tests>")
+            set_tests_properties(desktop_transform_curve_cli PROPERTIES TIMEOUT 90)
             add_test(NAME desktop_rich_curve_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/rich_curve_desktop_tests.py"
                 "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_rich_curve_eval_tests>")

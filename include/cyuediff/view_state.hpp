@@ -179,7 +179,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("canvas","canvas");
             child("metadata","property");
         } else if(kind=="curves"){
-            string({"beforeObject","afterObject","lane"});
+            string({"beforeObject","afterObject","lane","animationFamily"});
+            if(key=="animationFamily")require(x=="float" || x=="transform");
             flag({"customRange"});
             if(key=="rangeBegin" || key=="rangeEnd"){scalar(x,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());known=true;}
             if(key=="valueTolerance"){scalar(x,0,std::numeric_limits<double>::max());known=true;}

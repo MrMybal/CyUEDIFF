@@ -1,5 +1,6 @@
 #include <cyuediff/asset_view.hpp>
 #include "rich_curve_model.hpp"
+#include "transform_curve_model.hpp"
 #include <iostream>
 using namespace cyuediff;
 using namespace cyuediff::test;
@@ -102,6 +103,45 @@ int main() {
         integrated["curves"] = state;
         asset.restore_view_state(integrated);
         check(asset.view_state()["curves"] == state, "Integrated asset/workspace curve state");
+        auto transform_before = transform_curve_model(), transform_after = transform_before;
+        transform_after.exports[0]
+            .properties["CurveData"]["value"]["TransformCurves"]["value"][0]["TranslationCurve"]["value"]
+                       ["FloatCurves"]["value"]["Keys"]["value"][1]["value"] = 4.;
+        CurveView transforms;
+        transforms.set_packages(&transform_before, &transform_after);
+        check(transforms.visible_count() == 0, "Float scope does not expose transform keys");
+        transforms.set_animation_family(AnimationCurveFamily::Transform);
+        check(transforms.select_lane("name:Root~/control/translation.x"),
+              "Exact transform component selection");
+        transforms.set_time(1.);
+        check(transforms.value()["value"] == 1. && transforms.value(true)["value"] == 2.,
+              "Prepared transform values before/after");
+        auto transform_state = transforms.view_state();
+        CurveView transform_restored;
+        transform_restored.set_packages(&transform_before, &transform_after);
+        transform_restored.restore_view_state(transform_state);
+        check(transform_restored.view_state() == transform_state, "Family/lane/range state round trip");
+        auto invalid_family = transform_state;
+        invalid_family["animationFamily"] = "unknown";
+        bool rejected = false;
+        try {
+            transform_restored.restore_view_state(invalid_family);
+        } catch (const Error &e) {
+            rejected = e.code == "view-state";
+        }
+        check(rejected && transform_restored.view_state() == transform_state, "Invalid family is atomic");
+        transforms.set_animation_family(AnimationCurveFamily::Float);
+        check(transforms.visible_count() == 0, "Switching families does not invent opposite data");
+        transforms.set_animation_family(AnimationCurveFamily::Transform);
+        transforms.select_lane("name:Root~/control/translation.x");
+        auto transform_partial = transform_before;
+        transform_partial.exports[0].properties["CurveData"]["value"]["TransformCurves"]["value"][0].erase(
+            "ScaleCurve");
+        CurveView transform_missing;
+        transform_missing.set_packages(&transform_before, &transform_partial);
+        transform_missing.set_animation_family(AnimationCurveFamily::Transform);
+        transform_missing.select_lane("name:Root~/control/scale.y");
+        check(!transform_missing.selected_known(), "Unknown opposite transform channels stay unknown");
         for (const char *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"})
             for (const char *locale : {"en", "fr"}) {
                 cyui::Config config;
@@ -113,7 +153,7 @@ int main() {
                 io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
                 cyui::setLocale(locale);
                 for (float width : {1200.f, 600.f})
-                    for (int scene = 0; scene < 7; ++scene)
+                    for (int scene = 0; scene < 10; ++scene)
                         for (int frame = 0; frame < 2; ++frame) {
                             io.DisplaySize = {width, 1000};
                             ImGui::NewFrame();
@@ -134,6 +174,12 @@ int main() {
                                 single.draw();
                             if (scene == 6)
                                 asset.draw("Asset", false);
+                            if (scene == 7)
+                                transforms.draw();
+                            if (scene == 8)
+                                transform_restored.draw();
+                            if (scene == 9)
+                                transform_missing.draw();
                             ImGui::End();
                             ImGui::Render();
                             ++frames;
