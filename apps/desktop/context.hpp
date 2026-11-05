@@ -4,6 +4,10 @@
 namespace cyuediff::desktop {
 struct Settings {
     std::string before, after, project, engine, codec, repository, lfs_objects, after_project, after_engine;
+    std::string pose_before_skeleton, pose_after_skeleton, pose_before_object, pose_after_object,
+        pose_before_skeleton_object, pose_after_skeleton_object;
+    int pose_before_frame = 0, pose_after_frame = 0;
+    bool pose_enabled = false, pose_independent_frames = false;
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
     int source = 0, cooked_profile = 0, after_cooked_profile = 0;
     std::string container_path, container_entry, script_objects, after_container_path, after_script_objects;
@@ -26,6 +30,9 @@ struct Settings {
         return {fs::u8path(project), fs::u8path(engine), include_engine, request().git};
     }
     LoadRequest request() const {
+        if (pose_enabled && source != 0)
+            throw Error("desktop-animation-pose",
+                        "External Skeleton bindings currently require local packages");
         if (source == 2) {
             LoadRequest result;
             ContainerSource input;
@@ -55,6 +62,19 @@ struct Settings {
                            previews};
         result.after_project = fs::u8path(after_project);
         result.after_engine_root = fs::u8path(after_engine);
+        if (pose_enabled) {
+            if (pose_before_frame < 0 || pose_after_frame < 0)
+                throw Error("desktop-animation-pose", "Source frames must be nonnegative integers");
+            AnimationPoseRequest pose;
+            pose.before_skeleton = pose_before_skeleton;
+            pose.after_skeleton = pose_after_skeleton;
+            pose.before = {static_cast<std::uint32_t>(pose_before_frame), pose_before_object,
+                           pose_before_skeleton_object};
+            pose.after = {
+                static_cast<std::uint32_t>(pose_independent_frames ? pose_after_frame : pose_before_frame),
+                pose_after_object, pose_after_skeleton_object};
+            result.animation_pose = std::move(pose);
+        }
         if (source == 1)
             result.git = GitSource{fs::u8path(repository), fs::u8path(lfs_objects), before_revision,
                                    after_revision, discover_engine};

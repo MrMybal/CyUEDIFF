@@ -37,6 +37,14 @@ const std::pair<const char *, bool Settings::*> flags[] = {
     {"include_engine", &Settings::include_engine},
     {"compare_container_payloads", &Settings::compare_container_payloads},
 };
+const std::pair<const char *, std::string Settings::*> pose_strings[] = {
+    {"pose_before_skeleton", &Settings::pose_before_skeleton},
+    {"pose_after_skeleton", &Settings::pose_after_skeleton},
+    {"pose_before_object", &Settings::pose_before_object},
+    {"pose_after_object", &Settings::pose_after_object},
+    {"pose_before_skeleton_object", &Settings::pose_before_skeleton_object},
+    {"pose_after_skeleton_object", &Settings::pose_after_skeleton_object},
+};
 std::string text(const Json &j) {
     require(j.is_string(), "Workspace string expected");
     auto result = j.get<std::string>();
@@ -64,6 +72,10 @@ void normalize(Settings &s, const fs::path &base) {
         path(s.*member);
     if (s.source != 1) {
         for (bool after : {false, true}) {
+            auto &rig = after ? s.pose_after_skeleton : s.pose_before_skeleton;
+            const auto &rig_project = after && !s.after_project.empty() ? s.after_project : s.project;
+            if (!rig.empty() && (rig_project.empty() || rig.front() != '/'))
+                path(rig);
             auto &name = after ? s.after : s.before;
             const auto &project = after && !s.after_project.empty() ? s.after_project : s.project;
             if (!name.empty() && (project.empty() || name.front() != '/'))
@@ -102,6 +114,12 @@ Json WorkspaceFile::to_json() const {
             s[field.first] = d.settings.*field.second;
         for (const auto &field : flags)
             s[field.first] = d.settings.*field.second;
+        for (const auto &field : pose_strings)
+            s[field.first] = d.settings.*field.second;
+        s["pose_enabled"] = d.settings.pose_enabled;
+        s["pose_independent_frames"] = d.settings.pose_independent_frames;
+        s["pose_before_frame"] = d.settings.pose_before_frame;
+        s["pose_after_frame"] = d.settings.pose_after_frame;
         s["source"] = d.settings.source;
         s["cooked_profile"] = d.settings.cooked_profile;
         s["after_cooked_profile"] = d.settings.after_cooked_profile;
@@ -111,14 +129,14 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/3"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/4"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
 WorkspaceFile WorkspaceFile::from_json(const Json &j) {
     require(j.is_object() && j.size() == 3 && j.contains("schema") &&
                 (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
-                 j["schema"] == "cyuediff.workspace/3") &&
+                 j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4") &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];
@@ -140,14 +158,18 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         }
         saved.view = text(d["view"]);
         saved.cooked_view = text(d["cookedView"]);
-        const std::set<std::string> views = {"properties", "blueprint",  "materials", "textures",
-                                             "meshes",     "comparison", "collisions", "skeleton", "animations", "curves"};
+        const std::set<std::string> views = {"properties", "blueprint",  "materials", "textures",   "meshes",
+                                             "comparison", "collisions", "skeleton",  "animations", "curves"};
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
         saved.container_tab = number(d["containerTab"], -1, 4);
         const auto &s = d["settings"];
-        require(s.is_object() && s.size() == std::size(strings) + std::size(flags) + 3,
+        const auto old_fields = std::size(strings) + std::size(flags) + 3;
+        const auto pose_fields = std::size(pose_strings) + 4;
+        const bool pose_extension = s.size() == old_fields + pose_fields;
+        require(s.is_object() &&
+                    (pose_extension || (j["schema"] != "cyuediff.workspace/4" && s.size() == old_fields)),
                 "Unexpected workspace settings");
         for (const auto &field : strings) {
             require(s.contains(field.first), "Missing workspace setting");
@@ -162,6 +184,20 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         saved.settings.source = number(s["source"], 0, 2);
         saved.settings.cooked_profile = number(s["cooked_profile"], 0, 2);
         saved.settings.after_cooked_profile = number(s["after_cooked_profile"], 0, 2);
+        if (pose_extension) {
+            for (const auto &field : pose_strings) {
+                require(s.contains(field.first), "Missing animation pose setting");
+                saved.settings.*field.second = text(s[field.first]);
+            }
+            for (const auto *flag : {"pose_enabled", "pose_independent_frames"})
+                require(s.contains(flag) && s.at(flag).is_boolean(), "Invalid animation pose boolean");
+            require(s.contains("pose_before_frame") && s.contains("pose_after_frame"),
+                    "Missing source frame");
+            saved.settings.pose_enabled = s.at("pose_enabled").get<bool>();
+            saved.settings.pose_independent_frames = s.at("pose_independent_frames").get<bool>();
+            saved.settings.pose_before_frame = number(s.at("pose_before_frame"), 0, INT32_MAX);
+            saved.settings.pose_after_frame = number(s.at("pose_after_frame"), 0, INT32_MAX);
+        }
         result.documents.push_back(std::move(saved));
     }
     return result;

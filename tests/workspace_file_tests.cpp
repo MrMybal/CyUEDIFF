@@ -111,9 +111,51 @@ int main() {
                   read.documents[2].settings.compare_container_payloads,
               "Container identities, contexts and view round trip");
         check(read.documents[0].view_state == value.documents[0].view_state, "Presentation data round trip");
+        auto &pose_settings = value.documents[0].settings;
+        pose_settings.pose_enabled = true;
+        pose_settings.pose_independent_frames = true;
+        pose_settings.pose_before_skeleton = "Rigs/Before.uasset";
+        pose_settings.pose_after_skeleton = "/Game/Rigs/After";
+        pose_settings.pose_before_object = "Before.Model";
+        pose_settings.pose_after_object = "After.Model";
+        pose_settings.pose_before_skeleton_object = "OldRig";
+        pose_settings.pose_after_skeleton_object = "NewRig";
+        pose_settings.pose_before_frame = 2;
+        pose_settings.pose_after_frame = 7;
+        auto pose_json = value.to_json();
+        auto pose_copy = WorkspaceFile::from_json(pose_json).documents[0].settings;
+        const auto pose_request = pose_copy.request().animation_pose;
+        check(pose_request && pose_request->before.frame == 2 && pose_request->after.frame == 7 &&
+                  pose_request->after.skeleton_object == "NewRig",
+              "Pose contexts and independent frames round trip");
+        pose_copy.pose_independent_frames = false;
+        check(pose_copy.request().animation_pose->after.frame == 2, "Shared source frame request");
+        pose_copy.pose_enabled = false;
+        check(!pose_copy.request().animation_pose, "Binding disabled independently of saved fields");
+        auto legacy_three = pose_json;
+        legacy_three["schema"] = "cyuediff.workspace/3";
+        for (auto &d : legacy_three["documents"])
+            for (const char *key :
+                 {"pose_enabled", "pose_independent_frames", "pose_before_frame", "pose_after_frame",
+                  "pose_before_skeleton", "pose_after_skeleton", "pose_before_object", "pose_after_object",
+                  "pose_before_skeleton_object", "pose_after_skeleton_object"})
+                d["settings"].erase(key);
+        const auto upgraded = WorkspaceFile::from_json(legacy_three);
+        check(!upgraded.documents[0].settings.pose_enabled &&
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/4",
+              "Actual version three settings upgrade with binding disabled");
+        for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
+            auto invalid = pose_json;
+            invalid["documents"][0]["settings"]["pose_before_frame"] = bad_frame;
+            rejects([&] { WorkspaceFile::from_json(invalid); });
+        }
+        auto invalid_pose = pose_json;
+        invalid_pose["documents"][0]["settings"].erase("pose_after_frame");
+        rejects([&] { WorkspaceFile::from_json(invalid_pose); });
+        pose_settings.pose_enabled = false;
         auto version_two = value.to_json();
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/3",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/4",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -130,7 +172,7 @@ int main() {
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/3",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/4",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

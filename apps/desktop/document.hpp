@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/cache.hpp>
+#include <cyuediff/animation_pose.hpp>
 #include <cyuediff/hdr.hpp>
 #include "container_document.hpp"
 #ifdef CYUEDIFF_HAS_GIT
@@ -17,6 +18,10 @@ struct GitSource {
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
     bool discover_engine = true;
 };
+struct AnimationPoseRequest {
+    std::string before_skeleton, after_skeleton;
+    AnimationPoseSelection before, after;
+};
 struct LoadRequest {
     std::string before, after;
     fs::path project, engine_root, codec;
@@ -27,6 +32,7 @@ struct LoadRequest {
     fs::path after_project, after_engine_root;
     std::shared_ptr<PackageCache> cache;
     std::optional<ContainerSource> container;
+    std::optional<AnimationPoseRequest> animation_pose;
 };
 struct Preview {
     std::string object_path;
@@ -72,24 +78,14 @@ class DocumentSession {
     DocumentSession &operator=(const DocumentSession &) = delete;
     void request(LoadRequest);
     void cancel();
-    bool cancelled() const {
-        return cancelled_;
-    }
+    bool cancelled() const { return cancelled_; }
     OperationProgress progress() const;
     bool poll();
-    bool busy() const {
-        return busy_;
-    }
-    const std::string &error() const {
-        return error_;
-    }
+    bool busy() const { return busy_; }
+    const std::string &error() const { return error_; }
     // Owner-thread transfer for a workspace; releases the worker's snapshot ownership.
-    std::shared_ptr<const Document> take_document() {
-        return std::move(document_);
-    }
-    const std::shared_ptr<const Document> &document() const {
-        return document_;
-    }
+    std::shared_ptr<const Document> take_document() { return std::move(document_); }
+    const std::shared_ptr<const Document> &document() const { return document_; }
 
   private:
     struct Work {
