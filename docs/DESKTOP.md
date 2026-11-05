@@ -300,3 +300,21 @@ The Curves tab exposes **Animation curve family** for AnimDataModel owners. Floa
 ## Independent animation source frames - 0.131
 
 The Animations tab can compare shared or independent before/after source indices. Position, orientation (degrees) and scale tolerances persist in workspace files and process restarts. The selected-track summary shows local values within tolerance, changed values or unavailable comparison; raw key status and typed channel values remain separately inspectable. Both cursors appear on the cached source-key plot. Chart clicks choose the before frame in independent mode. Unknown opposite identity tables never confirm a removed named track.
+
+
+## Explicit source animation Skeleton bindings - 0.138–0.142
+
+For **Local files**, enable **Evaluate source hierarchy pose**. Supply a Skeleton for each loaded animation side, choose a shared integer source frame or independent indices, then **Load**. The file pickers choose loose packages; paths such as `/Game/Rig` use that side’s explicit project/engine context. Stored owner selectors may be left blank only when the package contains a sole supported owner. Bindings are explicit and case-sensitive; no external reference or missing-track default is inferred.
+
+The worker resolves and caches the supplied inputs, samples the selected source frames and publishes bounded pose geometry. In **Animations**, **Show source hierarchy pose** switches between prepared component-space origins and the existing local-track review. Position tolerance, joint selection/filter and synchronized camera remain presentation state. Change frames on the left and Load to prepare another selection. Missing Skeletons, invalid stored owners and unavailable channels retain package inspection and explicit unavailable pose results. Diagnostics state the failed side; failures cannot certify added/removed bones.
+
+Workspace format `cyuediff.workspace/4` saves per-document paths, selectors, shared/independent frames and review state. Formats one through three remain readable with bindings disabled when omitted. Relative loose Skeleton files resolve against the workspace location; mounted names retain their project meaning. No codec is loaded from a workspace. Duplication, close/reopen, tab switching and source-pose reload preserve their validated data-only review state.
+
+```powershell
+cyuediff_desktop --before Walk.uasset --view animations --pose-before-skeleton Rig.uasset --pose-frame 10
+cyuediff_desktop --before Old.uasset --after New.uasset --view animations --pose-before-skeleton OldRig.uasset --pose-after-skeleton NewRig.uasset --pose-before-frame 10 --pose-after-frame 12
+```
+
+Optional `--pose-before-object`, `--pose-after-object`, `--pose-before-skeleton-object` and `--pose-after-skeleton-object` select exact stored owners. Each animation side requires its own supplied Skeleton; use the same file twice explicitly when intended. All active/inactive input paths and companions remain protected against report/capture/workspace overwrites. External Skeleton associations currently apply to local loose inputs; historical Git Skeleton selection and cooked animation binding remain separate work.
+
+For repeatable read-only validation, `scripts/validate_desktop_poses.py --asset FILE --skeleton RIG --out-dir build-native/REPORT` compares first/middle/last native results with the public CLI. Repeat `--asset` for additional files; `--capture`, `--locale` and `--theme` select optional middle-frame screenshots. Outputs stay below build-native and never share a directory containing source inputs.

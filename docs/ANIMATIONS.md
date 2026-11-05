@@ -118,7 +118,7 @@ cyuediff animation-pose-diff Before.uasset After.uasset --before-skeleton OldRig
 
 Single poses accept `--object` and `--skeleton-object`; pair commands accept independent `--before-object`, `--after-object`, `--before-skeleton-object` and `--after-skeleton-object`. Per-side project contexts resolve both the animation and the supplied Skeleton. Exit codes are 0 complete/identical, 1 changed comparisons, 2 incomplete/error. All package inputs and companion paths are protected against output overwrites.
 
-The optional separate UI header `<cyuediff/animation_pose_view.hpp>` exposes `AnimationPoseView`. A host evaluates Core poses outside rendering, calls `set_poses`, then draws the bounded owned view. Selection, camera, filter and position tolerance have validated state roundtrips. EN/FR and five themes are supported. The native desktop Animations tab continues to inspect bone-local streams; an external Skeleton file picker/loading workflow remains future work.
+The optional separate UI header `<cyuediff/animation_pose_view.hpp>` exposes `AnimationPoseView`. A host evaluates Core poses outside rendering, calls `set_poses`, then draws the bounded owned view. Selection, camera, filter and position tolerance have validated state roundtrips. EN/FR and five themes are supported. The native desktop Animations tab now accepts explicitly supplied loose Skeletons and worker-prepared source poses alongside bone-local streams; see DESKTOP.md. Historical Git/cooked bindings remain separate work.
 
 ## Desktop source pose request and workspace contexts - 0.138
 
@@ -135,3 +135,7 @@ AssetView accepts host-prepared animation poses, clears old data when packages c
 ## Explicit desktop Skeleton pickers and independent source frame controls - 0.141
 
 Local package inputs expose an opt-in source-hierarchy section with independent Skeleton file pickers, optional stored model/rig owner selectors and shared or independent integer frames. Load prepares these choices on the worker. Matching --pose-* CLI options validate context and frame combinations; source Skeletons and companions are protected before output writes, including inactive tabs. Swapping inputs keeps bindings/owners/frame contexts with their files. Duplicating or reopening a tab retains validated presentation data without holding packages or GPU resources. Twenty-five native process/workspace checks and 48 existing document/workspace CLI checks pass with all input hashes unchanged and no user preferences.
+
+## Native bound animation pose validation and distribution - 0.142
+
+The reusable desktop-pose validator compares native worker results against public Core CLI poses for first/middle/last stored frames, with explicit Skeleton binding, input/companion hashes, protected output paths and an isolated unused preference profile. Optional captures retain a middle-frame view. Native process tests cover binding failures, owner/frame choices, independent project contexts, document duplication/reopen/reload, workspace persistence and inactive input protection. Full build, corpus, visual, extracted archive and security results are recorded in VALIDATION.md.

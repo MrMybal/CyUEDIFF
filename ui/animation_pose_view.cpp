@@ -23,6 +23,7 @@ void AnimationPoseView::register_translations() {
          {"Source position difference: %.6g", "Écart de position source : %.6g"},
          {"Source frame: %u", "Frame source : %u"},
          {"Source binding unavailable", "Association source indisponible"},
+         {"Joint absent from selected hierarchy", "Articulation absente de la hiérarchie choisie"},
          {"Pose comparison incomplete", "Comparaison de poses incomplète"},
          {"Before", "Avant"},
          {"After", "Après"},
@@ -144,8 +145,12 @@ void AnimationPoseView::draw(const char *id) {
     auto provenance = [](const std::optional<AnimationPose> &pose, const char *label) {
         if (!pose)
             return;
-        ImGui::TextWrapped("%s: %s | %s", cyui::tr(label).c_str(), pose->animation_object.c_str(),
-                           pose->skeleton_object.c_str());
+        if (pose->animation_object.empty() && pose->skeleton_object.empty())
+            ImGui::TextWrapped("%s: %s", cyui::tr(label).c_str(),
+                               cyui::tr("Source binding unavailable").c_str());
+        else
+            ImGui::TextWrapped("%s: %s | %s", cyui::tr(label).c_str(), pose->animation_object.c_str(),
+                               pose->skeleton_object.c_str());
         cyui::textDim(cyui::tr("Source frame: %u").c_str(), pose->frame);
     };
     provenance(before_, "Before");
@@ -179,8 +184,13 @@ void AnimationPoseView::draw(const char *id) {
             return;
         const auto it = std::find_if(pose->display_pose.joints.begin(), pose->display_pose.joints.end(),
                                      [&](const ReferenceJoint &j) { return j.name == selected_; });
-        if (it == pose->display_pose.joints.end())
+        if (it == pose->display_pose.joints.end()) {
+            cyui::textDim("%s: %s", cyui::tr(side).c_str(),
+                          cyui::tr(pose->hierarchy_complete ? "Joint absent from selected hierarchy"
+                                                            : "Source binding unavailable")
+                              .c_str());
             return;
+        }
         cyui::textDim("%s | %s: %s", cyui::tr(side).c_str(), cyui::tr("Parent").c_str(), it->parent.c_str());
         if (it->ready)
             ImGui::Text("%s: (%.6g, %.6g, %.6g)", cyui::tr("Position").c_str(), it->position[0],

@@ -440,7 +440,7 @@ void register_translations() {
         {{"Evaluate source hierarchy pose", "Évaluer la pose hiérarchique source"},
          {"Animation Skeleton binding", "Association du squelette d’animation"},
          {"Skeleton before", "Squelette avant"}, {"Skeleton after", "Squelette après"},
-         {"Source frame before", "Frame source avant"}, {"Source frame after", "Frame source après"},
+         {"Frame before", "Frame avant"}, {"Frame after", "Frame après"},
          {"Independent pose frames", "Frames de pose indépendantes"},
          {"Choose Skeleton before", "Choisir le squelette avant"}, {"Choose Skeleton after", "Choisir le squelette après"},
          {"Stored owner selections", "Choix des objets enregistrés"},
@@ -664,8 +664,9 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         for (bool after : {false, true}) {
             auto project = after && !request.after_project.empty() ? request.after_project : request.project;
             auto engine = after && !request.after_engine_root.empty() ? request.after_engine_root : request.engine_root;
-            for(const auto &path:{after?request.after:request.before,
-                                 after?options.settings.pose_after_skeleton:options.settings.pose_before_skeleton}) {
+            const auto skeleton = options.settings.pose_enabled && (!after || !request.after.empty())
+                ? (after ? options.settings.pose_after_skeleton : options.settings.pose_before_skeleton) : std::string{};
+            for(const auto &path:{after?request.after:request.before, skeleton}) {
                 if(path.empty())continue;
                 if(!project.empty() && path.front()=='/')package(ProjectContext::open(project,engine).resolve(path));
                 else package(fs::u8path(path));
@@ -1754,7 +1755,7 @@ class Shell {
                                 cyui::property(cyui::tr("Skeleton before").c_str());field("##pose-rig-before",settings.pose_before_skeleton);
                                 {cyui::ScopedDisabled inactive(settings.after.empty());
                                 cyui::property(cyui::tr("Skeleton after").c_str());field("##pose-rig-after",settings.pose_after_skeleton);}
-                                cyui::property(cyui::tr("Source frame before").c_str());
+                                cyui::property(cyui::tr("Frame before").c_str());
                                 if(ImGui::InputInt("##pose-frame-before",&settings.pose_before_frame))settings.pose_before_frame=std::max(0,settings.pose_before_frame);
                                 cyui::endProperties();
                             }
@@ -1762,7 +1763,7 @@ class Shell {
                             if(settings.pose_independent_frames) {
                                 cyui::ScopedDisabled inactive(settings.after.empty());
                                 if(cyui::beginProperties("##pose-frame-input",105)) {
-                                    cyui::property(cyui::tr("Source frame after").c_str());
+                                    cyui::property(cyui::tr("Frame after").c_str());
                                     if(ImGui::InputInt("##pose-frame-after",&settings.pose_after_frame))settings.pose_after_frame=std::max(0,settings.pose_after_frame);
                                     cyui::endProperties();
                                 }

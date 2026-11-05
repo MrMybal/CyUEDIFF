@@ -41,6 +41,13 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-animation-pose-desktop-',dir=
   shutil.copyfile(source,content/'Clip.uasset');shutil.copyfile(s,content/'Rig.uasset')
  mounted=run('--before','/Game/Clip','--after','/Game/Clip','--before-project',root/'before/Test.uproject','--after-project',root/'after/Test.uproject','--pose-before-skeleton','/Game/Rig','--pose-after-skeleton','/Game/Rig','--pose-frame','1')
  assert pose(mounted)['complete'] and pose(mounted)['comparison']['changedJoints']==1 and pose(mounted)['beforeSkeleton']!=pose(mounted)['afterSkeleton']
+ draft=json.loads(workspace.read_text(encoding='utf-8'));draft_settings=draft['documents'][0]['settings']
+ draft_settings.update({'before':'/Game/Clip','after':'/Game/Clip','project':str(root/'before/Test.uproject'),'after_project':str(root/'after/Test.uproject'),'pose_enabled':False,'pose_before_skeleton':'/Game/Missing','pose_after_skeleton':'/Game/MissingAfter'})
+ draft_file=root/'disabled-binding.json';draft_file.write_text(json.dumps(draft),encoding='utf-8')
+ disabled=run('--workspace',draft_file,'--save-workspace',root/'disabled-saved.json');assert not pose(disabled)['requested']
+ draft_settings.update({'pose_enabled':True,'after':'','pose_before_skeleton':'/Game/Rig'})
+ draft_file.write_text(json.dumps(draft),encoding='utf-8')
+ single_draft=run('--workspace',draft_file);assert pose(single_draft)['complete'] and pose(single_draft)['after'] is None
  for args in [('--before',a,'--pose-frame','0'),('--before',a,'--after',b,'--pose-before-skeleton',s),(*base,'--pose-frame','-1'),(*base,'--pose-frame','1.5'),(*base,'--pose-frame','2147483648'),(*base,'--pose-before-frame','0'),(*base,'--pose-after-frame','0'),(*base,'--pose-frame','0','--pose-before-frame','0','--pose-after-frame','0'),('--container',s,'--pose-before-skeleton',s),('--repo',root,'--before','Clip.uasset','--pose-before-skeleton',s)]:run(*args,code=2)
  # A Skeleton can have an arbitrary filename; protect it before the JSON output is opened.
  rig_json=root/'rig-input.json';shutil.copyfile(s,rig_json);rig_hash=hashlib.sha256(rig_json.read_bytes()).hexdigest()

@@ -105,6 +105,18 @@ int main() {
         check(extreme.comparison()["status"] == "incomplete" &&
                   extreme.comparison()["joints"]["root"]["distance"].is_null(),
               "Out-of-display-range positions stay unavailable before metric arithmetic");
+        AnimationPose unavailable_pose;
+        unavailable_pose.frame = 1;
+        AnimationPoseView failed_side, absent_joint;
+        failed_side.set_poses(&before, &unavailable_pose, true);
+        auto without_tip = after;
+        without_tip.display_pose.joints.pop_back();
+        absent_joint.set_poses(&before, &without_tip, true);
+        absent_joint.select_joint("tip");
+        check(failed_side.comparison()["joints"]["tip"]["kind"] == "unavailable",
+              "Unread requested side retains unavailable membership");
+        check(absent_joint.comparison()["joints"]["tip"]["kind"] == "removed",
+              "Known absent hierarchy joint remains distinct from failed binding");
         for (const char *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"})
             for (const char *locale : {"en", "fr"}) {
                 cyui::Config config;
@@ -116,7 +128,8 @@ int main() {
                 io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
                 cyui::setLocale(locale);
                 for (float width : {1200.f, 640.f})
-                    for (auto *scene : {&view, &restored, &single, &missing, &added, &empty, &tolerance})
+                    for (auto *scene : {&view, &restored, &single, &missing, &added, &empty, &tolerance,
+                                        &failed_side, &absent_joint})
                         for (int frame = 0; frame < 2; ++frame) {
                             io.DisplaySize = {width, 1000};
                             ImGui::NewFrame();
@@ -131,6 +144,8 @@ int main() {
                                   "Pose UI renders across themes/locales/widths");
                         }
             }
+        cyui::setLocale("fr");
+        check(cyui::tr("Joint absent from selected hierarchy")=="Articulation absente de la hiérarchie choisie","Known absence status has a French translation");
         check(before.to_json() == original, "Drawing leaves prepared input unchanged");
         ImGui::DestroyContext();
         std::cout << checks << " animation pose view checks passed\n"
