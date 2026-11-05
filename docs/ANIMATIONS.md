@@ -123,3 +123,7 @@ The optional separate UI header `<cyuediff/animation_pose_view.hpp>` exposes `An
 ## Desktop source pose request and workspace contexts - 0.138
 
 Desktop document requests now carry explicit per-side Skeleton paths, animation/Skeleton owners and integer frame selections. Shared frames are the default; independent after frames remain explicit. Workspace format four stores these choices, accepts prior formats with disabled bindings by default, bounds all new frame/string fields and resolves loose Skeleton paths with their corresponding project contexts. Callback/cache objects and codecs remain outside saved data. External associations currently apply to loose local packages. Validation passes 119 workspace-file checks and 52 queue/workspace checks.
+
+## Worker preparation of explicitly bound desktop animation poses - 0.139
+
+The desktop worker opens supplied loose Skeleton paths through the existing verified package cache, resolves each side with its own project context, and prepares selected Core poses before publication even when texture/mesh previews are disabled. Requested failures retain raw package inspection and a per-side unavailable pose, never known absence. Skeleton sources and companions are protected; cancellation propagates. Reports retain separate source-pose readiness, provenance, diagnostics and derived comparison. Seventeen new model checks and forty existing desktop checks pass, including shared cache ownership, invalid names/frames/files, mounted independent projects, input hashes and actual queue publication.

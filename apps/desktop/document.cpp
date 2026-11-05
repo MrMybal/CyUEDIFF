@@ -1,4 +1,5 @@
 #include "document.hpp"
+#include "animation_document.hpp"
 namespace cyuediff::desktop {
 std::vector<TextureDifference> compare_previews(const std::vector<Preview> &previews) {
     std::vector<const Preview *> a, b;
@@ -92,7 +93,8 @@ Json Document::report() const {
                    {"textureDifferences", differences},
                    {"beforeMesh", mesh(before_mesh)},
                    {"afterMesh", mesh(after_mesh)},
-                   {"diagnostics", diagnostics}};
+                   {"diagnostics", diagnostics},
+                   {"animationPose", animation_pose_report(*this)}};
 #ifdef CYUEDIFF_HAS_GIT
     result["git"] = git ? git->to_json() : Json(nullptr);
 #else
@@ -103,6 +105,8 @@ Json Document::report() const {
 std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     if (request.before.empty() && !request.container)
         throw Error("desktop-input", "Choose a package before loading");
+    if (request.animation_pose && (request.git || request.container))
+        throw Error("desktop-animation-pose", "External Skeleton bindings currently require local packages");
     request.control.checkpoint("Opening document");
     ReadOptions read;
     read.control = request.control;
@@ -214,6 +218,7 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             document->diff = compare(*document->before, *document->after, request.control);
         }
     }
+    prepare_animation_poses(*document, request, read);
     if (!request.previews)
         return document;
     BlockDecoder decoder;

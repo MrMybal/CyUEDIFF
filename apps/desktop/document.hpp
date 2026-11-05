@@ -50,6 +50,10 @@ struct Document {
     LoadRequest request;
     std::shared_ptr<const ContainerDocument> container;
     std::shared_ptr<const Package> before, after;
+    std::shared_ptr<const Package> before_skeleton, after_skeleton;
+    std::optional<AnimationPose> before_animation_pose, after_animation_pose;
+    Json animation_pose_comparison = nullptr;
+    std::vector<std::string> animation_pose_diagnostics;
     std::optional<ProjectContext> project, after_project;
     std::optional<DiffResult> diff;
     std::vector<Preview> previews;
