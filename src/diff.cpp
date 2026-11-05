@@ -1,6 +1,7 @@
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
 #include <cyuediff/skeleton.hpp>
+#include <cyuediff/attachments.hpp>
 namespace cyuediff {
 namespace {
 std::string pointer_token(const std::string &input) {
@@ -109,6 +110,20 @@ CollisionComparison compare_collisions(const Package &before, const Package &aft
     result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>();
     walk(a, b, "", result.changes, options.control);
     return result;
+}
+std::string AttachmentComparison::status() const {
+    return !complete?"incomplete":changes.empty()?"identical":"changed";
+}
+Json AttachmentComparison::to_json() const {
+    return {{"schema","cyuediff.attachments-diff/1"},
+            {"scope","stored reflected sockets and explicit owner lists; no defaults or external loading"},
+            {"status",status()},{"complete",complete},{"changes",changes}};
+}
+AttachmentComparison compare_attachments(const Package &before,const Package &after,const AttachmentOptions &options) {
+    auto normalized=options;normalized.source_indices=false;
+    const auto a=attachment_snapshot(before,normalized),b=attachment_snapshot(after,normalized);
+    AttachmentComparison out;out.complete=a.at("complete").get<bool>() && b.at("complete").get<bool>();
+    walk(a,b,"",out.changes,options.control);return out;
 }
 std::string SkeletonAnimationComparison::status() const {
     return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
