@@ -12,7 +12,10 @@ class AnimationSourceView {
     Json roots_[2], samples_[2];
     bool present_[2]{}, input_complete_[2]{}, comparing_ = false, changed_only_ = false, truncated_ = false;
     std::string objects_[2], selected_;
-    std::uint32_t frame_ = 0;
+    std::uint32_t frame_ = 0, after_frame_ = 0;
+    bool independent_frames_ = false;
+    double position_tolerance_ = 0, rotation_tolerance_ = 0, scale_tolerance_ = 0;
+    Json frame_difference_ = Json::object();
     int component_ = 0;
     std::map<std::string, Entry> entries_;
     std::vector<std::string> visible_;
@@ -34,6 +37,10 @@ class AnimationSourceView {
     bool select_models(std::string before, std::string after);
     bool select_track(const std::string &key);
     void set_frame(std::uint32_t);
+    void set_after_frame(std::uint32_t);
+    void set_independent_frames(bool);
+    void set_tolerances(double position, double rotation_degrees, double scale);
+    const Json &frame_difference() const { return frame_difference_; }
     void set_component(unsigned);
     void set_filter(std::string);
     void set_changed_only(bool);

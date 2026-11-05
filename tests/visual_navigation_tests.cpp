@@ -395,12 +395,38 @@ int main(int argc, char **argv) {
             transform_default.set_animation_family(AnimationCurveFamily::Transform);
             transform_default.set_range(-1, 3);
             transform_float.set_packages(&transform_before);
+            AnimationSourceView frame_independent, frame_sign, frame_tolerance, frame_invalid,
+                frame_ambiguous;
+            frame_independent.set_packages(&source_before, &source_after);
+            frame_independent.select_track("name:arm~/track");
+            frame_independent.set_frame(1);
+            frame_independent.set_after_frame(2);
+            frame_independent.set_tolerances(.25, .5, .01);
+            auto signed_source = source_before;
+            for (auto &track : signed_source.exports[0].properties["BoneAnimationTracks"]["value"])
+                track["InternalTrackData"]["value"]["rotations"][0][3] = -1.;
+            frame_sign.set_packages(&source_before, &signed_source);
+            frame_sign.select_track("name:root");
+            frame_tolerance.set_packages(&source_before, &source_after);
+            frame_tolerance.select_track("name:arm~/track");
+            frame_tolerance.set_frame(1);
+            frame_tolerance.set_tolerances(100., 180., 1.);
+            auto bad_rotation_source = source_before;
+            bad_rotation_source.exports[0].properties["BoneAnimationTracks"]["value"][1]["InternalTrackData"]
+                                                     ["value"]["rotations"][0][3] = 2.;
+            frame_invalid.set_packages(&source_before, &bad_rotation_source);
+            frame_invalid.select_track("name:arm~/track");
+            auto ambiguous_source = source_before;
+            ambiguous_source.exports[0].properties["BoneAnimationTracks"]["value"][1]["Name"]["value"] =
+                "root";
+            frame_ambiguous.set_packages(&source_before, &ambiguous_source);
+            frame_ambiguous.select_track("name:arm~/track");
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 54; ++scene) {
+                    for (int scene = 0; scene < 60; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -454,7 +480,13 @@ int main(int argc, char **argv) {
                                                "transform-missing",
                                                "transform-duplicate",
                                                "transform-default",
-                                               "transform-float-scope"};
+                                               "transform-float-scope",
+                                               "frame-independent",
+                                               "frame-narrow",
+                                               "frame-sign",
+                                               "frame-tolerance",
+                                               "frame-invalid",
+                                               "frame-ambiguous"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -466,13 +498,29 @@ int main(int argc, char **argv) {
                             ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
                                                       scene == 15 || scene == 19 || scene == 22 ||
                                                       scene == 26 || scene == 31 || scene == 37 ||
-                                                      scene == 43 || scene == 49)
+                                                      scene == 43 || scene == 49 || scene == 55)
                                                          ? ImVec2{640, io.DisplaySize.y}
                                                          : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 54:
+                            case 55:
+                                frame_independent.draw();
+                                break;
+                            case 56:
+                                frame_sign.draw();
+                                break;
+                            case 57:
+                                frame_tolerance.draw();
+                                break;
+                            case 58:
+                                frame_invalid.draw();
+                                break;
+                            case 59:
+                                frame_ambiguous.draw();
+                                break;
                             case 48:
                             case 49:
                                 transform_view.draw();

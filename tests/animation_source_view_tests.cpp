@@ -32,6 +32,15 @@ int main() {
         check(view.curve_samples() == 3, "Selected channel prepared outside draw");
         view.set_changed_only(true);
         check(view.visible_count() == 1 && view.next_change(), "Confirmed changed track navigation");
+        check(view.frame_difference()["positionDistance"] == 2. && view.frame_difference()["changed"] == true,
+              "Selected local value difference");
+        view.set_tolerances(2., 0., 0.);
+        check(view.frame_difference()["changed"] == false && view.visible_count() == 1,
+              "Tolerance does not hide stored-key changes");
+        view.set_after_frame(2);
+        check(view.frame_sample(true)["frame"] == 2 && view.frame_sample()["frame"] == 1,
+              "Independent frame indices");
+        view.set_tolerances(.25, .5, .01);
         auto state = view.view_state();
         state["inspection"]["properties"]["filter"] = "positions";
         state["inspection"]["properties"]["selected"] = "/positions/0";
@@ -51,6 +60,38 @@ int main() {
             rejected = e.code == "view-state";
         }
         check(rejected && restored.view_state() == saved, "Invalid state restore atomic");
+        auto invalid_rotation = saved;
+        invalid_rotation["rotationToleranceDegrees"] = 181.;
+        rejected = false;
+        try {
+            restored.restore_view_state(invalid_rotation);
+        } catch (const Error &e) {
+            rejected = e.code == "view-state";
+        }
+        check(rejected && restored.view_state() == saved, "Invalid tolerance state is atomic");
+        auto sign_after = a;
+        for (auto &track : sign_after.exports[0].properties["BoneAnimationTracks"]["value"])
+            track["InternalTrackData"]["value"]["rotations"][0][3] = -1.;
+        AnimationSourceView sign_view;
+        sign_view.set_packages(&a, &sign_after);
+        sign_view.select_track("name:root");
+        check(sign_view.frame_difference()["changed"] == false,
+              "Quaternion sign change has zero orientation delta");
+        AnimationSourceView independent;
+        independent.set_packages(&a, &a);
+        independent.select_track("name:root");
+        independent.set_after_frame(2);
+        check(independent.frame_difference()["changed"] == true,
+              "Equal stored sources can differ at independent frames");
+        independent.set_independent_frames(false);
+        check(independent.frame_difference()["changed"] == false,
+              "Shared frame mode resynchronizes coordinates");
+        auto ambiguous_after = a;
+        ambiguous_after.exports[0].properties["BoneAnimationTracks"]["value"][1]["Name"]["value"] = "root";
+        AnimationSourceView ambiguous;
+        ambiguous.set_packages(&a, &ambiguous_after);
+        ambiguous.select_track("name:arm~/track");
+        check(!ambiguous.selected_known(), "Ambiguous opposite identities do not confirm removals");
         auto short_after = b;
         short_after.exports[0].properties["NumberOfKeys"]["value"] = 1;
         AnimationSourceView short_view;
@@ -97,7 +138,7 @@ int main() {
                 io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
                 cyui::setLocale(locale);
                 for (float width : {1200.f, 600.f})
-                    for (unsigned scene = 0; scene < 7; ++scene)
+                    for (unsigned scene = 0; scene < 10; ++scene)
                         for (unsigned frame = 0; frame < 2; ++frame) {
                             io.DisplaySize = {width, 1000};
                             ImGui::NewFrame();
@@ -119,6 +160,12 @@ int main() {
                                 single.draw();
                             if (scene == 6)
                                 asset.draw("Asset", false);
+                            if (scene == 7)
+                                sign_view.draw();
+                            if (scene == 8)
+                                independent.draw();
+                            if (scene == 9)
+                                ambiguous.draw();
                             ImGui::End();
                             ImGui::Render();
                             ++frames;

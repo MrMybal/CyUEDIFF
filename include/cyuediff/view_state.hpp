@@ -190,7 +190,10 @@ inline void validate(const Json &v, std::string_view kind) {
         } else if(kind=="animation-source"){
             string({"beforeObject","afterObject"});
             child("inspection","graph-inspection");
-            if(key=="frame"){scalar(x,0,INT32_MAX);require(x.is_number_integer());known=true;}
+            flag({"independentFrames"});
+            if(key=="frame" || key=="afterFrame"){scalar(x,0,INT32_MAX);require(x.is_number_integer());known=true;}
+            if(key=="positionTolerance" || key=="scaleTolerance"){scalar(x,0,std::numeric_limits<double>::max());known=true;}
+            if(key=="rotationToleranceDegrees"){scalar(x,0,180);known=true;}
             if(key=="component"){scalar(x,0,9);require(x.is_number_integer());known=true;}
         } else if(kind=="attachments"){
             flag({"preview"});

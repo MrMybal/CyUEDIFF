@@ -60,3 +60,7 @@ compare_animation_frames pairs exact bone track names at independently chosen in
 ## Public independent-frame CLI and encoded transform cases - 0.130
 
 animation-frame-diff accepts independent source frame indices and model contexts, position/rotation/scale tolerances and protected JSON outputs. Orientation tolerances use degrees; scale uses maximum absolute axis delta. Independently encoded profiles 1004 and 1013 now include antipodal/quarter-turn/half-turn/wrapped rotations, signed scales, empty/omitted/removed tracks, unknown names/quaternions and explicit timing changes. CLI exit codes preserve identical/changed/incomplete distinctions.
+
+## Retained independent frames and local comparison controls - 0.131
+
+The Animations tab now selects shared or independent before/after source frames and retains position, orientation-degree and scale tolerances. Selected-track metrics distinguish usable changes, values within tolerance and unavailable comparisons without hiding serialized key differences. Raw plots retain both frame cursors, with chart clicks controlling the before coordinate in independent mode. English/French, five themes, narrow layouts, ambiguous opposite names and atomic state validation are covered. Drawing uses owned projections and prepared samples.

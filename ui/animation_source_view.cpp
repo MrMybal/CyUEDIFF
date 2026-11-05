@@ -1,5 +1,6 @@
 #include <cyuediff/animation_source_view.hpp>
 #include "../src/animation_internal.hpp"
+#include "../src/animation_transform.hpp"
 #include "diff_style.hpp"
 #include <algorithm>
 #include <cmath>
@@ -18,6 +19,25 @@ std::uint32_t keys(const Json *m) {
 }
 } // namespace
 void AnimationSourceView::register_translations() {
+    cyui::registerTranslations(
+        "fr",
+        {{"Independent source frames", "Frames source indépendantes"},
+         {"Source frame before", "Frame source avant"},
+         {"Source frame after", "Frame source après"},
+         {"Position tolerance", "Tolérance de position"},
+         {"Rotation tolerance (degrees)", "Tolérance angulaire (degrés)"},
+         {"Scale tolerance", "Tolérance d’échelle"},
+         {"Selected local frame comparison", "Comparaison locale de la piste sélectionnée"},
+         {"Local transform within tolerance", "Transformation locale dans la tolérance"},
+         {"Local transform changed", "Transformation locale modifiée"},
+         {"Local transform comparison unavailable", "Comparaison de transformation locale indisponible"},
+         {"Position difference: %.7g | Rotation: %.7g deg | Scale: %.7g",
+          "Écart de position : %.7g | Rotation : %.7g degrés | Échelle : %.7g"},
+         {"Frame metrics are independent of stored key differences.",
+          "Les métriques de frame sont distinctes des différences de clés enregistrées."},
+         {"Before: orange | After: green | Click to choose the before frame.",
+          "Avant : orange | Après : vert | Cliquez pour choisir la frame avant."},
+         {"Stored key status", "État des clés enregistrées"}});
     cyui::registerTranslations(
         "fr", {{"Animation source", "Source d’animation"},
                {"Animations", "Animations"},
@@ -71,7 +91,10 @@ const Json *AnimationSourceView::track(bool after) const {
 bool AnimationSourceView::empty() const { return roots_[0].empty() && roots_[1].empty(); }
 void AnimationSourceView::set_packages(const Package *a, const Package *b, bool comparing) {
     comparing_ = comparing || (a && b);
-    frame_ = 0;
+    frame_ = after_frame_ = 0;
+    independent_frames_ = false;
+    position_tolerance_ = rotation_tolerance_ = scale_tolerance_ = 0;
+    frame_difference_ = Json::object();
     component_ = 0;
     filter_ = {};
     changed_only_ = false;
@@ -108,9 +131,13 @@ void AnimationSourceView::bind_models() {
                 }
                 entries_[it.key()].name = it->value("name", it.key());
             }
+    bool identities[2]{};
+    for (bool side : {false, true})
+        if (const auto *m = model(side))
+            identities[side] = detail::animation_track_identities_known(*m);
     auto known = [&](bool side, const Json *t) {
         const auto *m = model(side);
-        return !present_[side] || (input_complete_[side] && m && (t || m->at("tracksCoverage") == "stored"));
+        return !present_[side] || (input_complete_[side] && m && (t || identities[side]));
     };
     for (auto &e : entries_) {
         const auto key = selected_;
@@ -154,6 +181,28 @@ void AnimationSourceView::set_frame(std::uint32_t frame) {
     if (frame > INT32_MAX)
         throw Error("view-state", "Source frame exceeds the supported display range");
     frame_ = frame;
+    if (!independent_frames_)
+        after_frame_ = frame_;
+    sample();
+}
+void AnimationSourceView::set_after_frame(std::uint32_t frame) {
+    if (frame > INT32_MAX)
+        throw Error("view-state", "Source frame exceeds the supported display range");
+    after_frame_ = frame;
+    independent_frames_ = true;
+    sample();
+}
+void AnimationSourceView::set_independent_frames(bool value) {
+    independent_frames_ = value;
+    if (!value)
+        after_frame_ = frame_;
+    sample();
+}
+void AnimationSourceView::set_tolerances(double position, double rotation_degrees, double scale) {
+    detail::validate_animation_tolerances(position, rotation_degrees, scale);
+    position_tolerance_ = position;
+    rotation_tolerance_ = rotation_degrees;
+    scale_tolerance_ = scale;
     sample();
 }
 void AnimationSourceView::set_component(unsigned c) {
@@ -204,17 +253,18 @@ void AnimationSourceView::sample() {
     for (bool side : {false, true}) {
         const auto *m = model(side), *t = track(side);
         const auto count = keys(m);
-        Json out = {{"frame", frame_}, {"numberOfKeys", count}, {"ready", false}};
-        if (t && count && frame_ < count) {
-            out = detail::sample_animation_track(*t, frame_, count);
-            out["frame"] = frame_;
+        const auto frame = side && independent_frames_ ? after_frame_ : frame_;
+        Json out = {{"frame", frame}, {"numberOfKeys", count}, {"ready", false}};
+        if (t && count && frame < count) {
+            out = detail::sample_animation_track(*t, frame, count);
+            out["frame"] = frame;
             out["numberOfKeys"] = count;
             if (m->contains("frameRate")) {
                 const auto &rate = m->at("frameRate");
                 out["frameRate"] = rate;
                 if (rate.contains("numerator") && rate.contains("denominator"))
                     out["timeSeconds"] =
-                        double(frame_) * rate["denominator"].get<double>() / rate["numerator"].get<double>();
+                        double(frame) * rate["denominator"].get<double>() / rate["numerator"].get<double>();
             }
             for (const char *name : {"positions", "rotations", "scales"})
                 if (t->contains(name))
@@ -225,6 +275,10 @@ void AnimationSourceView::sample() {
             out["diagnostics"] = Json::array({"Selected source frame or track is unavailable"});
         samples_[side ? 1 : 0] = std::move(out);
     }
+    frame_difference_ =
+        comparing_ ? detail::compare_local_animation_values(samples_[0], samples_[1], position_tolerance_,
+                                                            rotation_tolerance_, scale_tolerance_)
+                   : Json::object();
     const auto *a = present_[0] ? &samples_[0] : nullptr, *b = present_[1] ? &samples_[1] : nullptr;
     if (comparing_ && !selected_known())
         details_.set_values(a && (samples_[0].value("ready", false) || !b) ? a : b, nullptr, false);
@@ -235,6 +289,11 @@ Json AnimationSourceView::view_state() const {
     Json out = {{"beforeObject", objects_[0]},
                 {"afterObject", objects_[1]},
                 {"frame", frame_},
+                {"afterFrame", independent_frames_ ? after_frame_ : frame_},
+                {"independentFrames", independent_frames_},
+                {"positionTolerance", position_tolerance_},
+                {"rotationToleranceDegrees", rotation_tolerance_},
+                {"scaleTolerance", scale_tolerance_},
                 {"component", component_},
                 {"inspection",
                  {{"filter", filter_.query},
@@ -251,6 +310,11 @@ void AnimationSourceView::restore_view_state(const Json &v) {
         objects_[1] = v["afterObject"].get<std::string>();
     if (v.contains("frame"))
         frame_ = v["frame"].get<std::uint32_t>();
+    independent_frames_ = v.value("independentFrames", independent_frames_);
+    after_frame_ = independent_frames_ ? v.value("afterFrame", frame_) : frame_;
+    position_tolerance_ = v.value("positionTolerance", position_tolerance_);
+    rotation_tolerance_ = v.value("rotationToleranceDegrees", rotation_tolerance_);
+    scale_tolerance_ = v.value("scaleTolerance", scale_tolerance_);
     if (v.contains("component"))
         component_ = v["component"].get<int>();
     if (v.contains("inspection")) {
@@ -309,17 +373,24 @@ void AnimationSourceView::chart() {
         if (curve.size() == 1)
             draw->AddCircleFilled(point(curve[0]), cyui::dp(3), color);
     }
-    if (frame_ <= end) {
-        const auto x = a.x + float(frame_ / end) * size.x;
-        draw->AddLine({x, a.y}, {x, b.y}, palette.text);
+    for (unsigned side = 0; side < (comparing_ && independent_frames_ ? 2u : 1u); ++side) {
+        const auto frame = side ? after_frame_ : frame_;
+        if (frame <= end) {
+            const auto x = a.x + float(frame / end) * size.x;
+            draw->AddLine({x, a.y}, {x, b.y},
+                          independent_frames_ ? (side ? palette.success : palette.warning) : palette.text);
+        }
     }
     draw->PopClipRect();
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const double ratio = std::clamp(double((ImGui::GetIO().MousePos.x - a.x) / size.x), 0., 1.);
         set_frame(std::uint32_t(std::llround(ratio * (count ? count - 1 : 0))));
     }
-    cyui::textDim(
-        "%s", cyui::tr("Before: orange | After: green | Click the curve to choose a source frame.").c_str());
+    cyui::textDim("%s",
+                  cyui::tr(independent_frames_
+                               ? "Before: orange | After: green | Click to choose the before frame."
+                               : "Before: orange | After: green | Click the curve to choose a source frame.")
+                      .c_str());
 }
 void AnimationSourceView::draw(const char *id) {
     cyui::ScopedID scope(id);
@@ -384,7 +455,7 @@ void AnimationSourceView::draw(const char *id) {
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
                           {0, ImGui::GetContentRegionAvail().y})) {
         ImGui::TableSetupColumn(cyui::tr("Bone").c_str(), ImGuiTableColumnFlags_WidthStretch, 3);
-        ImGui::TableSetupColumn(cyui::tr("Status").c_str(), ImGuiTableColumnFlags_WidthStretch, 1);
+        ImGui::TableSetupColumn(cyui::tr("Stored key status").c_str(), ImGuiTableColumnFlags_WidthStretch, 1);
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
         ImGuiListClipper clip;
@@ -418,10 +489,43 @@ void AnimationSourceView::draw(const char *id) {
         return;
     ImGui::Text("%s: %s", cyui::tr("Bone").c_str(), entries_.at(selected_).name.c_str());
     int frame = int(std::min<std::uint32_t>(frame_, INT32_MAX));
-    const auto n = std::max(keys(model(false)), keys(model(true)));
+    const auto n = independent_frames_ ? keys(model(false)) : std::max(keys(model(false)), keys(model(true)));
     ImGui::SetNextItemWidth(std::max(cyui::dp(80), ImGui::GetContentRegionAvail().x * .65f));
-    if (ImGui::SliderInt(cyui::trLabel("Source frame").c_str(), &frame, 0, int(n ? n - 1 : 0)))
+    if (ImGui::SliderInt(
+            cyui::trLabel(comparing_ && independent_frames_ ? "Source frame before" : "Source frame").c_str(),
+            &frame, 0, int(n ? n - 1 : 0)))
         set_frame(std::uint32_t(frame));
+    if (comparing_) {
+        bool independent = independent_frames_;
+        if (ImGui::Checkbox(cyui::trLabel("Independent source frames").c_str(), &independent))
+            set_independent_frames(independent);
+        if (independent_frames_) {
+            int after = int(after_frame_);
+            const auto count = keys(model(true));
+            ImGui::SetNextItemWidth(std::max(cyui::dp(80), ImGui::GetContentRegionAvail().x * .65f));
+            if (ImGui::SliderInt(cyui::trLabel("Source frame after").c_str(), &after, 0,
+                                 int(count ? count - 1 : 0)))
+                set_after_frame(std::uint32_t(after));
+        }
+        double pt = position_tolerance_, rt = rotation_tolerance_, st = scale_tolerance_;
+        bool changed = false;
+        ImGui::SetNextItemWidth(std::min(cyui::dp(140), ImGui::GetContentRegionAvail().x));
+        changed =
+            ImGui::InputDouble(cyui::trLabel("Position tolerance").c_str(), &pt, 0, 0, "%.6g") || changed;
+        if (ImGui::GetContentRegionAvail().x > cyui::dp(900))
+            ImGui::SameLine();
+        ImGui::SetNextItemWidth(std::min(cyui::dp(140), ImGui::GetContentRegionAvail().x));
+        changed =
+            ImGui::InputDouble(cyui::trLabel("Rotation tolerance (degrees)").c_str(), &rt, 0, 0, "%.6g") ||
+            changed;
+        if (ImGui::GetContentRegionAvail().x > cyui::dp(900))
+            ImGui::SameLine();
+        ImGui::SetNextItemWidth(std::min(cyui::dp(140), ImGui::GetContentRegionAvail().x));
+        changed = ImGui::InputDouble(cyui::trLabel("Scale tolerance").c_str(), &st, 0, 0, "%.6g") || changed;
+        if (changed && std::isfinite(pt) && pt >= 0 && std::isfinite(rt) && rt >= 0 && rt <= 180 &&
+            std::isfinite(st) && st >= 0)
+            set_tolerances(pt, rt, st);
+    }
     ImGui::SetNextItemWidth(std::min(cyui::dp(220), ImGui::GetContentRegionAvail().x));
     if (ImGui::BeginCombo(cyui::trLabel("Source key values").c_str(), cyui::tr(labels[component_]).c_str())) {
         for (int c = 0; c < 10; ++c)
@@ -430,6 +534,23 @@ void AnimationSourceView::draw(const char *id) {
         ImGui::EndCombo();
     }
     chart();
+    if (comparing_) {
+        ImGui::TextUnformatted(cyui::tr("Selected local frame comparison").c_str());
+        if (frame_difference_.value("ready", false)) {
+            ImGui::TextUnformatted(cyui::tr(frame_difference_["changed"].get<bool>()
+                                                ? "Local transform changed"
+                                                : "Local transform within tolerance")
+                                       .c_str());
+            ImGui::TextWrapped(
+                cyui::tr("Position difference: %.7g | Rotation: %.7g deg | Scale: %.7g").c_str(),
+                frame_difference_["positionDistance"].get<double>(),
+                frame_difference_["rotationDeltaDegrees"].get<double>(),
+                frame_difference_["scaleMaxDelta"].get<double>());
+        } else
+            cyui::textDim("%s", cyui::tr("Local transform comparison unavailable").c_str());
+        ImGui::TextWrapped("%s",
+                           cyui::tr("Frame metrics are independent of stored key differences.").c_str());
+    }
     if (comparing_ && !selected_known())
         cyui::textDim("%s",
                       cyui::tr("Unknown opposite track table; absence is not a confirmed change.").c_str());

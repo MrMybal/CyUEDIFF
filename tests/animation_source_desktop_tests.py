@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory(prefix='cyuediff-animation-desktop-') as tmp:
  subprocess.run([generator,'--write-fixtures',str(root)],check=True,env=env)
  before=root/'animation-0-1013.uasset';after=root/'animation-1-1013.uasset'
  hashes={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in [before,after]}
- state={'asset':{'animations':{'beforeObject':'TestAsset','afterObject':'TestAsset','frame':1,'component':0,
+ state={'asset':{'animations':{'beforeObject':'TestAsset','afterObject':'TestAsset','frame':1,'afterFrame':2,'independentFrames':True,'positionTolerance':.25,'rotationToleranceDegrees':.5,'scaleTolerance':.01,'component':0,
         'inspection':{'selected':'name:arm~/track','changedOnly':True,'filter':'arm','properties':{'filter':'positions','changedOnly':False}}}}}
  report=root/'report.json';workspace=root/'workspace.json'
  def run(*args):
@@ -23,6 +23,7 @@ with tempfile.TemporaryDirectory(prefix='cyuediff-animation-desktop-') as tmp:
  assert saved['documents'][0]['view']=='animations'
  actual=saved['documents'][0]['viewState']['asset']['animations']
  assert actual['frame']==1 and actual['inspection']['selected']=='name:arm~/track'
+ assert actual['afterFrame']==2 and actual['independentFrames'] and actual['positionTolerance']==.25 and actual['rotationToleranceDegrees']==.5 and actual['scaleTolerance']==.01
  original=workspace.read_bytes()
  reopened=run('--workspace',workspace)
  assert reopened['workspaceFile']['loaded'] and workspace.read_bytes()==original
