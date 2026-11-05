@@ -26,6 +26,11 @@ int main() {
               "Source timing retained");
         check(json["space"] == "source-animation-affine" && json["schema"] == "cyuediff.animation-pose/1",
               "Distinct source-space contract");
+        check(pose.source_affines.size() == 3 && json["affines"]["tip"].size() == 12,
+              "Ready affine transforms are retained and serialized with explicit layout");
+        const auto affine = pose.source_affines.at("tip");
+        check(affine[3] == 13. && affine[7] == 24. && affine[11] == 0. && affine[0] == 1.,
+              "Row-major affine translation agrees with derived origin");
         check(a.to_json() == original_a && s.to_json() == original_s, "Input packages remain unchanged");
         auto &tracks = a.exports[0].properties["BoneAnimationTracks"]["value"];
         auto &root = tracks[0]["InternalTrackData"]["value"];
@@ -39,6 +44,16 @@ int main() {
         json = animation_pose(a, s, 0).to_json();
         check(std::abs(json["joints"]["tip"]["position"][1].get<double>() + 20) < 1e-8,
               "Negative scale retained");
+        const auto transformed = animation_pose(a, s, 0).source_affines.at("tip");
+        // Independent quarter-turn application: Rz(90) * diag(-2,3,4) * (1,2,3),
+        // plus the already verified tip origin (-60,-20,0).
+        std::array<double, 3> located{};
+        for (unsigned r = 0; r < 3; ++r)
+            located[r] = transformed[r * 4] * 1. + transformed[r * 4 + 1] * 2. + transformed[r * 4 + 2] * 3. +
+                         transformed[r * 4 + 3];
+        check(std::abs(located[0] + 66.) < 1e-8 && std::abs(located[1] + 22.) < 1e-8 &&
+                  std::abs(located[2] - 12.) < 1e-8,
+              "Retained linear terms transform offsets through signed scale and rotation");
         root["scales"] = {{0., 0., 0.}};
         check(animation_pose(a, s, 0).to_json()["joints"]["tip"]["position"] == Json({0., 0., 0.}),
               "Stored zero scale is valid");
@@ -51,6 +66,9 @@ int main() {
         check(!json["complete"].get<bool>() && json["joints"]["arm"]["position"].is_null() &&
                   json["joints"]["tip"]["position"].is_null(),
               "Missing track invalidates descendants without rest fallback");
+        check(json["affines"].contains("root") && !json["affines"].contains("arm") &&
+                  !json["affines"].contains("tip"),
+              "Unknown parents cannot expose zero or identity affine transforms");
         check(json["bindings"]["tip"]["localReady"] && json["bindings"]["arm"]["track"].is_null(),
               "Local readiness is distinct from parent availability");
         a = hierarchy_animation_model();
@@ -157,4 +175,3 @@ int main() {
         return 1;
     }
 }
-

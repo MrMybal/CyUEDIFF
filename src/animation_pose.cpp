@@ -20,6 +20,7 @@ Json AnimationPose::to_json() const {
         {"hierarchyComplete", hierarchy_complete},
         {"joints", std::move(joints)},
         {"bindings", bindings},
+        {"affines", source_affines},
         {"unboundTracks", unbound_tracks},
         {"diagnostics", display_pose.diagnostics}};
     if (time_seconds)
@@ -115,6 +116,7 @@ AnimationPose animation_pose(const Package &animation, const Package &skeleton, 
                     throw Error("animation-pose-value", "Source affine transform overflow");
             joint.position = {matrices[i][3], matrices[i][7], matrices[i][11]};
             joint.ready = true;
+            out.source_affines.emplace(name, matrices[i]);
         } else
             out.display_pose.complete = false;
         indices.emplace(name, i);

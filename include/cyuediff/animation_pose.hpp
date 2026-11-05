@@ -18,6 +18,9 @@ struct AnimationPose {
     ReferencePose display_pose;
     Json bindings = Json::object(), unbound_tracks = Json::array();
     bool hierarchy_complete = false;
+    // Ready source-space affine matrices, row-major 3x4, applied to column vectors.
+    // Missing/invalid ancestors have no entry. Values are never reconstructed from joint origins.
+    std::map<std::string, std::array<double, 12>> source_affines;
     Json to_json() const;
 };
 // Explicit caller-supplied Skeleton/SkeletalMesh. Exact, case-sensitive track names only.

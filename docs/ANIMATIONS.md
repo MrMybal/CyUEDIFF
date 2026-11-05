@@ -159,3 +159,7 @@ Historical source poses now distinguish absent animation sides from failed Skele
 ## Installed Git SDK and historical pose validation - 0.147
 
 The standalone git_animation_pose_consumer demonstrates historical animation/Skeleton materialization and Core pose comparison without UI, through the installed Git SDK. Both animation commits are resolved before their explicit Skeletons, including optional historical project/plugin contexts. validate_git_desktop_poses.py checks first/middle/last frame pairs against original caller-supplied files, the installed consumer and the native desktop, preserving full binding provenance. Output paths are confined outside the source repository under build-native. Engine and test assets are never redistributed.
+
+## Prepared source affine transforms - 0.148
+
+AnimationPose now retains ready row-major 3x4 source-space affine transforms in source_affines and serializes them in the additive affines table. These are the matrices used to compose the checked hierarchy, including signed/nonuniform scale and shear; they are not reconstructed from joint origins or a rest pose. Missing or invalid ancestors have no affine entry. This enables caller-supplied attachment offsets to use the exact prepared source frame.
