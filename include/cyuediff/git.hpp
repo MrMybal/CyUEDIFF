@@ -73,6 +73,7 @@ struct GitProjectContext {
 };
 class GitRevision {
     std::shared_ptr<detail::GitWorkspace> storage_;
+    fs::path materialized_file_;
     friend class GitRepository;
 
   public:
@@ -82,6 +83,7 @@ class GitRevision {
     std::string storage = "git";
     // Keep this revision alive while a Package or a preview uses its payload files.
     fs::path asset_path() const;
+    fs::path file_path() const;
     Package open(const ReadOptions &options = {}) const;
     Json to_json() const;
 };
@@ -91,12 +93,8 @@ class GitRepository {
 
   public:
     static GitRepository open(const fs::path &, const GitOptions &options = {});
-    const fs::path &root() const {
-        return root_;
-    }
-    const fs::path &common_directory() const {
-        return common_directory_;
-    }
+    const fs::path &root() const { return root_; }
+    const fs::path &common_directory() const { return common_directory_; }
     fs::path lfs_objects() const;
     // Newest-first topological history. Pass the returned head for stable subsequent pages.
     GitHistory history(const std::string &revision = "HEAD", const GitHistoryOptions &options = {}) const;
@@ -104,6 +102,10 @@ class GitRepository {
     AssetCatalog catalog(const std::string &revision, const CatalogOptions &options = {}) const;
     // Commit-ish resolves once to an immutable commit. No checkout, filters or fetch.
     GitRevision materialize(const std::string &revision, const std::string &repository_path) const;
+    // Exact single portable repository file, including .ubulk and arbitrary binary extensions; no companions.
+    GitRevision materialize_file(const std::string &revision, const std::string &repository_path,
+                                 std::uint64_t max_bytes = 2ull * 1024 * 1024 * 1024,
+                                 const OperationControl & = {}) const;
     GitProjectContext project(const std::string &revision, const std::string &project_path,
                               const GitProjectOptions &options = {}) const;
     GitRevision materialize(const GitProjectContext &, const std::string &package_name_or_path) const;

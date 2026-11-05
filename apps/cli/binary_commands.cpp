@@ -1,5 +1,8 @@
 #include "binary_commands.hpp"
 #include <cyuediff/binary_delta.hpp>
+#ifdef CYUEDIFF_HAS_GIT
+#include <cyuediff/git_binary_delta.hpp>
+#endif
 #include <algorithm>
 #include <atomic>
 #include <cwctype>
@@ -41,7 +44,8 @@ fs::path resolved(fs::path path) {
         suffix = suffix.empty() ? existing.filename() : existing.filename() / suffix;
         existing = parent;
     }
-    return (fs::canonical(existing) / suffix).lexically_normal();
+    const auto canonical = fs::canonical(existing);
+    return (suffix.empty() ? canonical : canonical / suffix).lexically_normal();
 }
 auto path_key(const fs::path &p) {
     auto key = p.native();
@@ -164,15 +168,19 @@ void write_new(const fs::path &destination, const std::uint8_t *data, std::size_
     }
 }
 } // namespace
-bool is_binary_command(const std::string &s) { return s == "binary-diff" || s == "binary-apply"; }
+bool is_binary_command(const std::string &s) {
+    return s == "binary-diff" || s == "binary-apply" || s == "git-binary-diff";
+}
 int run_binary_command(const std::vector<std::string> &args) {
     const bool apply = args.front() == "binary-apply";
+    const bool historical = args.front() == "git-binary-diff";
     BinaryDeltaOptions o;
     std::vector<std::string> positional;
     std::map<std::string, std::string> flags;
     bool summary = false;
-    const std::set<std::string> valued = {"--out", "--block-size", "--max-input-bytes", "--max-literal-bytes",
-                                          "--max-manifest-bytes"};
+    const std::set<std::string> valued = {
+        "--out",        "--block-size",  "--max-input-bytes", "--max-literal-bytes", "--max-manifest-bytes",
+        "--after-path", "--lfs-objects", "--git-temp"};
     for (std::size_t i = 1; i < args.size(); ++i) {
         const auto &a = args[i];
         if (a == "--summary") {
@@ -186,7 +194,10 @@ int run_binary_command(const std::vector<std::string> &args) {
             positional.push_back(a);
         }
     }
-    require(positional.size() == 2, "Binary command requires BASE and TARGET_OR_DELTA");
+    require(positional.size() == (historical ? 4 : 2), "Wrong number of binary command arguments");
+    if (!historical)
+        require(!flags.count("--after-path") && !flags.count("--lfs-objects") && !flags.count("--git-temp"),
+                "Historical file options require git-binary-diff");
     if (flags.count("--block-size")) {
         require(!apply, "--block-size requires binary-diff");
         const auto n = number(flags.at("--block-size"));
@@ -201,6 +212,36 @@ int run_binary_command(const std::vector<std::string> &args) {
         o.max_manifest_bytes = number(flags.at("--max-manifest-bytes"));
     const auto out = flags.count("--out") ? fs::u8path(flags.at("--out")) : fs::path{};
     require(!apply || !out.empty(), "binary-apply requires --out with a new destination");
+    if (historical) {
+#ifdef CYUEDIFF_HAS_GIT
+        GitOptions git;
+        if (flags.count("--lfs-objects"))
+            git.lfs_objects = fs::u8path(flags.at("--lfs-objects"));
+        if (flags.count("--git-temp"))
+            git.temporary_root = fs::u8path(flags.at("--git-temp"));
+        const auto repo = GitRepository::open(fs::u8path(positional[0]), git);
+        const std::string after_path = flags.count("--after-path") ? flags.at("--after-path") : positional[3];
+        std::vector<fs::path> inputs = {repo.root() / ".git"};
+        protect_file(inputs, repo.root() / fs::u8path(positional[3]));
+        protect_file(inputs, repo.root() / fs::u8path(after_path));
+        const std::vector<fs::path> directories = {repo.common_directory(), repo.lfs_objects()};
+        guard_output(out, inputs, directories);
+        const auto result =
+            compare_git_binary_files(repo, positional[1], positional[2], positional[3], after_path, o);
+        require(result.status() != "absent", "Both selected historical files are absent");
+        const auto text = (summary ? result.summary(o) : result.delta.to_json(o)).dump() + "\n";
+        require(text.size() <= o.max_manifest_bytes, "Manifest byte budget exceeded");
+        if (out.empty())
+            std::cout << text;
+        else {
+            guard_output(out, inputs, directories);
+            write_new(out, reinterpret_cast<const std::uint8_t *>(text.data()), text.size());
+        }
+        return result.status() == "absent" ? 2 : (result.status() == "identical" ? 0 : 1);
+#else
+        throw Error("git-unavailable", "This build does not include the Git adapter");
+#endif
+    }
     const auto base = fs::u8path(positional[0]), other = fs::u8path(positional[1]);
     std::vector<fs::path> protected_files;
     protect_file(protected_files, base);

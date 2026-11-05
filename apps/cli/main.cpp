@@ -31,6 +31,7 @@ int run(const std::vector<std::string> &args) {
             << "CyUEDiff " CYUEDIFF_VERSION " - standalone Unreal package reader\n"
                "  cyuediff binary-diff BASE TARGET [--block-size BYTES] [--summary] [--out DELTA.json]\n"
                "  cyuediff binary-apply BASE DELTA.json --out NEW_FILE\n"
+               "  cyuediff git-binary-diff REPO BEFORE_REV AFTER_REV PATH [--after-path PATH] [--summary] [--out DELTA.json]\n"
                "  Binary commands refuse existing outputs; see docs/BINARY_DELTA.md for budgets.\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "
                "ROOT] [--out FILE]\n"

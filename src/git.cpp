@@ -241,8 +241,12 @@ Json GitFile::to_json() const {
         result["sha256"] = content_sha256;
     return result;
 }
-fs::path GitRevision::asset_path() const {
-    return storage_ && present ? storage_->directory / fs::u8path(repository_path).filename() : fs::path{};
+fs::path GitRevision::asset_path() const { return file_path(); }
+fs::path GitRevision::file_path() const {
+    if (!storage_ || !present)
+        return {};
+    return materialized_file_.empty() ? storage_->directory / fs::u8path(repository_path).filename()
+                                      : materialized_file_;
 }
 Package GitRevision::open(const ReadOptions &options) const {
     if (!present || !storage_)
@@ -288,14 +292,15 @@ GitRepository GitRepository::open(const fs::path &path, const GitOptions &option
         throw Error("git-repository", "Common Git directory is unavailable");
     return repo;
 }
-fs::path GitRepository::lfs_objects() const {
-    if (!options_.lfs_objects.empty())
-        return fs::absolute(options_.lfs_objects);
-    detail::GitWorkspace workspace(options_.temporary_root);
-    auto config = detail::git_text(options_, root_, {"config", "--path", "--null", "--get", "lfs.storage"},
+namespace {
+fs::path configured_lfs_objects(const GitOptions &options, const fs::path &root, const fs::path &common) {
+    if (!options.lfs_objects.empty())
+        return fs::absolute(options.lfs_objects);
+    detail::GitWorkspace workspace(options.temporary_root);
+    auto config = detail::git_text(options, root, {"config", "--path", "--null", "--get", "lfs.storage"},
                                    workspace, true);
     if (config.empty())
-        return common_directory_ / "lfs" / "objects";
+        return common / "lfs" / "objects";
     if (config.back() != '\0')
         throw Error("git-config", "Invalid LFS storage configuration");
     config.pop_back();
@@ -303,8 +308,12 @@ fs::path GitRepository::lfs_objects() const {
         throw Error("git-config", "Invalid LFS storage value");
     auto storage = fs::u8path(config);
     if (storage.is_relative())
-        storage = common_directory_ / storage;
+        storage = common / storage;
     return fs::absolute(storage / "objects");
+}
+} // namespace
+fs::path GitRepository::lfs_objects() const {
+    return configured_lfs_objects(options_, root_, common_directory_);
 }
 GitRevision GitRepository::materialize(const std::string &revision,
                                        const std::string &repository_path) const {
@@ -335,6 +344,51 @@ GitRevision GitRepository::materialize(const std::string &revision,
         auto target = workspace.directory / fs::u8path(pair.first).filename();
         result.files.push_back(extract(pair.second, options_, root_, workspace, target, total, get_lfs));
     }
+    return result;
+}
+GitRevision GitRepository::materialize_file(const std::string &revision, const std::string &repository_path,
+                                            std::uint64_t max_bytes, const OperationControl &control) const {
+    valid_repository_path(repository_path);
+    if (!max_bytes)
+        throw Error("git-options", "Binary file budget must be nonzero");
+    auto limits = options_;
+    limits.max_file_bytes = std::min(limits.max_file_bytes, max_bytes);
+    const auto original = limits.control;
+    limits.control.cancelled = [original, control] {
+        return (original.cancelled && original.cancelled()) || (control.cancelled && control.cancelled());
+    };
+    limits.control.progress = [original, control](const OperationProgress &p) {
+        if (original.progress)
+            original.progress(p);
+        if (control.progress)
+            control.progress(p);
+    };
+    limits.control.check();
+    GitRevision result;
+    result.storage_ = std::make_shared<detail::GitWorkspace>(limits.temporary_root);
+    auto &workspace = *result.storage_;
+    result.repository_path = repository_path;
+    result.commit = resolve_commit(limits, root_, revision, workspace);
+    const auto found = entries(limits, root_, result.commit, {repository_path}, workspace);
+    if (!found.count(repository_path))
+        return result;
+    // Keep the owned workspace flat; repository basenames never collide with process scratch files.
+    result.materialized_file_ = workspace.directory / "content";
+    std::uint64_t total = 0;
+    fs::path lfs;
+    auto get_lfs = [&] {
+        if (lfs.empty())
+            lfs = configured_lfs_objects(limits, root_, common_directory_);
+        return lfs;
+    };
+    result.files.push_back(extract(found.at(repository_path), limits, root_, workspace,
+                                   result.materialized_file_, total, get_lfs));
+    auto &file = result.files.back();
+    file.content_sha256 = sha256_file(result.materialized_file_, limits.control);
+    if (!file.lfs_oid.empty() && file.content_sha256 != file.lfs_oid)
+        throw Error("lfs-hash", "Materialized LFS file changed after verification");
+    result.present = true;
+    limits.control.check();
     return result;
 }
 GitHistory GitRepository::history(const std::string &revision, const GitHistoryOptions &options) const {
