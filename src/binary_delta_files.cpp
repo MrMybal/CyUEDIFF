@@ -39,7 +39,7 @@ BinaryDelta make_binary_delta_file_pair(const std::optional<fs::path> &base,
                                         const std::optional<fs::path> &target, const BinaryDeltaOptions &o) {
     detail::binary_delta_options(o);
     FileDeltaInput a(base, o), b(target, o);
-    const auto result = make_binary_delta_sources(a.source(), b.source(), o);
+    auto result = make_binary_delta_sources(a.source(), b.source(), o);
     a.check();
     b.check();
     return result;

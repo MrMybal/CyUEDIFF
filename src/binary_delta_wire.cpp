@@ -58,7 +58,7 @@ class Reader {
     }
 };
 } // namespace
-std::vector<std::uint8_t> BinaryDelta::to_binary(const BinaryDeltaOptions &o) const {
+std::uint64_t BinaryDelta::binary_size(const BinaryDeltaOptions &o) const {
     detail::binary_delta_validate(*this, o);
     std::uint64_t size = 0;
     auto charge = [&](std::uint64_t n) {
@@ -72,33 +72,52 @@ std::vector<std::uint8_t> BinaryDelta::to_binary(const BinaryDeltaOptions &o) co
         if (op.kind == BinaryDeltaKind::literal)
             charge(op.bytes);
     }
-    std::vector<std::uint8_t> out;
-    require(size <= out.max_size(), "Compact manifest allocation exceeds address space");
-    out.reserve(static_cast<std::size_t>(size));
-    out.insert(out.end(), std::begin(magic), std::end(magic));
-    integer(out, 1, 4);
-    integer(out, 0, 4);
-    integer(out, block_size, 4);
-    integer(out, 0, 4);
-    integer(out, base_bytes, 8);
-    integer(out, target_bytes, 8);
-    integer(out, operations.size(), 8);
-    digest(out, base_sha256);
-    digest(out, target_sha256);
+    return size;
+}
+void BinaryDelta::write_binary(const BinaryDeltaSink &sink, const BinaryDeltaOptions &o) const {
+    require(bool(sink), "A compact output sink is required");
+    const auto total = binary_size(o);
+    std::uint64_t completed = 0;
+    auto emit = [&](const std::uint8_t *data, std::size_t n) {
+        o.control.checkpoint("Writing compact binary delta", completed, total);
+        sink(data, n);
+        completed += n;
+    };
+    std::vector<std::uint8_t> record;
+    record.reserve(header_bytes);
+    record.insert(record.end(), std::begin(magic), std::end(magic));
+    integer(record, 1, 4);
+    integer(record, 0, 4);
+    integer(record, block_size, 4);
+    integer(record, 0, 4);
+    integer(record, base_bytes, 8);
+    integer(record, target_bytes, 8);
+    integer(record, operations.size(), 8);
+    digest(record, base_sha256);
+    digest(record, target_sha256);
+    emit(record.data(), record.size());
     for (const auto &op : operations) {
-        o.control.check();
-        integer(out, op.kind == BinaryDeltaKind::copy ? 0 : 1, 1);
+        record.clear();
+        integer(record, op.kind == BinaryDeltaKind::copy ? 0 : 1, 1);
         if (op.kind == BinaryDeltaKind::copy)
-            integer(out, op.offset, 8);
-        integer(out, op.bytes, 8);
+            integer(record, op.offset, 8);
+        integer(record, op.bytes, 8);
+        emit(record.data(), record.size());
         if (op.kind == BinaryDeltaKind::literal)
             for (std::size_t at = 0; at < op.data.size();) {
-                o.control.check();
                 const auto n = std::min<std::size_t>(op.data.size() - at, 1024 * 1024);
-                out.insert(out.end(), op.data.begin() + at, op.data.begin() + at + n);
+                emit(op.data.data() + at, n);
                 at += n;
             }
     }
+    o.control.checkpoint("Writing compact binary delta", completed, total);
+}
+std::vector<std::uint8_t> BinaryDelta::to_binary(const BinaryDeltaOptions &o) const {
+    const auto size = binary_size(o);
+    std::vector<std::uint8_t> out;
+    require(size <= out.max_size(), "Compact manifest allocation exceeds address space");
+    out.reserve(static_cast<std::size_t>(size));
+    write_binary([&](const std::uint8_t *data, std::size_t n) { out.insert(out.end(), data, data + n); }, o);
     return out;
 }
 BinaryDelta BinaryDelta::from_binary(const std::vector<std::uint8_t> &bytes, const BinaryDeltaOptions &o) {

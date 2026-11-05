@@ -25,6 +25,7 @@ struct BinaryDeltaOperation {
     std::uint64_t offset = 0, bytes = 0;
     std::vector<std::uint8_t> data; // Literal bytes only; copy ranges always reference the original base.
 };
+using BinaryDeltaSink = std::function<void(const std::uint8_t *, std::size_t)>;
 struct BinaryDelta {
     std::uint64_t base_bytes = 0, target_bytes = 0;
     std::string base_sha256, target_sha256;
@@ -37,6 +38,10 @@ struct BinaryDelta {
     static BinaryDelta parse(const std::string &, const BinaryDeltaOptions & = {});
     // Compact wire format: fixed little-endian integers and raw literal bytes.
     std::vector<std::uint8_t> to_binary(const BinaryDeltaOptions & = {}) const;
+    // Exact compact size and synchronous <=1-MiB output chunks; preflight precedes the first sink call.
+    // Output remains provisional until successful return. The sink must not mutate this delta.
+    std::uint64_t binary_size(const BinaryDeltaOptions & = {}) const;
+    void write_binary(const BinaryDeltaSink &, const BinaryDeltaOptions & = {}) const;
     static BinaryDelta from_binary(const std::vector<std::uint8_t> &, const BinaryDeltaOptions & = {});
 };
 // Rolling target windows recover aligned base blocks after insertions/deletions.
@@ -58,7 +63,6 @@ BinaryDelta compose_binary_deltas(const BinaryDelta &first, const BinaryDelta &s
 // The sink receives provisional chunks (at most 1 MiB); publish only after successful return.
 // Core verifies the whole base first and the reconstructed SHA-256 last. Sink exceptions propagate.
 // The sink must consume/copy bytes synchronously and must not mutate the base or delta.
-using BinaryDeltaSink = std::function<void(const std::uint8_t *, std::size_t)>;
 void apply_binary_delta_file(const fs::path &base, const BinaryDelta &, const BinaryDeltaSink &,
                              const BinaryDeltaOptions & = {});
 // Bounded binary file reads; no output file writes or engine/codec discovery.

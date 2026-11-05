@@ -72,6 +72,12 @@ Both declared extents are SHA-256-checked again before returning a plan; observe
 
 `make_binary_delta_file_pair` additionally accepts optional paths. An explicitly absent side is an empty byte source, while a provided path must exist as a regular file. Core byte semantics do not distinguish absence from a present empty file; Git/host provenance retains that distinction. Cancellation, read budgets and final identity verification apply to present sides. Inputs remain read-only, with no output creation or snapshot-service guarantee.
 
+## Compact sink serialization — 0.170
+
+`BinaryDelta::binary_size` preflights the complete plan and reports its exact compact representation size. `write_binary(sink)` emits that same format in synchronous chunks of at most 1 MiB, with only a small reusable metadata buffer. Literal payload is read directly from the resident delta; no second full manifest buffer is assembled. `to_binary` remains compatible and uses the shared encoder when a returned vector is desired.
+
+Invalid operations and exhausted manifest budgets fail before the first sink call. Sink exceptions and cancellation propagate. Output remains provisional until successful return; hosts own durability, cleanup and no-replace publication, and must not mutate the delta from callbacks. Serialization validates structure and accounting, not the truth of endpoint hash claims; application still verifies endpoint bytes.
+
 ## Commands and SDK
 
 ```powershell
