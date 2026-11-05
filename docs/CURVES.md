@@ -70,3 +70,7 @@ CurveOptions now selects float or transform animation curve scope. The default f
 ## Independent vector, color and transform component values - 0.124
 
 evaluate_curve_components evaluates raw scalar/vector/color channels or one explicitly selected animation transform group at a finite coordinate. Every component retains its own evaluation result and unavailable value; omitted scale never becomes an identity scale. Stored Euler XYZ means roll/pitch/yaw in degrees, without quaternion conversion, blending, additive application or bone evaluation. Invalid time/owner/group selectors, ambiguous identities, partial input and cancellation have explicit coverage.
+
+## Typed file fixtures and public transform component commands - 0.125
+
+The curve commands now accept an explicit --curve-family float|transform selector for AnimDataModel scope. curve-components reports one raw vector/color group or one selected animation group at --time, retaining per-channel gaps. Independent tagged binary fixtures cover UE4 522 / UE5 0, 1004 and 1013, actual indexed FloatCurves members, stable named differences/reordering, ambiguous names, missing components, empty/omitted tables, weights, extrapolation and explicit/sentinel defaults. CLI selectors, flag ownership, exit codes and protected input/companion outputs are checked.

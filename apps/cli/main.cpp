@@ -42,6 +42,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff curves-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
                "  cyuediff curve-value-diff BEFORE AFTER --time-start N --time-end N [--samples N]\n"
                "    [--before-object PATH] [--after-object PATH] [--before-lane KEY] [--after-lane KEY] [--value-tolerance N]\n"
+               "  Curve commands accept --curve-family float|transform (AnimDataModel scope).\n"
+               "  cyuediff curve-components ASSET --time N [--curve-id ID] [--curve-family float|transform] [--object PATH]\n"
                "  cyuediff curve-value ASSET --time NUMBER [--object PATH] [--lane KEY] [--out FILE]\n"
                "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
@@ -107,7 +109,7 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
+    const std::set<std::string> valued = {"--curve-family","--curve-id","--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
                                           "--schema",
                                           "--after-schema",
@@ -187,7 +189,10 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments",key+" requires skeleton-pose-diff or socket-pose-diff");
         if((key=="--time-start" || key=="--time-end" || key=="--samples" || key=="--before-lane" || key=="--after-lane" || key=="--value-tolerance") && command!="curve-value-diff")
             throw Error("arguments",key+" requires curve-value-diff");
-        if((key=="--time" || key=="--lane") && command!="curve-value")throw Error("arguments",key+" requires curve-value");
+        if(key=="--curve-family" && command!="curves" && command!="curves-diff" && command!="curve-value" && command!="curve-value-diff" && command!="curve-components")throw Error("arguments","--curve-family requires a curve command");
+        if(key=="--curve-id" && command!="curve-components")throw Error("arguments","--curve-id requires curve-components");
+        if(key=="--time" && command!="curve-value" && command!="curve-components")throw Error("arguments","--time requires curve-value or curve-components");
+        if(key=="--lane" && command!="curve-value")throw Error("arguments","--lane requires curve-value");
         if(key=="--frame" && command!="animation-frame")throw Error("arguments","--frame requires animation-frame");
         if ((key == "--before-object" || key == "--after-object") && command != "curve-value-diff" && command != "curves-diff" && command != "animation-diff" &&
             command != "skeleton-pose-diff" && command != "socket-pose-diff")
@@ -240,7 +245,7 @@ int run(const std::vector<std::string> &args) {
              key == "--before-engine-root" || key == "--after-engine-root"))
             throw Error("arguments", key + " requires a Git command");
         if (((key == "--mip") && !image_command) ||
-            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose" && command != "animation-frame" && command != "curve-value"))
+            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose" && command != "animation-frame" && command != "curve-value" && command != "curve-components"))
             throw Error("arguments", key + " requires an image or geometry command");
         if ((key == "--threshold" || key == "--heatmap") && command != "image-diff" && command != "hdr-diff")
             throw Error("arguments", key + " requires image-diff or hdr-diff");
@@ -610,10 +615,16 @@ int run(const std::vector<std::string> &args) {
 #else
         throw Error("git-unavailable", "Configure CYUEDIFF_BUILD_GIT=ON to enable Git commands");
 #endif
-    } else if(command=="curve-value-diff"){
+    } else if(command=="curve-value-diff" || command=="curves" || command=="curves-diff" || command=="curve-value" || command=="curve-components"){
+        CurveOptions curve_options;
+        const auto family=flags.value("--curve-family",std::string("float"));
+        if(family=="transform")curve_options.animation_family=AnimationCurveFamily::Transform;
+        else if(family!="float")throw Error("arguments","--curve-family must be float or transform");
+        if(command=="curve-value-diff"){
         if(flags.contains("--metadata") || flags.contains("--snapshot") || !flags.contains("--time-start") || !flags.contains("--time-end"))
             throw Error("arguments","curve-value-diff requires decoded properties, --time-start and --time-end");
         CurveValueDiffOptions selected;
+        selected.curves=curve_options;
         selected.time_begin=real_option("--time-start",0,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());
         selected.time_end=real_option("--time-end",1,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());
         selected.value_tolerance=real_option("--value-tolerance",0,0,std::numeric_limits<double>::max());
@@ -622,20 +633,24 @@ int run(const std::vector<std::string> &args) {
         selected.before_lane=flags.value("--before-lane",std::string{});selected.after_lane=flags.value("--after-lane",std::string{});
         const auto before=read(positional[0],"--before-project",options),after=read(positional[1],"--after-project",options);
         output=compare_curve_values(before,after,selected);exit_code=!output.at("complete").get<bool>()?2:output.at("changedSamples").get<std::size_t>()?1:0;
-    } else if(command=="curves" || command=="curves-diff" || command=="curve-value"){
+        } else {
         if(flags.contains("--metadata") || flags.contains("--snapshot"))throw Error("arguments","Curve inspection requires decoded properties");
-        if(command=="curve-value" && !flags.contains("--time"))throw Error("arguments","curve-value requires --time");
+        if((command=="curve-value" || command=="curve-components") && !flags.contains("--time"))throw Error("arguments",command+" requires --time");
         const auto before=read(positional[0],command=="curves-diff"?"--before-project":"--project",options);
         if(command=="curves-diff"){
             const auto after=read(positional[1],"--after-project",options);
-            const auto comparison=compare_curves(before,after,flags.value("--before-object",std::string{}),flags.value("--after-object",std::string{}));
+            const auto comparison=compare_curves(before,after,flags.value("--before-object",std::string{}),flags.value("--after-object",std::string{}),curve_options);
             output=comparison.to_json();exit_code=!comparison.complete?2:comparison.changes.empty()?0:1;
+        }else if(command=="curve-components") {
+            output=evaluate_curve_components(before,real_option("--time",0,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max()),flags.value("--object",std::string{}),flags.value("--curve-id",std::string{}),curve_options);
+            if(!output.at("ready").get<bool>())exit_code=2;
         }else if(command=="curve-value") {
             output=evaluate_curve(before,real_option("--time",0,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max()),
-                                  flags.value("--object",std::string{}),flags.value("--lane",std::string{}));
+                                  flags.value("--object",std::string{}),flags.value("--lane",std::string{}),curve_options);
             if(!output.at("ready").get<bool>())exit_code=2;
-        }else output=curve_snapshot(before);
+        }else output=curve_snapshot(before,curve_options);
         if(!before.complete_input)exit_code=2;
+        }
     } else if(command=="animation" || command=="animation-frame" || command=="animation-diff") {
         if(flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments","Animation source inspection requires decoded properties");
