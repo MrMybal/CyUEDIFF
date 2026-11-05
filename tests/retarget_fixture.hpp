@@ -4,12 +4,14 @@ namespace cyuediff::test {
 // Independently encoded native arrays; no Unreal asset bytes or production writers.
 inline Fixture retarget_file_fixture(int changed = 0, int invalid = 0, int anim_phys = 17, int version = 1013,
                                      bool reorder = false, bool mismatch = false, bool filtered = false,
-                                     bool empty = false) {
+                                     bool empty = false, const ExtraScript &tail = {}, int framework = -1,
+                                     int anim = -1) {
     Bytes class_name, engine_name, payload;
     auto f = fixture(
         version, 1, false, 0,
         {"Skeleton", "/Script/Engine", "root", "arm", "tip", "A~/pose", "B", "DisplayPose",
-         "/Game/Source.Source", "/Game/Source", "Source"},
+         "/Game/Source.Source", "/Game/Source", "Source", "AnimCurveMappingName", "Track", "Smile~/curve",
+         "Weight", "Left", "Right"},
         [&](Bytes &, const NameWriter &name) {
             name(class_name, "Skeleton");
             name(engine_name, "/Script/Engine");
@@ -57,8 +59,10 @@ inline Fixture retarget_file_fixture(int changed = 0, int invalid = 0, int anim_
                 }
             for (unsigned word : {0x12345678u, 2u, 3u, 4u})
                 payload.put(word);
+            if (tail)
+                tail(payload, name);
         },
-        -1, -1, -1, -1, anim_phys);
+        -1, -1, -1, -1, anim_phys, framework, anim);
     f.script.data.resize(f.script.data.size() - 4);
     f.script.append(payload);
     f.script.put<std::uint32_t>(0xdeadbeef); // Deliberately opaque SmartName/marker suffix.

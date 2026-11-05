@@ -225,6 +225,71 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
             }
         }
     }
+    if (!skeletal_mesh) {
+        auto version = [&](const char *guid, int low, int high) {
+            const auto it = summary.custom_versions.find(guid);
+            if (it == summary.custom_versions.end() || !it->is_number_integer())
+                return -1;
+            const auto v = it->get<std::int64_t>();
+            return v >= low && v <= high ? int(v) : -1;
+        };
+        const bool enabled = options.native_skeleton_metadata;
+        decoded["curveMetadata"] = {{"coverage", enabled ? "unavailable" : "disabled"}};
+        if (enabled && decoded["retargeting"]["coverage"] == "stored") {
+            const auto curve_start = a.tell();
+            try {
+                const auto containers_count = count();
+                const int framework = version("cffc743f43b04480939114df171d2073", 15, 37);
+                const int anim_phys = version("29e575dde0a346279d10d276232cdcea", 10, 17);
+                if (containers_count && (framework < 0 || anim_phys < 0))
+                    throw Error("skeleton-curve-profile",
+                                "Nonempty curve containers require supported Framework and AnimPhys versions",
+                                a.tell());
+                auto boolean = [&] {
+                    const auto value = a.get<std::uint32_t>();
+                    if (value > 1)
+                        throw Error("skeleton-curve-boolean", "Invalid stored curve type boolean",
+                                    a.tell() - 4);
+                    return value != 0;
+                };
+                Json containers = Json::object();
+                for (std::uint32_t i = 0; i < containers_count; ++i) {
+                    options.control.checkpoint("Reading skeleton curve metadata", i, containers_count);
+                    const auto container = name();
+                    if (container.empty() || containers.contains(container))
+                        throw Error("skeleton-curve-identity", "Empty or duplicate curve container",
+                                    a.tell());
+                    Json curves = Json::object();
+                    const auto curves_count = count();
+                    for (std::uint32_t j = 0; j < curves_count; ++j) {
+                        options.control.check();
+                        const auto key = name();
+                        if (key.empty() || curves.contains(key))
+                            throw Error("skeleton-curve-identity", "Empty or duplicate stored curve",
+                                        a.tell());
+                        Json curve = {{"material", boolean()}, {"morphTarget", boolean()}};
+                        Json links = Json::array();
+                        const auto link_count = count();
+                        for (std::uint32_t k = 0; k < link_count; ++k) {
+                            options.control.check();
+                            links.push_back(name());
+                        }
+                        curve["linkedBones"] = std::move(links);
+                        if (anim_phys >= 12)
+                            curve["maxLOD"] = a.get<std::uint8_t>();
+                        curves[key] = std::move(curve);
+                    }
+                    containers[container] = std::move(curves);
+                }
+                decoded["curveMetadata"] = {{"coverage", "stored"}, {"containers", std::move(containers)}};
+            } catch (const Error &error) {
+                if (error.code == "cancelled")
+                    throw;
+                a.seek(curve_start);
+                decoded["curveMetadata"] = {{"coverage", "opaque"}, {"reason", error.code}};
+            }
+        }
+    }
     return {std::move(decoded), a.tell()};
 }
 } // namespace cyuediff::detail

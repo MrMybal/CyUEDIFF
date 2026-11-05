@@ -42,7 +42,7 @@ class DecoderRegistry;
 struct ReadOptions {
     bool properties = true, fingerprints = true, native_graphs = true, native_textures = true,
          native_meshes = true, native_materials = true;
-    bool native_skeletons = true, native_skeleton_retargeting = true;
+    bool native_skeletons = true, native_skeleton_retargeting = true, native_skeleton_metadata = true;
     std::uint32_t max_table_entries = 1'000'000, max_string_bytes = 4 * 1024 * 1024;
     std::uint64_t max_property_bytes = 32 * 1024 * 1024;
     std::uint32_t max_properties = 100'000, max_depth = 48;
