@@ -342,7 +342,10 @@ if args.consumer:
  animation_diff=skeleton_data['animationComparison']
  if animation_diff['status']!='changed' or len(animation_diff['changes'])!=1 or animation_diff['changes'][0]['path']!='/skeletons/Skeleton/curveMetadata/containers/AnimationCurves/Smile/maxLOD':raise RuntimeError('Installed named animation metadata comparison failed')
  if skeleton_data['strippedAnimationComparison']['status']!='incomplete':raise RuntimeError('Stripped marker metadata falsely establishes equality')
- print('Installed independent skeleton projection/pose/animation metadata consumer validated')
+ if not skeleton_data['attachmentSnapshot']['complete'] or skeleton_data['attachmentComparison']['status']!='changed':raise RuntimeError('Installed attachment Core projection failed')
+ if skeleton_data['socketPose']['sockets']['Skeleton.Grip']['position']!=[11.,0.,0.] or skeleton_data['socketPoseComparison']['sockets']['Skeleton.Grip']['delta']!=[3.,0.,0.]:raise RuntimeError('Installed socket affine origin comparison failed')
+ if skeleton_data['missingSocketOrigin']['complete']:raise RuntimeError('Omitted socket location was incorrectly defaulted')
+ print('Installed independent skeleton/animation/attachment/socket origin Core consumer validated')
 
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'

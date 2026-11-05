@@ -1,4 +1,5 @@
 #include <cyuediff/skeleton_pose.hpp>
+#include <cyuediff/attachments_pose.hpp>
 #include <iostream>
 using namespace cyuediff;
 int main(int argc, char **argv) {
@@ -10,7 +11,7 @@ int main(int argc, char **argv) {
         } else {
             // An explicit host-populated model demonstrates the public API without engine assets.
             ObjectExport e;
-            e.path = "Skeleton";
+            e.path = e.name = "Skeleton";
             e.class_name = "/Script/Engine.Skeleton";
             e.coverage = "properties";
             e.native_coverage = "reference-skeleton";
@@ -29,19 +30,39 @@ int main(int argc, char **argv) {
                     {"linkedBones",{"arm"}},{"maxLOD",2}}}}}}}};
             e.native_data["syncMarkers"]={{"coverage","stored"},{"stripFlags",{{"global",0},{"class",0}}},
                 {"names",{"Left","Right","Left"}}};
+            auto property=[](const Json &v,const char *type,const char *parameter=nullptr){
+                Json descriptor={{"name",type}};
+                if(parameter)descriptor["parameters"]=Json::array({{{"name",parameter}}});
+                return Json{{"type",descriptor},{"value",v}};
+            };
+            e.properties["Sockets"]=property({"Skeleton.Grip"},"ArrayProperty","ObjectProperty");
+            e.properties["VirtualBones"]=property(Json::array(),"ArrayProperty","StructProperty");
+            e.properties["VirtualBones"]["type"]["parameters"][0]["parameters"]=Json::array({{{"name","VirtualBone"}}});
             before.exports.push_back(e);
+            ObjectExport socket;socket.name="Grip";socket.path="Skeleton.Grip";socket.outer_index=1;
+            socket.class_name="/Script/Engine.SkeletalMeshSocket";socket.coverage="properties";
+            socket.properties={{"SocketName",property("Grip","NameProperty")},{"BoneName",property("arm","NameProperty")},
+                               {"RelativeLocation",property({1.,0.,0.},"StructProperty","Vector")}};
+            before.exports.push_back(socket);
             after = before;
             after.exports[0].native_data["localPoses"][1]["translation"][0] = 12.;
             after.exports[0].native_data["curveMetadata"]["containers"]["AnimationCurves"]["Smile"]["maxLOD"]=3;
             after.exports[0].native_data["syncMarkers"]["names"]={"Left","Left","Right"};
+            after.exports[1].properties["RelativeLocation"]["value"][0]=2.;
         }
         Json result = {{"snapshot", before.skeleton_snapshot()},
                        {"comparison", compare_skeletons(before, after).to_json()},
                        {"pose", reference_pose(before).to_json()},
                        {"poseComparison", compare_reference_poses(before, after).to_json()}};
+        result["attachmentSnapshot"]=attachment_snapshot(before);
+        result["attachmentComparison"]=compare_attachments(before,after).to_json();
+        result["socketPose"]=socket_pose(before).to_json();
+        result["socketPoseComparison"]=compare_socket_poses(before,after).to_json();
         result["animationSnapshot"]=skeleton_animation_snapshot(before);
         result["animationComparison"]=compare_skeleton_animation(before,after).to_json();
         if (argc == 1) {
+            auto missing_origin=before;missing_origin.exports[1].properties.erase("RelativeLocation");
+            result["missingSocketOrigin"]=socket_pose(missing_origin).to_json();
             auto stripped=before;
             stripped.exports[0].native_data["syncMarkers"]={{"coverage","stripped"},
                 {"stripFlags",{{"global",1},{"class",0}}}};
