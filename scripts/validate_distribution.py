@@ -337,7 +337,12 @@ if args.consumer:
  if skeleton_data['retargetPose']['retargetSource']!='T_Pose' or skeleton_data['retargetPose']['joints']['arm']['position']!=[15.,0.,0.]:raise RuntimeError('Installed named retarget pose failed')
  if skeleton_data['retargetAgainstRaw']['joints']['arm']['delta']!=[-5.,0.,0.]:raise RuntimeError('Installed independent after source selection failed')
  if skeleton_data['unverifiedNativeTail']['status']!='incomplete':raise RuntimeError('Unhashed native tail falsely establishes equality')
- print('Installed independent skeleton projection/pose consumer validated')
+ animation=skeleton_data['animationSnapshot']
+ if not animation['complete'] or animation['skeletons']['Skeleton']['syncMarkers']['names']['Left']['occurrences']!=2:raise RuntimeError('Installed named animation metadata projection failed')
+ animation_diff=skeleton_data['animationComparison']
+ if animation_diff['status']!='changed' or len(animation_diff['changes'])!=1 or animation_diff['changes'][0]['path']!='/skeletons/Skeleton/curveMetadata/containers/AnimationCurves/Smile/maxLOD':raise RuntimeError('Installed named animation metadata comparison failed')
+ if skeleton_data['strippedAnimationComparison']['status']!='incomplete':raise RuntimeError('Stripped marker metadata falsely establishes equality')
+ print('Installed independent skeleton projection/pose/animation metadata consumer validated')
 
  if (prefix/'include/cyuediff/git.hpp').is_file():
   git_build=target/'git-consumer'

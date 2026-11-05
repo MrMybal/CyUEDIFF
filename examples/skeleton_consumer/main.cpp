@@ -24,15 +24,28 @@ int main(int argc, char **argv) {
                                                     {{"name", "arm"}, {"parentIndex", 0}}})},
                              {"localPoses", Json::array({pose, arm})},
                              {"nameToIndex", {{"root", 0}, {"arm", 1}}}};
+            e.native_data["curveMetadata"]={{"coverage","stored"},{"containers",
+                {{"AnimationCurves",{{"Smile",{{"material",false},{"morphTarget",true},
+                    {"linkedBones",{"arm"}},{"maxLOD",2}}}}}}}};
+            e.native_data["syncMarkers"]={{"coverage","stored"},{"stripFlags",{{"global",0},{"class",0}}},
+                {"names",{"Left","Right","Left"}}};
             before.exports.push_back(e);
             after = before;
             after.exports[0].native_data["localPoses"][1]["translation"][0] = 12.;
+            after.exports[0].native_data["curveMetadata"]["containers"]["AnimationCurves"]["Smile"]["maxLOD"]=3;
+            after.exports[0].native_data["syncMarkers"]["names"]={"Left","Left","Right"};
         }
         Json result = {{"snapshot", before.skeleton_snapshot()},
                        {"comparison", compare_skeletons(before, after).to_json()},
                        {"pose", reference_pose(before).to_json()},
                        {"poseComparison", compare_reference_poses(before, after).to_json()}};
+        result["animationSnapshot"]=skeleton_animation_snapshot(before);
+        result["animationComparison"]=compare_skeleton_animation(before,after).to_json();
         if (argc == 1) {
+            auto stripped=before;
+            stripped.exports[0].native_data["syncMarkers"]={{"coverage","stripped"},
+                {"stripFlags",{{"global",1},{"class",0}}}};
+            result["strippedAnimationComparison"]=compare_skeleton_animation(stripped,stripped).to_json();
             // Explicit host data demonstrates named retarget selection without engine assets.
             auto retarget = before;
             auto local = retarget.exports[0].native_data["localPoses"];

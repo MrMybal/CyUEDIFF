@@ -119,3 +119,18 @@ The bounded skeleton projection now includes exact container/curve identities an
 ## Animation metadata desktop inspection - 0.101
 
 The Skeleton tab now offers a separate animation-metadata mode with an exact container/curve and marker union, search, changed-only filtering, confirmed-change navigation and typed per-entry comparison. Marker occurrence counts and curve flags/links/LOD use the same named Core projection. Missing entries opposite an unread/stripped table remain unknown and are inspected as stored single-side values instead of confirmed additions/removals. The display union is capped at 4,096 entries; source data remains available through the Core/CLI. Explicit workspace state retains mode, selected exact entry, search, changed filter and property details; invalid nested state or conflicting view modes is rejected before mutation. UI strings are available in English and French across the five CyUI themes, without translating stored asset names. No file access occurs during drawing.
+
+## Installed SDK and corpus verification for stored animation metadata - 0.102
+
+The independent Core consumer now demonstrates package-based curve/marker projection, a changed curve LOD with reordered markers, and incomplete stripped-marker comparison. Distribution validation checks those contracts after building against the extracted installed SDK. The read-only corpus validator counts curve containers/entries/links, marker multiplicities, scoped metadata completeness, expected self-comparison status and fully consumed Skeleton native bodies, while preserving source and companion hashes. The local engine corpus contains three verified empty curve/marker tables and six checked raw references; nonempty metadata and malformed/stripped cases are covered by independently encoded package fixtures. Animation samples, runtime curve values, timelines and native SkeletalMesh skin/LOD decoding remain outside this scope.
+
+### Stored animation metadata commands and SDK
+
+```shell
+cyuediff skeleton-animation Content/Skeleton.uasset --out metadata.json
+cyuediff skeleton-animation-diff before/Skeleton.uasset after/Skeleton.uasset
+```
+
+`skeleton_animation_snapshot(package, options)` and `compare_skeleton_animation(before, after, options)` use `SkeletonOptions` and return the `cyuediff.skeleton-animation/1` and `cyuediff.skeleton-animation-diff/1` contracts. Containers and curves retain exact case-sensitive names; JSON-pointer tokens escape `~` and `/`. Curve bone links retain stored order and unresolved names. An absent `maxLOD` means no value was serialized in that profile; no runtime default is inserted. Sync marker names map to occurrence counts rather than inferred timing or order. Stripped, disabled, unsupported or corrupt tables cannot establish scoped equality. Known pre-marker versions have explicit `not-stored` coverage. A scoped identical result certifies only these stored metadata fields, independently of raw pose changes, unrelated properties and native suffixes. The generic serialized snapshot retains native array order and remaining byte fingerprints.
+
+The independent installed `examples/skeleton_consumer` demonstrates package-based projections and a host model with a changed curve LOD, reordered markers and an incomplete stripped-table comparison. It links only `CyUEDiff::Core`.

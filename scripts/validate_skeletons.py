@@ -26,6 +26,8 @@ def digest(path):
  return h.hexdigest()
 profiles=Counter();coverage=Counter();classes=Counter();fingerprints={};failures=[];examples=[]
 retarget_tables=retarget_sources=retarget_bound=retarget_unbound=retarget_joints=retarget_comparisons=0
+animation_complete=animation_comparisons=curve_containers=curve_entries=curve_links=marker_names=marker_occurrences=fully_consumed_skeletons=0
+curve_coverage=Counter();marker_coverage=Counter()
 objects=bones=ready_joints=unavailable_joints=complete=reference_complete=pose_complete=self_comparisons=0
 for file in files:
  for p in (file,*[file.with_suffix(ext) for ext in ('.uexp','.ubulk','.uptnl','.m.ubulk','.o.ubulk','.upayload')]):
@@ -34,8 +36,29 @@ for file in files:
  if run.returncode:
   failures.append({'file':str(file),'error':run.stderr.decode('utf-8','replace')[:500]});continue
  data=json.loads(run.stdout);profiles[str(data['summary']['ue5Version'])]+=1
+ if any(body['class']=='/Script/Engine.Skeleton' for body in data['skeletons']['skeletons'].values()):
+  metadata=subprocess.run([str(args.cli.resolve()),'skeleton-animation',str(file)],capture_output=True,env=env,timeout=45)
+  if metadata.returncode:
+   failures.append({'file':str(file),'animationError':metadata.stderr.decode('utf-8','replace')[:500]})
+  else:
+   animation=json.loads(metadata.stdout);animation_complete+=animation['complete']
+   compared=subprocess.run([str(args.cli.resolve()),'skeleton-animation-diff',str(file),str(file)],capture_output=True,env=env,timeout=45)
+   if compared.returncode!=(0 if animation['complete'] else 2) or json.loads(compared.stdout).get('changes')!=[]:
+    failures.append({'file':str(file),'animationComparisonError':compared.stderr.decode('utf-8','replace')[:500]})
+   else:animation_comparisons+=1
+
  for name,body in data['skeletons']['skeletons'].items():
   classes[body['class']]+=1;reference_complete+=body['referenceComplete']
+  if body['class']=='/Script/Engine.Skeleton':
+   curves=body['curveMetadata'];markers=body['syncMarkers']
+   curve_coverage[curves['coverage']]+=1;marker_coverage[markers['coverage']]+=1
+   curve_containers+=len(curves['containers'])
+   for container in curves['containers'].values():
+    curve_entries+=len(container)
+    curve_links+=sum(len(c['linkedBones']) for c in container.values())
+   marker_names+=len(markers['names']);marker_occurrences+=sum(m['occurrences'] for m in markers['names'].values())
+   fully_consumed_skeletons+=not any(r.get('bytes',0) for r in body['native']['opaque'].values() if isinstance(r,dict))
+
   objects+=1;bones+=len(body['bones']);complete+=bool(body['complete']);coverage[body['native']['coverage']]+=1
   pose=subprocess.run([str(args.cli.resolve()),'skeleton-pose',str(file),'--object',name],capture_output=True,env=env,timeout=45)
   if pose.returncode:
@@ -64,6 +87,10 @@ for file in files:
   if len(examples)<10:examples.append({'file':str(file),'object':name,'bones':len(body['bones']),'coverage':body['native']['coverage']})
 assert all(digest(Path(p))==value for p,value in fingerprints.items()),'Source or companion bytes changed'
 report={'packages':len(files),'fileProfiles':dict(profiles),'skeletonObjects':objects,'storedBones':bones,
+        'animationCompletePackages':animation_complete,'animationSelfComparisons':animation_comparisons,
+        'curveCoverage':dict(curve_coverage),'markerCoverage':dict(marker_coverage),'curveContainers':curve_containers,
+        'curveEntries':curve_entries,'curveBoneLinks':curve_links,'syncMarkerNames':marker_names,
+        'syncMarkerOccurrences':marker_occurrences,'fullyConsumedSkeletonNativeBodies':fully_consumed_skeletons,
         'retargetStoredTables':retarget_tables,'retargetSources':retarget_sources,'retargetBoundSources':retarget_bound,'retargetUnboundSources':retarget_unbound,'retargetReadyJoints':retarget_joints,'retargetSelfComparisons':retarget_comparisons,
         'completeStoredProjections':complete,'completeRawReferences':reference_complete,'completeReferencePoses':pose_complete,'objectClasses':dict(classes),'verifiedPoseSelfComparisons':self_comparisons,'nativeCoverage':dict(coverage),'readyReferenceJoints':ready_joints,
         'unavailableReferenceJoints':unavailable_joints,'failures':failures,'examples':examples,'sourceFingerprints':fingerprints}
