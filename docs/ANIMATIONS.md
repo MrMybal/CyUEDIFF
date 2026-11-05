@@ -163,3 +163,7 @@ The standalone git_animation_pose_consumer demonstrates historical animation/Ske
 ## Prepared source affine transforms - 0.148
 
 AnimationPose now retains ready row-major 3x4 source-space affine transforms in source_affines and serializes them in the additive affines table. These are the matrices used to compose the checked hierarchy, including signed/nonuniform scale and shear; they are not reconstructed from joint origins or a rest pose. Missing or invalid ancestors have no affine entry. This enables caller-supplied attachment offsets to use the exact prepared source frame.
+
+## Source animation socket origins - 0.149
+
+The reusable AnimationSocketPose API applies explicitly stored socket locations to prepared ready source affines. Socket object paths and raw parent names remain exact; membership certainty is separate from point readiness. Missing membership, external definitions, absent offsets, invalid parent matrices and virtual parents remain unavailable. Socket orientation/scale, class defaults, reference-pose fallback and runtime interpolation are not inferred. Independent-frame/source-definition comparisons use position tolerance and retain per-socket provenance.
