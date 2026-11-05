@@ -419,9 +419,9 @@ class PropertyReader {
             } else if (s == "Vector2D") {
                 components = 2;
                 doubles = p.summary.ue5_version >= 1004;
-            } else if (s == "Quat" || s == "Vector4") {
+            } else if (s == "Quat" || s == "Quat4f" || s == "Vector4") {
                 components = 4;
-                doubles = p.summary.ue5_version >= 1004;
+                doubles = s != "Quat4f" && p.summary.ue5_version >= 1004;
             } else if (s == "LinearColor")
                 components = 4;
             else if (s == "IntPoint") {

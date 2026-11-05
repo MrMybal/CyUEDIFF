@@ -1,3 +1,4 @@
+#include <cyuediff/animation.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
 #include <cyuediff/skeleton.hpp>
@@ -40,6 +41,45 @@ void walk(const Json &before, const Json &after, const std::string &path, Json &
         changes.push_back({{"op", "replace"}, {"path", path}, {"before", before}, {"after", after}});
 }
 } // namespace
+std::string AnimationComparison::status() const {
+    return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
+}
+Json AnimationComparison::to_json() const {
+    return {{"schema", "cyuediff.animation-diff/1"},
+            {"scope", "selected stored AnimDataModel bone key streams"},
+            {"beforeObject", before_object},
+            {"afterObject", after_object},
+            {"complete", complete},
+            {"status", status()},
+            {"changes", changes}};
+}
+AnimationComparison compare_animation_models(const Package &before, const Package &after,
+                                             const std::string &before_object,
+                                             const std::string &after_object,
+                                             const AnimationOptions &options) {
+    auto normalized = options;
+    normalized.source_indices = false;
+    const auto a = animation_snapshot(before, normalized), b = animation_snapshot(after, normalized);
+    auto select = [](const Json &root, const std::string &path) -> std::string {
+        const auto &models = root.at("models");
+        if (path.empty()) {
+            if (models.size() != 1)
+                throw Error("animation-object", "Select exactly one stored animation model");
+            return models.begin().key();
+        }
+        if (!models.contains(path))
+            throw Error("animation-object", "Animation model not found");
+        return path;
+    };
+    AnimationComparison out;
+    out.before_object = select(a, before_object);
+    out.after_object = select(b, after_object);
+    const auto &x = a["models"][out.before_object], &y = b["models"][out.after_object];
+    out.complete = before.complete_input && after.complete_input && x.at("complete").get<bool>() &&
+                   y.at("complete").get<bool>();
+    walk(x, y, "", out.changes, options.control);
+    return out;
+}
 std::string DiffResult::status() const {
     if (!complete_input)
         return "incomplete";
@@ -112,18 +152,25 @@ CollisionComparison compare_collisions(const Package &before, const Package &aft
     return result;
 }
 std::string AttachmentComparison::status() const {
-    return !complete?"incomplete":changes.empty()?"identical":"changed";
+    return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
 }
 Json AttachmentComparison::to_json() const {
-    return {{"schema","cyuediff.attachments-diff/1"},
-            {"scope","stored skeletal sockets, explicit membership and virtual-bone definitions; no defaults or external loading"},
-            {"status",status()},{"complete",complete},{"changes",changes}};
+    return {{"schema", "cyuediff.attachments-diff/1"},
+            {"scope", "stored skeletal sockets, explicit membership and virtual-bone definitions; no "
+                      "defaults or external loading"},
+            {"status", status()},
+            {"complete", complete},
+            {"changes", changes}};
 }
-AttachmentComparison compare_attachments(const Package &before,const Package &after,const AttachmentOptions &options) {
-    auto normalized=options;normalized.source_indices=false;
-    const auto a=attachment_snapshot(before,normalized),b=attachment_snapshot(after,normalized);
-    AttachmentComparison out;out.complete=a.at("complete").get<bool>() && b.at("complete").get<bool>();
-    walk(a,b,"",out.changes,options.control);return out;
+AttachmentComparison compare_attachments(const Package &before, const Package &after,
+                                         const AttachmentOptions &options) {
+    auto normalized = options;
+    normalized.source_indices = false;
+    const auto a = attachment_snapshot(before, normalized), b = attachment_snapshot(after, normalized);
+    AttachmentComparison out;
+    out.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>();
+    walk(a, b, "", out.changes, options.control);
+    return out;
 }
 std::string SkeletonAnimationComparison::status() const {
     return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
