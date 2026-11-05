@@ -4,7 +4,7 @@ namespace cyuediff {
 struct SkeletonOptions {
     std::size_t max_skeletons = 1024, max_bones = 100000, max_nodes = 1000000,
                 max_text_bytes = 16 * 1024 * 1024;
-    std::size_t max_materials = 100000;
+    std::size_t max_materials = 100000, max_retarget_sources = 1024, max_retarget_transforms = 100000;
     unsigned max_depth = 48;
     bool source_indices = true;
     OperationControl control;

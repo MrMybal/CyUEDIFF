@@ -5,7 +5,8 @@ namespace cyuediff {
 namespace {
 struct Projection {
     const SkeletonOptions &options;
-    std::size_t nodes = 0, text_bytes = 0, bone_count = 0, material_count = 0;
+    std::size_t nodes = 0, text_bytes = 0, bone_count = 0, material_count = 0, source_count = 0,
+                retarget_transforms = 0;
     void require(bool ok, const char *message) {
         if (!ok)
             throw Error("skeleton-value", message);
@@ -39,14 +40,106 @@ struct Projection {
             require(std::isfinite(v.get<double>()), "Non-finite skeleton value");
         return v;
     }
+    void transform(const Json &pose) {
+        require(pose.is_object(), "Malformed stored local pose");
+        for (auto field : {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
+                           std::make_pair("scale", 3u)}) {
+            require(pose.contains(field.first) && pose.at(field.first).is_array() &&
+                        pose.at(field.first).size() == field.second,
+                    "Malformed local transform components");
+            for (const auto &x : pose.at(field.first))
+                require(x.is_number() && std::isfinite(x.get<double>()), "Invalid local transform value");
+        }
+    }
+    Json retargeting(const ObjectExport &e, const Json &bones) {
+        Json out = {
+            {"coverage", e.class_name == "/Script/Engine.Skeleton" ? "unavailable" : "not-applicable"},
+            {"sources", Json::object()}};
+        if (!e.native_data.contains("retargeting"))
+            return out;
+        require(e.class_name == "/Script/Engine.Skeleton",
+                "Retarget sources are only supported on Skeleton objects");
+        const auto &raw = e.native_data.at("retargeting");
+        require(raw.is_object() && raw.contains("coverage") && raw.at("coverage").is_string(),
+                "Invalid retarget coverage model");
+        const auto coverage = raw.at("coverage").get<std::string>();
+        require(coverage == "stored" || coverage == "opaque" || coverage == "disabled",
+                "Invalid retarget coverage");
+        out["coverage"] = coverage;
+        if (coverage != "stored") {
+            if (raw.contains("reason"))
+                out["reason"] = copy(raw.at("reason"));
+            return out;
+        }
+        require(raw.contains("sources") && raw.at("sources").is_object() && raw.contains("skeletonGuid") &&
+                    raw.at("skeletonGuid").is_string(),
+                "Missing stored retarget table or Skeleton GUID");
+        const auto &guid = raw.at("skeletonGuid").get_ref<const std::string &>();
+        require(guid.size() == 32 && guid.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos,
+                "Malformed Skeleton GUID");
+        out["skeletonGuid"] = copy(raw.at("skeletonGuid"));
+        const auto &sources = raw.at("sources");
+        if (sources.size() > options.max_retarget_sources - source_count)
+            throw Error("limit", "Retarget source budget exceeded");
+        source_count += sources.size();
+        for (auto it = sources.begin(); it != sources.end(); ++it) {
+            options.control.checkpoint("Projecting retarget sources", out["sources"].size(), sources.size());
+            require(!it.key().empty() && it->is_object(), "Invalid stored retarget identity");
+            text(it.key().size());
+            const auto &source = *it;
+            require(source.contains("poseName") && source.at("poseName").is_string() &&
+                        source.contains("localPoses") && source.at("localPoses").is_array(),
+                    "Malformed retarget pose model");
+            const auto &poses = source.at("localPoses");
+            if (poses.size() > options.max_retarget_transforms - retarget_transforms)
+                throw Error("limit", "Retarget transform budget exceeded");
+            retarget_transforms += poses.size();
+            for (const auto &pose : poses) {
+                options.control.check();
+                transform(pose);
+            }
+            Json entry = {{"poseName", copy(source.at("poseName"))},
+                          {"bones", Json::object()},
+                          {"complete", poses.size() == bones.size()},
+                          {"diagnostics", Json::array()}};
+            if (source.contains("sourceReferenceMesh")) {
+                const auto &mesh = source.at("sourceReferenceMesh");
+                require(mesh.is_object() && mesh.contains("kind") && mesh.at("kind").is_string() &&
+                            (mesh.at("kind") == "object" || mesh.at("kind") == "soft-object") &&
+                            mesh.contains("path") && mesh.at("path").is_string(),
+                        "Malformed stored source mesh reference");
+                entry["sourceReferenceMesh"] = copy(mesh);
+            }
+            if (poses.size() == bones.size()) {
+                for (std::size_t i = 0; i < bones.size(); ++i) {
+                    const auto &name = bones[i].at("name").get_ref<const std::string &>();
+                    text(name.size());
+                    Json local = {{"localPose", copy(poses[i])}};
+                    if (options.source_indices)
+                        local["sourceIndex"] = i;
+                    entry["bones"][name] = std::move(local);
+                }
+            } else {
+                entry["unboundLocalPoses"] = copy(poses);
+                entry["diagnostics"].push_back(
+                    "Stored pose count differs from raw bones; no named correspondence is inferred");
+            }
+            out["sources"][it.key()] = std::move(entry);
+        }
+        return out;
+    }
     Json body(const ObjectExport &e) {
-        Json out = {{"class", e.class_name},
-                    {"properties", copy(e.properties)},
-                    {"bones", Json::object()},
-                    {"native", copy(Json{{"coverage", e.native_coverage}, {"opaque", e.opaque}})},
-                    {"complete", false},
-                    {"referenceComplete", false},
-                    {"diagnostics", Json::array()}};
+        Json out = {
+            {"class", e.class_name},
+            {"properties", copy(e.properties)},
+            {"bones", Json::object()},
+            {"native", copy(Json{{"coverage", e.native_coverage}, {"opaque", e.opaque}})},
+            {"complete", false},
+            {"referenceComplete", false},
+            {"retargeting",
+             {{"coverage", e.class_name == "/Script/Engine.Skeleton" ? "unavailable" : "not-applicable"},
+              {"sources", Json::object()}}},
+            {"diagnostics", Json::array()}};
         if (e.native_coverage != "reference-skeleton" ||
             e.native_data.value("kind", "") != "reference-skeleton") {
             out["diagnostics"].push_back("Supported raw reference skeleton is unavailable");
@@ -81,15 +174,7 @@ struct Projection {
                         lookup.at(name).get<std::int64_t>() == std::int64_t(i),
                     "Inconsistent stored skeleton map");
             text(name.size());
-            require(pose.is_object(), "Malformed stored local pose");
-            for (auto component : {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
-                                   std::make_pair("scale", 3u)}) {
-                require(pose.contains(component.first) && pose.at(component.first).is_array() &&
-                            pose.at(component.first).size() == component.second,
-                        "Malformed local transform components");
-                for (const auto &x : pose.at(component.first))
-                    require(x.is_number() && std::isfinite(x.get<double>()), "Invalid local transform value");
-            }
+            transform(pose);
             Json entry = {
                 {"parent", parent < 0 ? Json(nullptr) : copy(bones[std::size_t(parent)].at("name"))},
                 {"localPose", copy(pose)}};
@@ -99,6 +184,7 @@ struct Projection {
                 entry["exportName"] = copy(bone.at("exportName"));
             out["bones"][name] = std::move(entry);
         }
+        out["retargeting"] = retargeting(e, bones);
         if (raw.contains("objectGuid"))
             out["native"]["objectGuid"] = copy(raw.at("objectGuid"));
         if (raw.contains("layout"))
