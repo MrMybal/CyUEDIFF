@@ -78,6 +78,12 @@ Both declared extents are SHA-256-checked again before returning a plan; observe
 
 Invalid operations and exhausted manifest budgets fail before the first sink call. Sink exceptions and cancellation propagate. Output remains provisional until successful return; hosts own durability, cleanup and no-replace publication, and must not mutate the delta from callbacks. Serialization validates structure and accounting, not the truth of endpoint hash claims; application still verifies endpoint bytes.
 
+## File-backed CLI and Git comparisons — 0.171
+
+Local `binary-diff` uses the file-backed planner by default. The Git adapter also uses explicit optional file sources after exact-file materialization, including added/removed sides, and still checks the generated endpoint hashes against immutable Git/LFS provenance. Neither comparison buffers complete endpoints in Core. Git materialization remains a separate local-file operation with its existing verification, limits and no-fetch contract.
+
+Both comparison commands accept `--max-source-read-bytes BYTES` to bound aggregate planner callback bytes (default 4 GiB); this does not account for separate Git object extraction. Zero, malformed and command-inapplicable values fail explicitly. Compact comparison/composition output now goes directly through the checked sink encoder into the existing exclusive temporary file, retaining no-replace publication and cleanup. The resident delta literals and block index still require their own budgets.
+
 ## Commands and SDK
 
 ```powershell
@@ -111,6 +117,7 @@ auto restored = cyuediff::apply_binary_delta(
 | Indexed full base blocks | 1,000,000 |
 | Delta operations | 100,000 |
 | Candidate bytes compared | 512 MiB |
+| File/callback planner source reads, aggregate | 4 GiB |
 | Block size | 64 KiB; allowed 16 bytes–1 MiB |
 
 The CLI accepts `--block-size` for comparisons and `--max-input-bytes`, `--max-literal-bytes` and `--max-manifest-bytes` for explicit budgets. Other limits are available in `BinaryDeltaOptions`. Invalid limits and exhausted budgets fail explicitly. Generation inputs, literals and manifests are buffered in memory within the selected limits. File-backed application uses a fixed 1-MiB work buffer; the vector-returning API buffers its target. File-size changes during reads are rejected, but this is not a filesystem snapshot service.

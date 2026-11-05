@@ -54,7 +54,15 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-binary-workflow-',dir=Path.cw
  failed=root/'failed.bin'
  bad=root/'corrupt.delta';raw=bytearray(manifests['ab','binary'].read_bytes());raw[80]^=1;bad.write_bytes(raw)
  run('binary-apply',a,bad,'--out',failed,code=2);assert not failed.exists() and not list(root.glob('*.cyuediff-tmp-*'))
+ assert run('binary-diff',a,b,'--max-source-read-bytes',1048576,'--summary',code=1)['targetSha256']==hashlib.sha256(bv).hexdigest()
  for args in [
+  ('binary-diff',a,b,'--max-source-read-bytes',1,'--out',failed),
+  ('binary-diff',a,b,'--max-source-read-bytes',0,'--out',failed),
+  ('binary-diff',a,b,'--max-source-read-bytes','-1','--out',failed),
+  ('binary-diff',a,b,'--max-source-read-bytes',1,'--max-source-read-bytes',2,'--out',failed),
+  ('binary-apply',a,manifests['ab','binary'],'--max-source-read-bytes',1048576,'--out',failed),
+  ('binary-info',manifests['ab','binary'],'--max-source-read-bytes',1048576),
+  ('binary-compose',manifests['ab','json'],manifests['bc','binary'],'--max-source-read-bytes',1048576,'--out',failed),
   ('binary-diff',a,b,'--format','binary'),
   ('binary-diff',a,b,'--format','binary','--summary','--out',failed),
   ('binary-diff',a,b,'--format','zip','--out',failed),

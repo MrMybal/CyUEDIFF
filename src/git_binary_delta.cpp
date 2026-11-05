@@ -33,13 +33,12 @@ GitBinaryDelta compare_git_binary_files(const GitRepository &repo, const std::st
     result.before = repo.materialize_file(before_revision, before_path, o.max_input_bytes, o.control);
     result.after = repo.materialize_file(after_revision, after_path.empty() ? before_path : after_path,
                                          o.max_input_bytes, o.control);
-    const auto a = result.before.present
-                       ? read_binary_file(result.before.file_path(), o.max_input_bytes, o.control)
-                       : std::vector<std::uint8_t>{};
-    const auto b = result.after.present
-                       ? read_binary_file(result.after.file_path(), o.max_input_bytes, o.control)
-                       : std::vector<std::uint8_t>{};
-    result.delta = make_binary_delta(a, b, o);
+    std::optional<fs::path> before, after;
+    if (result.before.present)
+        before = result.before.file_path();
+    if (result.after.present)
+        after = result.after.file_path();
+    result.delta = make_binary_delta_file_pair(before, after, o);
     auto verify = [](const GitRevision &revision, const std::string &hash) {
         if (revision.present && (revision.files.size() != 1 || revision.files.front().content_sha256 != hash))
             throw Error("git-binary-source", "Materialized binary bytes differ from revision provenance");

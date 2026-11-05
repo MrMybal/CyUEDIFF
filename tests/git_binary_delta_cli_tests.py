@@ -35,6 +35,8 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-git-binary-cli-',dir=Path.cwd
  packed_out=out/'packed-rebuilt.bin';run('binary-apply',base_file,packed,'--out',packed_out);assert packed_out.read_bytes()==target
  assert not run('binary-info',packed)['identitiesVerified']
  run(*args,'--format','binary','--out',repo/'.git/forbidden.delta',code=2)
+ run(*args,'--max-source-read-bytes',1,'--out',out/'budget-failed.delta',code=2);assert not (out/'budget-failed.delta').exists()
+ assert run(*args,'--max-source-read-bytes',1048576,'--summary',code=1)['delta']['copiedBytes']>8000
  same=run('git-binary-diff',repo,before,before,'Content/Blob.ubulk','--summary');assert same['status']=='identical'
  renamed=run('git-binary-diff',repo,before,after,'Content/Old.bin','--after-path','Content/New.bin','--summary',code=1);assert renamed['status']=='changed'
  added=run('git-binary-diff',repo,before,after,'Content/Missing.bin','--after-path','Content/Blob.ubulk','--summary',code=1);assert added['status']=='added'

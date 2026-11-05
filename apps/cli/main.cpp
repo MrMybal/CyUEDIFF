@@ -35,6 +35,7 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff binary-info DELTA [--out NEW_REPORT.json]\n"
                "  binary-diff and git-binary-diff accept --format json|binary (binary requires --out).\n"
                "  binary-compose accepts --max-composition-fragments COUNT.\n"
+               "  binary-diff and git-binary-diff accept --max-source-read-bytes BYTES.\n"
                "  cyuediff git-binary-diff REPO BEFORE_REV AFTER_REV PATH [--after-path PATH] [--summary] [--out DELTA.json]\n"
                "  Binary commands refuse existing outputs; see docs/BINARY_DELTA.md for budgets.\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "

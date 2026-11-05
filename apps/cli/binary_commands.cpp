@@ -179,8 +179,7 @@ void emit_delta(const BinaryDelta &d, const BinaryDeltaOptions &o, bool summary,
                 const std::vector<fs::path> &directories = {}, const Json *report = nullptr) {
     guard_output(out, inputs, directories);
     if (compact) {
-        const auto bytes = d.to_binary(o);
-        write_new(out, bytes.data(), bytes.size());
+        write_new(out, [&](const BinaryDeltaSink &sink) { d.write_binary(sink, o); });
     } else {
         const auto text = (report ? *report : (summary ? d.summary(o) : d.to_json(o))).dump() + "\n";
         require(text.size() <= o.max_manifest_bytes, "Manifest byte budget exceeded");
@@ -209,6 +208,7 @@ int run_binary_command(const std::vector<std::string> &args) {
                                           "--max-input-bytes",
                                           "--max-literal-bytes",
                                           "--max-manifest-bytes",
+                                          "--max-source-read-bytes",
                                           "--after-path",
                                           "--lfs-objects",
                                           "--git-temp",
@@ -244,6 +244,11 @@ int run_binary_command(const std::vector<std::string> &args) {
         o.max_literal_bytes = number(flags.at("--max-literal-bytes"));
     if (flags.count("--max-manifest-bytes"))
         o.max_manifest_bytes = number(flags.at("--max-manifest-bytes"));
+    if (flags.count("--max-source-read-bytes")) {
+        require(!apply && !compose && !info, "--max-source-read-bytes requires a binary comparison");
+        o.max_source_read_bytes = number(flags.at("--max-source-read-bytes"));
+        require(o.max_source_read_bytes != 0, "Source read byte budget must be nonzero");
+    }
     bool compact = false;
     if (flags.count("--format")) {
         require(!apply && !info, "--format requires a delta comparison or composition");
