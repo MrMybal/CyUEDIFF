@@ -90,3 +90,7 @@ python scripts/validate_decoders.py --consumer build-native/decoder-consumer/Rel
 ```
 
 Le script vérifie le changement contrôlé `42 → 44`, l’égalité sur un même fichier et les empreintes d’entrée intactes. Ajouter `--sample <asset>` pour vérifier que le client installé avec registre vide produit exactement le même rapport que la CLI. La session locale a vérifié sept assets réels UE 5.3.2/5.5.4, comprenant deux Blueprints, deux matériaux, une instance, une texture et un mesh. Aucun nouveau format natif de plugin réel n’est certifié par ces essais.
+
+## Declarative descriptions
+
+Since 0.173, hosts can create this registry from bounded JSON descriptions with `BinaryLayouts::decoder_registry()`, without a C++ callback for each serialized type. See [binary layouts](BINARY_LAYOUTS.md). Exact target/profile selection and opaque-on-error behavior are shared with this API.
