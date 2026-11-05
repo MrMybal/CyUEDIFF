@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.165.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.166.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -310,6 +310,9 @@ if(BUILD_TESTING)
             add_test(NAME binary_delta_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_delta_cli_tests.py" "$<TARGET_FILE:cyuediff>")
             set_tests_properties(binary_delta_cli PROPERTIES TIMEOUT 120)
+            add_test(NAME binary_workflow_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_workflow_cli_tests.py" "$<TARGET_FILE:cyuediff>")
+            set_tests_properties(binary_workflow_cli PROPERTIES TIMEOUT 120)
             add_test(NAME transform_curve_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/transform_curve_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_transform_curve_file_tests>")

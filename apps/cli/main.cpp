@@ -30,7 +30,11 @@ int run(const std::vector<std::string> &args) {
         std::cout
             << "CyUEDiff " CYUEDIFF_VERSION " - standalone Unreal package reader\n"
                "  cyuediff binary-diff BASE TARGET [--block-size BYTES] [--summary] [--out DELTA.json]\n"
-               "  cyuediff binary-apply BASE DELTA.json --out NEW_FILE\n"
+               "  cyuediff binary-apply BASE DELTA --out NEW_FILE\n"
+               "  cyuediff binary-compose FIRST_DELTA SECOND_DELTA [--format json|binary] [--summary] [--out NEW_DELTA]\n"
+               "  cyuediff binary-info DELTA [--out NEW_REPORT.json]\n"
+               "  binary-diff and git-binary-diff accept --format json|binary (binary requires --out).\n"
+               "  binary-compose accepts --max-composition-fragments COUNT.\n"
                "  cyuediff git-binary-diff REPO BEFORE_REV AFTER_REV PATH [--after-path PATH] [--summary] [--out DELTA.json]\n"
                "  Binary commands refuse existing outputs; see docs/BINARY_DELTA.md for budgets.\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "

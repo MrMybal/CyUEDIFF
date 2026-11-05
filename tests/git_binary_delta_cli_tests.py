@@ -30,6 +30,11 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-git-binary-cli-',dir=Path.cwd
  raw=json.loads(delta.read_text(encoding='utf-8'));assert raw['schema']=='cyuediff.binary-delta/1'
  base_file=out/'base.bin';base_file.write_bytes(base);rebuilt=out/'rebuilt.bin'
  run('binary-apply',base_file,delta,'--out',rebuilt);assert rebuilt.read_bytes()==target
+ packed=out/'historical.delta';run(*args,'--format','binary','--out',packed,code=1)
+ assert packed.read_bytes().startswith(b'CYUEDLT\0')
+ packed_out=out/'packed-rebuilt.bin';run('binary-apply',base_file,packed,'--out',packed_out);assert packed_out.read_bytes()==target
+ assert not run('binary-info',packed)['identitiesVerified']
+ run(*args,'--format','binary','--out',repo/'.git/forbidden.delta',code=2)
  same=run('git-binary-diff',repo,before,before,'Content/Blob.ubulk','--summary');assert same['status']=='identical'
  renamed=run('git-binary-diff',repo,before,after,'Content/Old.bin','--after-path','Content/New.bin','--summary',code=1);assert renamed['status']=='changed'
  added=run('git-binary-diff',repo,before,after,'Content/Missing.bin','--after-path','Content/Blob.ubulk','--summary',code=1);assert added['status']=='added'

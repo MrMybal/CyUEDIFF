@@ -40,6 +40,20 @@ Input/output operation limits and aggregate literal limits apply, including repe
 
 Sink bytes are **provisional until successful return**. The host owns output reservation, cleanup, durability and publication; it must discard partial output after wrong target hashes, cancellation, source changes or I/O/sink exceptions. Sink exceptions propagate, and byte pointers are valid only during each synchronous callback. Do not mutate the base or delta from callbacks. Observed base size changes are rejected before and after reconstruction; this is not a filesystem snapshot or concurrent-edit service. The Core does not create output files.
 
+## Compact/composed CLI workflows â€” 0.166
+
+Local and historical `binary-diff` commands accept `--format json|binary` (JSON remains the default). Binary output requires an explicit new `--out` path and excludes `--summary`, keeping standard output textual. `binary-compose FIRST SECOND` accepts either input representation and emits the composed plan, with optional `--summary`, `--format` and `--max-composition-fragments`. Composition returns 0 on success, even for a changed target. `binary-info DELTA` emits checked metadata and explicitly reports `identitiesVerified: false`, since it has no endpoint bytes. These commands share no-replace output guards and manifest limits.
+
+`binary-apply` detects either wire format and now streams through an exclusive sibling temporary file. It publishes only after complete base/target verification and successful flush/close; errors discard provisional output. Existing files and aliases remain protected. This reduces reconstruction memory while generation and manifest/literal storage remain buffered.
+
+```powershell
+cyuediff binary-diff A.uasset B.uasset --format binary --out A-B.delta
+cyuediff binary-diff B.uasset C.uasset --format binary --out B-C.delta
+cyuediff binary-compose A-B.delta B-C.delta --format binary --out A-C.delta
+cyuediff binary-info A-C.delta
+cyuediff binary-apply A.uasset A-C.delta --out Rebuilt-C.uasset
+```
+
 ## Commands and SDK
 
 ```powershell

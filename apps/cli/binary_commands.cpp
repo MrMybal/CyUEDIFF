@@ -88,7 +88,7 @@ void protect_file(std::vector<fs::path> &files, const fs::path &input) {
     }
 }
 // Publish a fully flushed sibling temporary file without replacing any existing destination.
-void write_new(const fs::path &destination, const std::uint8_t *data, std::size_t bytes) {
+void write_new(const fs::path &destination, const std::function<void(const BinaryDeltaSink &)> &produce) {
     const auto target = fs::absolute(destination);
     require(fs::is_directory(target.parent_path()), "Output parent directory does not exist");
     static std::atomic<unsigned long> sequence{0};
@@ -123,21 +123,25 @@ void write_new(const fs::path &destination, const std::uint8_t *data, std::size_
     require(handle >= 0, "Cannot reserve output temporary file");
 #endif
     try {
-        for (std::size_t at = 0; at < bytes;) {
-            const auto n = std::min<std::size_t>(bytes - at, 1024 * 1024);
+        const BinaryDeltaSink sink = [&](const std::uint8_t *data, std::size_t bytes) {
+            for (std::size_t at = 0; at < bytes;) {
+                const auto n = std::min<std::size_t>(bytes - at, 1024 * 1024);
 #ifdef _WIN32
-            DWORD written = 0;
-            require(WriteFile(handle, data + at, static_cast<DWORD>(n), &written, nullptr) && written == n,
-                    "Cannot write output");
-            at += written;
+                DWORD written = 0;
+                require(WriteFile(handle, data + at, static_cast<DWORD>(n), &written, nullptr) &&
+                            written == n,
+                        "Cannot write output");
+                at += written;
 #else
-            const auto written = ::write(handle, data + at, n);
-            if (written < 0 && errno == EINTR)
-                continue;
-            require(written > 0, "Cannot write output");
-            at += static_cast<std::size_t>(written);
+                const auto written = ::write(handle, data + at, n);
+                if (written < 0 && errno == EINTR)
+                    continue;
+                require(written > 0, "Cannot write output");
+                at += static_cast<std::size_t>(written);
 #endif
-        }
+            }
+        };
+        produce(sink);
 #ifdef _WIN32
         require(FlushFileBuffers(handle) != 0, "Cannot flush output");
         const bool closed = CloseHandle(handle) != 0;
@@ -167,24 +171,53 @@ void write_new(const fs::path &destination, const std::uint8_t *data, std::size_
         throw;
     }
 }
+void write_new(const fs::path &destination, const std::uint8_t *data, std::size_t bytes) {
+    write_new(destination, [&](const BinaryDeltaSink &sink) { sink(data, bytes); });
+}
+void emit_delta(const BinaryDelta &d, const BinaryDeltaOptions &o, bool summary, bool compact,
+                const fs::path &out, const std::vector<fs::path> &inputs,
+                const std::vector<fs::path> &directories = {}, const Json *report = nullptr) {
+    guard_output(out, inputs, directories);
+    if (compact) {
+        const auto bytes = d.to_binary(o);
+        write_new(out, bytes.data(), bytes.size());
+    } else {
+        const auto text = (report ? *report : (summary ? d.summary(o) : d.to_json(o))).dump() + "\n";
+        require(text.size() <= o.max_manifest_bytes, "Manifest byte budget exceeded");
+        if (out.empty())
+            std::cout << text;
+        else
+            write_new(out, reinterpret_cast<const std::uint8_t *>(text.data()), text.size());
+    }
+}
+
 } // namespace
 bool is_binary_command(const std::string &s) {
-    return s == "binary-diff" || s == "binary-apply" || s == "git-binary-diff";
+    return s == "binary-diff" || s == "binary-apply" || s == "git-binary-diff" || s == "binary-compose" ||
+           s == "binary-info";
 }
 int run_binary_command(const std::vector<std::string> &args) {
     const bool apply = args.front() == "binary-apply";
+    const bool compose = args.front() == "binary-compose", info = args.front() == "binary-info";
     const bool historical = args.front() == "git-binary-diff";
     BinaryDeltaOptions o;
     std::vector<std::string> positional;
     std::map<std::string, std::string> flags;
     bool summary = false;
-    const std::set<std::string> valued = {
-        "--out",        "--block-size",  "--max-input-bytes", "--max-literal-bytes", "--max-manifest-bytes",
-        "--after-path", "--lfs-objects", "--git-temp"};
+    const std::set<std::string> valued = {"--out",
+                                          "--block-size",
+                                          "--max-input-bytes",
+                                          "--max-literal-bytes",
+                                          "--max-manifest-bytes",
+                                          "--after-path",
+                                          "--lfs-objects",
+                                          "--git-temp",
+                                          "--format",
+                                          "--max-composition-fragments"};
     for (std::size_t i = 1; i < args.size(); ++i) {
         const auto &a = args[i];
         if (a == "--summary") {
-            require(!summary && !apply, "--summary requires binary-diff");
+            require(!summary && !apply && !info, "--summary requires a delta comparison or composition");
             summary = true;
         } else if (valued.count(a)) {
             require(i + 1 < args.size() && !flags.count(a), "Missing or duplicate binary command option");
@@ -194,12 +227,13 @@ int run_binary_command(const std::vector<std::string> &args) {
             positional.push_back(a);
         }
     }
-    require(positional.size() == (historical ? 4 : 2), "Wrong number of binary command arguments");
+    require(positional.size() == (historical ? 4 : (info ? 1 : 2)),
+            "Wrong number of binary command arguments");
     if (!historical)
         require(!flags.count("--after-path") && !flags.count("--lfs-objects") && !flags.count("--git-temp"),
                 "Historical file options require git-binary-diff");
     if (flags.count("--block-size")) {
-        require(!apply, "--block-size requires binary-diff");
+        require(!apply && !compose && !info, "--block-size requires binary-diff");
         const auto n = number(flags.at("--block-size"));
         require(n >= 16 && n <= 1024 * 1024, "Block size must be between 16 bytes and 1 MiB");
         o.block_size = static_cast<std::uint32_t>(n);
@@ -210,8 +244,40 @@ int run_binary_command(const std::vector<std::string> &args) {
         o.max_literal_bytes = number(flags.at("--max-literal-bytes"));
     if (flags.count("--max-manifest-bytes"))
         o.max_manifest_bytes = number(flags.at("--max-manifest-bytes"));
+    bool compact = false;
+    if (flags.count("--format")) {
+        require(!apply && !info, "--format requires a delta comparison or composition");
+        const auto &format = flags.at("--format");
+        require(format == "json" || format == "binary", "--format must be json or binary");
+        compact = format == "binary";
+    }
+    if (flags.count("--max-composition-fragments")) {
+        require(compose, "--max-composition-fragments requires binary-compose");
+        const auto n = number(flags.at("--max-composition-fragments"));
+        require(n && n <= std::numeric_limits<std::size_t>::max(), "Invalid composition fragment limit");
+        o.max_composition_fragments = static_cast<std::size_t>(n);
+    }
     const auto out = flags.count("--out") ? fs::u8path(flags.at("--out")) : fs::path{};
     require(!apply || !out.empty(), "binary-apply requires --out with a new destination");
+    require(!compact || (!summary && !out.empty()), "Binary format requires --out and excludes --summary");
+    if (compose || info) {
+        std::vector<fs::path> inputs;
+        for (const auto &path : positional)
+            inputs.push_back(fs::u8path(path));
+        guard_output(out, inputs);
+        const auto first = read_binary_delta(inputs.front(), o);
+        if (compose) {
+            const auto second = read_binary_delta(inputs.back(), o);
+            const auto result = compose_binary_deltas(first, second, o);
+            emit_delta(result, o, summary, compact, out, inputs);
+        } else {
+            const Json report = {{"schema", "cyuediff.binary-info/1"},
+                                 {"summary", first.summary(o)},
+                                 {"identitiesVerified", false}};
+            emit_delta(first, o, true, false, out, inputs, {}, &report);
+        }
+        return 0;
+    }
     if (historical) {
 #ifdef CYUEDIFF_HAS_GIT
         GitOptions git;
@@ -229,14 +295,8 @@ int run_binary_command(const std::vector<std::string> &args) {
         const auto result =
             compare_git_binary_files(repo, positional[1], positional[2], positional[3], after_path, o);
         require(result.status() != "absent", "Both selected historical files are absent");
-        const auto text = (summary ? result.summary(o) : result.delta.to_json(o)).dump() + "\n";
-        require(text.size() <= o.max_manifest_bytes, "Manifest byte budget exceeded");
-        if (out.empty())
-            std::cout << text;
-        else {
-            guard_output(out, inputs, directories);
-            write_new(out, reinterpret_cast<const std::uint8_t *>(text.data()), text.size());
-        }
+        const auto report = summary ? result.summary(o) : Json();
+        emit_delta(result.delta, o, summary, compact, out, inputs, directories, summary ? &report : nullptr);
         return result.status() == "absent" ? 2 : (result.status() == "identical" ? 0 : 1);
 #else
         throw Error("git-unavailable", "This build does not include the Git adapter");
@@ -249,12 +309,10 @@ int run_binary_command(const std::vector<std::string> &args) {
     guard_output(out, protected_files);
     if (apply) {
         auto delta = read_binary_delta(other, o);
-        auto original = read_binary_file(base, o.max_input_bytes, o.control);
-        auto bytes = apply_binary_delta(original, delta, o);
         guard_output(out, protected_files);
-        write_new(out, bytes.data(), bytes.size());
+        write_new(out, [&](const BinaryDeltaSink &sink) { apply_binary_delta_file(base, delta, sink, o); });
         std::cout << Json{{"schema", "cyuediff.binary-apply/1"},
-                          {"bytes", bytes.size()},
+                          {"bytes", delta.target_bytes},
                           {"sha256", delta.target_sha256},
                           {"baseVerified", true},
                           {"targetVerified", true}}
@@ -263,13 +321,6 @@ int run_binary_command(const std::vector<std::string> &args) {
         return 0;
     }
     const auto delta = make_binary_delta_files(base, other, o);
-    const auto text = (summary ? delta.summary(o) : delta.to_json(o)).dump() + "\n";
-    require(text.size() <= o.max_manifest_bytes, "Manifest byte budget exceeded");
-    if (out.empty())
-        std::cout << text;
-    else {
-        guard_output(out, protected_files);
-        write_new(out, reinterpret_cast<const std::uint8_t *>(text.data()), text.size());
-    }
+    emit_delta(delta, o, summary, compact, out, protected_files);
     return delta.base_bytes == delta.target_bytes && delta.base_sha256 == delta.target_sha256 ? 0 : 1;
 }
