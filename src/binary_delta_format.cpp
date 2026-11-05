@@ -191,13 +191,6 @@ std::vector<std::uint8_t> read_binary_file(const fs::path &path, std::uint64_t m
     control.checkpoint("Reading binary file", result.size(), result.size());
     return result;
 }
-BinaryDelta make_binary_delta_files(const fs::path &base, const fs::path &target,
-                                    const BinaryDeltaOptions &o) {
-    detail::binary_delta_options(o);
-    auto a = read_binary_file(base, o.max_input_bytes, o.control);
-    auto b = read_binary_file(target, o.max_input_bytes, o.control);
-    return make_binary_delta(a, b, o);
-}
 BinaryDelta read_binary_delta(const fs::path &path, const BinaryDeltaOptions &o) {
     auto bytes = read_binary_file(path, o.max_manifest_bytes, o.control);
     constexpr std::uint8_t magic[] = {'C', 'Y', 'U', 'E', 'D', 'L', 'T', 0};

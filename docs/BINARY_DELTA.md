@@ -66,6 +66,12 @@ The installed Core example now verifies JSON and compact round-trips, bounded fi
 
 Both declared extents are SHA-256-checked again before returning a plan; observed byte changes, short/excessive reads, exhausted budgets, host exceptions and cancellation prevent a result. Providers must keep the declared size and bytes immutable throughout the call; this is not an atomic snapshot across external storage. The shared matching kernel retains vector/file plan ordering, byte-confirmed copy acceptance and existing operation/literal/candidate limits. The vector API remains direct and does not charge a source-I/O budget.
 
+## File-backed endpoint generation — 0.169
+
+`make_binary_delta_files` now opens regular files as bounded callback sources and uses the shared cached matcher without loading endpoint vectors. Complete endpoint hashes are recomputed through fresh reads, and observed path size changes are rejected. Its resulting `BinaryDelta` and JSON/compact wire formats stay compatible with vector generation. The block index and new literal bytes remain resident and budgeted; this is not constant-memory literal storage.
+
+`make_binary_delta_file_pair` additionally accepts optional paths. An explicitly absent side is an empty byte source, while a provided path must exist as a regular file. Core byte semantics do not distinguish absence from a present empty file; Git/host provenance retains that distinction. Cancellation, read budgets and final identity verification apply to present sides. Inputs remain read-only, with no output creation or snapshot-service guarantee.
+
 ## Commands and SDK
 
 ```powershell

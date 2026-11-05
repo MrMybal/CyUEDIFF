@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/core.hpp>
+#include <optional>
 namespace cyuediff {
 struct BinaryDeltaOptions {
     std::uint32_t block_size = 65536; // 16 bytes through 1 MiB; indexes aligned base blocks.
@@ -65,5 +66,10 @@ std::vector<std::uint8_t> read_binary_file(const fs::path &, std::uint64_t max_b
                                            const OperationControl & = {});
 BinaryDelta make_binary_delta_files(const fs::path &base, const fs::path &target,
                                     const BinaryDeltaOptions & = {});
+// Explicitly absent sides are empty byte sources; provided paths must exist as regular files.
+// Present empty files and absent sources have identical byte semantics in Core; hosts retain presence.
+BinaryDelta make_binary_delta_file_pair(const std::optional<fs::path> &base,
+                                        const std::optional<fs::path> &target,
+                                        const BinaryDeltaOptions & = {});
 BinaryDelta read_binary_delta(const fs::path &, const BinaryDeltaOptions & = {});
 } // namespace cyuediff
