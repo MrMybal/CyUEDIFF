@@ -58,3 +58,7 @@ compare_curve_values and curve-value-diff compare independently selected owner/l
 ## Saved evaluation ranges and sampled desktop comparison - 0.121
 
 The Curves tab now retains an explicit optional display range and absolute comparison tolerance. Cached before/after plots share one bounded sampled comparison report, with changed/unavailable counts and maximum finite delta. Stored-key changes remain independently inspectable even when sampled values fall within tolerance. Out-of-domain values stay unavailable when stored extrapolation modes are omitted; supported explicitly stored modes extend the preview. Range endpoints and tolerances validate atomically during workspace restoration. English/French, five themes and narrow layouts cover these states without package reads during drawing.
+
+## Expanded evaluation corpora and installed SDK verification - 0.122
+
+Read-only corpus validation now probes explicit empty curves, both sides of the stored domain and per-lane sampled self-comparisons. It preserves unavailable coordinates rather than treating missing extrapolation modes as defaults. Independently encoded fixtures cover every supported mode, weighted/invalid weights and sentinel defaults in all three file profiles. The extracted SDK consumer exercises sampled comparison as well as source keys and individual values; report parity with the installed CLI and final configuration/capture results are recorded in VALIDATION.md.

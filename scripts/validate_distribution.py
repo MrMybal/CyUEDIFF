@@ -367,6 +367,7 @@ if args.consumer:
  curves=json.loads(result.stdout)
  if not curves['snapshot']['complete'] or curves['comparison']['status']!='changed' or len(curves['comparison']['changes'])!=1:raise RuntimeError('Installed rich curve comparison failed')
  if not curves['value']['ready'] or curves['value']['value']!=4.:raise RuntimeError('Installed rich curve evaluation failed')
+ if curves['sampledComparison']['status']!='changed' or curves['sampledComparison']['changedSamples']!=4 or curves['sampledComparison']['maximumAbsoluteDelta']!=2.:raise RuntimeError('Installed rich curve sampled comparison failed')
  print('Installed independent rich curve Core consumer validated')
 
 

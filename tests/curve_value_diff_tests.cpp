@@ -59,6 +59,29 @@ int main() {
             }
             check(no, "Invalid sample grid or configured budget");
         }
+        auto overflow_before = a, overflow_after = a;
+        overflow_before.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"][1]["value"] =
+            -std::numeric_limits<double>::max();
+        overflow_after.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"][1]["value"] =
+            std::numeric_limits<double>::max();
+        const auto overflow = compare_curve_values(overflow_before, overflow_after, o);
+        check(overflow["status"] == "incomplete" && overflow["unavailableSamples"] == 1 &&
+                  overflow["maximumAbsoluteDelta"].is_null() &&
+                  overflow["samples"][0]["before"]["ready"] == true &&
+                  overflow["samples"][0]["after"]["ready"] == true,
+              "Finite values with overflowing delta remain unavailable");
+        auto empty = a;
+        empty.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"] = Json::array();
+        empty.exports[0].properties["FloatCurve"]["value"]["DefaultValue"] = {
+            {"type", {{"name", "FloatProperty"}}}, {"value", 7.}};
+        auto extreme = o;
+        extreme.time_begin = -std::numeric_limits<double>::max();
+        extreme.time_end = std::numeric_limits<double>::max();
+        extreme.samples = 5;
+        const auto grid = compare_curve_values(empty, empty, extreme);
+        check(grid["status"] == "identical" && grid["samples"][2]["time"] == 0. &&
+                  grid["comparedSamples"] == 5,
+              "Convex grid avoids endpoint-subtraction overflow");
         o.curves.control.cancelled = [] { return true; };
         bool no = false;
         try {

@@ -24,7 +24,7 @@ def run(command,file,destination,*extra,codes=(0,)):
  r=subprocess.run([str(cli),command,str(file),*map(str,extra),'--out',str(destination)],capture_output=True,timeout=60)
  if r.returncode not in codes:raise RuntimeError(f'{command}: {file.name}: {r.returncode}: {r.stderr.decode("utf-8","replace")}')
  return json.loads(destination.read_text(encoding='utf-8')),r.returncode
-summary={'files':len(files),'owners':0,'lanes':0,'keys':0,'completeOwners':0,'samples':0,'readySamples':0,'failures':[],'inputsUnchanged':False,'assets':[]}
+summary={'files':len(files),'owners':0,'lanes':0,'keys':0,'completeOwners':0,'samples':0,'readySamples':0,'sampledComparisons':0,'completeSampledComparisons':0,'sampledValues':0,'comparedValues':0,'unavailableValues':0,'failures':[],'inputsUnchanged':False,'assets':[]}
 for index,file in enumerate(files):
  try:
   root,_=run('curves',file,out/f'{index}-curves.json')
@@ -37,16 +37,25 @@ for index,file in enumerate(files):
    for lane_index,(lane_id,lane) in enumerate(owner['lanes'].items()):
     summary['keys']+=len(lane['keys']);times=[lane['keys'][key]['time'] for key in lane['keyOrder'] if 'time' in lane['keys'][key]]
     samples=[]
+    coordinates={-.5,0.,.5}
     if times:
-     coordinates={min(times),max(times),(min(times)+max(times))/2}
+     width=max(max(times)-min(times),1.)
+     coordinates={min(times),max(times),(min(times)+max(times))/2,min(times)-width/2,max(times)+width/2}
      if len(times)>1:coordinates.add((times[0]+times[1])/2)
-     for sample_index,t in enumerate(sorted(coordinates)):
-      report,code=run('curve-value',file,out/f'{index}-{owner_index}-{lane_index}-sample-{sample_index}.json',
-         '--time',repr(t),'--object',path,'--lane',lane_id,codes=(0,2))
-      assert code==(0 if report['ready'] else 2)
-      summary['samples']+=1;summary['readySamples']+=int(report['ready'])
-      samples.append({'time':t,'ready':report['ready'],'method':report['method'],'value':report['value']})
-    entry['lanes'].append({'id':lane_id,'complete':lane['complete'],'keys':len(lane['keys']),'samples':samples})
+    for sample_index,t in enumerate(sorted(coordinates)):
+     report,code=run('curve-value',file,out/f'{index}-{owner_index}-{lane_index}-sample-{sample_index}.json',
+        '--time',repr(t),'--object',path,'--lane',lane_id,codes=(0,2))
+     assert code==(0 if report['ready'] else 2)
+     summary['samples']+=1;summary['readySamples']+=int(report['ready'])
+     samples.append({'time':t,'ready':report['ready'],'method':report['method'],'value':report['value']})
+    grid,code=run('curve-value-diff',file,out/f'{index}-{owner_index}-{lane_index}-sampled-self.json',file,
+       '--time-start',repr(min(coordinates)),'--time-end',repr(max(coordinates)),'--samples','5',
+       '--before-object',path,'--after-object',path,'--before-lane',lane_id,'--after-lane',lane_id,codes=(0,2))
+    assert grid['changedSamples']==0 and grid['maximumAbsoluteDelta'] in (None,0.)
+    assert code==(0 if grid['complete'] else 2)
+    summary['sampledComparisons']+=1;summary['completeSampledComparisons']+=int(grid['complete'])
+    summary['sampledValues']+=grid['sampleCount'];summary['comparedValues']+=grid['comparedSamples'];summary['unavailableValues']+=grid['unavailableSamples']
+    entry['lanes'].append({'id':lane_id,'complete':lane['complete'],'keys':len(lane['keys']),'samples':samples,'sampledSelfComparison':{'status':grid['status'],'sampleCount':grid['sampleCount'],'comparedSamples':grid['comparedSamples'],'unavailableSamples':grid['unavailableSamples']}})
    record['owners'].append(entry)
   summary['assets'].append(record)
  except Exception as error:summary['failures'].append({'source':str(file),'error':str(error)})
