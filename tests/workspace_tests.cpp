@@ -62,6 +62,8 @@ int main(int argc, char **argv) {
                 }
                 try {
                     if (request.before == "slow") {
+                        // Publish the first callback before waking the owner; it may release us immediately.
+                        request.control.checkpoint("Test document");
                         began.set_value();
                         while (!release) {
                             request.control.checkpoint("Test document");

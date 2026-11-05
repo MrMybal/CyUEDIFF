@@ -91,12 +91,13 @@ std::shared_ptr<MeshGeometry> geometry() {
 } // namespace
 int main(int argc, char **argv) {
     try {
-        fs::path capture_dir;
-        if (argc == 3 && std::string(argv[1]) == "--capture-dir") {
-            capture_dir = fs::u8path(argv[2]);
-            fs::create_directories(capture_dir);
-        } else if (argc != 1)
-            throw std::runtime_error("Expected [--capture-dir DIRECTORY]");
+        fs::path capture_dir,pose_before_input,pose_after_input,pose_skeleton_input;
+        for(int argument=1;argument<argc;++argument) {
+            const std::string key=argv[argument];
+            if(key=="--capture-dir" && argument+1<argc) {capture_dir=fs::u8path(argv[++argument]);fs::create_directories(capture_dir);}
+            else if(key=="--pose-inputs" && argument+3<argc) {pose_before_input=fs::u8path(argv[++argument]);pose_after_input=fs::u8path(argv[++argument]);pose_skeleton_input=fs::u8path(argv[++argument]);}
+            else throw std::runtime_error("Expected [--capture-dir DIRECTORY] [--pose-inputs BEFORE AFTER SKELETON]");
+        }
         int checks = 0, frames = 0, captures = 0;
         auto check = [&](bool ok, const char *message) {
             ++checks;
@@ -432,12 +433,18 @@ int main(int argc, char **argv) {
             hierarchy_missing.set_poses(&prepared_before,&broken_pose,true);hierarchy_missing.select_joint("tip");
             hierarchy_added.set_poses(nullptr,&prepared_after,true);
             hierarchy_tolerance.set_poses(&prepared_before,&prepared_after,true);hierarchy_tolerance.set_position_tolerance(5.);
+            AnimationPoseView hierarchy_bound;
+            if(!pose_before_input.empty()) {
+                const auto input_before=Package::open(pose_before_input),input_after=Package::open(pose_after_input),input_skeleton=Package::open(pose_skeleton_input);
+                const auto pose_before=animation_pose(input_before,input_skeleton,1),pose_after=animation_pose(input_after,input_skeleton,1);
+                hierarchy_bound.set_poses(&pose_before,&pose_after,true);hierarchy_bound.select_joint("Root");
+            } else hierarchy_bound.set_poses(&prepared_before,&prepared_after,true);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 66; ++scene) {
+                    for (int scene = 0; scene < 67; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -497,7 +504,7 @@ int main(int argc, char **argv) {
                                                "frame-sign",
                                                "frame-tolerance",
                                                "frame-invalid",
-                                               "frame-ambiguous", "pose-hierarchy", "pose-narrow", "pose-unavailable", "pose-added", "pose-tolerance", "pose-empty"};
+                                               "frame-ambiguous", "pose-hierarchy", "pose-narrow", "pose-unavailable", "pose-added", "pose-tolerance", "pose-empty", "pose-bound-inputs"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -516,6 +523,7 @@ int main(int argc, char **argv) {
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 66:hierarchy_bound.draw();break;
                             case 60:case 61:hierarchy_pose.draw();break;
                             case 62:hierarchy_missing.draw();break;
                             case 63:hierarchy_added.draw();break;

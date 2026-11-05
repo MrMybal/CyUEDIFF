@@ -98,3 +98,24 @@ animation-pose ANIMATION SKELETON --frame N and animation-pose-diff BEFORE AFTER
 ## Reusable bilingual prepared animation pose review - 0.136
 
 The separate CyUI AnimationPoseView accepts host-prepared Core poses and owns at most 4,096 named joints. It presents per-side source owners/frame provenance, typed joint positions, parent identity, inherited availability and a synchronized affine viewport with picking, filtering and finite position tolerance. Selection, tolerance and camera round-trip through validated data-only state; invalid state is rejected before mutation. Changing tolerance preserves the camera and uses the same Core result for colors and details. English/French and five themes pass 294 component checks across 280 renderer-free frames; the native harness now checks 1,980 hidden WARP frames in 66 scenes. Hosts must supply explicitly prepared poses outside rendering; automatic external Skeleton loading is not added to the desktop Animations tab in this milestone.
+
+## Installed hierarchy-pose SDK and explicit corpus validation - 0.137
+
+The standalone animation_pose_consumer links only the installed Core target and builds its own source tracks and raw Skeleton without Git, CyUI or Unreal. It also accepts two or four local package paths. The distribution validator checks this tenth independent Core consumer. A new source-pose corpus validator compares derived origins with an independent quaternion cross-product ancestor-walk oracle, hashes all inputs and existing companions, checks self comparisons and first/last source frames, and writes only below build-native. Native capture tooling accepts explicit external animation/Skeleton inputs. Detailed verified results are recorded in VALIDATION.md.
+
+## Explicit hierarchy pose API and commands
+
+Include `<cyuediff/animation_pose.hpp>` and call `animation_pose(animation, skeleton, frame, animation_object, skeleton_object, options)`. Each selector may be empty only for a sole supported owner. The caller supplies both packages; this API does not search external objects or infer Skeleton compatibility. Exact case-sensitive names bind unique ready source tracks to verified raw bones. Affine ancestor composition produces joint origins in the selected source component space. Reference transforms, retarget tables, virtual bones, compressed animation and skinning are not substituted. This affine display does not emulate Unreal FTransform decomposition when nonuniform scale introduces shear. Missing source timing leaves seconds absent without invalidating usable integer keys.
+
+`AnimationPoseOptions` bounds projections, joints and hierarchy depth; its top-level `control` supplies shared cancellation and progress to both projections and composition. `AnimationPose::to_json()` emits `cyuediff.animation-pose/1`, provenance, named joints, local track bindings, unbound tracks and explicit completeness. `display_pose` is a geometry carrier for viewports; use the enclosing `to_json()` for the correct source-space labels.
+
+`compare_animation_poses` accepts two prepared results, or four packages with independent `AnimationPoseSelection` values. It emits `cyuediff.animation-pose-diff/1`; its finite nonnegative tolerance applies to derived joint-origin distances. Parent changes remain significant. Rotation/scale changes that do not move origins belong to the separate local-frame comparison. Incomplete source coverage cannot certify whole-pose equality.
+
+```powershell
+cyuediff animation-pose Walk.uasset Rig.uasset --frame 10 --out pose.json
+cyuediff animation-pose-diff Before.uasset After.uasset --before-skeleton OldRig.uasset --after-skeleton NewRig.uasset --before-frame 10 --after-frame 12 --position-tolerance 0.01 --out poses.json
+```
+
+Single poses accept `--object` and `--skeleton-object`; pair commands accept independent `--before-object`, `--after-object`, `--before-skeleton-object` and `--after-skeleton-object`. Per-side project contexts resolve both the animation and the supplied Skeleton. Exit codes are 0 complete/identical, 1 changed comparisons, 2 incomplete/error. All package inputs and companion paths are protected against output overwrites.
+
+The optional separate UI header `<cyuediff/animation_pose_view.hpp>` exposes `AnimationPoseView`. A host evaluates Core poses outside rendering, calls `set_poses`, then draws the bounded owned view. Selection, camera, filter and position tolerance have validated state roundtrips. EN/FR and five themes are supported. The native desktop Animations tab continues to inspect bone-local streams; an external Skeleton file picker/loading workflow remains future work.

@@ -359,6 +359,18 @@ if args.consumer:
  if source['frameComparison']['status']!='changed' or source['frameComparison']['changedTracks']!=1 or source['frameComparison']['tracks']['name:root']['metrics']['positionDistance']!=2.:raise RuntimeError('Installed local animation frame comparison failed')
  if source['independentFrameComparison']['beforeFrame']!=0 or source['independentFrameComparison']['afterFrame']!=1 or source['independentFrameComparison']['status']!='changed':raise RuntimeError('Installed independent animation frame comparison failed')
  print('Installed independent animation source Core consumer validated')
+ pose_build=target/'animation-pose-consumer'
+ configure=[cmake,'-S',str(root/'examples/animation_pose_consumer'),'-B',str(pose_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(pose_build),'--config','Release','--parallel','2'],check=True,env=env)
+ pose_executable=pose_build/'Release'/('animation_pose_consumer'+suffix) if os.name=='nt' else pose_build/'animation_pose_consumer'
+ result=subprocess.run([str(pose_executable)],capture_output=True,check=True,env=env,timeout=20)
+ pose_data=json.loads(result.stdout)
+ if not pose_data['before']['complete'] or pose_data['before']['joints']['arm']['position']!=[10.,0.,0.] or pose_data['after']['joints']['arm']['position']!=[13.,4.,0.]:raise RuntimeError('Installed explicit animation hierarchy pose failed')
+ if pose_data['comparison']['status']!='changed' or pose_data['comparison']['changedJoints']!=2 or pose_data['comparison']['joints']['arm']['distance']!=5.:raise RuntimeError('Installed source animation pose comparison failed')
+ if pose_data['selfComparison']['status']!='identical':raise RuntimeError('Installed source animation pose self comparison failed')
+ print('Installed independent Skeleton-bound animation pose Core consumer validated')
  curve_build=target/'curve-consumer'
  configure=[cmake,'-S',str(root/'examples/curve_consumer'),'-B',str(curve_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
@@ -393,5 +405,5 @@ if args.consumer:
 
 
 
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton/animation/curve consumers' if args.consumer else '')+' validated')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton/animation/animation-pose/curve consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))
