@@ -30,7 +30,8 @@ int main(int argc, char **argv) {
         }
         Json result = {{"snapshot", before.skeleton_snapshot()},
                        {"comparison", compare_skeletons(before, after).to_json()},
-                       {"pose", reference_pose(before).to_json()}};
+                       {"pose", reference_pose(before).to_json()},
+                       {"poseComparison", compare_reference_poses(before, after).to_json()}};
         if (argc == 1) {
             // A declared opaque interval without a fingerprint cannot establish equality.
             auto unverified = before;

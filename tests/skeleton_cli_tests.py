@@ -1,12 +1,13 @@
 """Read independent native-prefix packages through the public command-line tools."""
 import hashlib,json,os,subprocess,sys,tempfile
 from pathlib import Path
-cli,generator=map(lambda x:Path(x).resolve(),sys.argv[1:3])
+cli,generator,mesh_generator=map(lambda x:Path(x).resolve(),sys.argv[1:4])
 env={k.upper() if os.name=='nt' else k:v for k,v in os.environ.items()}
 checks=0
 with tempfile.TemporaryDirectory(prefix='skeleton-cli-') as directory:
  root=Path(directory)
  subprocess.run([str(generator),'--write-fixtures',str(root)],env=env,check=True)
+ subprocess.run([str(mesh_generator),'--write-fixtures',str(root)],env=env,check=True)
  hashes={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
  def run(*args,code=0):
   global checks
@@ -40,6 +41,32 @@ with tempfile.TemporaryDirectory(prefix='skeleton-cli-') as directory:
  run('skeleton-diff',before,after,'--metadata',code=2)
  run('skeleton-diff',before,after,'--out',after,code=2)
  run('skeleton-diff',before,code=2)
+ displacement=run('skeleton-pose-diff',before,after,code=1)
+ assert displacement['changedJoints']==1 and displacement['joints']['arm']['delta']==[1.,0.,0.]
+ assert run('skeleton-pose-diff',before,reordered)['status']=='identical'
+ assert run('skeleton-pose-diff',before,invalid,code=2)['status']=='incomplete'
+ assert run('skeleton-pose-diff',before,after,'--position-tolerance','1')['status']=='identical'
+ assert run('skeleton-pose-diff',before,after,'--position-tolerance','0.99',code=1)['status']=='changed'
+ for bad in ('-1','nan','inf','1oops','1,5',''):
+  run('skeleton-pose-diff',before,after,'--position-tolerance',bad,code=2)
+ run('skeleton-pose-diff',before,after,'--before-object','missing',code=2)
+ run('skeleton-pose-diff',before,after,'--after-object','missing',code=2)
+ for option in ('--metadata','--snapshot'):
+  run('skeleton-pose-diff',before,after,option,code=2)
+ for target in (before,after,before.with_suffix('.uexp')):
+  run('skeleton-pose-diff',before,after,'--out',target,code=2)
+ for option in ('--position-tolerance','--before-object','--after-object'):
+  run('skeleton',before,option,'1',code=2)
+ output=root/'displacement.json'
+ run('skeleton-pose-diff',before,after,'--out',output,code=1)
+ assert json.loads(output.read_text(encoding='utf-8'))==displacement
+ mesh_before,mesh_after,mesh_reorder,mesh_invalid=(root/(name+'.uasset') for name in ('mesh-before','mesh-after','mesh-reordered','mesh-invalid'))
+ assert run('skeleton',mesh_before)['skeletons']['TestAsset']['mesh']['materials'][0]['slotName']=='Body'
+ assert run('skeleton-diff',mesh_before,mesh_reorder)['status']=='identical'
+ assert run('skeleton-pose',mesh_before)['joints']['arm']['position']==[10.,0.,0.]
+ mesh_diff=run('skeleton-pose-diff',mesh_before,mesh_after,'--before-object','TestAsset','--after-object','TestAsset',code=1)
+ assert mesh_diff['joints']['arm']['distance']==2.
+ assert run('skeleton-pose-diff',mesh_before,mesh_invalid,code=2)['status']=='incomplete'
  for p,digest in hashes.items():
   assert hashlib.sha256(p.read_bytes()).hexdigest()==digest
   checks+=1

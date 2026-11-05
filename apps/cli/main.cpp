@@ -38,6 +38,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff skeleton-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff skeleton-pose ASSET [--object PATH] [--out FILE]\n"
+               "  cyuediff skeleton-pose-diff BEFORE AFTER [--before-object PATH] [--after-object PATH]\n"
+               "    [--position-tolerance N] [--out FILE]\n"
                "  cyuediff collision ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-preview ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-diff BEFORE AFTER [--out FILE]\n"
@@ -87,7 +89,7 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--max-packages",
+    const std::set<std::string> valued = {"--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
                                           "--schema",
                                           "--after-schema",
@@ -133,7 +135,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -161,6 +163,8 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Unsupported history option: " + key);
             continue;
         }
+        if ((key == "--before-object" || key == "--after-object" || key == "--position-tolerance") && command != "skeleton-pose-diff")
+            throw Error("arguments", key + " requires skeleton-pose-diff");
         if (key == "--max-commits" || key == "--skip")
             throw Error("arguments", key + " requires git-history");
         if (schema_command) {
@@ -700,6 +704,17 @@ int run(const std::vector<std::string> &args) {
             output["lod"] = lod;
             exit_code = comparison.changes.empty() ? 0 : 1;
         }
+    } else if (command == "skeleton-pose-diff") {
+        if (flags.contains("--metadata") || flags.contains("--snapshot"))
+            throw Error("arguments", "Reference pose comparison requires decoded hierarchy data");
+        ReferencePoseDiffOptions pose_options;
+        pose_options.position_tolerance = real_option("--position-tolerance", 0, 0, std::numeric_limits<double>::max());
+        const auto before = read(positional[0], "--before-project", options);
+        const auto after = read(positional[1], "--after-project", options);
+        const auto comparison = compare_reference_poses(before, after, flags.value("--before-object",std::string{}),
+                                                        flags.value("--after-object",std::string{}),pose_options);
+        output = comparison.to_json();
+        exit_code = comparison.status()=="identical" ? 0 : comparison.status()=="changed" ? 1 : 2;
     } else if (command == "skeleton-diff") {
         if (flags.contains("--metadata"))
             throw Error("arguments", "Skeleton comparison requires properties");
