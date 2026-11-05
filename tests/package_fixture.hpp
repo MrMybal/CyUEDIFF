@@ -36,11 +36,15 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
                 const std::vector<std::string> &extra_names = {}, const ExtraScript &extra = {},
                 int editor_version = -1, int release_version = -1, int core_version = -1,
                 int rendering_version = -1, int anim_phys_version = -1, int framework_version = -1,
-                int anim_version = -1) {
+                int anim_version = -1, const std::string &asset_class = "DataAsset",
+                const std::string &asset_package = "/Script/CoreUObject") {
     std::vector<std::string> names = {
         "None",        "TestAsset",   "DataAsset",     "/Script/CoreUObject", "Class",
         "Value",       "IntProperty", "Enabled",       "BoolProperty",        "Text",
         "StrProperty", "Items",       "ArrayProperty", "StructProperty",      "ExampleStruct"};
+    names[2] = asset_class;
+    if (std::find(names.begin(), names.end(), asset_package) == names.end())
+        names.push_back(asset_package);
     for (const auto &name : extra_names)
         if (std::find(names.begin(), names.end(), name) == names.end())
             names.push_back(name);
@@ -216,8 +220,8 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
     name(b, "/Script/CoreUObject");
     name(b, "Class");
     b.i(0);
-    name(b, "DataAsset");
-    name(b, "/Script/CoreUObject");
+    name(b, asset_class);
+    name(b, asset_package);
     if (version >= 1003)
         b.zeros(4);
     f.export_offset = b.data.size();

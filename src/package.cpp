@@ -288,6 +288,45 @@ class PropertyReader {
             if (options.decoders)
                 if (const auto *decoder = options.decoders->find(DecoderKind::struct_value, s, p.summary))
                     return detail::decode_extension(a, p, object, options, *decoder, end, exact_size);
+            if (s == "RawAnimSequenceTrack") {
+                const auto version = p.summary.custom_versions.value("d89b5e4224bd4d468412aca8df641779", -1);
+                if (version >= 39) {
+                    if (version > 51 || p.summary.ue4_version != 522 ||
+                        (p.summary.ue5_version != 1004 && p.summary.ue5_version != 1013) ||
+                        p.summary.licensee_version)
+                        throw Error("animation-layout", "Unverified raw animation key profile", a.tell());
+                    Json out = {{"kind", "raw-animation-keys"}};
+                    for (const auto &channel :
+                         {std::make_pair("positions", 3u), std::make_pair("rotations", 4u),
+                          std::make_pair("scales", 3u)}) {
+                        options.control.check();
+                        if (a.get<std::int32_t>() != static_cast<int>(channel.second * 4))
+                            throw Error("animation-layout", "Raw animation key element size mismatch",
+                                        a.tell());
+                        const auto count = a.count(options.max_properties);
+                        if (native_nodes_ > options.max_properties ||
+                            count > (options.max_properties - native_nodes_) / channel.second)
+                            throw Error("limit", "Raw animation key aggregate budget exceeded", a.tell());
+                        Json keys = Json::array();
+                        for (std::uint32_t key = 0; key < count; ++key) {
+                            options.control.checkpoint("Reading raw animation keys", key, count);
+                            Json components = Json::array();
+                            for (unsigned c = 0; c < channel.second; ++c) {
+                                options.control.check();
+                                ++native_nodes_;
+                                const auto component = a.get<float>();
+                                if (!std::isfinite(component))
+                                    throw Error("animation-value", "Non-finite raw animation key", a.tell());
+                                components.push_back(component);
+                            }
+                            keys.push_back(std::move(components));
+                        }
+                        out[channel.first] = std::move(keys);
+                    }
+                    return out;
+                }
+                // Versions before 39 use ordinary tagged property serialization.
+            }
             if (s == "Guid")
                 return a.guid();
             if (s == "DateTime" || s == "Timespan")
@@ -750,18 +789,23 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     data->seek(consumed);
                 }
             }
-            if(!extension_native && options.native_skeletons && (entry.class_name=="/Script/Engine.Skeleton" || entry.class_name=="/Script/Engine.SkeletalMesh")) {
+            if (!extension_native && options.native_skeletons &&
+                (entry.class_name == "/Script/Engine.Skeleton" ||
+                 entry.class_name == "/Script/Engine.SkeletalMesh")) {
                 try {
-                    entry.native_start=consumed-base;
-                    auto decoded=detail::decode_reference_skeleton(*data,p,base+entry.size,options,entry.class_name=="/Script/Engine.SkeletalMesh");
-                    entry.native_data=std::move(decoded.data);
-                    entry.native_coverage="reference-skeleton";
-                    entry.native_end=decoded.end-base;
-                    consumed=decoded.end;
-                } catch(const Error &error) {
-                    if(error.code=="cancelled") throw;
-                    entry.native_coverage="opaque";
-                    p.diagnostics.push_back(entry.path+": "+error.code+": "+error.what());
+                    entry.native_start = consumed - base;
+                    auto decoded =
+                        detail::decode_reference_skeleton(*data, p, base + entry.size, options,
+                                                          entry.class_name == "/Script/Engine.SkeletalMesh");
+                    entry.native_data = std::move(decoded.data);
+                    entry.native_coverage = "reference-skeleton";
+                    entry.native_end = decoded.end - base;
+                    consumed = decoded.end;
+                } catch (const Error &error) {
+                    if (error.code == "cancelled")
+                        throw;
+                    entry.native_coverage = "opaque";
+                    p.diagnostics.push_back(entry.path + ": " + error.code + ": " + error.what());
                     data->seek(consumed);
                 }
             }
