@@ -344,3 +344,7 @@ After loading an animation with an explicit Skeleton, open **Animations**, enabl
 Unavailable local locations, parents or definitions stay explicit. They do not become implicit zero offsets or removed sockets. The socket scope can remain ready when an unrelated bone source track is missing. Bone-pose and socket-pose readiness are reported separately under `animationPose` and `animationPose.socketOrigins`.
 
 Workspace format four retains `animationSockets`, `animationSocketsPreview` and the existing source-pose mode. Selection/filter, position tolerance and camera persist independently of the bone review across reload, duplicate and close/reopen. Existing workspaces remain readable. The reusable `AnimationPoseView::set_socket_poses` accepts host-prepared Core results and performs no package reads or hierarchy evaluation while drawing. It owns at most 4,096 displayed socket identities, marks truncation incomplete and does not retain source affine matrices.
+
+## Window placement policy — 0.153
+
+The desktop model provides checked outer-window screen-pixel placement, monitor selection by overlap then distance, DPI size conversion, minimum usable dimensions and work-area clamping. Negative monitor coordinates and maximized intent are retained. Disconnected monitors and smaller work areas have deterministic fallbacks. The policy does not depend on CyUI or affect the Core SDK.
