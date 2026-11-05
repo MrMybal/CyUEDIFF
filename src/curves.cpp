@@ -109,11 +109,12 @@ struct Projection {
             if (const auto *t = field(*curve, part.first)) {
                 const auto *v =
                     value(t, std::string(part.first) == "DefaultValue" ? "FloatProperty" : "ByteProperty");
-                if (v && (std::string(part.first) == "DefaultValue"
-                              ? finite(v)
-                              : v->is_string() || v->is_number_unsigned() ||
-                                    (v->is_number_integer() && v->get<std::int64_t>() >= 0 &&
-                                     v->get<std::int64_t>() <= 255)))
+                if (v &&
+                    (std::string(part.first) == "DefaultValue"
+                         ? finite(v)
+                         : v->is_string() || (v->is_number_unsigned() && v->get<std::uint64_t>() <= 255) ||
+                               (v->is_number_integer() && v->get<std::int64_t>() >= 0 &&
+                                v->get<std::int64_t>() <= 255)))
                     out[part.second] = copy(*v);
                 else
                     missing(out, part.first, t);
@@ -375,6 +376,8 @@ Json detail::evaluate_curve_lane(const Json &lane, double time, bool complete_in
 }
 Json evaluate_curve(const Package &p, double time, const std::string &object_path,
                     const std::string &lane_path, const CurveOptions &o) {
+    if (!std::isfinite(time))
+        throw Error("curve-time", "Curve time must be finite");
     const auto root = curve_snapshot(p, o);
     const auto &owners = root.at("owners");
     const auto owner = object_path.empty() && owners.size() == 1 ? owners.begin().key() : object_path;

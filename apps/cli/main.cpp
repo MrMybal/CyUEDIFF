@@ -40,7 +40,7 @@ int run(const std::vector<std::string> &args) {
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff curves ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff curves-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
-               "  cyuediff curve-value ASSET --time SECONDS [--object PATH] [--lane KEY] [--out FILE]\n"
+               "  cyuediff curve-value ASSET --time NUMBER [--object PATH] [--lane KEY] [--out FILE]\n"
                "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
                "  cyuediff animation-frame ASSET --frame N [--object PATH] [--out FILE]\n"

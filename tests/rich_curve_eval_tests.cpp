@@ -50,6 +50,25 @@ int main(int argc, char **argv) {
             no = e.code == "curve-time";
         }
         check(no, "Non-finite time refused");
+        auto missing_input = rich_model();
+        missing_input.complete_input = false;
+        check(!evaluate_curve(missing_input, .5)["ready"].get<bool>(),
+              "Missing input never establishes evaluated value");
+        auto overflow = rich_model();
+        auto &over_keys = overflow.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"];
+        over_keys = Json::array({rich_key(-std::numeric_limits<double>::max(), 0.),
+                                 rich_key(std::numeric_limits<double>::max(), 1.)});
+        check(!evaluate_curve(overflow, 0.)["ready"].get<bool>(),
+              "Time arithmetic overflow stays unavailable");
+        CurveOptions cancelled;
+        cancelled.control.cancelled = [] { return true; };
+        no = false;
+        try {
+            evaluate_curve(rich_model(), .5, "", "", cancelled);
+        } catch (const Error &e) {
+            no = e.code == "cancelled";
+        }
+        check(no, "Evaluation cancellation");
         for (int v : {0, 1004, 1013}) {
             auto before = Package::open(save(root, "base", rich_curve_file_fixture(0, v)));
             auto after = Package::open(save(root, "after", rich_curve_file_fixture(1, v)));

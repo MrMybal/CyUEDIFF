@@ -357,6 +357,18 @@ if args.consumer:
  if not source['snapshot']['complete'] or source['comparison']['status']!='changed' or len(source['comparison']['changes'])!=1:raise RuntimeError('Installed animation source comparison failed')
  if source['frame']['tracks']['name:root']['positions']!=[3.,2.,1.] or source['frame']['timeSeconds']!=1./24.:raise RuntimeError('Installed animation source frame failed')
  print('Installed independent animation source Core consumer validated')
+ curve_build=target/'curve-consumer'
+ configure=[cmake,'-S',str(root/'examples/curve_consumer'),'-B',str(curve_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(curve_build),'--config','Release','--parallel','2'],check=True,env=env)
+ curve_executable=curve_build/'Release'/('curve_consumer'+suffix) if os.name=='nt' else curve_build/'curve_consumer'
+ result=subprocess.run([str(curve_executable)],capture_output=True,check=True,env=env,timeout=20)
+ curves=json.loads(result.stdout)
+ if not curves['snapshot']['complete'] or curves['comparison']['status']!='changed' or len(curves['comparison']['changes'])!=1:raise RuntimeError('Installed rich curve comparison failed')
+ if not curves['value']['ready'] or curves['value']['value']!=4.:raise RuntimeError('Installed rich curve evaluation failed')
+ print('Installed independent rich curve Core consumer validated')
+
 
 
  if (prefix/'include/cyuediff/git.hpp').is_file():
@@ -373,5 +385,5 @@ if args.consumer:
 
 
 
-print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton/animation consumers' if args.consumer else '')+' validated')
+print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton/animation/curve consumers' if args.consumer else '')+' validated')
 print('Validated extraction retained in '+str(target))
