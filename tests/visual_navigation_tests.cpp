@@ -332,12 +332,37 @@ int main(int argc, char **argv) {
             curve_empty.set_packages(&empty_curve);
             curve_missing.set_packages(&curve_before, &curve_after);
             curve_missing.select_objects("Missing", "Curve");
+            CurveView curve_range, curve_tolerance, curve_negative, curve_cycle, curve_default;
+            curve_range.set_packages(&curve_before, &curve_after);
+            curve_range.set_range(-1, 3);
+            curve_range.set_time(-.5);
+            curve_range.select_key(curve_key);
+            curve_tolerance.set_packages(&curve_before, &curve_after);
+            curve_tolerance.set_value_tolerance(2);
+            auto negative_curve = weighted_curve;
+            negative_curve.exports[0]
+                .properties["FloatCurve"]["value"]["Keys"]["value"][0]["leaveTangentWeight"] = -1.;
+            curve_negative.set_packages(&negative_curve);
+            curve_negative.set_time(.5);
+            auto cyclic_curve = curve_before;
+            cyclic_curve.exports[0].properties["FloatCurve"]["value"]["PreInfinityExtrap"] = {
+                {"type", {{"name", "ByteProperty"}}}, {"value", 2}};
+            cyclic_curve.exports[0].properties["FloatCurve"]["value"]["PostInfinityExtrap"] = {
+                {"type", {{"name", "ByteProperty"}}}, {"value", 2}};
+            curve_cycle.set_packages(&cyclic_curve);
+            curve_cycle.set_range(-2, 6);
+            curve_cycle.set_time(2.5);
+            auto default_curve = empty_curve;
+            default_curve.exports[0].properties["FloatCurve"]["value"]["DefaultValue"] = {
+                {"type", {{"name", "FloatProperty"}}}, {"value", 7.}};
+            curve_default.set_packages(&default_curve);
+            curve_default.set_range(-1, 3);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 42; ++scene) {
+                    for (int scene = 0; scene < 48; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -379,7 +404,13 @@ int main(int argc, char **argv) {
                                                "curve-weighted",
                                                "curve-unknown",
                                                "curve-empty",
-                                               "curve-missing"};
+                                               "curve-missing",
+                                               "curve-range",
+                                               "curve-range-narrow",
+                                               "curve-tolerance",
+                                               "curve-negative-weight",
+                                               "curve-cyclic",
+                                               "curve-default"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -388,15 +419,31 @@ int main(int argc, char **argv) {
                             }
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
-                            ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
-                                                      scene == 15 || scene == 19 || scene == 22 ||
-                                                      scene == 26 || scene == 31 || scene == 37)
-                                                         ? ImVec2{640, io.DisplaySize.y}
-                                                         : io.DisplaySize);
+                            ImGui::SetNextWindowSize(
+                                (scene == 7 || scene == 10 || scene == 13 || scene == 15 || scene == 19 ||
+                                 scene == 22 || scene == 26 || scene == 31 || scene == 37 || scene == 43)
+                                    ? ImVec2{640, io.DisplaySize.y}
+                                    : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 42:
+                            case 43:
+                                curve_range.draw();
+                                break;
+                            case 44:
+                                curve_tolerance.draw();
+                                break;
+                            case 45:
+                                curve_negative.draw();
+                                break;
+                            case 46:
+                                curve_cycle.draw();
+                                break;
+                            case 47:
+                                curve_default.draw();
+                                break;
                             case 36:
                             case 37:
                                 curve_view.draw();

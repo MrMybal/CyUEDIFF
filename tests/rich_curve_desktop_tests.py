@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory(prefix='cyuediff-curve-desktop-') as tmp:
  subprocess.run([generator,'--write-fixtures',str(root)],check=True,env=env)
  before=root/'curve-0-1013.uasset';after=root/'curve-1-1013.uasset'
  hashes={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in [before,after]}
- state={'asset':{'curves':{'beforeObject':'TestAsset','afterObject':'TestAsset','lane':'value','time':.5,
+ state={'asset':{'curves':{'beforeObject':'TestAsset','afterObject':'TestAsset','lane':'value','time':.5,'customRange':True,'rangeBegin':-1.,'rangeEnd':3.,'valueTolerance':.25,
         'inspection':{'selected':'time:3ff0000000000000','changedOnly':True,'filter':'','properties':{'filter':'value','changedOnly':False}}}}}
  report=root/'report.json';workspace=root/'workspace.json'
  def run(*args):
@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory(prefix='cyuediff-curve-desktop-') as tmp:
  saved=json.loads(workspace.read_text(encoding='utf-8'))
  assert saved['documents'][0]['view']=='curves'
  actual=saved['documents'][0]['viewState']['asset']['curves']
+ assert actual['customRange'] and actual['rangeBegin']==-1. and actual['rangeEnd']==3. and actual['valueTolerance']==.25
  assert actual['time']==.5 and actual['inspection']['selected']=='time:3ff0000000000000'
  original=workspace.read_bytes()
  reopened=run('--workspace',workspace)

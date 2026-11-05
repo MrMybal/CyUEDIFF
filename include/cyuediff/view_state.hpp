@@ -180,6 +180,10 @@ inline void validate(const Json &v, std::string_view kind) {
             child("metadata","property");
         } else if(kind=="curves"){
             string({"beforeObject","afterObject","lane"});
+            flag({"customRange"});
+            if(key=="rangeBegin" || key=="rangeEnd"){scalar(x,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());known=true;}
+            if(key=="valueTolerance"){scalar(x,0,std::numeric_limits<double>::max());known=true;}
+
             child("inspection","graph-inspection");
             if(key=="time"){scalar(x,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());known=true;}
         } else if(kind=="animation-source"){
@@ -221,6 +225,8 @@ inline void validate(const Json &v, std::string_view kind) {
     }
     if(kind=="skeleton")
         require(int(v.value("posePreview",false))+int(v.value("animationPreview",false))+int(v.value("attachmentsPreview",false))<=1);
+    if(kind=="curves" && v.contains("rangeBegin") && v.contains("rangeEnd"))
+        require(v["rangeBegin"].get<double>()<=v["rangeEnd"].get<double>());
     // Also validates programmatically supplied UTF-8, before any host resources are touched.
     require(v.dump().size() <= 256 * 1024);
 }

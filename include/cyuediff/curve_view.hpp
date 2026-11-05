@@ -16,6 +16,9 @@ class CurveView {
     std::vector<std::array<double, 3>> plot_[2];
     std::vector<std::array<double, 2>> markers_[2];
     double time_ = 0, low_ = 0, high_ = 0;
+    double range_begin_ = 0, range_end_ = 1, value_tolerance_ = 0;
+    bool custom_range_ = false;
+    Json sampled_ = Json::object();
     cyui::TextFilter filter_;
     PropertyView details_;
     const Json *owner(bool) const;
@@ -36,6 +39,9 @@ class CurveView {
     bool select_lane(const std::string &);
     bool select_key(const std::string &);
     void set_time(double);
+    void set_range(double begin, double end, bool enabled = true);
+    void set_value_tolerance(double);
+    const Json &sampled_comparison() const { return sampled_; }
     void set_filter(std::string);
     void set_changed_only(bool);
     bool next_change(bool previous = false);

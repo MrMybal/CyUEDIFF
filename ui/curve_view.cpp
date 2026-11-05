@@ -18,7 +18,7 @@ void CurveView::register_translations() {
          {"Find source keys", "Rechercher des clés source"},
          {"Stored curve keys", "Clés de courbe enregistrées"},
          {"No stored rich curve", "Aucune courbe riche enregistrée"},
-         {"Unknown curve fields remain explicit. Weighted segments and extrapolation are unavailable.",
+         {"Missing or invalid stored settings remain explicit; unavailable values have gaps.",
           "Les champs inconnus restent explicites. Les segments pondérés et l’extrapolation sont "
           "indisponibles."},
          {"Stored tangents; supported segments use double-precision source evaluation.",
@@ -33,6 +33,21 @@ void CurveView::register_translations() {
          {"Key list is limited to 4,096 entries.", "La liste est limitée à 4 096 clés."},
          {"Orange: before | Green: after | Dots: stored keys | Click to choose time.",
           "Orange : avant | Vert : après | Points : clés enregistrées | Cliquez pour choisir le temps."}});
+    cyui::registerTranslations("fr",
+                               {{"Custom time range", "Plage de temps personnalisée"},
+                                {"Range start", "Début de plage"},
+                                {"Range end", "Fin de plage"},
+                                {"Value tolerance", "Tolérance des valeurs"},
+                                {"Sampled value comparison", "Comparaison des valeurs échantillonnées"},
+                                {"%llu samples | %llu changed | %llu unavailable",
+                                 "%llu échantillons | %llu modifiés | %llu indisponibles"},
+                                {"Maximum sampled delta: %.8g", "Écart maximal échantillonné : %.8g"},
+                                {"Comparison covers the displayed sample grid only.",
+                                 "La comparaison couvre uniquement la grille affichée."},
+                                {"Stored keys", "Clés enregistrées"},
+                                {"Weighted and explicit extrapolation settings are evaluated when available.",
+                                 "Les poids et les paramètres d’extrapolation explicites sont évalués "
+                                 "lorsqu’ils sont disponibles."}});
 }
 const Json *CurveView::owner(bool side) const {
     const auto &r = owners_[side];
@@ -59,6 +74,10 @@ void CurveView::set_packages(const Package *a, const Package *b, bool comparing)
     filter_ = {};
     changed_only_ = false;
     time_ = 0;
+    range_begin_ = 0;
+    range_end_ = 1;
+    custom_range_ = false;
+    value_tolerance_ = 0;
     selected_.clear();
     lane_.clear();
     for (unsigned side = 0; side < 2; ++side) {
@@ -162,6 +181,20 @@ void CurveView::set_time(double time) {
     time_ = time;
     sample();
 }
+void CurveView::set_range(double begin, double end, bool enabled) {
+    if (!std::isfinite(begin) || !std::isfinite(end) || begin > end)
+        throw Error("view-state", "Invalid finite curve display range");
+    range_begin_ = begin;
+    range_end_ = end;
+    custom_range_ = enabled;
+    prepare_plot();
+}
+void CurveView::set_value_tolerance(double tolerance) {
+    if (!std::isfinite(tolerance) || tolerance < 0)
+        throw Error("view-state", "Invalid curve value tolerance");
+    value_tolerance_ = tolerance;
+    prepare_plot();
+}
 void CurveView::set_filter(std::string q) {
     filter_.query = std::move(q);
     rebuild();
@@ -220,6 +253,20 @@ void CurveView::prepare_plot() {
                         high_ = std::max(high_, t);
                     }
                 }
+    if (custom_range_) {
+        low_ = range_begin_;
+        high_ = range_end_;
+        first = false;
+    }
+    sampled_ = Json::object();
+    if (comparing_) {
+        CurveValueDiffOptions grid;
+        grid.time_begin = low_;
+        grid.time_end = high_;
+        grid.samples = low_ == high_ ? 1 : 512;
+        grid.value_tolerance = value_tolerance_;
+        sampled_ = detail::compare_curve_lanes(lane(false), lane(true), input_[0], input_[1], grid);
+    }
     for (bool side : {false, true}) {
         plot_[side].clear();
         markers_[side].clear();
@@ -230,8 +277,18 @@ void CurveView::prepare_plot() {
             if (markers_[side].size() >= 4096)
                 break;
             const auto &k = l->at("keys").at(id.get<std::string>());
-            if (k.contains("time") && k.contains("value"))
+            if (k.contains("time") && k.contains("value") && k.at("time").get<double>() >= low_ &&
+                k.at("time").get<double>() <= high_)
                 markers_[side].push_back({k.at("time").get<double>(), k.at("value").get<double>()});
+        }
+        if (comparing_) {
+            for (const auto &sample : sampled_.at("samples")) {
+                const auto &value = sample.at(side ? "after" : "before");
+                plot_[side].push_back({sample.at("time").get<double>(),
+                                       value.at("ready").get<bool>() ? value.at("value").get<double>() : 0.,
+                                       value.at("ready").get<bool>() ? 1. : 0.});
+            }
+            continue;
         }
         const unsigned count = low_ == high_ ? 1 : 512;
         for (unsigned i = 0; i < count; ++i) {
@@ -248,6 +305,10 @@ Json CurveView::view_state() const {
             {"afterObject", objects_[1]},
             {"lane", lane_},
             {"time", time_},
+            {"customRange", custom_range_},
+            {"rangeBegin", range_begin_},
+            {"rangeEnd", range_end_},
+            {"valueTolerance", value_tolerance_},
             {"inspection",
              {{"selected", selected_},
               {"filter", filter_.query},
@@ -256,6 +317,14 @@ Json CurveView::view_state() const {
 }
 void CurveView::restore_view_state(const Json &v) {
     view_state::validate(v, "curves");
+    const double begin = v.value("rangeBegin", range_begin_), end = v.value("rangeEnd", range_end_);
+    if (begin > end)
+        throw Error("view-state", "Curve range endpoints are reversed");
+    range_begin_ = begin;
+    range_end_ = end;
+    custom_range_ = v.value("customRange", custom_range_);
+    value_tolerance_ = v.value("valueTolerance", value_tolerance_);
+
     if (v.contains("beforeObject"))
         objects_[0] = v["beforeObject"].get<std::string>();
     if (v.contains("afterObject"))
@@ -434,7 +503,39 @@ void CurveView::draw(const char *id) {
     ImGui::SetNextItemWidth(std::min(cyui::dp(240), ImGui::GetContentRegionAvail().x));
     if (ImGui::InputDouble(cyui::trLabel("Curve time").c_str(), &time, 0, 0, "%.9g") && std::isfinite(time))
         set_time(time);
+    bool custom = custom_range_;
+    if (ImGui::Checkbox(cyui::trLabel("Custom time range").c_str(), &custom))
+        set_range(range_begin_, range_end_, custom);
+    if (custom_range_) {
+        double begin = range_begin_, end = range_end_;
+        ImGui::SetNextItemWidth(std::min(cyui::dp(220), ImGui::GetContentRegionAvail().x));
+        const bool a = ImGui::InputDouble(cyui::trLabel("Range start").c_str(), &begin, 0, 0, "%.9g");
+        if (ImGui::GetContentRegionAvail().x > cyui::dp(560))
+            ImGui::SameLine();
+        ImGui::SetNextItemWidth(std::min(cyui::dp(220), ImGui::GetContentRegionAvail().x));
+        const bool b = ImGui::InputDouble(cyui::trLabel("Range end").c_str(), &end, 0, 0, "%.9g");
+        if ((a || b) && std::isfinite(begin) && std::isfinite(end) && begin <= end)
+            set_range(begin, end);
+    }
+    if (comparing_) {
+        double tolerance = value_tolerance_;
+        ImGui::SetNextItemWidth(std::min(cyui::dp(220), ImGui::GetContentRegionAvail().x));
+        if (ImGui::InputDouble(cyui::trLabel("Value tolerance").c_str(), &tolerance, 0, 0, "%.8g") &&
+            std::isfinite(tolerance) && tolerance >= 0)
+            set_value_tolerance(tolerance);
+    }
     draw_plot();
+    if (comparing_ && sampled_.contains("sampleCount")) {
+        ImGui::Text("%s", cyui::tr("Sampled value comparison").c_str());
+        ImGui::Text(cyui::tr("%llu samples | %llu changed | %llu unavailable").c_str(),
+                    static_cast<unsigned long long>(sampled_["sampleCount"].get<std::size_t>()),
+                    static_cast<unsigned long long>(sampled_["changedSamples"].get<std::size_t>()),
+                    static_cast<unsigned long long>(sampled_["unavailableSamples"].get<std::size_t>()));
+        if (sampled_["maximumAbsoluteDelta"].is_number())
+            ImGui::Text(cyui::tr("Maximum sampled delta: %.8g").c_str(),
+                        sampled_["maximumAbsoluteDelta"].get<double>());
+        cyui::textDim("%s", cyui::tr("Comparison covers the displayed sample grid only.").c_str());
+    }
     if (values_[0].value("ready", false) && values_[1].value("ready", false))
         ImGui::Text(cyui::tr("Before %.8g | After %.8g").c_str(), values_[0]["value"].get<double>(),
                     values_[1]["value"].get<double>());
@@ -447,8 +548,7 @@ void CurveView::draw(const char *id) {
         (present_[1] && !values_[1].value("ready", false)))
         ImGui::TextWrapped(
             "%s",
-            cyui::tr(
-                "Unknown curve fields remain explicit. Weighted segments and extrapolation are unavailable.")
+            cyui::tr("Missing or invalid stored settings remain explicit; unavailable values have gaps.")
                 .c_str());
     if (!selected_.empty()) {
         if (comparing_ && !selected_known())

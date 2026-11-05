@@ -31,6 +31,16 @@ int main() {
               "Synchronized evaluated source time");
         view.set_changed_only(true);
         check(view.visible_count() == 1 && view.next_change(), "Confirmed changed-key navigation");
+        view.set_range(-1., 3.);
+        view.set_value_tolerance(.25);
+        check(view.sampled_comparison()["status"] == "incomplete" &&
+                  view.sampled_comparison()["unavailableSamples"].get<std::size_t>() > 0,
+              "Custom unknown domain preserves evaluation gaps");
+        view.set_range(0., 2.);
+        view.set_value_tolerance(2.);
+        check(view.sampled_comparison()["status"] == "identical",
+              "Value tolerance affects evaluated grid independently of stored key changes");
+        view.set_value_tolerance(0.);
         auto state = view.view_state();
         state["inspection"]["properties"] = {
             {"changedOnly", false}, {"filter", "value"}, {"selected", "/value"}};
@@ -39,6 +49,16 @@ int main() {
         restored.set_packages(&a, &b);
         restored.restore_view_state(state);
         check(restored.view_state() == state, "Owner/lane/key/time and typed properties round trip");
+        auto reversed = state;
+        reversed["rangeBegin"] = 3.;
+        reversed["rangeEnd"] = 1.;
+        bool range_rejected = false;
+        try {
+            restored.restore_view_state(reversed);
+        } catch (const Error &e) {
+            range_rejected = e.code == "view-state";
+        }
+        check(range_rejected && restored.view_state() == state, "Custom range validation atomic");
         auto bad = state;
         bad["time"] = std::numeric_limits<double>::infinity();
         bool no = false;
