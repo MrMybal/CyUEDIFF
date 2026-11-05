@@ -10,6 +10,9 @@ struct AnimationOptions {
 };
 // Exact Engine.AnimDataModel source streams. No external loading, interpolation or defaults.
 Json animation_snapshot(const Package &, const AnimationOptions & = {});
+// Integer source-key frame; constant one-key channels are reused, other cardinalities stay unavailable.
+Json animation_frame(const Package &, std::uint32_t frame, const std::string &object_path = "",
+                     const AnimationOptions & = {});
 struct AnimationComparison {
     Json changes = Json::array();
     std::string before_object, after_object;

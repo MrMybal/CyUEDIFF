@@ -1,4 +1,4 @@
-#include <cyuediff/animation.hpp>
+#include "animation_internal.hpp"
 #include <cmath>
 #include <set>
 namespace cyuediff {
@@ -234,5 +234,71 @@ Json animation_snapshot(const Package &p, const AnimationOptions &o) {
     if (!count)
         out["complete"] = false;
     return out;
+}
+Json detail::sample_animation_frame(const Json &model, std::uint32_t frame, const std::string &path,
+                                    bool complete_input, const OperationControl &control) {
+    control.check();
+    if (!model.contains("numberOfKeys") || !model["numberOfKeys"].is_number_integer() ||
+        model["numberOfKeys"].get<std::int64_t>() <= 0)
+        throw Error("animation-frame", "Stored number of source keys is unavailable");
+    const auto count = model["numberOfKeys"].get<std::uint32_t>();
+    if (frame >= count)
+        throw Error("animation-frame", "Source frame is outside the stored key range");
+    Json out = {
+        {"schema", "cyuediff.animation-frame/1"},
+        {"scope",
+         "stored bone-local source keys; no interpolation, hierarchy, defaults or runtime evaluation"},
+        {"object", path},
+        {"frame", frame},
+        {"numberOfKeys", count},
+        {"complete", complete_input && model.value("tracksCoverage", std::string()) == "stored"},
+        {"tracks", Json::object()}};
+    if (model.contains("frameRate")) {
+        out["frameRate"] = model["frameRate"];
+        const auto &rate = model["frameRate"];
+        if (rate.contains("numerator") && rate.contains("denominator"))
+            out["timeSeconds"] =
+                double(frame) * rate["denominator"].get<double>() / rate["numerator"].get<double>();
+    }
+    for (auto t = model.at("tracks").begin(); t != model.at("tracks").end(); ++t) {
+        control.checkpoint("Sampling animation source frame", out["tracks"].size(),
+                           model.at("tracks").size());
+        Json point = {{"ready", t->value("complete", false)}, {"diagnostics", Json::array()}};
+        if (t->contains("name"))
+            point["name"] = t->at("name");
+        for (const auto *channel : {"positions", "rotations", "scales"}) {
+            if (!t->contains(channel) || !t->at(channel).is_array() ||
+                (t->at(channel).size() != 1 && t->at(channel).size() != count)) {
+                point["ready"] = false;
+                point["diagnostics"].push_back(std::string("Unavailable source channel or key count: ") +
+                                               channel);
+                continue;
+            }
+            const auto &key = t->at(channel)[t->at(channel).size() == 1 ? 0 : frame];
+            point[channel] = key;
+            if (std::string(channel) == "rotations") {
+                double norm = 0;
+                for (const auto &c : key)
+                    norm += c.get<double>() * c.get<double>();
+                if (!std::isfinite(norm) || std::abs(norm - 1.) > 1e-4) {
+                    point["ready"] = false;
+                    point["diagnostics"].push_back("Stored quaternion is not unit length");
+                }
+            }
+        }
+        if (!point["ready"].get<bool>())
+            out["complete"] = false;
+        out["tracks"][t.key()] = std::move(point);
+    }
+    return out;
+}
+Json animation_frame(const Package &p, std::uint32_t frame, const std::string &object_path,
+                     const AnimationOptions &o) {
+    const auto root = animation_snapshot(p, o);
+    const auto &models = root.at("models");
+    const auto path = object_path.empty() && models.size() == 1 ? models.begin().key() : object_path;
+    if (path.empty() || !models.contains(path))
+        throw Error("animation-object", "Select exactly one stored animation model");
+    return detail::sample_animation_frame(models.at(path), frame, path, p.complete_input, o.control);
 }
 } // namespace cyuediff

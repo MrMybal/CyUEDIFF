@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.109.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.110.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -108,6 +108,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_animation_frame_tests tests/animation_frame_tests.cpp)
+    target_link_libraries(cyuediff_animation_frame_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME animation_source_frames COMMAND cyuediff_animation_frame_tests)
     add_executable(cyuediff_animation_model_tests tests/animation_model_tests.cpp)
     target_link_libraries(cyuediff_animation_model_tests PRIVATE CyUEDiff::Core)
     add_test(NAME animation_source_models COMMAND cyuediff_animation_model_tests)
@@ -240,6 +243,9 @@ if(BUILD_TESTING)
     if(CYUEDIFF_BUILD_CLI)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME animation_source_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_source_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_animation_frame_tests>")
             add_test(NAME skeleton_attachment_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/attachments_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_attachments_file_tests>")

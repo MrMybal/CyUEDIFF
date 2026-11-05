@@ -1,3 +1,4 @@
+#include <cyuediff/animation.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
 #include <cyuediff/collision_wireframe.hpp>
@@ -36,6 +37,9 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff hdr-diff BEFORE AFTER [--threshold SAMPLE_DELTA] [--heatmap MASK.png] [--codec "
                "MODULE.dll]\n"
                "  preview accepts --exposure EV for HDR source display.\n"
+               "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\\n"
+               "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\\n"
+               "  cyuediff animation-frame ASSET --frame N [--object PATH] [--out FILE]\\n"
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff attachments ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff attachments-diff BEFORE AFTER [--out FILE]\n"
@@ -97,7 +101,7 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
+    const std::set<std::string> valued = {"--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
                                           "--schema",
                                           "--after-schema",
@@ -143,7 +147,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -175,8 +179,12 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments","--retarget-source requires skeleton-pose or socket-pose");
         if ((key=="--before-retarget-source"||key=="--after-retarget-source") && command!="skeleton-pose-diff" && command!="socket-pose-diff")
             throw Error("arguments",key+" requires skeleton-pose-diff or socket-pose-diff");
-        if ((key == "--before-object" || key == "--after-object" || key == "--position-tolerance") && command != "skeleton-pose-diff" && command != "socket-pose-diff")
-            throw Error("arguments", key + " requires skeleton-pose-diff or socket-pose-diff");
+        if(key=="--frame" && command!="animation-frame")throw Error("arguments","--frame requires animation-frame");
+        if ((key == "--before-object" || key == "--after-object") && command != "animation-diff" &&
+            command != "skeleton-pose-diff" && command != "socket-pose-diff")
+            throw Error("arguments", key + " requires a model or pose comparison");
+        if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff")
+            throw Error("arguments","--position-tolerance requires a pose comparison");
         if (key == "--max-commits" || key == "--skip")
             throw Error("arguments", key + " requires git-history");
         if (schema_command) {
@@ -223,7 +231,7 @@ int run(const std::vector<std::string> &args) {
              key == "--before-engine-root" || key == "--after-engine-root"))
             throw Error("arguments", key + " requires a Git command");
         if (((key == "--mip") && !image_command) ||
-            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose"))
+            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose" && command != "animation-frame"))
             throw Error("arguments", key + " requires an image or geometry command");
         if ((key == "--threshold" || key == "--heatmap") && command != "image-diff" && command != "hdr-diff")
             throw Error("arguments", key + " requires image-diff or hdr-diff");
@@ -593,6 +601,21 @@ int run(const std::vector<std::string> &args) {
 #else
         throw Error("git-unavailable", "Configure CYUEDIFF_BUILD_GIT=ON to enable Git commands");
 #endif
+    } else if(command=="animation" || command=="animation-frame" || command=="animation-diff") {
+        if(flags.contains("--metadata") || flags.contains("--snapshot"))
+            throw Error("arguments","Animation source inspection requires decoded properties");
+        if(command=="animation-frame" && !flags.contains("--frame"))
+            throw Error("arguments","animation-frame requires --frame");
+        const auto before=read(positional[0],command=="animation-diff"?"--before-project":"--project",options);
+        if(command=="animation-diff") {
+            const auto after=read(positional[1],"--after-project",options);
+            const auto comparison=compare_animation_models(before,after,flags.value("--before-object",std::string{}),
+                                                           flags.value("--after-object",std::string{}));
+            output=comparison.to_json();exit_code=!comparison.complete?2:comparison.changes.empty()?0:1;
+        }else if(command=="animation-frame")
+            output=animation_frame(before,integer_option("--frame",INT32_MAX),flags.value("--object",std::string{}));
+        else output=animation_snapshot(before);
+        if(!before.complete_input)exit_code=2;
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
                command == "mesh" || command == "material" || command == "collision" ||
                command == "collision-preview" || command == "skeleton" || command == "skeleton-animation" || command == "skeleton-pose" || command=="attachments" || command=="socket-pose") {
