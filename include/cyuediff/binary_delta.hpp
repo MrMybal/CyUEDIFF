@@ -6,10 +6,17 @@ struct BinaryDeltaOptions {
     std::uint64_t max_input_bytes = 256ull * 1024 * 1024;
     std::uint64_t max_literal_bytes = 64ull * 1024 * 1024;
     std::uint64_t max_match_bytes = 512ull * 1024 * 1024;
+    std::uint64_t max_source_read_bytes = 4ull * 1024 * 1024 * 1024;
     std::uint64_t max_manifest_bytes = 160ull * 1024 * 1024;
     std::size_t max_blocks = 1000000, max_operations = 100000;
     std::size_t max_composition_fragments = 1000000;
     OperationControl control;
+};
+// An immutable declared extent and exact synchronous random reads. Read callbacks may throw;
+// return exactly the requested count, do not retain the destination, and do not mutate either input.
+struct BinaryDeltaSource {
+    std::uint64_t bytes = 0;
+    std::function<std::size_t(std::uint64_t, std::uint8_t *, std::size_t)> read;
 };
 enum class BinaryDeltaKind { copy, literal };
 struct BinaryDeltaOperation {
@@ -36,6 +43,10 @@ struct BinaryDelta {
 // Exact reconstruction is the scope, independently of Unreal serialization semantics.
 BinaryDelta make_binary_delta(const std::vector<std::uint8_t> &base, const std::vector<std::uint8_t> &target,
                               const BinaryDeltaOptions & = {});
+// Random-access generation uses two <=1-MiB windows per endpoint and a shared read byte budget.
+// Both declared extents are hashed again without cached data before returning a plan.
+BinaryDelta make_binary_delta_sources(const BinaryDeltaSource &base, const BinaryDeltaSource &target,
+                                      const BinaryDeltaOptions & = {});
 // No partial result is returned: both identities and every operation are checked.
 std::vector<std::uint8_t> apply_binary_delta(const std::vector<std::uint8_t> &base, const BinaryDelta &,
                                              const BinaryDeltaOptions & = {});

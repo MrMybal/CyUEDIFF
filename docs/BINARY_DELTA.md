@@ -60,6 +60,12 @@ The installed Core example now verifies JSON and compact round-trips, bounded fi
 
 `validate_binary_deltas.py --format json|binary --compose` adds a second edited copy and composed reconstruction for each explicit original. A separate stdlib-only interpreter decodes the compact integers/raw bytes and checks copy ranges, sizes and hashes before comparing CLI and optional installed SDK results. Source/companion fingerprints remain checked. The retained JSON default remains compatible with earlier invocation forms.
 
+## Bounded random-access generation — 0.168
+
+`make_binary_delta_sources` accepts two immutable `BinaryDeltaSource` values: a declared byte extent and a synchronous exact random-read callback. Hosts can connect their own storage without assembling endpoint vectors. Each callback receives at most 1 MiB and must return exactly that count or throw; its destination is valid only during the call. Empty sources need no callback. Two cached windows per endpoint retain adjacent rolling-window endpoints, using at most 4 MiB of source cache plus the block index, operations and resident literals. The default aggregate callback-read budget is 4 GiB (`max_source_read_bytes`), including initial hashes, matching/index reads and final uncached rehashes. It bounds read amplification independently of candidate comparisons.
+
+Both declared extents are SHA-256-checked again before returning a plan; observed byte changes, short/excessive reads, exhausted budgets, host exceptions and cancellation prevent a result. Providers must keep the declared size and bytes immutable throughout the call; this is not an atomic snapshot across external storage. The shared matching kernel retains vector/file plan ordering, byte-confirmed copy acceptance and existing operation/literal/candidate limits. The vector API remains direct and does not charge a source-I/O budget.
+
 ## Commands and SDK
 
 ```powershell
