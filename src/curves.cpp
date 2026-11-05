@@ -300,6 +300,23 @@ Json curve_snapshot(const Package &p, const CurveOptions &o) {
         out["complete"] = false;
     return out;
 }
+namespace {
+int extrapolation_mode(const Json &lane, const char *field) {
+    const auto it = lane.find(field);
+    if (it == lane.end())
+        return -1;
+    if (it->is_number_integer() && it->get<std::int64_t>() >= 0 && it->get<std::int64_t>() <= 5)
+        return it->get<int>();
+    if (!it->is_string())
+        return -1;
+    const char *names[] = {"RCCE_Cycle",  "RCCE_CycleWithOffset", "RCCE_Oscillate",
+                           "RCCE_Linear", "RCCE_Constant",        "RCCE_None"};
+    for (int i = 0; i < 6; ++i)
+        if (*it == names[i] || *it == std::string("ERichCurveExtrapolation::") + names[i])
+            return i;
+    return -1;
+}
+} // namespace
 Json detail::evaluate_curve_lane(const Json &lane, double time, bool complete_input,
                                  const OperationControl &control) {
     control.check();
@@ -318,8 +335,17 @@ Json detail::evaluate_curve_lane(const Json &lane, double time, bool complete_in
         lane.value("timeOrder", std::string()) != "strict")
         return unavailable("Stored curve or input coverage is incomplete");
     const auto &order = lane.at("keyOrder"), &keys = lane.at("keys");
-    if (order.empty())
-        return unavailable("No stored source keys");
+    if (order.empty()) {
+        const auto stored = lane.find("defaultValue");
+        if (stored != lane.end() && stored->is_number() && std::isfinite(stored->get<double>()) &&
+            stored->get<double>() != double(std::numeric_limits<float>::max())) {
+            out["ready"] = true;
+            out["value"] = *stored;
+            out["method"] = "stored-default";
+            return out;
+        }
+        return unavailable("No stored source keys or explicit usable default value");
+    }
     std::size_t first = 0, last = order.size();
     while (first < last) {
         control.check();
@@ -339,8 +365,64 @@ Json detail::evaluate_curve_lane(const Json &lane, double time, bool complete_in
             return out;
         }
     }
-    if (first == 0 || first >= order.size())
-        return unavailable("Time is outside the stored key range; extrapolation is unavailable");
+    if (first == 0 || first >= order.size()) {
+        const bool before = first == 0;
+        const int mode = extrapolation_mode(lane, before ? "preInfinity" : "postInfinity");
+        const auto &edge = keys.at(order[before ? 0 : order.size() - 1].get<std::string>());
+        const double edge_time = edge.at("time").get<double>(), edge_value = edge.at("value").get<double>();
+        if (mode < 0 || mode == 5)
+            return unavailable(
+                "Outside-range evaluation requires a supported explicitly stored extrapolation mode");
+        if (mode == 4 || (mode == 3 && order.size() == 1)) {
+            out["ready"] = true;
+            out["value"] = edge_value;
+            out["method"] = "extrapolated-constant";
+            out["extrapolation"] = mode == 3 ? "linear" : "constant";
+            return out;
+        }
+        if (mode == 3) {
+            const auto &neighbor = keys.at(order[before ? 1 : order.size() - 2].get<std::string>());
+            const double dt = neighbor.at("time").get<double>() - edge_time,
+                         slope = (neighbor.at("value").get<double>() - edge_value) / dt,
+                         result = edge_value + (time - edge_time) * slope;
+            if (!std::isfinite(dt) || !std::isfinite(slope) || !std::isfinite(result))
+                return unavailable("Linear extrapolation arithmetic overflow");
+            out["ready"] = true;
+            out["value"] = result;
+            out["method"] = "extrapolated-linear";
+            out["extrapolation"] = "linear";
+            return out;
+        }
+        const auto &head = keys.at(order[0].get<std::string>()),
+                   &tail = keys.at(order.back().get<std::string>());
+        const double start = head.at("time").get<double>(), end = tail.at("time").get<double>(),
+                     period = end - start, distance = before ? start - time : time - end;
+        if (!std::isfinite(period) || period <= 0 || !std::isfinite(distance))
+            return unavailable("Cyclic extrapolation period is unresolved");
+        const double cycles = std::ceil(distance / period);
+        if (!std::isfinite(cycles) || cycles < 1 || cycles > 2147483647.)
+            return unavailable("Cyclic extrapolation count exceeds the supported range");
+        double mapped = before ? time + cycles * period : time - cycles * period;
+        if (mode == 2 && std::uint64_t(cycles) % 2)
+            mapped = start + (end - mapped);
+        if (!std::isfinite(mapped) || mapped < start || mapped > end)
+            return unavailable("Cyclic extrapolation time cannot be resolved");
+        auto sampled = detail::evaluate_curve_lane(lane, mapped, complete_input, control);
+        sampled["time"] = time;
+        sampled["mappedTime"] = mapped;
+        sampled["cycleCount"] = std::uint64_t(cycles);
+        sampled["extrapolation"] = mode == 0 ? "cycle" : mode == 1 ? "cycle-with-offset" : "oscillate";
+        if (mode == 1 && sampled.at("ready").get<bool>()) {
+            const double offset = (tail.at("value").get<double>() - head.at("value").get<double>()) *
+                                  (before ? -cycles : cycles),
+                         result = sampled.at("value").get<double>() + offset;
+            if (!std::isfinite(offset) || !std::isfinite(result))
+                return unavailable("Cyclic value offset arithmetic overflow");
+            sampled["valueOffset"] = offset;
+            sampled["value"] = result;
+        }
+        return sampled;
+    }
     const auto &a = keys.at(order[first - 1].get<std::string>()),
                &b = keys.at(order[first].get<std::string>());
     const double delta = b.at("time").get<double>() - a.at("time").get<double>();
@@ -398,7 +480,7 @@ Json evaluate_curve(const Package &p, double time, const std::string &object_pat
         throw Error("curve-lane", "Select exactly one stored curve lane");
     auto out = detail::evaluate_curve_lane(lanes.at(id), time, p.complete_input, o.control);
     out["schema"] = "cyuediff.curve-value/1";
-    out["scope"] = "double-precision evaluation of supported stored segments; no defaults or extrapolation";
+    out["scope"] = "double-precision evaluation of supported stored segments/settings; no inferred defaults";
     out["object"] = owner;
     out["lane"] = id;
     return out;

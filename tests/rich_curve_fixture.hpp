@@ -48,20 +48,24 @@ inline Fixture rich_key_fixture(int invalid = 0, int version = 1013) {
 }
 inline Fixture rich_curve_file_fixture(int change = 0, int version = 1013) {
     return fixture(
-        version, 1, false, 0, {"FloatCurve", "RichCurve", "Keys", "RichCurveKey"},
+        version, 1, false, 0,
+        {"FloatCurve", "RichCurve", "Keys", "RichCurveKey", "PreInfinityExtrap", "PostInfinityExtrap",
+         "DefaultValue", "ByteProperty", "FloatProperty"},
         [=](Bytes &s, const NameWriter &name) {
             auto tag = [&](Bytes &out, const char *field, const char *kind, const Bytes &payload,
-                           const char *structure, bool array = false) {
+                           const char *structure = nullptr, bool array = false) {
                 name(out, field);
                 name(out, kind);
                 if (version >= 1012) {
-                    out.i(1);
-                    if (array) {
-                        name(out, "StructProperty");
-                        out.i(1);
+                    out.i(structure ? 1 : 0);
+                    if (structure) {
+                        if (array) {
+                            name(out, "StructProperty");
+                            out.i(1);
+                        }
+                        name(out, structure);
+                        out.i(0);
                     }
-                    name(out, structure);
-                    out.i(0);
                 }
                 out.i(static_cast<int>(payload.data.size()));
                 if (version >= 1012)
@@ -70,10 +74,11 @@ inline Fixture rich_curve_file_fixture(int change = 0, int version = 1013) {
                     out.i(0);
                     if (array)
                         name(out, "StructProperty");
-                    else {
+                    else if (structure) {
                         name(out, structure);
                         out.zeros(16);
-                    }
+                    } else if (std::string(kind) == "ByteProperty")
+                        name(out, "None");
                     out.put<std::uint8_t>(0);
                     if (version >= 1011)
                         out.put<std::uint8_t>(0);
@@ -81,7 +86,7 @@ inline Fixture rich_curve_file_fixture(int change = 0, int version = 1013) {
                 out.append(payload);
             };
             Bytes body, array;
-            const int n = change == 5 ? 0 : change == 2 ? 4 : 3;
+            const int n = (change == 5 || change == 14 || change == 18) ? 0 : change == 2 ? 4 : 3;
             array.i(n);
             if (version < 1012) {
                 Bytes none;
@@ -100,14 +105,40 @@ inline Fixture rich_curve_file_fixture(int change = 0, int version = 1013) {
                                                    : i == 1         ? 4.f
                                                                     : 10.f)
                                     : i == 1    ? (change == 1 ? 12.f : 10.f)
-                                                : 0.f;
-                auto key = rich_curve_key(time, value, (change == 4 || change == 8) && i == 0 ? 2 : 0);
+                                                : (change >= 9 && change <= 13 && i == 2 ? 20.f : 0.f);
+                auto key = rich_curve_key(time, value,
+                                          (change == 4 || change == 8 || change >= 15) && i == 0 ? 2 : 0);
                 if (change == 4 && i == 0)
                     key.data[2] = 2;
+                if (change == 15 && i == 0) {
+                    key.data[2] = 2;
+                    const float weight = -1;
+                    std::memcpy(key.data.data() + 23, &weight, 4);
+                }
+                if (change == 16 && i == 0)
+                    key.data[2] = 255;
+                if (change == 17 && i < 2) {
+                    key.data[2] = i == 0 ? 2 : 1;
+                    const float weight = 2;
+                    std::memcpy(key.data.data() + (i == 0 ? 23 : 15), &weight, 4);
+                }
                 array.append(key);
             }
             if (change != 6)
                 tag(body, "Keys", "ArrayProperty", array, "RichCurveKey", true);
+            if (change >= 9 && change <= 13) {
+                const unsigned modes[] = {4, 3, 0, 1, 2};
+                for (const char *field : {"PreInfinityExtrap", "PostInfinityExtrap"}) {
+                    Bytes setting;
+                    setting.put<std::uint8_t>(modes[change - 9]);
+                    tag(body, field, "ByteProperty", setting);
+                }
+            }
+            if (change == 14 || change == 18) {
+                Bytes stored;
+                stored.put<float>(change == 14 ? 7.f : std::numeric_limits<float>::max());
+                tag(body, "DefaultValue", "FloatProperty", stored);
+            }
             name(body, "None");
             tag(s, "FloatCurve", "StructProperty", body, "RichCurve");
         },

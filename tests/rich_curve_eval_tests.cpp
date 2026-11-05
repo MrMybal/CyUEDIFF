@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
         if (argc == 3 && std::string(argv[1]) == "--write-fixtures") {
             fs::create_directories(fs::u8path(argv[2]));
             for (int v : {0, 1004, 1013})
-                for (int change = 0; change < 9; ++change)
+                for (int change = 0; change < 19; ++change)
                     save(fs::u8path(argv[2]), "curve-" + std::to_string(change) + "-" + std::to_string(v),
                          rich_curve_file_fixture(change, v));
             return 0;
@@ -78,8 +78,17 @@ int main(int argc, char **argv) {
             const auto cubic = Package::open(save(root, "cubic", rich_curve_file_fixture(8, v)));
             check(evaluate_curve(cubic, .5)["value"] == 4.625, "Encoded cubic slopes");
             const auto weighted = Package::open(save(root, "weighted", rich_curve_file_fixture(4, v)));
-            check(evaluate_curve(weighted, .5)["ready"].get<bool>(),
-                  "Encoded weighted segment evaluated");
+            check(evaluate_curve(weighted, .5)["ready"].get<bool>(), "Encoded weighted segment evaluated");
+            for (int setting = 9; setting <= 13; ++setting) {
+                const auto explicit_mode =
+                    Package::open(save(root, "extrapolation", rich_curve_file_fixture(setting, v)));
+                const double expected[] = {20., 25., 5., 25., 15.};
+                check(evaluate_curve(explicit_mode, 2.5)["value"] == expected[setting - 9],
+                      "Encoded explicit extrapolation mode");
+            }
+            const auto stored_default = Package::open(save(root, "default", rich_curve_file_fixture(14, v)));
+            check(evaluate_curve(stored_default, 100.)["value"] == 7.,
+                  "Encoded explicit empty-curve default");
         }
         fs::remove_all(root);
         std::cout << checks << " rich curve evaluation/file checks passed\n";
