@@ -23,4 +23,25 @@ struct ReferencePose {
 // This does not emulate Unreal FTransform decomposition when nonuniform scales produce shear.
 ReferencePose reference_pose(const Package &, const std::string &object_path = {},
                              const ReferencePoseOptions & = {});
+struct ReferencePoseDiffOptions {
+    ReferencePoseOptions pose;
+    double position_tolerance = 0;
+    std::size_t max_joint_pairs = 100000;
+};
+struct ReferencePoseComparison {
+    std::string before_object, after_object;
+    Json joints = Json::object();
+    bool complete = false;
+    double position_tolerance = 0;
+    std::size_t changed_joints = 0, unavailable_joints = 0;
+    std::string status() const;
+    Json to_json() const;
+};
+// Exact bone names pair derived positions; parent changes remain visible at any position tolerance.
+ReferencePoseComparison compare_reference_poses(const ReferencePose &, const ReferencePose &,
+                                                const ReferencePoseDiffOptions & = {});
+ReferencePoseComparison compare_reference_poses(const Package &, const Package &,
+                                                const std::string &before_object = {},
+                                                const std::string &after_object = {},
+                                                const ReferencePoseDiffOptions & = {});
 } // namespace cyuediff
