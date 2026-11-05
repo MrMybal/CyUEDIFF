@@ -288,6 +288,32 @@ class PropertyReader {
             if (options.decoders)
                 if (const auto *decoder = options.decoders->find(DecoderKind::struct_value, s, p.summary))
                     return detail::decode_extension(a, p, object, options, *decoder, end, exact_size);
+            if (s == "RichCurveKey") {
+                if (p.summary.ue4_version != 522 || p.summary.licensee_version ||
+                    (p.summary.ue5_version != 0 && p.summary.ue5_version != 1004 &&
+                     p.summary.ue5_version != 1013))
+                    throw Error("curve-layout", "Unverified rich curve key profile", a.tell());
+                if (exact_size && (a.tell() > end || end - a.tell() != 27))
+                    throw Error("curve-layout", "Rich curve key must contain exactly 27 bytes", a.tell());
+                if (native_nodes_ > options.max_properties || options.max_properties - native_nodes_ < 9)
+                    throw Error("limit", "Rich curve key work budget exceeded", a.tell());
+                native_nodes_ += 9;
+                Json out = {{"kind", "rich-curve-key"}};
+                for (const char *field : {"interpMode", "tangentMode", "tangentWeightMode"}) {
+                    options.control.checkpoint("Reading rich curve keys", native_nodes_,
+                                               options.max_properties);
+                    out[field] = a.get<std::uint8_t>();
+                }
+                for (const char *field : {"time", "value", "arriveTangent", "arriveTangentWeight",
+                                          "leaveTangent", "leaveTangentWeight"}) {
+                    options.control.check();
+                    const auto number = a.get<float>();
+                    if (!std::isfinite(number))
+                        throw Error("curve-value", "Non-finite rich curve key", a.tell());
+                    out[field] = number;
+                }
+                return out;
+            }
             if (s == "RawAnimSequenceTrack") {
                 const auto version = p.summary.custom_versions.value("d89b5e4224bd4d468412aca8df641779", -1);
                 if (version >= 39) {
