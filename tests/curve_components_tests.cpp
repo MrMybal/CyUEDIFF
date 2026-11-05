@@ -85,6 +85,20 @@ int main() {
             no = e.code == "cancelled";
         }
         check(no, "Component evaluation cancellation");
+        auto during = transform_curve_options();
+        bool stopped = false;
+        during.control.cancelled = [&] { return stopped; };
+        during.control.progress = [&](const OperationProgress &progress) {
+            if (progress.phase == "Evaluating curve components")
+                stopped = true;
+        };
+        no = false;
+        try {
+            evaluate_curve_components(a, 1., "", "name:Hand", during);
+        } catch (const Error &e) {
+            no = e.code == "cancelled";
+        }
+        check(no, "Cancellation during component evaluation");
         check(original == a.exports[0].properties, "Input unchanged");
         std::cout << checks << " curve component checks passed\n";
         return 0;

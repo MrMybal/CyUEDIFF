@@ -84,6 +84,15 @@ int main() {
             no = e.code == "cancelled";
         }
         check(no, "Transform projection cancellation");
+        auto invalid = transform_curve_options();
+        invalid.animation_family = static_cast<AnimationCurveFamily>(100);
+        no = false;
+        try {
+            curve_snapshot(a, invalid);
+        } catch (const Error &e) {
+            no = e.code == "curve-family";
+        }
+        check(no, "Invalid host family rejected");
         check(original == a.exports[0].properties, "Input model unchanged");
         std::cout << checks << " transform curve projection checks passed\n";
         return 0;

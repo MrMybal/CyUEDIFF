@@ -44,3 +44,7 @@ Include `<cyuediff/animation.hpp>`. The API provides `animation_snapshot`, `comp
 ## Source animation corpora and installed SDK validation - 0.112
 
 The source validator hashes all input packages and existing companions before and after inspection, verifies per-model self-comparison coverage and samples first, middle and last stored frames. A new independent installed SDK consumer constructs its own complete model, compares a changed key and validates source-frame timing without Git, CyUI or Unreal. The distribution validator builds this eighth Core consumer and keeps desktop smoke checks outside user preferences. Full configuration and corpus results are recorded in VALIDATION.md.
+
+## Separate stored transform curve API
+
+Stored AnimDataModel float and transform curves are available through curves.hpp and the Curves tab. Explicit transform scope exposes translation/Euler/scale XYZ components with named differences, independent raw evaluation and sampled comparisons. It does not bind those curves to bone tracks or evaluate an animated hierarchy. See [curve contracts](CURVES.md).

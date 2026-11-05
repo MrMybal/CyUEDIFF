@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse,hashlib,json,subprocess
 parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--curve-family',choices=('float','transform'),default='float')
 parser.add_argument('--cli',type=Path,default=Path('build-native/Release/cyuediff.exe'))
 parser.add_argument('--asset',type=Path,action='append',default=[])
 parser.add_argument('--content',type=Path)
@@ -21,10 +22,10 @@ for file in files:
  for p in [file,*[file.with_suffix(ext) for ext in ('.uexp','.ubulk','.uptnl','.upayload')]]:
   if p.is_file():hashes[p]=hashlib.sha256(p.read_bytes()).hexdigest()
 def run(command,file,destination,*extra,codes=(0,)):
- r=subprocess.run([str(cli),command,str(file),*map(str,extra),'--out',str(destination)],capture_output=True,timeout=60)
+ r=subprocess.run([str(cli),command,str(file),*map(str,extra),'--curve-family',args.curve_family,'--out',str(destination)],capture_output=True,timeout=60)
  if r.returncode not in codes:raise RuntimeError(f'{command}: {file.name}: {r.returncode}: {r.stderr.decode("utf-8","replace")}')
  return json.loads(destination.read_text(encoding='utf-8')),r.returncode
-summary={'files':len(files),'owners':0,'lanes':0,'keys':0,'completeOwners':0,'samples':0,'readySamples':0,'sampledComparisons':0,'completeSampledComparisons':0,'sampledValues':0,'comparedValues':0,'unavailableValues':0,'failures':[],'inputsUnchanged':False,'assets':[]}
+summary={'curveFamily':args.curve_family,'componentGroups':0,'readyComponentGroups':0,'componentValues':0,'readyComponentValues':0,'files':len(files),'owners':0,'lanes':0,'keys':0,'completeOwners':0,'samples':0,'readySamples':0,'sampledComparisons':0,'completeSampledComparisons':0,'sampledValues':0,'comparedValues':0,'unavailableValues':0,'failures':[],'inputsUnchanged':False,'assets':[]}
 for index,file in enumerate(files):
  try:
   root,_=run('curves',file,out/f'{index}-curves.json')
@@ -56,6 +57,18 @@ for index,file in enumerate(files):
     summary['sampledComparisons']+=1;summary['completeSampledComparisons']+=int(grid['complete'])
     summary['sampledValues']+=grid['sampleCount'];summary['comparedValues']+=grid['comparedSamples'];summary['unavailableValues']+=grid['unavailableSamples']
     entry['lanes'].append({'id':lane_id,'complete':lane['complete'],'keys':len(lane['keys']),'samples':samples,'sampledSelfComparison':{'status':grid['status'],'sampleCount':grid['sampleCount'],'comparedSamples':grid['comparedSamples'],'unavailableSamples':grid['unavailableSamples']}})
+   animation=owner['class']=='/Script/Engine.AnimDataModel'
+   groups=list(owner.get('curveGroups',{})) if animation and args.curve_family=='transform' else list(owner['lanes']) if animation else ['']
+   entry['componentGroups']=[]
+   for group_index,group in enumerate(groups):
+    selected=[lane for key,lane in owner['lanes'].items() if not animation or (lane.get('curveId',key)==group)]
+    times=[key['time'] for lane in selected for key in lane['keys'].values() if 'time' in key]
+    coordinate=(min(times)+max(times))/2 if times else .5
+    selectors=['--curve-id',group] if group else []
+    value,code=run('curve-components',file,out/f'{index}-{owner_index}-group-{group_index}.json','--time',repr(coordinate),'--object',path,*selectors,codes=(0,2))
+    assert code==(0 if value['ready'] else 2)
+    summary['componentGroups']+=1;summary['readyComponentGroups']+=int(value['ready']);summary['componentValues']+=len(value['components']);summary['readyComponentValues']+=sum(int(v['ready']) for v in value['components'].values())
+    entry['componentGroups'].append({'id':group,'time':coordinate,'ready':value['ready'],'values':value['values']})
    record['owners'].append(entry)
   summary['assets'].append(record)
  except Exception as error:summary['failures'].append({'source':str(file),'error':str(error)})

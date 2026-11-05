@@ -18,11 +18,15 @@ Json evaluate_curve_components(const Package &p, double time, const std::string 
     if (animation) {
         std::set<std::string> groups;
         if (transform)
-            for (auto it = owner.at("curveGroups").begin(); it != owner.at("curveGroups").end(); ++it)
+            for (auto it = owner.at("curveGroups").begin(); it != owner.at("curveGroups").end(); ++it) {
+                o.control.check();
                 groups.insert(it.key());
+            }
         else
-            for (auto it = lanes.begin(); it != lanes.end(); ++it)
+            for (auto it = lanes.begin(); it != lanes.end(); ++it) {
+                o.control.check();
                 groups.insert(it.key());
+            }
         if (group.empty() && groups.size() == 1)
             group = *groups.begin();
         if (group.empty() || !groups.count(group))
@@ -44,6 +48,7 @@ Json evaluate_curve_components(const Package &p, double time, const std::string 
     if (transform)
         out["rotationAxes"] = {{"x", "roll-degrees"}, {"y", "pitch-degrees"}, {"z", "yaw-degrees"}};
     for (auto it = lanes.begin(); it != lanes.end(); ++it) {
+        o.control.check();
         if (animation && (transform ? it->at("curveId").get<std::string>() != group : it.key() != group))
             continue;
         o.control.checkpoint("Evaluating curve components", out["components"].size(),

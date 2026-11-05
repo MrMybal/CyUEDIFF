@@ -292,3 +292,7 @@ Explicit workspace files retain both source keys, the selected bone, pose camera
 ## Stored curve ranges and sampled comparisons - 0.121
 
 The Curves tab supports independent stored owners and lanes, key inspection and an evaluated input coordinate. Enable **Custom time range** to set finite ordered endpoints. A comparison also exposes **Value tolerance**, sampled changed/unavailable counts and maximum finite delta. Agreement covers the displayed grid only. Stored-key status remains independent of the tolerance; a changed key can coexist with zero changed samples. Missing settings keep gaps outside the known domain. These controls, selected key and typed inspector state persist in explicit workspace files. English and French labels and all five themes are supported.
+
+## Animation transform curve families - 0.126
+
+The Curves tab exposes **Animation curve family** for AnimDataModel owners. Float is the default; Transform selects explicitly stored named transform groups. The lane selector labels translation, Euler rotation and scale XYZ components in the active language. Family, exact component and inspector choices persist in workspace files and process restarts. Missing component tables retain unknown opposite data and unavailable values. Cached projections prepare drawing data without loading packages during drawing.

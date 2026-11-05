@@ -368,6 +368,11 @@ if args.consumer:
  if not curves['snapshot']['complete'] or curves['comparison']['status']!='changed' or len(curves['comparison']['changes'])!=1:raise RuntimeError('Installed rich curve comparison failed')
  if not curves['value']['ready'] or curves['value']['value']!=4.:raise RuntimeError('Installed rich curve evaluation failed')
  if curves['sampledComparison']['status']!='changed' or curves['sampledComparison']['changedSamples']!=4 or curves['sampledComparison']['maximumAbsoluteDelta']!=2.:raise RuntimeError('Installed rich curve sampled comparison failed')
+ if curves['components']['values']['value']!=4.:raise RuntimeError('Installed scalar component evaluation failed')
+ result=subprocess.run([str(curve_executable),'--transform','name:Root'],capture_output=True,check=True,env=env,timeout=20)
+ transform=json.loads(result.stdout)
+ if not transform['components']['ready'] or len(transform['components']['values'])!=9 or transform['components']['values']['rotation.y']!=4.:raise RuntimeError('Installed transform component evaluation failed')
+ if transform['comparison']['status']!='changed' or len(transform['comparison']['changes'])!=1 or transform['sampledComparison']['maximumAbsoluteDelta']!=2.:raise RuntimeError('Installed transform sampled comparison failed')
  print('Installed independent rich curve Core consumer validated')
 
 
