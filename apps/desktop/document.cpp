@@ -162,6 +162,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             };
             protect_context(a);
             protect_context(b);
+            document->before_git_project = a;
+            document->after_git_project = b;
             comparison = compare_git(repository, a, b, request.before, request.after, read);
         } else {
             if (!request.engine_root.empty() || !source.discover_engine)

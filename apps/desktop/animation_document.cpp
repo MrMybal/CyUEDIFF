@@ -6,22 +6,30 @@ void open_skeleton(Document &document, const LoadRequest &request, const ReadOpt
     auto &skeleton = after ? document.after_skeleton : document.before_skeleton;
 #ifdef CYUEDIFF_HAS_GIT
     if (document.git) {
-        if (!request.project.empty())
-            throw Error("desktop-animation-pose", "Historical mounted Skeleton bindings are not enabled");
         GitOptions options;
         options.control = request.control;
         options.lfs_objects = request.git->lfs_objects;
         auto repository = GitRepository::open(request.git->repository, options);
         const auto &animation = after ? document.git->after : document.git->before;
         auto &revision = after ? document.after_skeleton_revision : document.before_skeleton_revision;
-        revision = std::make_shared<const GitRevision>(repository.materialize(animation.commit, name));
-        auto path = repository.root() / fs::u8path(revision->repository_path);
+        const auto &context = after ? document.after_git_project : document.before_git_project;
+        auto path = repository.root() / fs::u8path(name);
+        if (context && name.front() == '/') {
+            const auto location = context->locate(name);
+            path = location.storage == "git" ? repository.root() / fs::u8path(location.path)
+                                             : fs::u8path(location.path);
+            path += ".uasset";
+        }
+        // Protect the selected source even when an absent/corrupt LFS payload prevents materialization.
         document.protected_files.push_back(path);
         for (const auto *extension : {".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload"}) {
             auto companion = path;
             companion.replace_extension(extension);
             document.protected_files.push_back(companion);
         }
+        revision =
+            std::make_shared<const GitRevision>(context ? repository.materialize(*context, name)
+                                                        : repository.materialize(animation.commit, name));
         // The revision owns all materialized payloads; a cache entry alone cannot retain them.
         skeleton = std::make_shared<const Package>(revision->open(read));
         return;

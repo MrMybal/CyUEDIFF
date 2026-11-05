@@ -143,3 +143,7 @@ The reusable desktop-pose validator compares native worker results against publi
 ## Historical Skeleton bindings - 0.143
 
 Desktop document workers can explicitly bind repository-relative Skeleton packages at the immutable commit of each animation. Split payloads and locally verified LFS objects are retained by the document, with commit, blob and content provenance in animationPose.beforeBinding/afterBinding. Missing bindings preserve package inspection and report unavailable joints. Working tree files are never substituted. Historical mounted project paths follow in the next milestone.
+
+## Historical project and plugin Skeleton contexts - 0.144
+
+Mounted Skeleton names use the separately retained historical project/plugin catalogue for each animation commit, including independent project descriptors. Explicit engine mounts retain engine-local provenance rather than claiming the engine installation is versioned by Git. Selected sources and all companions are protected even when local LFS objects cannot be read. Per-side failures retain pinned intent; cancellation propagates.

@@ -76,8 +76,17 @@ int main(int argc, char **argv) {
                                                               {"core.hooksPath", "nonexistent-hooks"},
                                                               {"commit.gpgSign", "false"}})
             git({"config", p.first, p.second});
+        for (const char *side : {"One", "Two"}) {
+            fs::create_directories(root / side / "Plugins/RigPack/Content");
+            fs::create_directories(root / side / "Content");
+            text(root / side / "Game.uproject", R"({"FileVersion":3})");
+            text(root / side / "Plugins/RigPack/RigPack.uplugin", R"({"CanContainContent":true})");
+            save(root / side / "Content", "Clip", animation_model_file_fixture(), true);
+        }
+        save(root / "One/Plugins/RigPack/Content", "Rig", animation_skeleton_file_fixture(), true);
+        save(root / "Two/Plugins/RigPack/Content", "Rig", animation_skeleton_file_fixture(2), true);
         auto commit = [&](const std::string &message) {
-            git({"add", "Content"});
+            git({"add", "Content", "One", "Two"});
             git({"commit", "--quiet", "-m", message});
             auto id = git({"rev-parse", "HEAD"});
             while (!id.empty() && (id.back() == '\n' || id.back() == '\r'))
@@ -134,6 +143,64 @@ int main(int argc, char **argv) {
               "Failed binding cannot invent removed joints");
         check(document->before_animation_pose->display_pose.complete && document->before && document->after,
               "Partial binding failure preserves package inspection and known pose");
+        auto mounted = request;
+        mounted.project = "One/Game.uproject";
+        mounted.after_project = "Two/Game.uproject";
+        mounted.git->discover_engine = false;
+        mounted.before = mounted.after = "/Game/Clip";
+        mounted.animation_pose->before_skeleton = mounted.animation_pose->after_skeleton = "/RigPack/Rig";
+        // Invalid checkout descriptors must not affect historical mounts.
+        text(root / "One/Game.uproject", "broken checkout descriptor");
+        text(root / "Two/Plugins/RigPack/RigPack.uplugin", "broken checkout plugin");
+        const auto mounted_state = git({"status", "--porcelain=v1"});
+        auto contextual = load_document(mounted);
+        auto contextual_report = contextual->report()["animationPose"];
+        check(contextual_report["complete"] && contextual_report["comparison"]["changedJoints"] == 1,
+              "Independent historical project/plugin contexts bind source hierarchies");
+        check(contextual_report["beforeBinding"]["revision"]["path"] ==
+                      "One/Plugins/RigPack/Content/Rig.uasset" &&
+                  contextual_report["afterBinding"]["revision"]["path"] ==
+                      "Two/Plugins/RigPack/Content/Rig.uasset",
+              "Each mounted Skeleton resolves through its own historical project");
+        check(std::find(contextual->protected_files.begin(), contextual->protected_files.end(),
+                        root / "Two/Plugins/RigPack/Content/Rig.uexp") != contextual->protected_files.end(),
+              "Historical mounted Skeleton companions are protected");
+        check(git({"status", "--porcelain=v1"}) == mounted_state,
+              "Historical contexts never repair checkout files");
+        text(root / "One/Game.uproject", R"({"FileVersion":3})");
+        text(root / "Two/Plugins/RigPack/RigPack.uplugin", R"({"CanContainContent":true})");
+        // Losing one local LFS object must only disable that side's pose.
+        const auto object = objects / first_oid.substr(0, 2) / first_oid.substr(2, 2) / first_oid;
+        const auto parked = root / "parked-lfs-object";
+        fs::rename(object, parked);
+        auto unavailable = load_document(request);
+        auto unavailable_report = unavailable->report()["animationPose"];
+        check(!unavailable_report["complete"] && unavailable->after_animation_pose->display_pose.complete &&
+                  unavailable_report["beforeBinding"]["commit"] == before,
+              "Missing LFS Skeleton object retains pinned intent and known opposite pose");
+        check(std::find(unavailable->protected_files.begin(), unavailable->protected_files.end(), exports) !=
+                  unavailable->protected_files.end(),
+              "LFS failure still protects Skeleton source companions");
+        fs::rename(parked, object);
+        auto invalid_path = request;
+        invalid_path.animation_pose->before_skeleton = "../Rig.uasset";
+        check(!load_document(invalid_path)->before_animation_pose->display_pose.complete,
+              "Repository traversal cannot fall back to local Skeleton files");
+        bool cancelled = false, cancel = false;
+        auto interrupted = request;
+        interrupted.control.progress = [&](const OperationProgress &p) {
+            if (p.phase == "Opening explicit animation Skeleton")
+                cancel = true;
+        };
+        interrupted.control.cancelled = [&] { return cancel; };
+        try {
+            load_document(interrupted);
+        } catch (const Error &e) {
+            cancelled = e.code == "cancelled";
+        }
+        check(cancelled, "Historical Skeleton materialization propagates cancellation");
+        contextual.reset();
+        unavailable.reset();
         check(sha256_file(root / ".git/index") == index_hash && git({"status", "--porcelain=v1"}) == state,
               "Historical binding leaves checkout and index untouched");
         document.reset();
@@ -146,4 +213,3 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
-

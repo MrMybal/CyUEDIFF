@@ -65,6 +65,7 @@ struct Document {
     // Own materialized files while packages and previews can still use them.
     std::shared_ptr<const GitComparison> git;
     std::shared_ptr<const GitRevision> before_skeleton_revision, after_skeleton_revision;
+    std::optional<GitProjectContext> before_git_project, after_git_project;
 #endif
     std::string status() const;
     Json report() const;
