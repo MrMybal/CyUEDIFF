@@ -125,4 +125,13 @@ GitComparison compare_git(const GitRepository &, const std::string &before_revis
 GitComparison compare_git(const GitRepository &, const GitProjectContext &before,
                           const GitProjectContext &after, const std::string &before_path,
                           const std::string &after_path = "", const ReadOptions &options = {});
+// Independent serializers for before/after engine or plugin wire profiles.
+GitComparison compare_git(const GitRepository &, const std::string &before_revision,
+                          const std::string &after_revision, const std::string &before_path,
+                          const std::string &after_path, const ReadOptions &before_options,
+                          const ReadOptions &after_options);
+GitComparison compare_git(const GitRepository &, const GitProjectContext &before,
+                          const GitProjectContext &after, const std::string &before_path,
+                          const std::string &after_path, const ReadOptions &before_options,
+                          const ReadOptions &after_options);
 } // namespace cyuediff

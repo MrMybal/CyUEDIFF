@@ -629,8 +629,8 @@ Json GitComparison::to_json() const {
 }
 GitComparison compare_git(const GitRepository &repo, const std::string &before_revision,
                           const std::string &after_revision, const std::string &before_path,
-                          const std::string &after_path, const ReadOptions &options) {
-    if (!options.properties || !options.fingerprints)
+                          const std::string &after_path, const ReadOptions &options, const ReadOptions &after_options) {
+    if (!options.properties || !options.fingerprints || !after_options.properties || !after_options.fingerprints)
         throw Error("git-options", "Git comparison requires properties and fingerprints");
     GitComparison result;
     result.before = repo.materialize(before_revision, before_path);
@@ -640,7 +640,7 @@ GitComparison compare_git(const GitRepository &repo, const std::string &before_r
     if (result.before.present)
         result.before_package = std::make_shared<Package>(result.before.open(options));
     if (result.after.present)
-        result.after_package = std::make_shared<Package>(result.after.open(options));
+        result.after_package = std::make_shared<Package>(result.after.open(after_options));
     Package absent;
     absent.fingerprints = {{"absent", true}};
     result.diff = compare(result.before_package ? *result.before_package : absent,
@@ -649,8 +649,8 @@ GitComparison compare_git(const GitRepository &repo, const std::string &before_r
 }
 GitComparison compare_git(const GitRepository &repo, const GitProjectContext &before,
                           const GitProjectContext &after, const std::string &before_path,
-                          const std::string &after_path, const ReadOptions &options) {
-    if (!options.properties || !options.fingerprints)
+                          const std::string &after_path, const ReadOptions &options, const ReadOptions &after_options) {
+    if (!options.properties || !options.fingerprints || !after_options.properties || !after_options.fingerprints)
         throw Error("git-options", "Git comparison requires properties and fingerprints");
     GitComparison result;
     result.before = repo.materialize(before, before_path);
@@ -660,7 +660,7 @@ GitComparison compare_git(const GitRepository &repo, const GitProjectContext &be
     if (result.before.present)
         result.before_package = std::make_shared<Package>(result.before.open(options));
     if (result.after.present)
-        result.after_package = std::make_shared<Package>(result.after.open(options));
+        result.after_package = std::make_shared<Package>(result.after.open(after_options));
     Package absent;
     absent.fingerprints = {{"absent", true}};
     result.diff = compare(result.before_package ? *result.before_package : absent,
@@ -678,5 +678,15 @@ GitComparison compare_git(const GitRepository &repo, const GitProjectContext &be
         result.context_changes.push_back(std::move(change));
     }
     return result;
+}
+GitComparison compare_git(const GitRepository &repo, const std::string &before_revision,
+                          const std::string &after_revision, const std::string &before_path,
+                          const std::string &after_path, const ReadOptions &options) {
+    return compare_git(repo, before_revision, after_revision, before_path, after_path, options, options);
+}
+GitComparison compare_git(const GitRepository &repo, const GitProjectContext &before,
+                          const GitProjectContext &after, const std::string &before_path,
+                          const std::string &after_path, const ReadOptions &options) {
+    return compare_git(repo, before, after, before_path, after_path, options, options);
 }
 } // namespace cyuediff

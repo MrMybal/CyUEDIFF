@@ -13,6 +13,7 @@
 #include <cyuediff/container.hpp>
 #include <cyuediff/zen.hpp>
 #include <cyuediff/schema_context.hpp>
+#include <cyuediff/binary_layout.hpp>
 #include <cmath>
 #include <locale>
 #include <sstream>
@@ -38,6 +39,9 @@ int run(const std::vector<std::string> &args) {
                "  binary-diff and git-binary-diff accept --max-source-read-bytes BYTES.\n"
                "  cyuediff git-binary-diff REPO BEFORE_REV AFTER_REV PATH [--after-path PATH] [--summary] [--out DELTA.json]\n"
                "  Binary commands refuse existing outputs; see docs/BINARY_DELTA.md for budgets.\n"
+               "  cyuediff layouts DESCRIPTION.json [--out REPORT.json]\n"
+               "  inspect/diff/git-inspect/git-diff accept --layouts DESCRIPTION.json.\n"
+               "  diff/git-diff accept independent --after-layouts DESCRIPTION.json.\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "
                "ROOT] [--out FILE]\n"
                "  cyuediff diff BEFORE AFTER [--project PROJECT] [--before-project PROJECT] "
@@ -135,6 +139,7 @@ int run(const std::vector<std::string> &args) {
     Json flags = Json::object();
     const std::set<std::string> valued = {"--before-frame","--after-frame","--rotation-tolerance","--scale-tolerance","--curve-family","--curve-id","--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
+                                          "--layouts", "--after-layouts",
                                           "--schema",
                                           "--after-schema",
                                           "--cooked-profile",
@@ -205,6 +210,14 @@ int run(const std::vector<std::string> &args) {
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (command == "layouts" && key != "--out")
+            throw Error("arguments", "Layout catalogue inspection only accepts --out");
+        if (key == "--layouts" && command != "inspect" && command != "diff" && command != "git-inspect" && command != "git-diff")
+            throw Error("arguments", "--layouts requires inspect, diff, git-inspect or git-diff");
+        if (key == "--after-layouts" && command != "diff" && command != "git-diff")
+            throw Error("arguments", "--after-layouts requires diff or git-diff");
+        if ((key == "--layouts" || key == "--after-layouts") && flags.contains("--metadata"))
+            throw Error("arguments", "Binary layout descriptions require property reading");
         if (command == "git-history") {
             if (key != "--out" && key != "--git-temp" && key != "--max-commits" && key != "--skip")
                 throw Error("arguments", "Unsupported history option: " + key);
@@ -268,6 +281,8 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments", "Unsupported catalogue option: " + key);
         if (git_command && !catalog_command && key != "--out" && key != "--lfs-objects" &&
             key != "--git-temp" && key != "--engine-root" && key != "--no-engine" &&
+            !(key == "--layouts" && (command == "git-inspect" || command == "git-diff")) &&
+            !(key == "--after-layouts" && command == "git-diff") &&
             !(key == "--project" && command != "git-project") &&
             !(command == "git-diff" && (side_context || key == "--after-path")))
             throw Error("arguments", "Unsupported option for Git inspection: " + key);
@@ -342,7 +357,19 @@ int run(const std::vector<std::string> &args) {
     };
     auto root = path_option("--engine-root");
     std::vector<fs::path> protected_files, protected_directories;
+    auto load_layouts = [&](const char *key) -> std::shared_ptr<const BinaryLayouts> {
+        if (!flags.contains(key)) return {};
+        const auto path = path_option(key);
+        protected_files.push_back(path);
+        return std::make_shared<const BinaryLayouts>(BinaryLayouts::read(path));
+    };
+    const auto before_layouts = load_layouts("--layouts");
+    const auto after_layouts = flags.contains("--after-layouts") ? load_layouts("--after-layouts") : before_layouts;
+    const auto before_decoders = before_layouts ? before_layouts->decoder_registry() : nullptr;
+    const auto after_decoders = after_layouts == before_layouts ? before_decoders :
+        (after_layouts ? after_layouts->decoder_registry() : nullptr);
     auto read = [&](const std::string &input, const std::string &project_key, ReadOptions options) {
+        options.decoders = project_key == "--after-project" ? after_decoders : before_decoders;
         auto project = path_option(project_key);
         if (project.empty())
             project = path_option("--project");
@@ -381,7 +408,16 @@ int run(const std::vector<std::string> &args) {
     fs::path png_destination;
     int exit_code = 0;
     ReadOptions options;
-    if (schema_command) {
+    options.decoders = before_decoders;
+    auto after_read_options = options;
+    after_read_options.decoders = after_decoders;
+    if (command == "layouts") {
+        const auto input = fs::u8path(positional[0]);
+        protected_files.push_back(input);
+        const auto catalog = BinaryLayouts::read(input);
+        output = {{"schema", "cyuediff.binary-layout-catalog/1"}, {"sha256", catalog.sha256()},
+                  {"decoderCount", catalog.decoder_registry()->size()}, {"definition", catalog.to_json()}};
+    } else if (schema_command) {
         auto input = fs::u8path(positional[0]);
         protected_files.push_back(input);
         SchemaReadOptions schema_options;
@@ -628,13 +664,13 @@ int run(const std::vector<std::string> &args) {
                 protect_context(before);
                 protect_context(after);
                 comparison = compare_git(repo, before, after, positional[3],
-                                         flags.value("--after-path", std::string{}), options);
+                                         flags.value("--after-path", std::string{}), options, after_read_options);
             } else {
                 if (flags.contains("--engine-root") || flags.contains("--before-engine-root") ||
                     flags.contains("--after-engine-root") || flags.contains("--no-engine"))
                     throw Error("arguments", "Engine selection requires historical project contexts");
                 comparison = compare_git(repo, positional[1], positional[2], positional[3],
-                                         flags.value("--after-path", std::string{}), options);
+                                         flags.value("--after-path", std::string{}), options, after_read_options);
             }
             protect_revision(comparison.before);
             protect_revision(comparison.after);
@@ -963,6 +999,12 @@ int run(const std::vector<std::string> &args) {
                                       : Json{{"path", context.resolve(positional[1]).u8string()}};
     } else
         throw Error("arguments", "Unknown command " + command);
+    if (before_layouts || after_layouts) {
+        output["layoutContexts"] = {{"beforeSha256", before_layouts ? before_layouts->sha256() : std::string{}},
+                                    {"afterSha256", after_layouts ? after_layouts->sha256() : std::string{}},
+                                    {"contextChanged", before_layouts != after_layouts &&
+                                        (!before_layouts || !after_layouts || before_layouts->sha256() != after_layouts->sha256())}};
+    }
     auto text = output.dump(2, ' ', false, Json::error_handler_t::replace) + "\n";
     auto destination = (command == "preview" || command == "export-mesh" || command == "container-read")
                            ? fs::path{}

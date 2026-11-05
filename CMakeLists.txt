@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.174.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.175.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -322,6 +322,14 @@ if(BUILD_TESTING)
     if(CYUEDIFF_BUILD_CLI)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME binary_layout_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_layout_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_binary_layout_tests>" "$<TARGET_FILE:cyuediff_schema_layout_tests>")
+            if(CYUEDIFF_BUILD_GIT)
+                add_test(NAME binary_layout_git_cli COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_layout_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                    "$<TARGET_FILE:cyuediff_binary_layout_tests>" "$<TARGET_FILE:cyuediff_schema_layout_tests>" git)
+            endif()
             add_test(NAME binary_delta_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_delta_cli_tests.py" "$<TARGET_FILE:cyuediff>")
             set_tests_properties(binary_delta_cli PROPERTIES TIMEOUT 120)

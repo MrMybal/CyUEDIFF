@@ -60,3 +60,18 @@ Definition defaults: 2 MiB JSON and decoded text, 100,000 JSON nodes, depth 48 a
 The native suite checks all truncated prefixes of a nested record, scalar widths, UTF-16 pairs, invalid floats/markers, cycles, counts and budgets, cancellation and recovery of a following tagged property for five archive profiles. These original fixtures validate the generic mechanism, not an unknown real plugin's wire format.
 
 Schema-backed cooked reads can also use the same descriptions through version-three Zen contexts. See [schema bindings](SCHEMAS.md#declarative-native-layouts--0174). `BinaryLayoutReadOptions::reference` optionally returns a bounded ordinary JSON identity for a signed package index; without this override `DecoderInput::reference()` supplies the existing string identity. A zero index with the JSON resolver returns null without invoking it. Resolver-returned values share work/depth/text checks. Engine-specific implicit native defaults remain unspecified.
+
+## CLI and local Git selection — 0.175
+
+```powershell
+cyuediff layouts layouts.json
+cyuediff inspect Before.uasset --layouts layouts.json
+cyuediff diff Before.uasset After.uasset --layouts old-layouts.json --after-layouts new-layouts.json
+cyuediff git-diff D:/repo HEAD~1 HEAD Content/Asset.uasset --layouts old-layouts.json --after-layouts new-layouts.json
+```
+
+`inspect`, `diff`, `git-inspect` and `git-diff` accept `--layouts`. `diff` and `git-diff` accept `--after-layouts`; omission inherits the before catalogue. An explicit empty catalogue selects no custom decoders. The `layouts` command validates a catalogue and reports its definition, canonical SHA-256 and decoder count without opening an asset. Selected catalogue files are protected from output overwrites, including hard links. Unsupported command/option combinations and metadata-only inspection with explicit layouts are rejected.
+
+Reports with explicit selections include `layoutContexts.beforeSha256`, `afterSha256` and `contextChanged`. This provenance is separate from binary asset changes. Existing commands without these selections keep their report shapes. Descriptions do not load a DLL, execute arbitrary callbacks supplied by JSON or launch Unreal. Cooked commands continue to use `--schema` and version-three inline descriptions.
+
+The Git adapter additionally exposes overloads of both `compare_git` forms with separate before/after `ReadOptions`. Existing single-options overloads retain their behavior. Local LFS materialization and input ownership stay in the Git adapter; descriptions are local host configuration and do not come from or execute historical project code.
