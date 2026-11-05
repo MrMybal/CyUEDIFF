@@ -90,3 +90,7 @@ The Core animation_pose API binds source frame tracks to a caller-supplied Skele
 ## Independent derived animation pose comparisons - 0.134
 
 Prepared-pose and four-package comparison APIs retain independent animation/Skeleton owners and frame indices, and compare named affine joint origins with a finite nonnegative position tolerance. Hierarchy membership is tracked separately from source channel readiness, so a missing channel cannot invent an addition/removal. Parent changes remain significant at any position tolerance. Sixteen focused checks cover inherited displacement, inclusive boundaries, independent selection, incomplete hierarchies, bounds and cancellation. Joint origins do not claim to detect leaf orientation changes: the separate bone-local frame comparison remains available.
+
+## Explicit Skeleton-bound animation pose CLI - 0.135
+
+animation-pose ANIMATION SKELETON --frame N and animation-pose-diff BEFORE AFTER with required --before-skeleton, --after-skeleton and independent integer frame options expose the new Core results. Object choices and per-side project contexts remain explicit; all four inputs and their companion paths participate in output protection. Exit codes are 0 for complete/identical, 1 for changed comparisons and 2 for incomplete/invalid inputs. Forty independently encoded file checks and 78 CLI checks validate the contract. A Windows sandbox-only failure on short temporary path aliases was isolated: the same project/context cases pass outside the sandbox, with no resolver modification.
