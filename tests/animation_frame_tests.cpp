@@ -1,5 +1,5 @@
 #include <limits>
-#include "animation_model.hpp"
+#include "animation_source_model.hpp"
 #include "animation_file_fixture.hpp"
 #include <chrono>
 #include <iostream>
@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
             if (!ok)
                 throw std::runtime_error(msg);
         };
-        auto p = animation_model();
+        auto p = animation_source_model();
         const auto f = animation_frame(p, 1);
         check(f["complete"] && f["timeSeconds"] == 1. / 30., "Exact stored rational source time");
         check(f["tracks"]["name:root"]["positions"] == Json({10., 1., 0.}) &&

@@ -5,6 +5,7 @@ void AssetView::register_translations() {
     PropertyView::register_translations();
     AnimationMetadataView::register_translations();
     AttachmentsView::register_translations();
+    AnimationSourceView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Collisions", "Collisions"},
                {"Click a wire: inspect shape | Alt + drag: orbit | Middle drag: pan | Wheel: zoom",
@@ -244,6 +245,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
 
     collisions_.set_packages(before_.get(), after_.get(), comparison_);
     skeleton_.set_packages(before_.get(), after_.get(), comparison_);
+    animations_.set_packages(before_.get(),after_.get(),comparison_);
     before_geometry_.reset();
     after_geometry_.reset();
     graph_after_ = texture_after_ = mesh_after_ = material_after_ = !before_;
@@ -368,6 +370,7 @@ Json AssetView::view_state() const {
         result["collisions"] = collisions_.view_state();
     if (!skeleton_.empty())
         result["skeleton"] = skeleton_.view_state();
+    if(!animations_.empty())result["animations"]=animations_.view_state();
     result["before"] = side(false);
     result["after"] = side(true);
     return result;
@@ -380,6 +383,7 @@ void AssetView::restore_view_state(const Json &state) {
         collisions_.restore_view_state(state["collisions"]);
     if (state.contains("skeleton"))
         skeleton_.restore_view_state(state["skeleton"]);
+    if(state.contains("animations"))animations_.restore_view_state(state["animations"]);
     auto flag = [&](const char *key, bool &out) {
         if (state.contains(key))
             out = state[key].get<bool>();
@@ -611,6 +615,9 @@ void AssetView::draw(const char *id, bool show_language) {
             }
             (mesh_after_ ? after_mesh_ : before_mesh_).draw();
             ImGui::EndTabItem();
+        }
+        if(ImGui::BeginTabItem(cyui::trLabel("Animations").c_str(),nullptr,flags(AssetTab::animations))){
+            active_tab_=AssetTab::animations;animations_.draw();ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Skeleton").c_str(), nullptr, flags(AssetTab::skeleton))) {
             active_tab_ = AssetTab::skeleton;

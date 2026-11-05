@@ -177,6 +177,11 @@ inline void validate(const Json &v, std::string_view kind) {
             child("inspection","graph-inspection");
             child("canvas","canvas");
             child("metadata","property");
+        } else if(kind=="animation-source"){
+            string({"beforeObject","afterObject"});
+            child("inspection","graph-inspection");
+            if(key=="frame"){scalar(x,0,INT32_MAX);require(x.is_number_integer());known=true;}
+            if(key=="component"){scalar(x,0,9);require(x.is_number_integer());known=true;}
         } else if(kind=="attachments"){
             flag({"preview"});
             string({"beforeSource","afterSource"});
@@ -189,6 +194,7 @@ inline void validate(const Json &v, std::string_view kind) {
         } else if (kind == "asset") {
             child("collisions", "collision");
             child("skeleton","skeleton");
+            child("animations","animation-source");
             child("layout", "asset-layout");
             string({"filter"});
             string({"selected", "textureSelected"}, true);

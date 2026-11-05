@@ -235,6 +235,36 @@ Json animation_snapshot(const Package &p, const AnimationOptions &o) {
         out["complete"] = false;
     return out;
 }
+Json detail::sample_animation_track(const Json &track, std::uint32_t frame, std::uint32_t count,
+                                    const OperationControl &control) {
+    control.check();
+    if (!count || frame >= count)
+        throw Error("animation-frame", "Source frame is outside the stored key range");
+    Json point = {{"ready", track.value("complete", false)}, {"diagnostics", Json::array()}};
+    if (track.contains("name"))
+        point["name"] = track.at("name");
+    for (const auto *channel : {"positions", "rotations", "scales"}) {
+        if (!track.contains(channel) || !track.at(channel).is_array() ||
+            (track.at(channel).size() != 1 && track.at(channel).size() != count)) {
+            point["ready"] = false;
+            point["diagnostics"].push_back(std::string("Unavailable source channel or key count: ") +
+                                           channel);
+            continue;
+        }
+        const auto &key = track.at(channel)[track.at(channel).size() == 1 ? 0 : frame];
+        point[channel] = key;
+        if (std::string(channel) == "rotations") {
+            double norm = 0;
+            for (const auto &c : key)
+                norm += c.get<double>() * c.get<double>();
+            if (!std::isfinite(norm) || std::abs(norm - 1.) > 1e-4) {
+                point["ready"] = false;
+                point["diagnostics"].push_back("Stored quaternion is not unit length");
+            }
+        }
+    }
+    return point;
+}
 Json detail::sample_animation_frame(const Json &model, std::uint32_t frame, const std::string &path,
                                     bool complete_input, const OperationControl &control) {
     control.check();
@@ -263,29 +293,7 @@ Json detail::sample_animation_frame(const Json &model, std::uint32_t frame, cons
     for (auto t = model.at("tracks").begin(); t != model.at("tracks").end(); ++t) {
         control.checkpoint("Sampling animation source frame", out["tracks"].size(),
                            model.at("tracks").size());
-        Json point = {{"ready", t->value("complete", false)}, {"diagnostics", Json::array()}};
-        if (t->contains("name"))
-            point["name"] = t->at("name");
-        for (const auto *channel : {"positions", "rotations", "scales"}) {
-            if (!t->contains(channel) || !t->at(channel).is_array() ||
-                (t->at(channel).size() != 1 && t->at(channel).size() != count)) {
-                point["ready"] = false;
-                point["diagnostics"].push_back(std::string("Unavailable source channel or key count: ") +
-                                               channel);
-                continue;
-            }
-            const auto &key = t->at(channel)[t->at(channel).size() == 1 ? 0 : frame];
-            point[channel] = key;
-            if (std::string(channel) == "rotations") {
-                double norm = 0;
-                for (const auto &c : key)
-                    norm += c.get<double>() * c.get<double>();
-                if (!std::isfinite(norm) || std::abs(norm - 1.) > 1e-4) {
-                    point["ready"] = false;
-                    point["diagnostics"].push_back("Stored quaternion is not unit length");
-                }
-            }
-        }
+        auto point = detail::sample_animation_track(*t, frame, count, control);
         if (!point["ready"].get<bool>())
             out["complete"] = false;
         out["tracks"][t.key()] = std::move(point);

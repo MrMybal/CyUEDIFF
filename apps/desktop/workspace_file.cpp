@@ -141,7 +141,7 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         saved.view = text(d["view"]);
         saved.cooked_view = text(d["cookedView"]);
         const std::set<std::string> views = {"properties", "blueprint",  "materials", "textures",
-                                             "meshes",     "comparison", "collisions", "skeleton"};
+                                             "meshes",     "comparison", "collisions", "skeleton", "animations"};
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");

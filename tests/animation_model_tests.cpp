@@ -1,4 +1,4 @@
-#include "animation_model.hpp"
+#include "animation_source_model.hpp"
 #include <iostream>
 #include <limits>
 using namespace cyuediff;
@@ -11,7 +11,7 @@ int main() {
             if (!ok)
                 throw std::runtime_error(msg);
         };
-        auto p = animation_model();
+        auto p = animation_source_model();
         const auto original = p.exports[0].properties;
         const auto a = animation_snapshot(p);
         check(a["complete"] && a["models"]["Clip.Model"]["tracks"].size() == 2, "Named tracks");

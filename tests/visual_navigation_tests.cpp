@@ -1,6 +1,7 @@
 #include <cyuediff/asset_view.hpp>
 #include "collision_fixture.hpp"
 #include "animation_model.hpp"
+#include "animation_source_model.hpp"
 #include "attachments_model.hpp"
 #include "platform_win32.hpp"
 #include <fstream>
@@ -279,12 +280,36 @@ int main(int argc, char **argv) {
             attachment_missing.attachments_view().set_preview(true);
             attachment_missing.attachments_view().select_sources("A~/pose", "Missing");
             attachment_missing.attachments_view().select_socket("Rig.Grip");
+            auto source_before = cyuediff::test::animation_source_model(), source_after = source_before;
+            source_after.exports[0].properties["BoneAnimationTracks"]["value"][1]["InternalTrackData"]
+                                              ["value"]["positions"][1][0] = 15.;
+            AnimationSourceView source_view, source_short, source_unknown, source_missing, source_single;
+            source_view.set_packages(&source_before, &source_after);
+            source_view.select_track("name:arm~/track");
+            source_view.set_frame(1);
+            auto source_state = source_view.view_state();
+            source_state["inspection"]["properties"] = {{"changedOnly", false}, {"filter", "positions"}};
+            source_view.restore_view_state(source_state);
+            auto short_source = source_after;
+            short_source.exports[0].properties["NumberOfKeys"]["value"] = 1;
+            source_short.set_packages(&source_before, &short_source);
+            source_short.select_track("name:root");
+            source_short.set_frame(2);
+            auto unknown_source = source_after;
+            unknown_source.exports[0].properties.erase("BoneAnimationTracks");
+            source_unknown.set_packages(&source_before, &unknown_source);
+            source_unknown.select_track("name:root");
+            source_missing.set_packages(&source_before, &source_after);
+            source_missing.select_models("Missing", "Clip.Model");
+            source_single.set_packages(&source_before);
+            source_single.select_track("name:root");
+            source_single.set_frame(2);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 30; ++scene) {
+                    for (int scene = 0; scene < 36; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -314,7 +339,13 @@ int main(int argc, char **argv) {
                                                "attachments-narrow",
                                                "attachments-virtual",
                                                "attachments-unknown",
-                                               "attachments-missing-source"};
+                                               "attachments-missing-source",
+                                               "source-keys",
+                                               "source-narrow",
+                                               "source-short",
+                                               "source-unknown",
+                                               "source-missing",
+                                               "source-single"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -325,13 +356,29 @@ int main(int argc, char **argv) {
                             ImGui::SetNextWindowPos({0, 0});
                             ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
                                                       scene == 15 || scene == 19 || scene == 22 ||
-                                                      scene == 26)
+                                                      scene == 26 || scene == 31)
                                                          ? ImVec2{640, io.DisplaySize.y}
                                                          : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 30:
+                            case 31:
+                                source_view.draw();
+                                break;
+                            case 32:
+                                source_short.draw();
+                                break;
+                            case 33:
+                                source_unknown.draw();
+                                break;
+                            case 34:
+                                source_missing.draw();
+                                break;
+                            case 35:
+                                source_single.draw();
+                                break;
                             case 25:
                             case 26:
                                 attachment_view.draw();
@@ -474,6 +521,7 @@ int main(int argc, char **argv) {
             saved["referencePose"] = reference_pose_view.view_state();
             saved["mesh"] = changed_mesh.view_state();
             saved["texture"] = texture.view_state();
+            saved["animationSource"] = source_view.view_state();
             saved["frames"] = frames;
             saved["checks"] = checks;
             saved["captures"] = captures;
