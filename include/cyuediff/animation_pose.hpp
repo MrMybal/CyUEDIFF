@@ -26,4 +26,21 @@ struct AnimationPose {
 AnimationPose animation_pose(const Package &animation, const Package &skeleton, std::uint32_t frame,
                              const std::string &animation_object = {},
                              const std::string &skeleton_object = {}, const AnimationPoseOptions & = {});
+struct AnimationPoseSelection {
+    std::uint32_t frame = 0;
+    std::string animation_object, skeleton_object;
+};
+struct AnimationPoseDiffOptions {
+    AnimationPoseOptions pose;
+    double position_tolerance = 0;
+    std::size_t max_joint_pairs = 100000;
+};
+// Derived component-space joint origins and parent identities only. Local rotation/scale
+// differences that do not move a joint remain the scope of compare_animation_frames().
+Json compare_animation_poses(const AnimationPose &, const AnimationPose &,
+                             const AnimationPoseDiffOptions & = {});
+Json compare_animation_poses(const Package &before_animation, const Package &before_skeleton,
+                             const Package &after_animation, const Package &after_skeleton,
+                             const AnimationPoseSelection &before = {},
+                             const AnimationPoseSelection &after = {}, const AnimationPoseDiffOptions & = {});
 } // namespace cyuediff

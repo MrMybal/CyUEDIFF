@@ -86,3 +86,7 @@ The animation corpus validator now checks same-frame local equality and first/la
 ## Explicit source animation hierarchy poses - 0.133
 
 The Core animation_pose API binds source frame tracks to a caller-supplied Skeleton or SkeletalMesh by exact case-sensitive names. It composes bounded affine matrices in verified raw hierarchy order, retaining frame, optional stored timing, track provenance and local-versus-ancestor availability. Missing or ambiguous tracks never fall back to reference transforms or BoneTreeIndex. Unbound tracks and incomplete inputs keep the report incomplete. This is derived source geometry, without interpolation, retargeting, root-motion extraction, virtual-bone evaluation or skinning. Twenty-seven focused checks and 34 reference-pose regressions pass; shared affine arithmetic preserves the existing reference-pose contract.
+
+## Independent derived animation pose comparisons - 0.134
+
+Prepared-pose and four-package comparison APIs retain independent animation/Skeleton owners and frame indices, and compare named affine joint origins with a finite nonnegative position tolerance. Hierarchy membership is tracked separately from source channel readiness, so a missing channel cannot invent an addition/removal. Parent changes remain significant at any position tolerance. Sixteen focused checks cover inherited displacement, inclusive boundaries, independent selection, incomplete hierarchies, bounds and cancellation. Joint origins do not claim to detect leaf orientation changes: the separate bone-local frame comparison remains available.
