@@ -10,7 +10,8 @@ class CachedDeltaSource {
     struct Window {
         std::uint64_t start = 0;
         bool valid = false;
-        std::vector<std::uint8_t> bytes;
+        std::unique_ptr<std::uint8_t[]> bytes;
+        std::size_t count = 0;
     };
     Window windows_[2];
     unsigned next_ = 0;
@@ -27,9 +28,9 @@ class CachedDeltaSource {
     std::pair<const std::uint8_t *, std::size_t> view(std::uint64_t at) {
         detail::binary_plan_require(at < size(), "Binary source read exceeds declared extent");
         for (auto &window : windows_)
-            if (window.valid && at >= window.start && at - window.start < window.bytes.size()) {
+            if (window.valid && at >= window.start && at - window.start < window.count) {
                 const auto offset = static_cast<std::size_t>(at - window.start);
-                return {window.bytes.data() + offset, window.bytes.size() - offset};
+                return {window.bytes.get() + offset, window.count - offset};
             }
         auto &window = windows_[next_];
         next_ ^= 1;
@@ -40,13 +41,16 @@ class CachedDeltaSource {
                                     "Binary source read byte budget exceeded");
         options_.control.check();
         read_bytes_ += n;
-        window.bytes.resize(n);
-        detail::binary_plan_require(source_.read(window.start, window.bytes.data(), n) == n,
+        if (!window.bytes)
+            window.bytes =
+                std::make_unique<std::uint8_t[]>(static_cast<std::size_t>(std::min(window_bytes, size())));
+        window.count = n;
+        detail::binary_plan_require(source_.read(window.start, window.bytes.get(), n) == n,
                                     "Binary source callback returned a short or excessive read");
         options_.control.check();
         window.valid = true;
         const auto offset = static_cast<std::size_t>(at - window.start);
-        return {window.bytes.data() + offset, n - offset};
+        return {window.bytes.get() + offset, n - offset};
     }
     std::uint8_t operator[](std::uint64_t at) {
         return *view(at).first;

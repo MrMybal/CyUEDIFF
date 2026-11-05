@@ -84,6 +84,12 @@ Local `binary-diff` uses the file-backed planner by default. The Git adapter als
 
 Both comparison commands accept `--max-source-read-bytes BYTES` to bound aggregate planner callback bytes (default 4 GiB); this does not account for separate Git object extraction. Zero, malformed and command-inapplicable values fail explicitly. Compact comparison/composition output now goes directly through the checked sink encoder into the existing exclusive temporary file, retaining no-replace publication and cleanup. The resident delta literals and block index still require their own budgets.
 
+## Installed SDK generation and compatibility checks — 0.172
+
+The independent Core SDK consumer compares callback-generated and file-generated plans, verifies their exact bytes, checks compact sink output against vector serialization, and reports observed callback/output chunk sizes. Its supplied-manifest mode still checks composed plans independently of fresh generation. The Git SDK consumer additionally compares the adapter with explicit optional file generation and compact sink encoding. Distribution validation checks these APIs from installed headers/libraries, with a separate Core-only SDK boundary check.
+
+The public corpus validator requires these consumer checks when an installed consumer is supplied. Deterministic manifests can be compared byte-for-byte with the previous retained corpus to check compatibility while source delivery changes. File/callback generation reduces endpoint buffering; literal storage, manifest parsing and optional returned vectors remain bounded in-memory values. There is no new chunk server, filesystem snapshot, streaming literal store or Unreal semantic reader in this layer.
+
 ## Commands and SDK
 
 ```powershell
@@ -120,7 +126,7 @@ auto restored = cyuediff::apply_binary_delta(
 | File/callback planner source reads, aggregate | 4 GiB |
 | Block size | 64 KiB; allowed 16 bytes–1 MiB |
 
-The CLI accepts `--block-size` for comparisons and `--max-input-bytes`, `--max-literal-bytes` and `--max-manifest-bytes` for explicit budgets. Other limits are available in `BinaryDeltaOptions`. Invalid limits and exhausted budgets fail explicitly. Generation inputs, literals and manifests are buffered in memory within the selected limits. File-backed application uses a fixed 1-MiB work buffer; the vector-returning API buffers its target. File-size changes during reads are rejected, but this is not a filesystem snapshot service.
+The CLI accepts `--block-size` for comparisons and `--max-input-bytes`, `--max-literal-bytes` and `--max-manifest-bytes` for explicit budgets. Other limits are available in `BinaryDeltaOptions`. Invalid limits and exhausted budgets fail explicitly. Vector generation buffers its endpoints. File/callback generation uses at most four 1-MiB source windows plus the bounded block index, operations and resident literals. Manifest parsing and vector-returning encoders remain buffered; compact sink output uses a small metadata buffer. File-backed application uses a fixed 1-MiB work buffer; the vector-returning API buffers its target. File-size changes during reads are rejected, but this is not a filesystem snapshot service.
 
 All copy offsets address the original base. Target windows can be unaligned; base blocks are aligned, and successful matches extend forward until different bytes. Files smaller than one block may require all literal bytes when changed. Copy/literal ordering is deterministic for fixed inputs/options; no optimal-size guarantee is made. SHA-256 establishes endpoint integrity when the base and reconstructed target are checked. Hash identities in a manifest or summary alone do not authenticate their author. A binary delta says which bytes can be reused; existing Unreal semantic and visual projections explain interpreted asset changes separately.
 

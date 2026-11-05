@@ -38,10 +38,22 @@ int run(const std::vector<std::string> &args) {
                 throw Error("verification", "Streamed historical reconstruction failed");
             streamed = true;
         }
-        std::cout << Json{{"summary", result.summary()},
-                          {"verified", true},
-                          {"compactVerified", true},
-                          {"streamVerified", streamed}}
+        std::optional<fs::path> before_file, after_file;
+        if (result.before.present)
+            before_file = result.before.file_path();
+        if (result.after.present)
+            after_file = result.after.file_path();
+        const auto file_plan = make_binary_delta_file_pair(before_file, after_file);
+        if (file_plan.to_binary() != result.delta.to_binary())
+            throw Error("verification", "Historical file-source plan disagrees with adapter");
+        std::vector<std::uint8_t> wire;
+        result.delta.write_binary(
+            [&](const std::uint8_t *p, std::size_t n) { wire.insert(wire.end(), p, p + n); });
+        if (wire != result.delta.to_binary())
+            throw Error("verification", "Historical sink encoding failed");
+        std::cout << Json{{"summary", result.summary()}, {"verified", true},
+                          {"compactVerified", true},     {"fileGenerationVerified", true},
+                          {"compactSinkVerified", true}, {"streamVerified", streamed}}
                          .dump()
                   << '\n';
         return 0;

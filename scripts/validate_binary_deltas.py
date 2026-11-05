@@ -44,7 +44,7 @@ def verify(base,target,name,kind,chain=None):
  if consumer:
   result=subprocess.run([str(consumer),str(base),str(target),str(delta)],capture_output=True,check=True,timeout=120)
   result=json.loads(result.stdout)
-  assert all(result[key] for key in ['verified','compactVerified','streamVerified','composedVerified'])
+  assert all(result[key] for key in ['verified','compactVerified','streamVerified','composedVerified','sourceVerified','fileGenerationVerified','compactSinkVerified'])
   assert result['summary']['baseSha256']==wire['base']['sha256'] and result['summary']['targetSha256']==wire['target']['sha256']
   assert result['summary']['copiedBytes']==copied and result['summary']['literalBytes']==literal;sdk=True
  cases.append({'kind':kind,'base':str(base),'target':str(target),'baseBytes':len(before),'targetBytes':len(after),

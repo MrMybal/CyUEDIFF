@@ -100,6 +100,8 @@ if args.consumer:
  binary_data=json.loads(binary_result.stdout)
  assert binary_data['verified'] and binary_data['summary']['copiedBytes']>binary_data['summary']['targetBytes']//2
  assert binary_data['compactVerified'] and binary_data['streamVerified'] and binary_data['composedVerified']
+ assert binary_data['sourceVerified'] and binary_data['fileGenerationVerified'] and binary_data['compactSinkVerified']
+ assert binary_data['maximumSourceRead']<=1024*1024 and binary_data['maximumCompactChunk']<=1024*1024
  assert binary_data['maximumStreamChunk']<=1024*1024 and binary_data['compactBytes']<binary_data['manifestBytes']
  print('Installed binary delta Core consumer verified JSON, compact, composed and streamed bytes')
  build=target/'consumer'
@@ -460,6 +462,7 @@ if args.consumer:
   git_binary_data=json.loads(git_binary_result.stdout)
   assert git_binary_data['verified'] and git_binary_data['summary']['before']['present'] and git_binary_data['summary']['after']['present']
   assert git_binary_data['compactVerified'] and git_binary_data['streamVerified']
+  assert git_binary_data['fileGenerationVerified'] and git_binary_data['compactSinkVerified']
   assert not list(git_binary_temp.iterdir())
   print('Installed Git binary delta consumer reconstructed exact historical README bytes')
 
