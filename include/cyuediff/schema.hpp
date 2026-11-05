@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/container.hpp>
+#include <cyuediff/binary_layout.hpp>
 #include <set>
 namespace cyuediff {
 struct SchemaReadOptions {
@@ -110,6 +111,8 @@ struct UnversionedReadOptions {
     bool allow_map_replacement = false;
     // Schema identity -> wire layout. No basename inference; cannot also be reflected.
     std::map<std::string, NativeStructLayout> native_structs;
+    std::shared_ptr<const BinaryLayouts> binary_layouts;
+    std::map<std::string, std::string> struct_layouts;
     SoftPathLayout soft_path_layout = SoftPathLayout::unspecified;
     TextLayout text_layout = TextLayout::unspecified;
     TextArgumentDataLayout text_argument_data_layout = TextArgumentDataLayout::unspecified;

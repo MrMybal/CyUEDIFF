@@ -15,6 +15,8 @@ class ZenSchemaManifest {
     std::map<std::string, ZenSchemaBinding> bindings_;
     std::vector<std::string> reflected_structs_;
     std::map<std::string, NativeStructLayout> native_structs_;
+    std::shared_ptr<const BinaryLayouts> binary_layouts_;
+    std::map<std::string, std::string> struct_layouts_;
     std::string format_ = "cyuediff.zen-schema/1";
     ZenSchemaManifest() = default;
 

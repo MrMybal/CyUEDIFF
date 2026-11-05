@@ -63,13 +63,18 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
             return true;
         });
         result.format_ = string_value(manifest.at("format"));
-        const bool native_format = result.format_ == "cyuediff.zen-schema/2";
+        const bool described_format = result.format_ == "cyuediff.zen-schema/3";
+        const bool native_format = described_format || result.format_ == "cyuediff.zen-schema/2";
         if (!native_format && result.format_ != "cyuediff.zen-schema/1")
             throw Error("schema-context", "Unsupported schema context format");
         auto allowed =
             std::set<std::string>{"format", "profile", "usmap", "sha256", "bindings", "reflectedStructs"};
         if (native_format)
             allowed.insert("nativeStructs");
+        if (described_format) {
+            allowed.insert("binaryLayouts");
+            allowed.insert("structLayouts");
+        }
         fields(manifest, allowed);
         const auto profile = string_value(manifest.at("profile"));
         if (profile == "ue5.3")
@@ -132,6 +137,31 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
                                                parse_native_struct_layout(string_value(it.value())));
             }
         }
+        if (described_format) {
+            BinaryLayoutOptions layout_options;
+            layout_options.max_bytes = options.max_bytes;
+            layout_options.max_text_bytes = options.max_text_bytes;
+            layout_options.max_string_bytes = options.max_string_bytes;
+            layout_options.max_nodes = options.max_entries;
+            layout_options.max_depth = options.max_depth;
+            layout_options.control = options.control;
+            result.binary_layouts_ = std::make_shared<const BinaryLayouts>(
+                BinaryLayouts::parse(manifest.at("binaryLayouts"), layout_options));
+            const auto &values = manifest.at("structLayouts");
+            if (!values.is_object()) throw Error("schema-context", "Expected structLayouts object");
+            const auto used = bindings.size() + result.reflected_structs_.size() + result.native_structs_.size();
+            if (values.size() > options.max_entries - used)
+                throw Error("schema-limit", "Schema context entry limit exceeded");
+            for (auto it = values.begin(); it != values.end(); ++it) {
+                options.control.check();
+                auto name = string_value(it.key()), layout = string_value(it.value());
+                if (reflected_names.count(name) || result.native_structs_.count(name))
+                    throw Error("schema-context", "Conflicting declarative struct binding");
+                if (!result.binary_layouts_->contains(layout))
+                    throw Error("schema-context", "Missing declarative binary layout: " + layout);
+                result.struct_layouts_.emplace(std::move(name), std::move(layout));
+            }
+        }
     } catch (const Json::exception &) {
         throw Error("schema-context", "Malformed schema context JSON or missing required field");
     } catch (const fs::filesystem_error &) {
@@ -166,6 +196,14 @@ std::shared_ptr<const ZenSchemaContext> ZenSchemaManifest::load(const SchemaRead
             !result->native_structs.emplace(definition.path, binding.second).second)
             throw Error("schema-context", "Conflicting native/reflected struct binding: " + definition.path);
     }
+    result->binary_layouts = binary_layouts_;
+    for (const auto &binding : struct_layouts_) {
+        options.control.check();
+        const auto &definition = result->schemas->schema(binding.first);
+        if (result->reflected_structs.count(definition.path) || result->native_structs.count(definition.path) ||
+            !result->struct_layouts.emplace(definition.path, binding.second).second)
+            throw Error("schema-context", "Conflicting declarative struct binding: " + definition.path);
+    }
     options.control.check();
     return result;
 }
@@ -173,7 +211,7 @@ Json ZenSchemaManifest::to_json() const {
     Json native = Json::object();
     for (const auto &binding : native_structs_)
         native[binding.first] = native_struct_layout_name(binding.second);
-    return {{"schema", "cyuediff.zen-schema-manifest/1"},
+    Json result = {{"schema", "cyuediff.zen-schema-manifest/1"},
             {"format", format_},
             {"nativeStructCount", native_structs_.size()},
             {"nativeStructs", native},
@@ -186,5 +224,11 @@ Json ZenSchemaManifest::to_json() const {
             {"bindingCount", bindings_.size()},
             {"reflectedStructCount", reflected_structs_.size()},
             {"mappingVerified", false}};
+    if (binary_layouts_) {
+        result["binaryLayoutsSha256"] = binary_layouts_->sha256();
+        result["structLayouts"] = struct_layouts_;
+        result["structLayoutCount"] = struct_layouts_.size();
+    }
+    return result;
 }
 } // namespace cyuediff

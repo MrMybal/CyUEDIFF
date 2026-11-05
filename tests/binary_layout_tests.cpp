@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
         auto string_layout=BinaryLayouts::parse(catalog(scalar("string")));
         Bytes wide; wide.i(-4); wide.put<std::uint16_t>('A'); wide.put<std::uint16_t>(0xd83d); wide.put<std::uint16_t>(0xde00); wide.put<std::uint16_t>(0);
         Input wi(wide.data); check(string_layout.decode(wi,"Record")=="A\xf0\x9f\x98\x80","UTF-16 surrogate decode");
-        read={}; read.max_read_bytes=5; Input si(payload().data);
+        read={}; read.max_read_bytes=5; Bytes text_payload; text_payload.string("bounded"); Input si(text_payload.data);
         rejects([&]{string_layout.decode(si,"Record",read);},"layout-limit");
         check(si.position()==4,"String payload rejected before allocation/read");
         for(int version : {0,1009,1012,1013,1018}) {

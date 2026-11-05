@@ -572,6 +572,7 @@ struct PropertyReader {
     const UnversionedReadOptions &options;
     UnversionedProperties result;
     std::map<std::string, NativeStructLayout> native_structs;
+    std::map<std::string, std::string> struct_layouts;
     void charge() {
         options.control.check();
         if (result.values_read >= options.max_values)
@@ -633,9 +634,79 @@ struct PropertyReader {
                 auto native = native_structs.find(name);
                 if (native != native_structs.end())
                     value["nativeLayout"] = native_struct_layout_name(native->second);
+                auto layout = struct_layouts.find(name);
+                if (layout != struct_layouts.end()) {
+                    text(layout->second.size() + options.binary_layouts->sha256().size());
+                    value["binaryLayout"] = layout->second;
+                    value["binaryLayoutsSha256"] = options.binary_layouts->sha256();
+                }
             }
         }
         object[key] = std::move(value);
+    }
+    struct LayoutInput final : DecoderInput {
+        PropertyReader &reader;
+        std::uint64_t begin;
+        explicit LayoutInput(PropertyReader &owner) : reader(owner), begin(owner.r.pos) {}
+        std::uint64_t position() const override { return reader.r.pos - begin; }
+        std::uint64_t remaining() const override { return reader.r.end - reader.r.pos; }
+        void read(void *out, std::size_t bytes) override {
+            reader.r.range(bytes);
+            if (bytes && !out) throw Error("schema-context", "Null layout read destination");
+            if (bytes) std::memcpy(out, reader.r.data.data() + static_cast<std::size_t>(reader.r.pos), bytes);
+            reader.r.pos += bytes;
+        }
+        void skip(std::uint64_t bytes) override { reader.r.skip(bytes); }
+        std::uint32_t count(std::uint32_t maximum) override {
+            return reader.r.count(maximum ? std::min(maximum, reader.options.max_values) : reader.options.max_values);
+        }
+        std::string string() override { throw Error("schema-context", "Use the bounded layout FString reader"); }
+        std::string name() override {
+            const auto index = reader.r.i32(), suffix = reader.r.i32();
+            if (!reader.options.names || index < 0 || suffix < 0 ||
+                static_cast<std::size_t>(index) >= reader.options.names->size())
+                throw Error("schema-context", "Invalid layout package name index", reader.r.pos - 8);
+            const auto &base = (*reader.options.names)[static_cast<std::size_t>(index)];
+            if (base.size() > reader.options.max_text_bytes - reader.result.text_bytes)
+                throw Error("schema-limit", "Layout package name exceeds text budget", reader.r.pos);
+            return suffix ? base + "_" + std::to_string(suffix - 1) : base;
+        }
+        std::string reference() override { throw Error("schema-context", "Use the explicit layout reference resolver"); }
+        std::string guid() override {
+            constexpr char hex[] = "0123456789abcdef";
+            std::string value;
+            for (unsigned i = 0; i < 4; ++i) {
+                const auto word = reader.r.number(4);
+                for (int shift = 28; shift >= 0; shift -= 4) value += hex[(word >> shift) & 15];
+            }
+            return value;
+        }
+    };
+    Json layout_value(const std::string &layout, bool zero, unsigned nesting) {
+        if (zero) throw Error("schema-type", "Declarative native zero defaults require an explicit value model", r.pos);
+        depth(nesting);
+        BinaryLayoutReadOptions read;
+        read.max_values = options.max_values - result.values_read;
+        read.max_depth = options.max_depth - nesting;
+        read.max_text_bytes = options.max_text_bytes - result.text_bytes;
+        read.max_string_bytes = static_cast<std::uint32_t>(std::min<std::uint64_t>(UINT32_MAX, read.max_text_bytes));
+        read.max_read_bytes = r.end - r.pos;
+        read.reference = options.reference;
+        // Even a null-only reference must consume and interpret its signed package index.
+        if (!read.reference) read.reference = [](std::int32_t) -> Json {
+            throw Error("schema-context", "Layout object needs a package reference resolver");
+        };
+        read.control = options.control;
+        read.charge = [&](std::uint32_t work, std::uint64_t bytes) {
+            for (std::uint32_t i = 0; i < work; ++i) charge();
+            text(bytes);
+        };
+        LayoutInput input(*this);
+        try { return options.binary_layouts->decode(input, layout, read); }
+        catch (const Error &error) {
+            if (error.code == "layout-limit") throw Error("schema-limit", error.what(), r.pos);
+            throw;
+        }
     }
     Json structure(const std::string &name, bool zero, unsigned nesting) {
         depth(nesting);
@@ -1179,6 +1250,8 @@ struct PropertyReader {
             auto native = native_structs.find(definition.path);
             if (native != native_structs.end())
                 return native_value(native->second, zero, nesting);
+            auto described = struct_layouts.find(definition.path);
+            if (described != struct_layouts.end()) return layout_value(described->second, zero, nesting);
             bool allowed = options.reflected_structs.count(definition.path) != 0;
             if (!allowed && options.reflected_structs.count(definition.name))
                 allowed = schemas.schema(definition.name).path == definition.path;
@@ -1205,7 +1278,7 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
                                          const std::string &schema, const UnversionedReadOptions &options) {
     if (offset > bytes.size() || size > bytes.size() - offset)
         throw Error("bounds", "Invalid unversioned property window", offset);
-    PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}, {}};
+    PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}, {}, {}};
     for (const auto &binding : options.native_structs) {
         reader.charge();
         native_struct_layout_name(binding.second);
@@ -1215,6 +1288,17 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
             (options.reflected_structs.count(definition.name) &&
              schemas.schema(definition.name).path == definition.path))
             throw Error("schema-context", "Conflicting native/reflected struct binding: " + definition.path);
+    }
+    for (const auto &binding : options.struct_layouts) {
+        reader.charge();
+        if (!options.binary_layouts || !options.binary_layouts->contains(binding.second))
+            throw Error("schema-context", "Missing declarative binary layout: " + binding.second);
+        const auto &definition = schemas.schema(binding.first);
+        if (!reader.struct_layouts.emplace(definition.path, binding.second).second ||
+            reader.native_structs.count(definition.path) || options.reflected_structs.count(definition.path) ||
+            (options.reflected_structs.count(definition.name) &&
+             schemas.schema(definition.name).path == definition.path))
+            throw Error("schema-context", "Conflicting declarative struct binding: " + definition.path);
     }
     reader.result.properties = reader.structure(schema, false, 0);
     reader.result.consumed_bytes = reader.r.pos - offset;

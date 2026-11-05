@@ -329,3 +329,26 @@ Four additional explicit tokens, matrix4-f32/f64 and plane-f32/f64, bring the na
 ## Application and SDK integration for generators and native geometry - 0.67
 
 The CLI and desktop retain generator identity plus exact opaque contents fingerprints, including selected hash previews and workspace restart. Tagged binary geometry JSON matches explicitly bound cooked geometry for the same wire values; combined reflected bounds retain their tagged field structure; matrices use row/column paths and planes use normal/distance. The raw installed schema example additionally accepts CONTEXT.json NAMES.json: an explicit bounded JSON array of package names (at most 100000 entries, input at most 1 MiB). Without that input it does not invent package names. Independent installed SDK probes validate generator payload hashes, row-major matrices and planes. No new manifest version or engine/plugin execution is needed.
+
+## Declarative native layouts — 0.174
+
+Version-three contexts (`cyuediff.zen-schema/3`) retain the version-two required fields and add required inline `binaryLayouts` and `structLayouts` objects. The catalogue uses [the binary layout contract](BINARY_LAYOUTS.md); `structLayouts` maps an exact mapped struct identity (or a unique short name) to a named layout. Inline definitions add no external file or executable dependency.
+
+```json
+"binaryLayouts": {
+  "format": "cyuediff.binary-layouts/1",
+  "layouts": {
+    "PluginRecord": {"type": "record", "fields": [
+      {"name": "strength", "value": {"type": "f32"}},
+      {"name": "label", "value": {"type": "string"}}
+    ]}
+  }
+},
+"structLayouts": {"/Script/MyPlugin.Settings": "PluginRecord"}
+```
+
+A complete context still requires `format`, `profile`, `usmap`, `sha256`, `bindings` and `nativeStructs`. Loading resolves all bound USMAP identities and rejects duplicate aliases or conflicts with reflected/built-in native bindings. Native descriptions are explicitly supplied serialized layouts; USMAP type names do not infer them. The selected layout name and canonical catalogue SHA-256 appear on decoded properties and affect the context fingerprint. Version-one/two fingerprints remain unchanged when no declarative bindings are selected.
+
+C++ hosts set `UnversionedReadOptions::binary_layouts` and `struct_layouts`, or the corresponding fields of `ZenSchemaContext`. The generic reader shares property work, depth, text and cancellation budgets. Names resolve through the package table; object fields use the explicit JSON package-reference resolver, retaining null and structured identities. A layout consumes only its value bytes and does not swallow subsequent properties or a native suffix. Invalid values retain the whole opaque Zen export. Shared budget exhaustion and cancellation fail the operation. Zero-masked declarative native structures are refused because their semantic defaults have not been described; they are not guessed from zero-filled wire bytes.
+
+Original UE 5.3/5.5 fixtures verify named values/diffs, all truncated prefixes, canonical binding conflicts, provenance, budgets and opaque recovery. This does not replace the missing matching-build real cooked USMAP corpus.

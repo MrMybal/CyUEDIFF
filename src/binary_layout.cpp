@@ -216,9 +216,9 @@ struct LayoutReader {
     }
     void bytes(std::uint64_t size) {
         const auto at = input.position();
+        if (size > input.remaining()) throw Error("bounds", "Truncated binary layout value", at);
         if (at < begin || at - begin > options.max_read_bytes || size > options.max_read_bytes - (at - begin))
             throw Error("layout-limit", "Layout input exceeds byte limit", at);
-        if (size > input.remaining()) throw Error("bounds", "Truncated binary layout value", at);
     }
     void text(const std::string &value) {
         if (value.size() > options.max_string_bytes || value.size() > options.max_text_bytes - text_bytes)
@@ -233,6 +233,18 @@ struct LayoutReader {
         auto result = get<std::int32_t>();
         if (result < 0) throw Error("layout-value", "Negative binary layout count", input.position() - 4);
         return static_cast<std::uint32_t>(result);
+    }
+    void reference_value(const Json &value, unsigned depth) {
+        work(depth);
+        if (value.is_string()) text(value.get_ref<const std::string &>());
+        else if (value.is_structured())
+            for (auto it = value.begin(); it != value.end(); ++it) {
+                if (value.is_object()) text(it.key());
+                reference_value(it.value(), depth + 1);
+            }
+        else if (value.is_binary() || value.is_discarded() ||
+                 (value.is_number_float() && !std::isfinite(value.get<double>())))
+            throw Error("layout-value", "Invalid resolved layout reference", input.position());
     }
     std::string string() {
         const auto length = get<std::int32_t>();
@@ -329,6 +341,12 @@ struct LayoutReader {
             auto result = type == "bool8" ? get<std::uint8_t>() : get<std::uint32_t>();
             if (result > 1) throw Error("layout-value", "Invalid layout boolean", input.position());
             return result != 0;
+        }
+        if (type == "object" && options.reference) {
+            const auto index = get<std::int32_t>();
+            auto result = index ? options.reference(index) : Json(nullptr);
+            reference_value(result, depth + 1);
+            return result;
         }
         bytes(type == "name" ? 8 : type == "guid" ? 16 : 4);
         std::string result = type == "name" ? input.name() : type == "guid" ? input.guid() :
