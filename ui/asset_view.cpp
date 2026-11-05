@@ -1,4 +1,5 @@
 #include <cyuediff/asset_view.hpp>
+#include <cyuediff/animation_pose_view.hpp>
 #include "diff_style.hpp"
 namespace cyuediff {
 void AssetView::register_translations() {
@@ -6,6 +7,7 @@ void AssetView::register_translations() {
     AnimationMetadataView::register_translations();
     AttachmentsView::register_translations();
     AnimationSourceView::register_translations();
+    AnimationPoseView::register_translations();
     CurveView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Collisions", "Collisions"},

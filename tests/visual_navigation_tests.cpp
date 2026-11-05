@@ -1,4 +1,6 @@
 #include <cyuediff/asset_view.hpp>
+#include <cyuediff/animation_pose_view.hpp>
+#include "animation_pose_model.hpp"
 #include "collision_fixture.hpp"
 #include "animation_model.hpp"
 #include "animation_source_model.hpp"
@@ -421,12 +423,21 @@ int main(int argc, char **argv) {
                 "root";
             frame_ambiguous.set_packages(&source_before, &ambiguous_source);
             frame_ambiguous.select_track("name:arm~/track");
+            auto pose_animation = cyuediff::test::hierarchy_animation_model(), pose_skeleton = cyuediff::test::hierarchy_skeleton_model();
+            auto prepared_before = animation_pose(pose_animation,pose_skeleton,0), prepared_after = animation_pose(pose_animation,pose_skeleton,1);
+            AnimationPoseView hierarchy_pose, hierarchy_missing, hierarchy_added, hierarchy_tolerance, hierarchy_empty;
+            hierarchy_pose.set_poses(&prepared_before,&prepared_after,true);hierarchy_pose.select_joint("tip");
+            auto broken_animation = pose_animation;broken_animation.exports[0].properties["BoneAnimationTracks"]["value"].erase(1);
+            auto broken_pose = animation_pose(broken_animation,pose_skeleton,1);
+            hierarchy_missing.set_poses(&prepared_before,&broken_pose,true);hierarchy_missing.select_joint("tip");
+            hierarchy_added.set_poses(nullptr,&prepared_after,true);
+            hierarchy_tolerance.set_poses(&prepared_before,&prepared_after,true);hierarchy_tolerance.set_position_tolerance(5.);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 60; ++scene) {
+                    for (int scene = 0; scene < 66; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -486,7 +497,7 @@ int main(int argc, char **argv) {
                                                "frame-sign",
                                                "frame-tolerance",
                                                "frame-invalid",
-                                               "frame-ambiguous"};
+                                               "frame-ambiguous", "pose-hierarchy", "pose-narrow", "pose-unavailable", "pose-added", "pose-tolerance", "pose-empty"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -498,13 +509,19 @@ int main(int argc, char **argv) {
                             ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
                                                       scene == 15 || scene == 19 || scene == 22 ||
                                                       scene == 26 || scene == 31 || scene == 37 ||
-                                                      scene == 43 || scene == 49 || scene == 55)
+                                                      scene == 43 || scene == 49 || scene == 55 || scene == 61)
                                                          ? ImVec2{640, io.DisplaySize.y}
                                                          : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 60:case 61:hierarchy_pose.draw();break;
+                            case 62:hierarchy_missing.draw();break;
+                            case 63:hierarchy_added.draw();break;
+                            case 64:hierarchy_tolerance.draw();break;
+                            case 65:hierarchy_empty.draw();break;
+
                             case 54:
                             case 55:
                                 frame_independent.draw();

@@ -5,7 +5,8 @@
 #include <set>
 namespace cyuediff {
 void ReferencePoseViewport::set_models(const ReferencePose *before, const ReferencePose *after,
-                                       bool comparing) {
+                                       bool comparing, double position_tolerance, PosePreviewSpace space) {
+    space_ = space;
     before_.clear();
     after_.clear();
     changes_.clear();
@@ -69,7 +70,9 @@ void ReferencePoseViewport::set_models(const ReferencePose *before, const Refere
         a.joints.push_back(joint.second);
     for (const auto &joint : after_)
         b.joints.push_back(joint.second);
-    const auto comparison = compare_reference_poses(a, b);
+    ReferencePoseDiffOptions options;
+    options.position_tolerance = position_tolerance;
+    const auto comparison = compare_reference_poses(a, b, options);
     differences_ = comparison.joints;
     for (auto it = comparison.joints.begin(); it != comparison.joints.end(); ++it) {
         const auto kind = it->at("kind").get<std::string>();
@@ -226,7 +229,10 @@ void ReferencePoseViewport::pane(const char *label, const std::map<std::string, 
         picked_ = std::move(hit);
     if (model.empty())
         draw->AddText({origin.x + cyui::dp(10), origin.y + cyui::dp(10)}, cyui::palette().text,
-                      cyui::tr("No reference positions available").c_str());
+                      cyui::tr(space_ == PosePreviewSpace::source_animation
+                                   ? "No source animation positions available"
+                                   : "No reference positions available")
+                          .c_str());
     draw->PopClipRect();
     ImGui::EndGroup();
 }
@@ -234,17 +240,25 @@ void ReferencePoseViewport::draw(const char *id) {
     cyui::ScopedID scope(id);
     rendered_joints_ = 0;
     if (incomplete_)
-        cyui::callout(cyui::Tone::warning, cyui::tr("Some reference joints are unavailable.").c_str());
+        cyui::callout(cyui::Tone::warning, cyui::tr(space_ == PosePreviewSpace::source_animation
+                                                        ? "Some source animation joints are unavailable."
+                                                        : "Some reference joints are unavailable.")
+                                               .c_str());
     if (truncated_)
         cyui::textDim("%s", cyui::tr("Pose preview is limited to 4,096 joints.").c_str());
     if (comparing_) {
         if (ImGui::Checkbox(cyui::trLabel("Moved joints only").c_str(), &changed_only_))
             fit_pending_ = true;
     }
-    if (cyui::button(cyui::trLabel("Fit reference pose").c_str()))
+    if (cyui::button(cyui::trLabel(space_ == PosePreviewSpace::source_animation ? "Fit animation pose"
+                                                                                : "Fit reference pose")
+                         .c_str()))
         fit_pending_ = true;
-    ImGui::TextWrapped(
-        "%s", cyui::tr("Affine reference positions; colors show position or parent changes.").c_str());
+    ImGui::TextWrapped("%s",
+                       cyui::tr(space_ == PosePreviewSpace::source_animation
+                                    ? "Affine source positions; colors show position or parent changes."
+                                    : "Affine reference positions; colors show position or parent changes.")
+                           .c_str());
     ImGui::TextWrapped(
         "%s",
         cyui::tr("Click a joint: inspect | Alt + drag: orbit | Middle drag: pan | Wheel: zoom").c_str());
@@ -258,8 +272,10 @@ void ReferencePoseViewport::draw(const char *id) {
     if (fit_pending_)
         fit(width / std::max(cyui::dp(1), height - ImGui::GetTextLineHeightWithSpacing()));
     const auto shown = camera_.camera;
-    pane(comparing_ ? "Before" : "Reference pose", !comparing_ && before_.empty() ? after_ : before_,
-         {width, height}, 1, shown);
+    pane(comparing_                                     ? "Before"
+         : space_ == PosePreviewSpace::source_animation ? "Animation pose"
+                                                        : "Reference pose",
+         !comparing_ && before_.empty() ? after_ : before_, {width, height}, 1, shown);
     if (comparing_) {
         if (!stacked)
             ImGui::SameLine();

@@ -187,6 +187,10 @@ inline void validate(const Json &v, std::string_view kind) {
 
             child("inspection","graph-inspection");
             if(key=="time"){scalar(x,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());known=true;}
+        } else if(kind=="animation-pose"){
+            string({"selected","filter"});
+            child("camera","mesh");
+            if(key=="positionTolerance"){scalar(x,0,std::numeric_limits<double>::max());known=true;}
         } else if(kind=="animation-source"){
             string({"beforeObject","afterObject"});
             child("inspection","graph-inspection");

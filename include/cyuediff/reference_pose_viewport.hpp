@@ -5,7 +5,9 @@
 #include <cyui/modules/Viewport.h>
 namespace cyuediff {
 // Owned, bounded display positions. No package access or pose evaluation while drawing.
+enum class PosePreviewSpace { reference, source_animation };
 class ReferencePoseViewport {
+    PosePreviewSpace space_ = PosePreviewSpace::reference;
     std::map<std::string, ReferenceJoint> before_, after_;
     std::map<std::string, ChangeKind> changes_;
     std::string selected_, picked_;
@@ -21,7 +23,8 @@ class ReferencePoseViewport {
               const cyui::OrbitCamera &);
 
   public:
-    void set_models(const ReferencePose *before, const ReferencePose *after, bool comparing);
+    void set_models(const ReferencePose *before, const ReferencePose *after, bool comparing,
+                    double position_tolerance = 0, PosePreviewSpace space = PosePreviewSpace::reference);
     void select(const std::string &name) { selected_ = name; }
     std::string take_picked_joint();
     const Json *joint_difference(const std::string &name) const {
