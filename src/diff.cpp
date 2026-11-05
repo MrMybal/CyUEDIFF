@@ -1,3 +1,4 @@
+#include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
@@ -41,6 +42,40 @@ void walk(const Json &before, const Json &after, const std::string &path, Json &
         changes.push_back({{"op", "replace"}, {"path", path}, {"before", before}, {"after", after}});
 }
 } // namespace
+std::string CurveComparison::status() const {
+    return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
+}
+Json CurveComparison::to_json() const {
+    return {{"schema", "cyuediff.curves-diff/1"},
+            {"scope", "selected stored rich-curve keys and settings"},
+            {"beforeObject", before_object},
+            {"afterObject", after_object},
+            {"complete", complete},
+            {"status", status()},
+            {"changes", changes}};
+}
+CurveComparison compare_curves(const Package &before, const Package &after, const std::string &before_object,
+                               const std::string &after_object, const CurveOptions &o) {
+    auto options = o;
+    options.source_indices = false;
+    const auto a = curve_snapshot(before, options), b = curve_snapshot(after, options);
+    auto select = [](const Json &root, const std::string &path) {
+        const auto &owners = root.at("owners");
+        if (path.empty() && owners.size() == 1)
+            return owners.begin().key();
+        if (path.empty() || !owners.contains(path))
+            throw Error("curve-object", "Select exactly one stored curve owner");
+        return path;
+    };
+    CurveComparison out;
+    out.before_object = select(a, before_object);
+    out.after_object = select(b, after_object);
+    const auto &x = a["owners"][out.before_object], &y = b["owners"][out.after_object];
+    out.complete = before.complete_input && after.complete_input && x.at("complete").get<bool>() &&
+                   y.at("complete").get<bool>();
+    walk(x, y, "", out.changes, o.control);
+    return out;
+}
 std::string AnimationComparison::status() const {
     return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
 }
