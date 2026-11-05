@@ -1,0 +1,234 @@
+#include "binary_commands.hpp"
+#include <cyuediff/binary_delta.hpp>
+#include <algorithm>
+#include <atomic>
+#include <cwctype>
+#include <iostream>
+#include <limits>
+#include <map>
+#include <set>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+using namespace cyuediff;
+namespace {
+void require(bool good, const char *message) {
+    if (!good)
+        throw Error("binary-command", message);
+}
+std::uint64_t number(const std::string &s) {
+    require(!s.empty(), "Missing integer value");
+    std::uint64_t n = 0;
+    for (const auto c : s) {
+        require(c >= '0' && c <= '9' && n <= (UINT64_MAX - std::uint64_t(c - '0')) / 10,
+                "Invalid integer value");
+        n = n * 10 + std::uint64_t(c - '0');
+    }
+    return n;
+}
+fs::path resolved(fs::path path) {
+    auto existing = fs::absolute(path).lexically_normal();
+    fs::path suffix;
+    while (!fs::exists(existing)) {
+        const auto parent = existing.parent_path();
+        require(!parent.empty() && parent != existing, "Cannot resolve output ancestor");
+        suffix = suffix.empty() ? existing.filename() : existing.filename() / suffix;
+        existing = parent;
+    }
+    return (fs::canonical(existing) / suffix).lexically_normal();
+}
+auto path_key(const fs::path &p) {
+    auto key = p.native();
+#ifdef _WIN32
+    std::transform(key.begin(), key.end(), key.begin(), [](wchar_t c) { return std::towlower(c); });
+#endif
+    return key;
+}
+void guard_output(const fs::path &target, const std::vector<fs::path> &inputs,
+                  const std::vector<fs::path> &directories = {}) {
+    if (target.empty())
+        return;
+    const auto normalized = resolved(target);
+    for (const auto &input : inputs) {
+        require(path_key(normalized) != path_key(resolved(input)), "Output overlaps an input or companion");
+        require(!(fs::exists(target) && fs::exists(input) && fs::equivalent(target, input)),
+                "Output aliases an input");
+    }
+    for (const auto &directory : directories) {
+        const auto base = path_key(resolved(directory));
+        for (auto parent = normalized; !parent.empty();) {
+            require(path_key(parent) != base, "Output overlaps protected Git or LFS storage");
+            const auto next = parent.parent_path();
+            if (next == parent)
+                break;
+            parent = next;
+        }
+    }
+    require(!fs::exists(target) && !fs::is_symlink(fs::symlink_status(target)),
+            "Output already exists; choose a new output path");
+}
+void protect_file(std::vector<fs::path> &files, const fs::path &input) {
+    files.push_back(input);
+    if (input.extension() == ".uasset" || input.extension() == ".umap") {
+        for (const auto *ext : {".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload"}) {
+            auto companion = input;
+            companion.replace_extension(ext);
+            files.push_back(companion);
+        }
+    }
+}
+// Publish a fully flushed sibling temporary file without replacing any existing destination.
+void write_new(const fs::path &destination, const std::uint8_t *data, std::size_t bytes) {
+    const auto target = fs::absolute(destination);
+    require(fs::is_directory(target.parent_path()), "Output parent directory does not exist");
+    static std::atomic<unsigned long> sequence{0};
+    fs::path temporary;
+#ifdef _WIN32
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    const auto pid = GetCurrentProcessId();
+#else
+    int handle = -1;
+    const auto pid = getpid();
+#endif
+    for (unsigned attempt = 0; attempt < 64; ++attempt) {
+        temporary = target;
+        temporary += ".cyuediff-tmp-" + std::to_string(pid) + "-" + std::to_string(++sequence);
+#ifdef _WIN32
+        handle = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL,
+                             nullptr);
+        if (handle != INVALID_HANDLE_VALUE)
+            break;
+        require(GetLastError() == ERROR_FILE_EXISTS || GetLastError() == ERROR_ALREADY_EXISTS,
+                "Cannot reserve output temporary file");
+#else
+        handle = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (handle >= 0)
+            break;
+        require(errno == EEXIST, "Cannot reserve output temporary file");
+#endif
+    }
+#ifdef _WIN32
+    require(handle != INVALID_HANDLE_VALUE, "Cannot reserve output temporary file");
+#else
+    require(handle >= 0, "Cannot reserve output temporary file");
+#endif
+    try {
+        for (std::size_t at = 0; at < bytes;) {
+            const auto n = std::min<std::size_t>(bytes - at, 1024 * 1024);
+#ifdef _WIN32
+            DWORD written = 0;
+            require(WriteFile(handle, data + at, static_cast<DWORD>(n), &written, nullptr) && written == n,
+                    "Cannot write output");
+            at += written;
+#else
+            const auto written = ::write(handle, data + at, n);
+            if (written < 0 && errno == EINTR)
+                continue;
+            require(written > 0, "Cannot write output");
+            at += static_cast<std::size_t>(written);
+#endif
+        }
+#ifdef _WIN32
+        require(FlushFileBuffers(handle) != 0, "Cannot flush output");
+        const bool closed = CloseHandle(handle) != 0;
+        handle = INVALID_HANDLE_VALUE;
+        require(closed, "Cannot close output");
+        require(MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_WRITE_THROUGH) != 0,
+                "Cannot publish new output");
+#else
+        require(::fsync(handle) == 0, "Cannot flush output");
+        const bool closed = ::close(handle) == 0;
+        handle = -1;
+        require(closed, "Cannot close output");
+        require(::link(temporary.c_str(), target.c_str()) == 0, "Cannot publish new output");
+        std::error_code ignored;
+        fs::remove(temporary, ignored);
+#endif
+    } catch (...) {
+#ifdef _WIN32
+        if (handle != INVALID_HANDLE_VALUE)
+            CloseHandle(handle);
+#else
+        if (handle >= 0)
+            ::close(handle);
+#endif
+        std::error_code ignored;
+        fs::remove(temporary, ignored);
+        throw;
+    }
+}
+} // namespace
+bool is_binary_command(const std::string &s) { return s == "binary-diff" || s == "binary-apply"; }
+int run_binary_command(const std::vector<std::string> &args) {
+    const bool apply = args.front() == "binary-apply";
+    BinaryDeltaOptions o;
+    std::vector<std::string> positional;
+    std::map<std::string, std::string> flags;
+    bool summary = false;
+    const std::set<std::string> valued = {"--out", "--block-size", "--max-input-bytes", "--max-literal-bytes",
+                                          "--max-manifest-bytes"};
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const auto &a = args[i];
+        if (a == "--summary") {
+            require(!summary && !apply, "--summary requires binary-diff");
+            summary = true;
+        } else if (valued.count(a)) {
+            require(i + 1 < args.size() && !flags.count(a), "Missing or duplicate binary command option");
+            flags[a] = args[++i];
+        } else {
+            require(a.rfind("--", 0) != 0, "Unknown binary command option");
+            positional.push_back(a);
+        }
+    }
+    require(positional.size() == 2, "Binary command requires BASE and TARGET_OR_DELTA");
+    if (flags.count("--block-size")) {
+        require(!apply, "--block-size requires binary-diff");
+        const auto n = number(flags.at("--block-size"));
+        require(n >= 16 && n <= 1024 * 1024, "Block size must be between 16 bytes and 1 MiB");
+        o.block_size = static_cast<std::uint32_t>(n);
+    }
+    if (flags.count("--max-input-bytes"))
+        o.max_input_bytes = number(flags.at("--max-input-bytes"));
+    if (flags.count("--max-literal-bytes"))
+        o.max_literal_bytes = number(flags.at("--max-literal-bytes"));
+    if (flags.count("--max-manifest-bytes"))
+        o.max_manifest_bytes = number(flags.at("--max-manifest-bytes"));
+    const auto out = flags.count("--out") ? fs::u8path(flags.at("--out")) : fs::path{};
+    require(!apply || !out.empty(), "binary-apply requires --out with a new destination");
+    const auto base = fs::u8path(positional[0]), other = fs::u8path(positional[1]);
+    std::vector<fs::path> protected_files;
+    protect_file(protected_files, base);
+    protect_file(protected_files, other);
+    guard_output(out, protected_files);
+    if (apply) {
+        auto delta = read_binary_delta(other, o);
+        auto original = read_binary_file(base, o.max_input_bytes, o.control);
+        auto bytes = apply_binary_delta(original, delta, o);
+        guard_output(out, protected_files);
+        write_new(out, bytes.data(), bytes.size());
+        std::cout << Json{{"schema", "cyuediff.binary-apply/1"},
+                          {"bytes", bytes.size()},
+                          {"sha256", delta.target_sha256},
+                          {"baseVerified", true},
+                          {"targetVerified", true}}
+                         .dump()
+                  << '\n';
+        return 0;
+    }
+    const auto delta = make_binary_delta_files(base, other, o);
+    const auto text = (summary ? delta.summary(o) : delta.to_json(o)).dump() + "\n";
+    require(text.size() <= o.max_manifest_bytes, "Manifest byte budget exceeded");
+    if (out.empty())
+        std::cout << text;
+    else {
+        guard_output(out, protected_files);
+        write_new(out, reinterpret_cast<const std::uint8_t *>(text.data()), text.size());
+    }
+    return delta.base_bytes == delta.target_bytes && delta.base_sha256 == delta.target_sha256 ? 0 : 1;
+}

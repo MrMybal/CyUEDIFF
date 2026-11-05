@@ -1,3 +1,4 @@
+#include "binary_commands.hpp"
 #include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
 #include <cyuediff/animation_pose.hpp>
@@ -28,6 +29,9 @@ int run(const std::vector<std::string> &args) {
     if (args.empty() || args[0] == "--help" || args[0] == "help") {
         std::cout
             << "CyUEDiff " CYUEDIFF_VERSION " - standalone Unreal package reader\n"
+               "  cyuediff binary-diff BASE TARGET [--block-size BYTES] [--summary] [--out DELTA.json]\n"
+               "  cyuediff binary-apply BASE DELTA.json --out NEW_FILE\n"
+               "  Binary commands refuse existing outputs; see docs/BINARY_DELTA.md for budgets.\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "
                "ROOT] [--out FILE]\n"
                "  cyuediff diff BEFORE AFTER [--project PROJECT] [--before-project PROJECT] "
@@ -119,6 +123,8 @@ int run(const std::vector<std::string> &args) {
                "Diff exit codes: 0 identical, 1 changes, 2 error/incomplete/unverified.\n";
         return 0;
     }
+    if (is_binary_command(args[0]))
+        return run_binary_command(args);
     std::vector<std::string> positional;
     Json flags = Json::object();
     const std::set<std::string> valued = {"--before-frame","--after-frame","--rotation-tolerance","--scale-tolerance","--curve-family","--curve-id","--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
