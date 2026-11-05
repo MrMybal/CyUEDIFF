@@ -1,8 +1,7 @@
 #include "curves_internal.hpp"
 #include <cmath>
-#include <iomanip>
-#include <locale>
-#include <sstream>
+#include <cstring>
+#include <limits>
 namespace cyuediff {
 namespace {
 const Json *field(const Json &v, const std::string &name) {
@@ -30,11 +29,18 @@ const Json *value(const Json *tag, const char *type, const char *parameter = nul
 }
 bool finite(const Json *v) { return v && v->is_number() && std::isfinite(v->get<double>()); }
 std::string time_key(double time) {
-    std::ostringstream out;
-    out.imbue(std::locale::classic());
-    out << "time:" << std::hexfloat << (time == 0. ? 0. : time);
-    return out.str();
+    static_assert(sizeof(double) == sizeof(std::uint64_t) && std::numeric_limits<double>::is_iec559,
+                  "Curve identities require IEEE754 binary64");
+    const double normalized = time == 0. ? 0. : time;
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &normalized, sizeof(bits));
+    std::string out = "time:";
+    constexpr char digits[] = "0123456789abcdef";
+    for (int shift = 60; shift >= 0; shift -= 4)
+        out.push_back(digits[(bits >> shift) & 15]);
+    return out;
 }
+
 struct Projection {
     const CurveOptions &o;
     bool legacy = false;

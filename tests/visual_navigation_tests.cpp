@@ -2,6 +2,7 @@
 #include "collision_fixture.hpp"
 #include "animation_model.hpp"
 #include "animation_source_model.hpp"
+#include "rich_curve_model.hpp"
 #include "attachments_model.hpp"
 #include "platform_win32.hpp"
 #include <fstream>
@@ -304,12 +305,39 @@ int main(int argc, char **argv) {
             source_single.set_packages(&source_before);
             source_single.select_track("name:root");
             source_single.set_frame(2);
+            auto curve_before = cyuediff::test::rich_model(), curve_after = curve_before;
+            curve_after.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"][1]["value"] = 12.;
+            const auto curve_root = curve_snapshot(curve_before);
+            const auto curve_key =
+                curve_root["owners"]["Curve"]["lanes"]["value"]["keyOrder"][1].get<std::string>();
+            CurveView curve_view, curve_weight, curve_unknown, curve_empty, curve_missing;
+            curve_view.set_packages(&curve_before, &curve_after);
+            curve_view.select_key(curve_key);
+            curve_view.set_time(.5);
+            auto curve_state = curve_view.view_state();
+            curve_state["inspection"]["properties"] = {{"changedOnly", false}, {"filter", "value"}};
+            curve_view.restore_view_state(curve_state);
+            auto weighted_curve = curve_before;
+            weighted_curve.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"][0]["interpMode"] = 2;
+            weighted_curve.exports[0]
+                .properties["FloatCurve"]["value"]["Keys"]["value"][0]["tangentWeightMode"] = 2;
+            curve_weight.set_packages(&weighted_curve);
+            curve_weight.set_time(.5);
+            auto unknown_curve = curve_before;
+            unknown_curve.exports[0].properties["FloatCurve"]["value"].erase("Keys");
+            curve_unknown.set_packages(&curve_before, &unknown_curve);
+            curve_unknown.select_key(curve_key);
+            auto empty_curve = curve_before;
+            empty_curve.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"] = Json::array();
+            curve_empty.set_packages(&empty_curve);
+            curve_missing.set_packages(&curve_before, &curve_after);
+            curve_missing.select_objects("Missing", "Curve");
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 36; ++scene) {
+                    for (int scene = 0; scene < 42; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -345,7 +373,13 @@ int main(int argc, char **argv) {
                                                "source-short",
                                                "source-unknown",
                                                "source-missing",
-                                               "source-single"};
+                                               "source-single",
+                                               "curve",
+                                               "curve-narrow",
+                                               "curve-weighted",
+                                               "curve-unknown",
+                                               "curve-empty",
+                                               "curve-missing"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -356,13 +390,29 @@ int main(int argc, char **argv) {
                             ImGui::SetNextWindowPos({0, 0});
                             ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
                                                       scene == 15 || scene == 19 || scene == 22 ||
-                                                      scene == 26 || scene == 31)
+                                                      scene == 26 || scene == 31 || scene == 37)
                                                          ? ImVec2{640, io.DisplaySize.y}
                                                          : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 36:
+                            case 37:
+                                curve_view.draw();
+                                break;
+                            case 38:
+                                curve_weight.draw();
+                                break;
+                            case 39:
+                                curve_unknown.draw();
+                                break;
+                            case 40:
+                                curve_empty.draw();
+                                break;
+                            case 41:
+                                curve_missing.draw();
+                                break;
                             case 30:
                             case 31:
                                 source_view.draw();
@@ -522,6 +572,7 @@ int main(int argc, char **argv) {
             saved["mesh"] = changed_mesh.view_state();
             saved["texture"] = texture.view_state();
             saved["animationSource"] = source_view.view_state();
+            saved["curves"] = curve_view.view_state();
             saved["frames"] = frames;
             saved["checks"] = checks;
             saved["captures"] = captures;

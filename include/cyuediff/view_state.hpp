@@ -1,3 +1,4 @@
+#include <limits>
 #pragma once
 #include <cyuediff/core.hpp>
 #include <cmath>
@@ -177,6 +178,10 @@ inline void validate(const Json &v, std::string_view kind) {
             child("inspection","graph-inspection");
             child("canvas","canvas");
             child("metadata","property");
+        } else if(kind=="curves"){
+            string({"beforeObject","afterObject","lane"});
+            child("inspection","graph-inspection");
+            if(key=="time"){scalar(x,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());known=true;}
         } else if(kind=="animation-source"){
             string({"beforeObject","afterObject"});
             child("inspection","graph-inspection");
@@ -195,6 +200,7 @@ inline void validate(const Json &v, std::string_view kind) {
             child("collisions", "collision");
             child("skeleton","skeleton");
             child("animations","animation-source");
+            child("curves","curves");
             child("layout", "asset-layout");
             string({"filter"});
             string({"selected", "textureSelected"}, true);

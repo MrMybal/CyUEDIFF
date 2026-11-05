@@ -1,3 +1,4 @@
+#include <cyuediff/curve_view.hpp>
 #include <cyuediff/animation_source_view.hpp>
 #pragma once
 #include <cyuediff/view_layout.hpp>
@@ -16,7 +17,7 @@
 namespace cyuediff {
 // The host owns the window/backend and loads packages outside its render loop.
 // No platform window, Unreal dependency or file I/O is introduced by draw().
-enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison, collisions, skeleton, animations };
+enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison, collisions, skeleton, animations, curves };
 class AssetView {
     ViewLayout layout_;
     std::shared_ptr<const Package> before_, after_;
@@ -35,6 +36,7 @@ class AssetView {
     CollisionView collisions_;
     SkeletonView skeleton_;
     AnimationSourceView animations_;
+    CurveView curves_;
     bool material_after_ = false;
     MeshView before_mesh_, after_mesh_;
     bool mesh_after_ = false;

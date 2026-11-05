@@ -18,6 +18,7 @@ int main() {
         check(a["complete"] && lane["keys"].size() == 3 && lane["timeOrder"] == "strict",
               "Time-keyed stored source curve");
         const auto middle = lane["keyOrder"][1].get<std::string>();
+        check(middle=="time:3ff0000000000000","Portable exact binary64 time identity");
         auto changed = p;
         changed.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"][1]["leaveTangent"] = 2.;
         auto diff = compare_curves(p, changed);
