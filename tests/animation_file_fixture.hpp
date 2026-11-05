@@ -45,11 +45,12 @@ inline Fixture animation_key_fixture(int invalid = 0, int version = 1013, int re
         },
         -1, release);
 }
-inline Fixture animation_model_file_fixture(int change = 0, int version = 1013) {
+inline Fixture animation_model_file_fixture(int change = 0, int version = 1013,
+                                            const std::string &child_name = "arm~/track") {
     return fixture(
         version, 1, false, 0,
         {"BoneAnimationTracks", "BoneAnimationTrack", "InternalTrackData", "RawAnimSequenceTrack", "Name",
-         "NameProperty", "root", "arm~/track", "BoneTreeIndex", "NumberOfKeys", "NumberOfFrames", "FrameRate",
+         "NameProperty", "root", child_name, "BoneTreeIndex", "NumberOfKeys", "NumberOfFrames", "FrameRate",
          "Numerator", "Denominator", "FloatProperty", "PlayLength"},
         [=](Bytes &s, const NameWriter &name) {
             auto tag = [&](Bytes &b, const char *field, const char *kind, const Bytes &payload,
@@ -110,7 +111,7 @@ inline Fixture animation_model_file_fixture(int change = 0, int version = 1013) 
             for (int i = 0; i < track_count; ++i) {
                 const auto bone = change == 2 ? 1 - i : i;
                 Bytes n;
-                name(n, bone == 0 || change == 5 ? "root" : "arm~/track");
+                name(n, bone == 0 || change == 5 ? "root" : child_name);
                 if (change != 13 || bone != 0)
                     tag(tracks, "Name", "NameProperty", n);
                 integer(tracks, "BoneTreeIndex", bone);

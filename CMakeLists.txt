@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.149.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.150.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -114,6 +114,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_animation_pose_diff_tests tests/animation_pose_diff_tests.cpp)
     target_link_libraries(cyuediff_animation_pose_diff_tests PRIVATE CyUEDiff::Core)
     add_test(NAME animation_hierarchy_comparison COMMAND cyuediff_animation_pose_diff_tests)
+    add_executable(cyuediff_animation_socket_file_tests tests/animation_socket_file_tests.cpp)
+    target_link_libraries(cyuediff_animation_socket_file_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME animation_socket_files COMMAND cyuediff_animation_socket_file_tests)
     add_executable(cyuediff_animation_socket_tests tests/animation_socket_tests.cpp)
     target_link_libraries(cyuediff_animation_socket_tests PRIVATE CyUEDiff::Core)
     add_test(NAME animation_socket_pose COMMAND cyuediff_animation_socket_tests)
@@ -297,6 +300,9 @@ if(BUILD_TESTING)
             add_test(NAME animation_frame_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_frame_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_animation_frame_tests>")
+            add_test(NAME animation_socket_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_socket_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_animation_socket_file_tests>")
             add_test(NAME animation_pose_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_pose_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_animation_pose_file_tests>")

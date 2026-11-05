@@ -1,6 +1,7 @@
 #include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
 #include <cyuediff/animation_pose.hpp>
+#include <cyuediff/animation_socket_pose.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
 #include <cyuediff/collision_wireframe.hpp>
@@ -51,6 +52,9 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff animation-frame-diff BEFORE AFTER --before-frame N --after-frame N\n"
                "    [--before-object PATH] [--after-object PATH] [--position-tolerance N]\n"
                "    [--rotation-tolerance DEGREES] [--scale-tolerance N] [--out FILE]\n"
+               "  cyuediff animation-socket-pose ANIMATION SKELETON --frame N [--object PATH] [--skeleton-object PATH]\n"
+               "  cyuediff animation-socket-pose-diff BEFORE AFTER --before-skeleton FILE --after-skeleton FILE\n"
+               "    --before-frame N --after-frame N [--position-tolerance N] [--out FILE]\n"
                "  cyuediff animation-pose ANIMATION SKELETON --frame N [--object PATH] [--skeleton-object PATH]\n"
                "  cyuediff animation-pose-diff BEFORE AFTER --before-skeleton FILE --after-skeleton FILE\n"
                "    --before-frame N --after-frame N [--before-object PATH] [--after-object PATH]\n"
@@ -162,8 +166,11 @@ int run(const std::vector<std::string> &args) {
     }
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
+    const bool source_socket = command == "animation-socket-pose" || command == "animation-socket-pose-diff";
+    const bool source_pose_single = command == "animation-pose" || command == "animation-socket-pose";
+    const bool source_pose_diff = command == "animation-pose-diff" || command == "animation-socket-pose-diff";
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "animation-pose" || command == "animation-pose-diff" || command == "animation-frame-diff" || command == "curve-value-diff" || command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     source_pose_single || source_pose_diff || command == "animation-frame-diff" || command == "curve-value-diff" || command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -201,15 +208,15 @@ int run(const std::vector<std::string> &args) {
         if(key=="--curve-id" && command!="curve-components")throw Error("arguments","--curve-id requires curve-components");
         if(key=="--time" && command!="curve-value" && command!="curve-components")throw Error("arguments","--time requires curve-value or curve-components");
         if(key=="--lane" && command!="curve-value")throw Error("arguments","--lane requires curve-value");
-        if(key=="--frame" && command!="animation-frame" && command!="animation-pose")throw Error("arguments","--frame requires animation-frame");
-        if((key=="--before-frame" || key=="--after-frame") && command!="animation-frame-diff" && command!="animation-pose-diff")throw Error("arguments",key+" requires animation-frame-diff or animation-pose-diff");
+        if(key=="--frame" && command!="animation-frame" && !source_pose_single)throw Error("arguments","--frame requires animation-frame");
+        if((key=="--before-frame" || key=="--after-frame") && command!="animation-frame-diff" && !source_pose_diff)throw Error("arguments",key+" requires animation-frame-diff or animation-pose-diff");
         if((key=="--rotation-tolerance" || key=="--scale-tolerance") && command!="animation-frame-diff")throw Error("arguments",key+" requires animation-frame-diff");
-        if(key=="--skeleton-object" && command!="animation-pose")throw Error("arguments",key+" requires animation-pose");
-        if((key=="--before-skeleton" || key=="--after-skeleton" || key=="--before-skeleton-object" || key=="--after-skeleton-object") && command!="animation-pose-diff")throw Error("arguments",key+" requires animation-pose-diff");
-        if ((key == "--before-object" || key == "--after-object") && command != "curve-value-diff" && command != "curves-diff" && command != "animation-diff" && command != "animation-frame-diff" && command != "animation-pose-diff" &&
+        if(key=="--skeleton-object" && !source_pose_single)throw Error("arguments",key+" requires animation-pose");
+        if((key=="--before-skeleton" || key=="--after-skeleton" || key=="--before-skeleton-object" || key=="--after-skeleton-object") && !source_pose_diff)throw Error("arguments",key+" requires animation-pose-diff");
+        if ((key == "--before-object" || key == "--after-object") && command != "curve-value-diff" && command != "curves-diff" && command != "animation-diff" && command != "animation-frame-diff" && !source_pose_diff &&
             command != "skeleton-pose-diff" && command != "socket-pose-diff")
             throw Error("arguments", key + " requires a model or pose comparison");
-        if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff" && command!="animation-frame-diff" && command!="animation-pose-diff")
+        if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff" && command!="animation-frame-diff" && !source_pose_diff)
             throw Error("arguments","--position-tolerance requires a pose comparison");
         if (key == "--max-commits" || key == "--skip")
             throw Error("arguments", key + " requires git-history");
@@ -257,7 +264,7 @@ int run(const std::vector<std::string> &args) {
              key == "--before-engine-root" || key == "--after-engine-root"))
             throw Error("arguments", key + " requires a Git command");
         if (((key == "--mip") && !image_command) ||
-            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose" && command != "animation-frame" && command != "animation-pose" && command != "curve-value" && command != "curve-components"))
+            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose" && command != "animation-frame" && !source_pose_single && command != "curve-value" && command != "curve-components"))
             throw Error("arguments", key + " requires an image or geometry command");
         if ((key == "--threshold" || key == "--heatmap") && command != "image-diff" && command != "hdr-diff")
             throw Error("arguments", key + " requires image-diff or hdr-diff");
@@ -663,25 +670,30 @@ int run(const std::vector<std::string> &args) {
         }else output=curve_snapshot(before,curve_options);
         if(!before.complete_input)exit_code=2;
         }
-    } else if(command=="animation-pose" || command=="animation-pose-diff") {
-        const bool comparing = command=="animation-pose-diff";
+    } else if(source_pose_single || source_pose_diff) {
+        const bool comparing = source_pose_diff;
         if(flags.contains("--metadata") || flags.contains("--snapshot"))throw Error("arguments","Animation poses require decoded properties");
         if(!comparing) {
-            if(!flags.contains("--frame"))throw Error("arguments","animation-pose requires --frame");
+            if(!flags.contains("--frame"))throw Error("arguments",command+" requires --frame");
             const auto frame=integer_option("--frame",INT32_MAX);
             const auto animation=read(positional[0],"--project",options),skeleton=read(positional[1],"--project",options);
-            output=animation_pose(animation,skeleton,frame,flags.value("--object",std::string{}),flags.value("--skeleton-object",std::string{})).to_json();
+            const auto prepared=animation_pose(animation,skeleton,frame,flags.value("--object",std::string{}),flags.value("--skeleton-object",std::string{}));
+            output=source_socket?animation_socket_pose(prepared,skeleton).to_json():prepared.to_json();
             exit_code=output.at("complete").get<bool>()?0:2;
         } else {
             for(const auto *required_flag:{"--before-skeleton","--after-skeleton","--before-frame","--after-frame"})
-                if(!flags.contains(required_flag)||flags.at(required_flag).get<std::string>().empty())throw Error("arguments",std::string("animation-pose-diff requires ")+required_flag);
+                if(!flags.contains(required_flag)||flags.at(required_flag).get<std::string>().empty())throw Error("arguments",command+" requires "+required_flag);
             AnimationPoseDiffOptions selected;selected.position_tolerance=real_option("--position-tolerance",0,0,std::numeric_limits<double>::max());
             AnimationPoseSelection a,b;a.frame=integer_option("--before-frame",INT32_MAX);b.frame=integer_option("--after-frame",INT32_MAX);
             a.animation_object=flags.value("--before-object",std::string{});b.animation_object=flags.value("--after-object",std::string{});
             a.skeleton_object=flags.value("--before-skeleton-object",std::string{});b.skeleton_object=flags.value("--after-skeleton-object",std::string{});
             const auto before=read(positional[0],"--before-project",options),after=read(positional[1],"--after-project",options);
             const auto before_skeleton=read(flags.at("--before-skeleton").get<std::string>(),"--before-project",options),after_skeleton=read(flags.at("--after-skeleton").get<std::string>(),"--after-project",options);
-            output=compare_animation_poses(before,before_skeleton,after,after_skeleton,a,b,selected);
+            if(source_socket) {
+                const auto ap=animation_pose(before,before_skeleton,a.frame,a.animation_object,a.skeleton_object,selected.pose);
+                const auto bp=animation_pose(after,after_skeleton,b.frame,b.animation_object,b.skeleton_object,selected.pose);
+                output=compare_animation_socket_poses(animation_socket_pose(ap,before_skeleton),animation_socket_pose(bp,after_skeleton),selected);
+            } else output=compare_animation_poses(before,before_skeleton,after,after_skeleton,a,b,selected);
             exit_code=output.at("status")=="identical"?0:output.at("status")=="changed"?1:2;
         }
     } else if(command=="animation-frame-diff") {

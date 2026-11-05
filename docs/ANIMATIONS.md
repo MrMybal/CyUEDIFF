@@ -167,3 +167,7 @@ AnimationPose now retains ready row-major 3x4 source-space affine transforms in 
 ## Source animation socket origins - 0.149
 
 The reusable AnimationSocketPose API applies explicitly stored socket locations to prepared ready source affines. Socket object paths and raw parent names remain exact; membership certainty is separate from point readiness. Missing membership, external definitions, absent offsets, invalid parent matrices and virtual parents remain unavailable. Socket orientation/scale, class defaults, reference-pose fallback and runtime interpolation are not inferred. Independent-frame/source-definition comparisons use position tolerance and retain per-socket provenance.
+
+## Binary and CLI source socket inspection - 0.150
+
+The animation-socket-pose and animation-socket-pose-diff commands expose prepared source socket origins with explicit Skeleton bindings, owner/frame selection, independent project contexts, finite position tolerance and protected outputs. Independent encoded fixtures cover old/new tagged-property profiles, changed offsets/parents, missing membership/locations, stored empty lists, unlisted contained sockets, omitted unused orientation and source rotation/scale failures. An unrelated raw bone without a source track does not invalidate a ready socket parent.
