@@ -1,7 +1,9 @@
 #pragma once
 #include <cyuediff/core.hpp>
 namespace cyuediff {
+enum class AnimationCurveFamily { Float, Transform };
 struct CurveOptions {
+    AnimationCurveFamily animation_family = AnimationCurveFamily::Float;
     std::size_t max_owners = 1024, max_lanes = 100000, max_keys = 1000000, max_nodes = 16000000,
                 max_text_bytes = 16 * 1024 * 1024;
     unsigned max_depth = 48;

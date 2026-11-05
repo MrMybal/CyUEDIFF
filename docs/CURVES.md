@@ -62,3 +62,7 @@ The Curves tab now retains an explicit optional display range and absolute compa
 ## Expanded evaluation corpora and installed SDK verification - 0.122
 
 Read-only corpus validation now probes explicit empty curves, both sides of the stored domain and per-lane sampled self-comparisons. It preserves unavailable coordinates rather than treating missing extrapolation modes as defaults. Independently encoded fixtures cover every supported mode, weighted/invalid weights and sentinel defaults in all three file profiles. The extracted SDK consumer exercises sampled comparison as well as source keys and individual values; report parity with the installed CLI and final configuration/capture results are recorded in VALIDATION.md.
+
+## Explicit animation transform curve projection - 0.123
+
+CurveOptions now selects float or transform animation curve scope. The default float scope is unchanged. Exact stored TransformCurves records expose nine named scalar lanes: translation, Euler rotation and scale XYZ. Modern unique names define stable groups; ambiguous or absent names remain indexed and incomplete. Missing vector components, arrays and keys remain unknown, while explicit empty arrays remain known. Stored group and vector metadata is retained with shared projection budgets and cancellation. This does not apply transforms to bones, infer additive defaults or evaluate transient VectorCurves.

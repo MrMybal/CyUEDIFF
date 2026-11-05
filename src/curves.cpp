@@ -196,6 +196,91 @@ struct Projection {
         }
         return out;
     }
+    void transform_owner(Json &out, const Json *data, const Json *root_tag) {
+        out["curveFamily"] = "transform";
+        out["curveGroups"] = Json::object();
+        const auto *raw = data ? field(*data, "TransformCurves") : nullptr;
+        if (!array_shape(raw, "TransformCurve")) {
+            out["lanesCoverage"] = "unavailable";
+            missing(out, "CurveData.TransformCurves", root_tag);
+            return;
+        }
+        const auto &array = raw->at("value");
+        if (array.size() > (o.max_lanes - lanes) / 9)
+            throw Error("limit", "Transform curve lane budget exceeded");
+        std::map<std::string, unsigned> names;
+        for (const auto &curve : array) {
+            o.control.check();
+            const auto *n = value(field(curve, "CurveName"), "NameProperty");
+            if (n && n->is_string()) {
+                bytes(n->get_ref<const std::string &>().size());
+                ++names[n->get<std::string>()];
+            }
+        }
+        for (std::size_t i = 0; i < array.size(); ++i) {
+            o.control.checkpoint("Projecting transform curves", i, array.size());
+            const auto &curve = array[i];
+            const auto *n = value(field(curve, "CurveName"), "NameProperty");
+            const bool named =
+                n && n->is_string() && !n->get_ref<const std::string &>().empty() && *n != "None";
+            const bool unique = named && names[n->get<std::string>()] == 1;
+            const auto id = unique ? "name:" + n->get<std::string>() : "index:" + std::to_string(i);
+            bytes(id.size());
+            Json group = {{"complete", unique},
+                          {"identified", unique},
+                          {"diagnostics", Json::array()},
+                          {"unresolvedProperties", Json::object()},
+                          {"components", Json::object()}};
+            if (named)
+                group["name"] = copy(*n);
+            if (o.source_indices || !unique)
+                group["sourceIndex"] = i;
+            if (!unique)
+                group["diagnostics"].push_back("Missing or ambiguous stored transform curve name");
+            // Retain all other stored group metadata, without inventing defaults or legacy identities.
+            if (curve.is_object())
+                for (auto it = curve.begin(); it != curve.end(); ++it)
+                    if (it.key() != "CurveName" && it.key() != "TranslationCurve" &&
+                        it.key() != "RotationCurve" && it.key() != "ScaleCurve")
+                        group["extraProperties"][it.key()] = copy(*it);
+            for (const auto &part :
+                 {std::make_pair("TranslationCurve", "translation"),
+                  std::make_pair("RotationCurve", "rotation"), std::make_pair("ScaleCurve", "scale")}) {
+                const auto *tag = field(curve, part.first),
+                           *vector = value(tag, "StructProperty", "VectorCurve");
+                const bool valid = vector && vector->is_object();
+                if (!valid)
+                    missing(group, part.first, tag);
+                else
+                    for (auto it = vector->begin(); it != vector->end(); ++it)
+                        if (it.key() != "FloatCurves" && it.key() != "FloatCurves[1]" &&
+                            it.key() != "FloatCurves[2]")
+                            group["components"][part.second]["extraProperties"][it.key()] = copy(*it);
+                for (unsigned axis = 0; axis < 3; ++axis) {
+                    const auto component = std::string(part.second) + "." + "xyz"[axis];
+                    const auto lane_id = id + "/" + component;
+                    bytes(lane_id.size());
+                    auto l = lane(valid ? field(*vector, axis ? "FloatCurves[" + std::to_string(axis) + "]"
+                                                              : "FloatCurves")
+                                        : nullptr);
+                    l["curveId"] = id;
+                    l["component"] = component;
+                    if (named)
+                        l["name"] = copy(*n);
+                    if (!unique) {
+                        l["complete"] = false;
+                        l["diagnostics"].push_back("Missing or ambiguous stored transform curve name");
+                    }
+                    if (!l["complete"].get<bool>())
+                        group["complete"] = false;
+                    out["lanes"][lane_id] = std::move(l);
+                }
+            }
+            if (!group["complete"].get<bool>())
+                out["complete"] = false;
+            out["curveGroups"][id] = std::move(group);
+        }
+    }
     Json owner(const ObjectExport &e) {
         Json out = {{"class", e.class_name},        {"complete", true},
                     {"lanesCoverage", "stored"},    {"lanes", Json::object()},
@@ -212,6 +297,10 @@ struct Projection {
         else if (e.class_name == "/Script/Engine.AnimDataModel") {
             const auto *tag = field(e.properties, "CurveData"),
                        *data = value(tag, "StructProperty", "AnimationCurveData");
+            if (o.animation_family == AnimationCurveFamily::Transform) {
+                transform_owner(out, data, tag);
+                return out;
+            }
             const auto *raw = data ? field(*data, "FloatCurves") : nullptr,
                        *array = value(raw, "ArrayProperty", "StructProperty");
             if (!array_shape(raw, "FloatCurve")) {
@@ -272,6 +361,9 @@ struct Projection {
 };
 } // namespace
 Json curve_snapshot(const Package &p, const CurveOptions &o) {
+    if (o.animation_family != AnimationCurveFamily::Float &&
+        o.animation_family != AnimationCurveFamily::Transform)
+        throw Error("curve-family", "Unknown animation curve family");
     Projection project{o};
     project.legacy = p.summary.ue5_version < 1012;
     Json out = {{"schema", "cyuediff.curves/1"},
