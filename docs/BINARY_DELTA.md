@@ -34,6 +34,12 @@ The optional compact format stores the same checked plan with raw literal bytes 
 
 Input/output operation limits and aggregate literal limits apply, including repeated literal slices. A separate default `max_composition_fragments` of 1,000,000 bounds expansion work even if output operations coalesce. A prefix index provides logarithmic range lookup; cancellation/progress remain cooperative. Empty endpoints and delete/reinsert chains retain their ordinary byte semantics.
 
+## File-backed streaming reconstruction — 0.165
+
+`apply_binary_delta_file(base, delta, sink)` validates the complete plan, streams and verifies the whole base SHA-256 before the first sink call, then seeks original-base copy ranges and supplies ordered target chunks of at most 1 MiB. The target SHA-256 is checked before successful return. Reconstruction uses a fixed 1-MiB working buffer plus the already-resident delta; it does not buffer either endpoint. Delta generation and manifest parsing remain buffered, and input/literal/operation limits still apply. The existing vector-returning API is unchanged.
+
+Sink bytes are **provisional until successful return**. The host owns output reservation, cleanup, durability and publication; it must discard partial output after wrong target hashes, cancellation, source changes or I/O/sink exceptions. Sink exceptions propagate, and byte pointers are valid only during each synchronous callback. Do not mutate the base or delta from callbacks. Observed base size changes are rejected before and after reconstruction; this is not a filesystem snapshot or concurrent-edit service. The Core does not create output files.
+
 ## Commands and SDK
 
 ```powershell

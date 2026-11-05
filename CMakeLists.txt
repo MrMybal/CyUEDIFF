@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.164.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.165.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -23,7 +23,7 @@ add_library(cyuediff_core STATIC
     src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
-target_sources(cyuediff_core PRIVATE src/binary_delta_wire.cpp src/binary_delta_compose.cpp)
+target_sources(cyuediff_core PRIVATE src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp)
 target_compile_features(cyuediff_core PUBLIC cxx_std_17)
 target_include_directories(cyuediff_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -109,6 +109,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_binary_delta_stream_tests tests/binary_delta_stream_tests.cpp)
+    target_link_libraries(cyuediff_binary_delta_stream_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME binary_delta_stream COMMAND cyuediff_binary_delta_stream_tests)
     add_executable(cyuediff_binary_delta_compose_tests tests/binary_delta_compose_tests.cpp)
     target_link_libraries(cyuediff_binary_delta_compose_tests PRIVATE CyUEDiff::Core)
     add_test(NAME binary_delta_compose COMMAND cyuediff_binary_delta_compose_tests)

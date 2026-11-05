@@ -43,6 +43,12 @@ std::vector<std::uint8_t> apply_binary_delta(const std::vector<std::uint8_t> &ba
 // only applying the result verifies endpoint bytes. Fragment work and duplicated literals are bounded.
 BinaryDelta compose_binary_deltas(const BinaryDelta &first, const BinaryDelta &second,
                                   const BinaryDeltaOptions & = {});
+// The sink receives provisional chunks (at most 1 MiB); publish only after successful return.
+// Core verifies the whole base first and the reconstructed SHA-256 last. Sink exceptions propagate.
+// The sink must consume/copy bytes synchronously and must not mutate the base or delta.
+using BinaryDeltaSink = std::function<void(const std::uint8_t *, std::size_t)>;
+void apply_binary_delta_file(const fs::path &base, const BinaryDelta &, const BinaryDeltaSink &,
+                             const BinaryDeltaOptions & = {});
 // Bounded binary file reads; no output file writes or engine/codec discovery.
 std::vector<std::uint8_t> read_binary_file(const fs::path &, std::uint64_t max_bytes,
                                            const OperationControl & = {});
