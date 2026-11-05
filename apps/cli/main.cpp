@@ -36,6 +36,8 @@ int run(const std::vector<std::string> &args) {
                "MODULE.dll]\n"
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff skeleton-animation ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff skeleton-animation-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff skeleton-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff skeleton-pose ASSET [--object PATH] [--retarget-source KEY] [--out FILE]\n"
                "  cyuediff skeleton-pose-diff BEFORE AFTER [--before-object PATH] [--after-object PATH]\n"
@@ -135,7 +137,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -587,10 +589,10 @@ int run(const std::vector<std::string> &args) {
 #endif
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
                command == "mesh" || command == "material" || command == "collision" ||
-               command == "collision-preview" || command == "skeleton" || command == "skeleton-pose") {
+               command == "collision-preview" || command == "skeleton" || command == "skeleton-animation" || command == "skeleton-pose") {
         if ((command == "graph" || command == "texture" || command == "mesh" || command == "material" ||
              command == "collision" || command == "collision-preview" || command == "skeleton" ||
-             command == "skeleton-pose") &&
+             command == "skeleton-pose" || command == "skeleton-animation") &&
             flags.contains("--metadata"))
             throw Error("arguments", "Graph/texture inspection requires properties");
         if (flags.contains("--metadata"))
@@ -606,6 +608,8 @@ int run(const std::vector<std::string> &args) {
             output = package.material_snapshot();
         else if (command == "skeleton")
             output = package.skeleton_snapshot();
+        else if (command == "skeleton-animation")
+            output = skeleton_animation_snapshot(package);
         else if (command == "skeleton-pose") {
             ReferencePoseOptions pose_options;pose_options.retarget_source=flags.value("--retarget-source",std::string{});
             output = reference_pose(package, flags.value("--object",std::string{}),pose_options).to_json();
@@ -723,6 +727,14 @@ int run(const std::vector<std::string> &args) {
                                                         flags.value("--after-object",std::string{}),pose_options);
         output = comparison.to_json();
         exit_code = comparison.status()=="identical" ? 0 : comparison.status()=="changed" ? 1 : 2;
+    } else if (command == "skeleton-animation-diff") {
+        if (flags.contains("--metadata") || flags.contains("--snapshot"))
+            throw Error("arguments","Skeleton animation metadata comparison requires native decoding");
+        const auto before=read(positional[0],"--before-project",options);
+        const auto after=read(positional[1],"--after-project",options);
+        const auto comparison=compare_skeleton_animation(before,after);
+        output=comparison.to_json();
+        exit_code=!comparison.complete?2:comparison.changes.empty()?0:1;
     } else if (command == "skeleton-diff") {
         if (flags.contains("--metadata"))
             throw Error("arguments", "Skeleton comparison requires properties");

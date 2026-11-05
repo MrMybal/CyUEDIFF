@@ -110,6 +110,25 @@ CollisionComparison compare_collisions(const Package &before, const Package &aft
     walk(a, b, "", result.changes, options.control);
     return result;
 }
+std::string SkeletonAnimationComparison::status() const {
+    return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
+}
+Json SkeletonAnimationComparison::to_json() const {
+    return {{"schema", "cyuediff.skeleton-animation-diff/1"},
+            {"scope", "stored Skeleton curve metadata and sync marker names"},
+            {"status", status()},
+            {"complete", complete},
+            {"changes", changes}};
+}
+SkeletonAnimationComparison compare_skeleton_animation(const Package &before, const Package &after,
+                                                       const SkeletonOptions &options) {
+    const auto a = skeleton_animation_snapshot(before, options),
+               b = skeleton_animation_snapshot(after, options);
+    SkeletonAnimationComparison result;
+    result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>();
+    walk(a, b, "", result.changes, options.control);
+    return result;
+}
 std::string SkeletonComparison::status() const {
     return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
 }

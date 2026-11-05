@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.99.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.100.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -108,6 +108,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_animation_projection_tests tests/animation_projection_tests.cpp)
+    target_link_libraries(cyuediff_animation_projection_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME skeleton_animation_projection COMMAND cyuediff_animation_projection_tests)
     add_executable(cyuediff_marker_native_tests tests/marker_native_tests.cpp)
     target_link_libraries(cyuediff_marker_native_tests PRIVATE CyUEDiff::Core)
     add_test(NAME skeleton_marker_native COMMAND cyuediff_marker_native_tests)
@@ -219,6 +222,9 @@ if(BUILD_TESTING)
     if(CYUEDIFF_BUILD_CLI)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME skeleton_animation_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_marker_native_tests>")
             add_test(NAME skeleton_retarget_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/retarget_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_retarget_native_tests>")

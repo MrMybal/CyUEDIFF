@@ -6,7 +6,8 @@ namespace {
 struct Projection {
     const SkeletonOptions &options;
     std::size_t nodes = 0, text_bytes = 0, bone_count = 0, material_count = 0, source_count = 0,
-                retarget_transforms = 0;
+                retarget_transforms = 0, container_count = 0, curve_count = 0, link_count = 0,
+                marker_count = 0;
     void require(bool ok, const char *message) {
         if (!ok)
             throw Error("skeleton-value", message);
@@ -128,6 +129,114 @@ struct Projection {
         }
         return out;
     }
+    Json animation(const ObjectExport &e) {
+        const auto fallback = e.class_name == "/Script/Engine.Skeleton" ? "unavailable" : "not-applicable";
+        Json out = {{"curveMetadata", {{"coverage", fallback}, {"containers", Json::object()}}},
+                    {"syncMarkers", {{"coverage", fallback}, {"names", Json::object()}}}};
+        if (e.class_name != "/Script/Engine.Skeleton" || e.native_coverage != "reference-skeleton" ||
+            e.native_data.value("kind", "") != "reference-skeleton")
+            return out;
+        auto charge_count = [&](std::size_t n, std::size_t &used, std::size_t limit) {
+            if (n > limit - used)
+                throw Error("limit", "Skeleton animation metadata budget exceeded");
+            used += n;
+        };
+        auto coverage = [&](const Json &raw, const std::string &field) {
+            require(raw.is_object() && raw.contains("coverage") && raw.at("coverage").is_string(),
+                    "Malformed animation metadata coverage");
+            const auto c = raw.at("coverage").get<std::string>();
+            require(c == "stored" || c == "opaque" || c == "disabled" || c == "unavailable" ||
+                        (field == "syncMarkers" && (c == "stripped" || c == "not-stored")),
+                    "Unsupported animation metadata coverage");
+            out[field]["coverage"] = copy(raw.at("coverage"));
+            if (raw.contains("reason")) {
+                require(raw.at("reason").is_string(), "Invalid animation metadata reason");
+                out[field]["reason"] = copy(raw.at("reason"));
+            }
+            return c;
+        };
+        if (e.native_data.contains("curveMetadata")) {
+            const auto &raw = e.native_data.at("curveMetadata");
+            if (coverage(raw, "curveMetadata") == "stored") {
+                require(raw.contains("containers") && raw.at("containers").is_object(),
+                        "Missing curve containers");
+                const auto &containers = raw.at("containers");
+                charge_count(containers.size(), container_count, options.max_curve_containers);
+                for (auto it = containers.begin(); it != containers.end(); ++it) {
+                    options.control.checkpoint("Projecting skeleton curve metadata", curve_count);
+                    require(!it.key().empty() && it->is_object(), "Invalid curve container");
+                    text(it.key().size());
+                    charge_count(it->size(), curve_count, options.max_curves);
+                    Json curves = Json::object();
+                    for (auto curve = it->begin(); curve != it->end(); ++curve) {
+                        options.control.check();
+                        require(!curve.key().empty() && curve->is_object(), "Invalid stored curve");
+                        for (auto field : {"material", "morphTarget"})
+                            require(curve->contains(field) && curve->at(field).is_boolean(),
+                                    "Invalid curve type flag");
+                        require(curve->contains("linkedBones") && curve->at("linkedBones").is_array(),
+                                "Missing curve bone links");
+                        charge_count(curve->at("linkedBones").size(), link_count, options.max_curve_links);
+                        for (const auto &name : curve->at("linkedBones"))
+                            require(name.is_string() && !name.get_ref<const std::string &>().empty(),
+                                    "Invalid curve bone name");
+                        if (curve->contains("maxLOD")) {
+                            const auto &lod = curve->at("maxLOD");
+                            require(lod.is_number_integer() &&
+                                        (!lod.is_number_unsigned() || lod.get<std::uint64_t>() <= 255) &&
+                                        lod.get<std::int64_t>() >= 0 && lod.get<std::int64_t>() <= 255,
+                                    "Invalid stored curve LOD");
+                        }
+                        text(curve.key().size());
+                        curves[curve.key()] = copy(*curve);
+                    }
+                    out["curveMetadata"]["containers"][it.key()] = std::move(curves);
+                }
+            }
+        }
+        if (e.native_data.contains("syncMarkers")) {
+            const auto &raw = e.native_data.at("syncMarkers");
+            const auto c = coverage(raw, "syncMarkers");
+            if (raw.contains("stripFlags")) {
+                const auto &flags = raw.at("stripFlags");
+                require(flags.is_object(), "Invalid marker strip flags");
+                for (auto field : {"global", "class"}) {
+                    require(flags.contains(field) && flags.at(field).is_number_integer(),
+                            "Invalid marker strip byte");
+                    const auto &v = flags.at(field);
+                    require((!v.is_number_unsigned() || v.get<std::uint64_t>() <= 255) &&
+                                v.get<std::int64_t>() >= 0 && v.get<std::int64_t>() <= 255,
+                            "Invalid marker strip byte");
+                }
+                require(flags.at("global").get<unsigned>() <= 3, "Unknown marker global strip bits");
+                require(c != "stored" || !(flags.at("global").get<unsigned>() & 1),
+                        "Stored markers cannot be editor-stripped");
+                require(c != "stripped" || (flags.at("global").get<unsigned>() & 1),
+                        "Stripped markers need editor strip flag");
+                out["syncMarkers"]["stripFlags"] = copy(flags);
+            } else
+                require(c != "stripped", "Missing marker strip flags");
+            if (c == "stored") {
+                require(raw.contains("names") && raw.at("names").is_array(), "Missing stored marker names");
+                charge_count(raw.at("names").size(), marker_count, options.max_markers);
+                Json names = Json::object();
+                for (const auto &name : raw.at("names")) {
+                    options.control.check();
+                    require(name.is_string() && !name.get_ref<const std::string &>().empty(),
+                            "Invalid sync marker name");
+                    const auto &key = name.get_ref<const std::string &>();
+                    text(key.size());
+                    if (!names.contains(key))
+                        names[key] = {{"occurrences", 0}};
+                    names[key]["occurrences"] = names[key]["occurrences"].get<std::size_t>() + 1;
+                }
+                // Charge the resulting object against the same bounded JSON node budget.
+                out["syncMarkers"]["names"] = copy(names);
+            } else
+                require(!raw.contains("names"), "Unstored marker names must remain absent");
+        }
+        return out;
+    }
     Json body(const ObjectExport &e) {
         Json out = {
             {"class", e.class_name},
@@ -140,6 +249,9 @@ struct Projection {
              {{"coverage", e.class_name == "/Script/Engine.Skeleton" ? "unavailable" : "not-applicable"},
               {"sources", Json::object()}}},
             {"diagnostics", Json::array()}};
+        const auto metadata = animation(e);
+        out["curveMetadata"] = metadata.at("curveMetadata");
+        out["syncMarkers"] = metadata.at("syncMarkers");
         if (e.native_coverage != "reference-skeleton" ||
             e.native_data.value("kind", "") != "reference-skeleton") {
             out["diagnostics"].push_back("Supported raw reference skeleton is unavailable");
@@ -269,6 +381,32 @@ Json skeleton_snapshot(const Package &package, const SkeletonOptions &options) {
         }
     return {{"schema", "cyuediff.skeleton/1"},
             {"scope", "stored raw hierarchy, reference and retarget poses"},
+            {"complete", complete && !bodies.empty()},
+            {"skeletons", std::move(bodies)}};
+}
+Json skeleton_animation_snapshot(const Package &package, const SkeletonOptions &options) {
+    options.control.check();
+    Projection projection{options};
+    Json bodies = Json::object();
+    bool complete = package.complete_input;
+    for (const auto &e : package.exports)
+        if (e.class_name == "/Script/Engine.Skeleton") {
+            if (bodies.size() >= options.max_skeletons)
+                throw Error("limit", "Skeleton animation object budget exceeded");
+            if (bodies.contains(e.path))
+                throw Error("skeleton-identity", "Duplicate Skeleton animation object path");
+            projection.text(e.path.size());
+            auto body = projection.animation(e);
+            const bool known = body.at("curveMetadata").at("coverage") == "stored" &&
+                               (body.at("syncMarkers").at("coverage") == "stored" ||
+                                body.at("syncMarkers").at("coverage") == "not-stored");
+            body["complete"] = known;
+            body["class"] = e.class_name;
+            complete = complete && known;
+            bodies[e.path] = std::move(body);
+        }
+    return {{"schema", "cyuediff.skeleton-animation/1"},
+            {"scope", "stored Skeleton curve metadata and sync marker names"},
             {"complete", complete && !bodies.empty()},
             {"skeletons", std::move(bodies)}};
 }
