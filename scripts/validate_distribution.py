@@ -402,6 +402,15 @@ if args.consumer:
   history=json.loads(result.stdout)
   if history.get('schema')!='cyuediff.git-history/1' or not history.get('commits') or history['commits'][0]['id']!=history['head']:raise RuntimeError('Installed Git history consumer failed')
   print('Installed Git SDK history consumer validated')
+  git_pose_build=target/'git-animation-pose-consumer'
+  configure=[cmake,'-S',str(root/'examples/git_animation_pose_consumer'),'-B',str(git_pose_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+  subprocess.run(configure,check=True,env=env)
+  subprocess.run([cmake,'--build',str(git_pose_build),'--config','Release','--parallel','2'],check=True,env=env)
+  git_pose_executable=git_pose_build/'Release'/('git_animation_pose'+suffix) if os.name=='nt' else git_pose_build/'git_animation_pose'
+  result=subprocess.run([str(git_pose_executable),'--help'],capture_output=True,check=True,env=env,timeout=20)
+  if b'BEFORE_SKELETON AFTER_SKELETON' not in result.stdout:raise RuntimeError('Installed Git animation pose consumer failed to start')
+  print('Installed Git-bound animation pose SDK consumer compiled and started')
 
 
 

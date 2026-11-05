@@ -48,8 +48,8 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-animation-git-cli-',dir=Path.
  run(*base,'--pose-after-frame','2',code=2)
  d=run(*base[:-4], '--view','animations','--pose-before-frame','0','--pose-after-frame','2');assert pose(d)['complete'] and pose(d)['before']['frame']==0 and pose(d)['after']['frame']==2
  d=run(*base,'--history','--history-before',before,'--history-after',after,'--history-compare');assert pose(d)['complete'] and pose(d)['comparison']['changedJoints']==1
- d=run(*base,'--before-revision',empty);assert pose(d)['complete'] and pose(d)['before'] is None and pose(d)['after'] is not None
- d=run(*base,'--after-revision',empty);assert pose(d)['complete'] and pose(d)['after'] is None and pose(d)['before'] is not None
+ d=run(*base,'--before-revision',empty);assert pose(d)['complete'] and pose(d)['before'] is None and pose(d)['after'] is not None and pose(d)['comparison']['joints']['root']['kind']=='added'
+ d=run(*base,'--after-revision',empty);assert pose(d)['complete'] and pose(d)['after'] is None and pose(d)['before'] is not None and pose(d)['comparison']['joints']['root']['kind']=='removed'
  d=run(*base,'--pose-before-object','missing');assert not pose(d)['complete'] and pose(d)['after']['complete']
  d=run(*base,'--pose-before-skeleton','../outside.uasset');assert not pose(d)['complete'] and pose(d)['after']['complete']
  d=run(*base,'--pose-before-skeleton',fixtures/'skeleton-0.uasset');assert not pose(d)['complete'] and pose(d)['after']['complete']

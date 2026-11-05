@@ -148,13 +148,15 @@ int main(int argc, char **argv) {
         addition.git->before_revision = empty;
         auto added = load_document(addition);
         check(!added->before_animation_pose && added->after_animation_pose &&
-                  added->report()["animationPose"]["complete"],
+                  added->report()["animationPose"]["complete"] &&
+                  added->animation_pose_comparison["joints"]["root"]["kind"] == "added",
               "Added animation evaluates only its existing side");
         auto removal = request;
         removal.git->after_revision = empty;
         auto removed = load_document(removal);
         check(removed->before_animation_pose && !removed->after_animation_pose &&
-                  removed->report()["animationPose"]["complete"],
+                  removed->report()["animationPose"]["complete"] &&
+                  removed->animation_pose_comparison["joints"]["root"]["kind"] == "removed",
               "Removed animation evaluates only its existing side");
         git({"update-ref", "refs/heads/selected-pose", before});
         auto moving = request;
@@ -199,6 +201,33 @@ int main(int argc, char **argv) {
               "Historical contexts never repair checkout files");
         text(root / "One/Game.uproject", R"({"FileVersion":3})");
         text(root / "Two/Plugins/RigPack/RigPack.uplugin", R"({"CanContainContent":true})");
+        auto engine_binding = mounted;
+        engine_binding.git->discover_engine = true;
+        for (int index : {0, 1}) {
+            const auto installation = root / ".git/fixture-engines" / (index ? "EngineB" : "EngineA");
+            fs::create_directories(installation / "Engine/Build");
+            fs::create_directories(installation / "Engine/Content");
+            text(installation / "Engine/Build/Build.version",
+                 R"({"MajorVersion":5,"MinorVersion":5,"PatchVersion":0})");
+            save(installation / "Engine/Content", "Rig", animation_skeleton_file_fixture(index ? 2 : 0),
+                 true);
+            (index ? engine_binding.after_engine_root : engine_binding.engine_root) = installation;
+        }
+        engine_binding.animation_pose->before_skeleton = engine_binding.animation_pose->after_skeleton =
+            "/Engine/Rig";
+        auto engine_document = load_document(engine_binding);
+        auto engine_report = engine_document->report()["animationPose"];
+        check(engine_report["complete"] && engine_report["comparison"]["changedJoints"] == 1,
+              "Each historical project uses its explicitly selected local engine Skeleton");
+        check(engine_report["beforeBinding"]["storage"] == "engine-local" &&
+                  engine_report["afterBinding"]["revision"]["files"][0]["storage"] == "engine-local",
+              "Engine Skeleton provenance cannot claim historical Git engine bytes");
+        check(std::find(engine_document->protected_directories.begin(),
+                        engine_document->protected_directories.end(),
+                        root / ".git/fixture-engines/EngineB/Engine") !=
+                  engine_document->protected_directories.end(),
+              "Selected after engine installation is protected from outputs");
+        engine_document.reset();
         // Losing one local LFS object must only disable that side's pose.
         const auto object = objects / first_oid.substr(0, 2) / first_oid.substr(2, 2) / first_oid;
         const auto parked = root / "parked-lfs-object";

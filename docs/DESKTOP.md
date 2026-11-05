@@ -315,6 +315,23 @@ cyuediff_desktop --before Walk.uasset --view animations --pose-before-skeleton R
 cyuediff_desktop --before Old.uasset --after New.uasset --view animations --pose-before-skeleton OldRig.uasset --pose-after-skeleton NewRig.uasset --pose-before-frame 10 --pose-after-frame 12
 ```
 
-Optional `--pose-before-object`, `--pose-after-object`, `--pose-before-skeleton-object` and `--pose-after-skeleton-object` select exact stored owners. Each animation side requires its own supplied Skeleton; use the same file twice explicitly when intended. All active/inactive input paths and companions remain protected against report/capture/workspace overwrites. External Skeleton associations currently apply to local loose inputs; historical Git Skeleton selection and cooked animation binding remain separate work.
+Optional `--pose-before-object`, `--pose-after-object`, `--pose-before-skeleton-object` and `--pose-after-skeleton-object` select exact stored owners. Each animation side requires its own supplied Skeleton; use the same file twice explicitly when intended. All active/inactive input paths and companions remain protected against report/capture/workspace overwrites. External Skeleton associations support loose and historical Git inputs. Cooked animation binding remains separate work.
 
 For repeatable read-only validation, `scripts/validate_desktop_poses.py --asset FILE --skeleton RIG --out-dir build-native/REPORT` compares first/middle/last native results with the public CLI. Repeat `--asset` for additional files; `--capture`, `--locale` and `--theme` select optional middle-frame screenshots. Outputs stay below build-native and never share a directory containing source inputs.
+
+
+## Historical Git animation Skeleton bindings - 0.143–0.147
+
+In **Git revisions**, enable **Evaluate source hierarchy pose** and enter a Skeleton path for each revision. Repository-relative paths such as `Content/Rig.uasset` are read from the same immutable commit as that side’s animation. Mounted names such as `/Game/Rig` or `/MyPlugin/Rig` require the historical project descriptor. Each side resolves its own historical descriptor/plugin catalogue, including independent project selections. Local file pickers are available for loose inputs.
+
+```powershell
+cyuediff_desktop --repo C:/Repo --before-revision HEAD~1 --after-revision HEAD `
+  --before Content/Clip.uasset --pose-before-skeleton Content/Rig.uasset `
+  --pose-after-skeleton Content/Rig.uasset --pose-before-frame 10 --pose-after-frame 20
+```
+
+An omitted `--after` in Git mode means the same animation path in the after revision, so both Skeleton choices are active. History revision changes retain existing Git binding selections. Workspace format four preserves revision-relative and mounted Skeleton identities. Duplicate/reload/close/reopen retain source-pose review settings. Missing or corrupt local LFS objects disable the affected pose while preserving package inspection and the known side. Animation additions/removals evaluate only their present sides.
+
+Reports keep animation package comparison separate from derived source-pose comparison. A Skeleton-only edit can leave the animation package identical while `animationPose.comparison` records changed joint origins. `beforeBinding` and `afterBinding` retain the requested name, pinned animation commit and materialized revision with blob/LFS/content hashes. Engine content selected through a historical context is explicitly labeled `engine-local`: its bytes come from the selected local installation and are not claimed to be historical Git engine bytes.
+
+The [standalone Git SDK consumer](../examples/git_animation_pose_consumer) demonstrates this workflow without CyUI or the desktop. Its optional final project arguments resolve historical repository mounts with engine discovery disabled. The reusable `scripts/validate_git_desktop_poses.py` requires explicit original animation/Skeleton files and a compiled installed consumer, then checks first/middle/last frame pairs against the original Core CLI and native desktop. Validation outputs stay under `build-native` outside the source repository.

@@ -12,7 +12,7 @@ cd build-native
 cpack -C Release -G ZIP
 ```
 
-Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and compile/run the catalogue, container, cooked Zen and schema Core consumers, plus the Git history consumer when the Git SDK is included. Use `--static-runtime` when validating the static-CRT CI archives. For a desktop archive it also saves and reopens a blank workspace through the extracted WARP host. The check retains its extraction under an ignored build directory.
+Run `python scripts/validate_distribution.py build-native/CyUEDiff-VERSION-Windows-AMD64-desktop.zip --consumer` to check an extracted archive and compile/run the Core consumers for catalogue/container/cooked/schema/image/collision/skeleton/animation/poses/curves, plus the Git history and Git-bound animation pose consumers when the Git SDK is included. Use `--static-runtime` when validating the static-CRT CI archives. For a desktop archive it also saves and reopens a blank workspace through the extracted WARP host. The check retains its extraction under an ignored build directory.
 
 The ZIP contains the selected CLI/desktop executables, the reusable Core SDK (plus Git when enabled), public Core headers, CMake import targets and documentation/notices. UI headers/library are integrated from source by hosts; they are not advertised as an installed standalone UI SDK. The optional Oodle module is deliberately excluded even if it was built locally.
 
@@ -27,3 +27,6 @@ The hosted workflow takes effect only after these files are pushed. Local valida
 The desktop requires the host-provided CyUI checkout and is tested locally by the native smoke/capture tools. Its installation preserves CyUI, ImGui, stb and syntax-data licenses from the exact checkout selected by the host. No private dependency credentials are stored in the workflow.
 
 The pinned official Actions releases are [checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) and [upload-artifact v7.0.2](https://github.com/actions/upload-artifact/releases/tag/v7.0.2), both using Node 24. Their immutable commit refs were verified when the workflow was prepared.
+
+
+For caller-supplied historical animation data, `examples/git_animation_pose_consumer` builds against the installed `CyUEDiff::Git` target and uses Core poses without CyUI. `scripts/validate_git_desktop_poses.py` compares that installed executable against the native desktop and original explicit animation/Skeleton files. The distribution validator compiles and starts the consumer; a real/fixture corpus run remains separate and never adds host-owned assets to the ZIP.

@@ -155,3 +155,7 @@ The native Git input panel and command line accept explicit per-revision Skeleto
 ## Historical binding failure and review workflows - 0.146
 
 Historical source poses now distinguish absent animation sides from failed Skeleton bindings: additions and removals evaluate only present packages. Regression coverage includes branches moving between package and Skeleton loading, missing/corrupt/external LFS caches, traversal and absolute paths, unknown mounts, independent frames, history selection, duplicate/reload/reopen and output aliases across inactive tabs. Native historical workflows run through CTest.
+
+## Installed Git SDK and historical pose validation - 0.147
+
+The standalone git_animation_pose_consumer demonstrates historical animation/Skeleton materialization and Core pose comparison without UI, through the installed Git SDK. Both animation commits are resolved before their explicit Skeletons, including optional historical project/plugin contexts. validate_git_desktop_poses.py checks first/middle/last frame pairs against original caller-supplied files, the installed consumer and the native desktop, preserving full binding provenance. Output paths are confined outside the source repository under build-native. Engine and test assets are never redistributed.

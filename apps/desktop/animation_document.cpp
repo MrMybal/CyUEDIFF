@@ -89,12 +89,19 @@ void prepare_animation_poses(Document &document, const LoadRequest &request, con
     prepare_side(document, request, read, false);
     prepare_side(document, request, read, true);
 
-    if (document.before_animation_pose && document.after_animation_pose) {
+    if ((document.before_animation_pose && document.after_animation_pose) ||
+        (request.git && (document.before_animation_pose || document.after_animation_pose))) {
         try {
             AnimationPoseDiffOptions options;
             options.pose.control = request.control;
+            // Only an absent animation package certifies an absent hierarchy. Failed bindings already
+            // have an explicit incomplete placeholder and must never use this empty, known side.
+            AnimationPose absent;
+            absent.hierarchy_complete = true;
+            absent.display_pose.complete = true;
             document.animation_pose_comparison = compare_animation_poses(
-                *document.before_animation_pose, *document.after_animation_pose, options);
+                document.before_animation_pose ? *document.before_animation_pose : absent,
+                document.after_animation_pose ? *document.after_animation_pose : absent, options);
         } catch (const std::exception &e) {
             const auto *error = dynamic_cast<const Error *>(&e);
             if (error && error->code == "cancelled")

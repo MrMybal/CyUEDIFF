@@ -437,7 +437,7 @@ void register_translations() {
     CatalogView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"Skeleton paths use each animation revision and its historical project mounts.", "Les chemins des squelettes utilisent la r�vision de chaque animation et ses montages de projet historiques."},
+        {{"Skeleton paths use each animation revision and its historical project mounts.", "Les chemins des squelettes utilisent la révision de chaque animation et ses montages de projet historiques."},
          {"Evaluate source hierarchy pose", "Évaluer la pose hiérarchique source"},
          {"Animation Skeleton binding", "Association du squelette d’animation"},
          {"Skeleton before", "Squelette avant"}, {"Skeleton after", "Squelette après"},
