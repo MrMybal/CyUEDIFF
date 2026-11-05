@@ -28,6 +28,12 @@ The optional compact format stores the same checked plan with raw literal bytes 
 
 `BinaryDelta::to_binary` / `from_binary` use the compact contract. `read_binary_delta` detects the complete signature independently of extension and retains strict JSON support. Manifest limits are charged against the selected representation, so compact data does not incur JSON hex accounting. All manifests remain bounded in-memory values.
 
+## Bounded delta composition — 0.164
+
+`compose_binary_deltas(first, second)` turns A→B and B→C into A→C without loading any endpoint file. The intermediate size and SHA-256 claims must match exactly. Copies through B are split across the first delta's ranges and become original-A copies or sliced literals; adjacent literals and contiguous A copies coalesce. Reordered/repeated B ranges remain supported. The original base identity and final target identity are retained, using the first delta's block-size metadata. Intermediate bytes are not materialized or verified: apply the result to A to verify actual endpoint integrity. No intermediate authentication is implied.
+
+Input/output operation limits and aggregate literal limits apply, including repeated literal slices. A separate default `max_composition_fragments` of 1,000,000 bounds expansion work even if output operations coalesce. A prefix index provides logarithmic range lookup; cancellation/progress remain cooperative. Empty endpoints and delete/reinsert chains retain their ordinary byte semantics.
+
 ## Commands and SDK
 
 ```powershell

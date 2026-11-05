@@ -26,7 +26,7 @@ void binary_delta_options(const BinaryDeltaOptions &o) {
     require(o.block_size >= 16 && o.block_size <= 1024 * 1024,
             "Block size must be between 16 bytes and 1 MiB");
     require(o.max_input_bytes && o.max_match_bytes && o.max_manifest_bytes && o.max_blocks &&
-                o.max_operations,
+                o.max_operations && o.max_composition_fragments,
             "Binary delta limits must be nonzero");
     o.control.check();
 }
