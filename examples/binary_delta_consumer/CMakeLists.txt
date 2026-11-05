@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(binary_delta_consumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(binary_delta_consumer main.cpp)
+target_link_libraries(binary_delta_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(binary_delta_consumer PRIVATE /EHsc /utf-8)
+endif()

@@ -104,6 +104,19 @@ int main() {
         limit.control.cancelled = [] { return true; };
         rejects([&] { apply_binary_delta(base, d, limit); });
         rejects([&] { BinaryDelta::parse(j.dump(), limit); });
+        limit = o;
+        limit.max_operations = 1;
+        bool node_limited = false;
+        std::string nodes = "[0";
+        for (int i = 0; i < 1000; ++i)
+            nodes += ",0";
+        nodes += "]";
+        try {
+            BinaryDelta::parse(nodes, limit);
+        } catch (const Error &e) {
+            node_limited = std::string(e.what()).find("node budget") != std::string::npos;
+        }
+        check(node_limited);
         // Mutate all source bytes in a small base; identity verification must reject every wrong base.
         for (std::size_t i = 0; i < 64; ++i) {
             wrong = base;

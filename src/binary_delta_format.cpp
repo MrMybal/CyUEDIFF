@@ -125,9 +125,14 @@ BinaryDelta BinaryDelta::parse(const std::string &bytes, const BinaryDeltaOption
     detail::binary_delta_options(o);
     require(bytes.size() <= o.max_manifest_bytes, "Manifest byte budget exceeded");
     std::vector<std::set<std::string>> keys;
-    std::size_t objects = 0;
+    std::size_t objects = 0, nodes = 0;
     auto j = Json::parse(bytes, [&](int depth, Json::parse_event_t event, Json &v) {
         o.control.check();
+        if (event == Json::parse_event_t::object_start || event == Json::parse_event_t::array_start ||
+            event == Json::parse_event_t::value) {
+            require(nodes < 32 || (nodes - 32) / 8 < o.max_operations, "Manifest node budget exceeded");
+            ++nodes;
+        }
         require(depth <= 8, "Manifest nesting limit exceeded");
         if (event == Json::parse_event_t::object_start) {
             require(objects <= o.max_operations || objects - o.max_operations < 3,

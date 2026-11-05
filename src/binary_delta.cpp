@@ -114,8 +114,8 @@ BinaryDelta make_binary_delta(const std::vector<std::uint8_t> &base, const std::
         }
     };
     // Preserve small identical files too; hashes are confirmed with direct byte comparison.
-    if (base == target) {
-        if (!base.empty())
+    if (target.empty() || base == target) {
+        if (!target.empty())
             copy(0, base.size());
         d.summary(o);
         return d;

@@ -2473,8 +2473,14 @@ int run(Options options) {
         ++frames;
         if (shell.busy())
             settled = 0;
-        if (options.smoke && !shell.busy() && settled >= 2 && shell.perform_next_document_action())
-            settled = 0;
+        if (options.smoke && !shell.busy() && settled >= 2) {
+            const auto action_started = std::chrono::steady_clock::now();
+            if (shell.perform_next_document_action()) {
+                // A queued reload/duplicate is a new bounded operation, not time spent in the initial load.
+                started = action_started;
+                settled = 0;
+            }
+        }
         bool finished = options.smoke && !shell.busy() && ++settled >= 12;
         if (options.smoke && std::chrono::steady_clock::now() - started > std::chrono::seconds(30))
             throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");

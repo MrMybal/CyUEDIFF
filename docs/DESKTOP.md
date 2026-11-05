@@ -364,3 +364,7 @@ View → Restore previous session on startup enables clean-close session saving 
 ## Native lifecycle and distribution validation — 0.157
 
 Native lifecycle tests verify hidden restoration, actual HWND rectangles, remembered movement, reset behavior and final placement access after WM_CLOSE. Session restart coverage checks opt-in preferences, retained animation/socket selection, explicit launch precedence, Git revision bindings, cooked profile retention, no-Git fallback, read-only damaged sessions and output alias protection. Final configuration, distribution and secret-scan results are recorded in VALIDATION.md.
+
+## Smoke action deadlines — 0.162
+
+The hidden smoke runner grants a separate 30-second loading phase to each explicit scripted document action, including reload and duplication. A completed initial load no longer consumes the next action's loading budget. The phase starts before the action is invoked, so synchronous action work is included. The existing 64-action limit and per-Git-process timeout remain in effect. Longer multi-case historical CTest suites have 360-second aggregate budgets, and the desktop Git model suite has a 240-second budget. Per-case timing is logged to distinguish cumulative test duration from an individual stalled load. These changes concern hidden validation and do not alter interactive document loading.

@@ -1,5 +1,5 @@
 """Native per-revision Skeleton bindings and persisted Git source-pose review."""
-import hashlib,json,os,subprocess,sys,tempfile
+import hashlib,json,os,subprocess,sys,tempfile,time
 from pathlib import Path
 exe,generator,git_exe=(str(Path(x).resolve()) for x in sys.argv[1:4]);checks=0
 env={k.upper():v for k,v in os.environ.items()}
@@ -28,7 +28,9 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-animation-git-cli-',dir=Path.
  def run(*args,code=0):
   global checks
   report.unlink(missing_ok=True)
+  started=time.perf_counter()
   p=subprocess.run([exe,'--smoke','--no-preferences','--no-previews','--report',str(report),*map(str,args)],env=env,capture_output=True,timeout=60)
+  print(f'Native pose case {checks+1}: {time.perf_counter()-started:.2f}s',flush=True)
   assert p.returncode==code,(args,p.returncode,p.stderr.decode('utf-8','replace'));checks+=1
   return json.loads(report.read_text(encoding='utf-8')) if report.exists() else None
  def pose(data):return data['document']['animationPose']

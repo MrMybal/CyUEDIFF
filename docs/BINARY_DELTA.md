@@ -17,3 +17,56 @@ binary-diff BASE TARGET emits a portable delta, or a payload-free --summary repo
 ## Local Git and LFS binary revision deltas — 0.161
 
 CyUEDiff::Git can materialize one exact portable repository file and compare its decoded bytes without a package reader. Ordinary blobs and locally verified LFS content retain immutable commit/path/blob/LFS/SHA-256 provenance; no checkout, filters or fetch run. Revision ownership preserves materialized bytes. Missing sides remain explicit as added/removed/absent; present empty files stay distinct. Source names cannot collide with flat workspace scratch files. git-binary-diff emits the plain Core manifest for binary-apply, while --summary adds Git provenance. CLI writes protect repository metadata and configured LFS storage, reject existing destinations and reject both-missing selections without publishing a delta. Renames require explicit --after-path. Core and Git cancellation controls apply during materialization and reconstruction.
+
+## Installed SDK examples and independent corpus validation — 0.162
+
+The Core and Git SDK examples reconstruct generated or explicitly supplied files through serialized deltas and verify exact bytes. The distribution validator compiles both consumers independently against installed headers/libraries, verifies a generated shifted/deleted payload and reconstructs a historical Git README. The public validate_binary_deltas.py script independently interprets the manifest with Python slicing and SHA-256, then compares CLI reconstruction and optional installed SDK results for self comparisons, byte-edited copies and pairs of distinct original files. Original assets/companions are fingerprinted and outputs remain in new ignored build directories. Primitive manifest nodes are work-bounded as well as objects, and delete-to-empty plans avoid an unused block index. This byte layer does not expand semantic Unreal format coverage, stream multi-gigabyte files, provide a chunk server or replace Git/LFS storage.
+
+## Commands and SDK
+
+```powershell
+cyuediff binary-diff Before.uasset After.uasset --out Asset.delta.json
+cyuediff binary-diff Before.ubulk After.ubulk --summary
+cyuediff binary-apply Before.uasset Asset.delta.json --out Rebuilt.uasset
+cyuediff git-binary-diff D:/Game before-commit after-commit Content/Texture.ubulk --out Texture.delta.json
+cyuediff git-binary-diff D:/Game before-commit after-commit Content/Texture.ubulk --summary
+```
+
+Use a new output path. Existing outputs are preserved; source/companion aliases and Git/LFS storage are protected. `--summary` emits statistics, rather than a reconstructable manifest. A Git manifest has the same plain Core format as a local one; Git provenance is available in `--summary` and the typed Git API. Added Git files require an explicitly empty base when applying their delta; removed files reconstruct an empty target. Both missing Git selections produce an error.
+
+```cpp
+#include <cyuediff/binary_delta.hpp>
+auto delta = cyuediff::make_binary_delta_files(before, after);
+auto wire = delta.to_json().dump();
+auto restored = cyuediff::apply_binary_delta(
+    cyuediff::read_binary_file(before, 256ull * 1024 * 1024),
+    cyuediff::BinaryDelta::parse(wire));
+```
+
+`CyUEDiff::Core` owns only bounded readers, matching, manifests and reconstruction buffers. Hosts select their persistence and transport. `CyUEDiff::Git` additionally exposes `materialize_file`, `GitRevision::file_path` and `compare_git_binary_files` in `cyuediff/git_binary_delta.hpp`; keep the returned revisions alive while using their materialized files. The exact-file API does not load companion files implicitly. The `examples/binary_delta_consumer` and `examples/git_binary_delta_consumer` projects compile against the installed SDK.
+
+## Default limits and interpretation
+
+| Limit | Default |
+| --- | --- |
+| Input and reconstructed target | 256 MiB each |
+| Literal bytes | 64 MiB aggregate |
+| Manifest bytes | 160 MiB |
+| Indexed full base blocks | 1,000,000 |
+| Delta operations | 100,000 |
+| Candidate bytes compared | 512 MiB |
+| Block size | 64 KiB; allowed 16 bytes–1 MiB |
+
+The CLI accepts `--block-size` for comparisons and `--max-input-bytes`, `--max-literal-bytes` and `--max-manifest-bytes` for explicit budgets. Other limits are available in `BinaryDeltaOptions`. Invalid limits and exhausted budgets fail explicitly. Inputs, literals, JSON and reconstruction are buffered in memory within the selected limits. File-size changes during reads are rejected, but this is not a filesystem snapshot service.
+
+All copy offsets address the original base. Target windows can be unaligned; base blocks are aligned, and successful matches extend forward until different bytes. Files smaller than one block may require all literal bytes when changed. Copy/literal ordering is deterministic for fixed inputs/options; no optimal-size guarantee is made. SHA-256 establishes endpoint integrity when the base and reconstructed target are checked. Hash identities in a manifest or summary alone do not authenticate their author. A binary delta says which bytes can be reused; existing Unreal semantic and visual projections explain interpreted asset changes separately.
+
+To validate explicit local inputs with a Python interpreter independent of Core:
+
+```powershell
+python scripts/validate_binary_deltas.py --input Before.uasset --input After.uasset --output-dir build-native/binary-validation
+```
+
+The output directory must be new and under an ignored workspace build directory. Optional `--consumer PATH` additionally checks the separately compiled Core SDK consumer. Byte-edited validation copies use `.bin`; they are reconstruction tests rather than Unreal asset editing.
+
+The Windows validation pass additionally exposed a pre-existing smoke-runner issue: a scripted reload/duplicate shared the initial load's 30-second phase. The runner now resets that phase for each explicit action, and the historical test sequences log per-case times with separate aggregate budgets. Initial-load deadline failures and reruns remain explicit in [VALIDATION.md](VALIDATION.md).

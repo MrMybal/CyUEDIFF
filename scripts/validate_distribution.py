@@ -90,6 +90,16 @@ if args.consumer:
  cmake=shutil.which('cmake')
  if not cmake and os.name=='nt':cmake=str(Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
  if not cmake:raise RuntimeError('CMake is required for --consumer')
+ binary_build=target/'binary-delta-consumer'
+ configure=[cmake,'-S',str(root/'examples/binary_delta_consumer'),'-B',str(binary_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(binary_build),'--config','Release','--parallel','2'],check=True,env=env)
+ binary_executable=binary_build/'Release'/('binary_delta_consumer'+suffix) if os.name=='nt' else binary_build/'binary_delta_consumer'
+ binary_result=subprocess.run([str(binary_executable)],capture_output=True,check=True,env=env,timeout=30)
+ binary_data=json.loads(binary_result.stdout)
+ assert binary_data['verified'] and binary_data['summary']['copiedBytes']>binary_data['summary']['targetBytes']//2
+ print('Installed binary delta Core consumer independently reconstructed checked bytes')
  build=target/'consumer'
  configure=[cmake,'-S',str(root/'examples/catalog_consumer'),'-B',str(build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
@@ -437,6 +447,19 @@ if args.consumer:
   result=subprocess.run([str(git_pose_executable),'--help'],capture_output=True,check=True,env=env,timeout=20)
   if b'BEFORE_SKELETON AFTER_SKELETON' not in result.stdout:raise RuntimeError('Installed Git animation pose consumer failed to start')
   print('Installed Git-bound animation pose SDK consumer compiled and started')
+  git_binary_build=target/'git-binary-delta-consumer'
+  configure=[cmake,'-S',str(root/'examples/git_binary_delta_consumer'),'-B',str(git_binary_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+  subprocess.run(configure,check=True,env=env)
+  subprocess.run([cmake,'--build',str(git_binary_build),'--config','Release','--parallel','2'],check=True,env=env)
+  git_binary_executable=git_binary_build/'Release'/('git_binary_delta_consumer'+suffix) if os.name=='nt' else git_binary_build/'git_binary_delta_consumer'
+  git_binary_temp=target/'git-binary-temporary';git_binary_temp.mkdir()
+  git_binary_result=subprocess.run([str(git_binary_executable),str(root),'HEAD~1','HEAD','README.md',str(git_binary_temp)],capture_output=True,check=True,env=env,timeout=90)
+  git_binary_data=json.loads(git_binary_result.stdout)
+  assert git_binary_data['verified'] and git_binary_data['summary']['before']['present'] and git_binary_data['summary']['after']['present']
+  assert not list(git_binary_temp.iterdir())
+  print('Installed Git binary delta consumer reconstructed exact historical README bytes')
+
 
 
 

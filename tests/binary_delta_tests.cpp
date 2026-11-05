@@ -98,7 +98,10 @@ int main() {
         rejects([&] { make_binary_delta(base, base, limit); });
         limit = o;
         limit.max_blocks = 1;
-        rejects([&] { make_binary_delta(base, {}, limit); });
+        auto appended = base;
+        appended.push_back(1);
+        rejects([&] { make_binary_delta(base, appended, limit); });
+        check(make_binary_delta(base, {}, limit).operations.empty());
         limit = o;
         limit.max_literal_bytes = 0;
         rejects([&] { make_binary_delta({}, base, limit); });

@@ -57,6 +57,24 @@ jobs:
         run: cmake -S examples/curve_consumer -B build-curve-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
       - name: Link external rich curve consumer
         run: cmake --build build-curve-consumer --config Release --parallel 2
+      - name: Configure external binary delta consumer
+        run: cmake -S examples/binary_delta_consumer -B build-binary-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Link external binary delta consumer
+        run: cmake --build build-binary-consumer --config Release --parallel 2
+      - name: Verify external byte reconstruction
+        run: python -c "from pathlib import Path; import subprocess; p=Path('build-binary-consumer'); exe=p/'Release/binary_delta_consumer.exe' if (p/'Release/binary_delta_consumer.exe').exists() else p/'binary_delta_consumer'; subprocess.run([str(exe.resolve())],check=True)"
+      - name: Check Core-only SDK header boundary
+        if: matrix.git == 'OFF'
+        run: python -c "from pathlib import Path; p=Path('build-ci/sdk/include/cyuediff'); assert (p/'binary_delta.hpp').is_file(); assert not (p/'git.hpp').exists() and not (p/'git_binary_delta.hpp').exists()"
+      - name: Configure external Git binary delta consumer
+        if: matrix.git == 'ON'
+        run: cmake -S examples/git_binary_delta_consumer -B build-git-binary-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Link external Git binary delta consumer
+        if: matrix.git == 'ON'
+        run: cmake --build build-git-binary-consumer --config Release --parallel 2
+      - name: Verify external historical byte reconstruction
+        if: matrix.git == 'ON'
+        run: python -c "from pathlib import Path; import subprocess; p=Path('build-git-binary-consumer'); exe=p/'Release/git_binary_delta_consumer.exe' if (p/'Release/git_binary_delta_consumer.exe').exists() else p/'git_binary_delta_consumer'; subprocess.run([str(exe.resolve()),'.','HEAD~1','HEAD','README.md'],check=True)"
       - name: Package
         working-directory: build-ci
         run: cpack -C Release -G ZIP
