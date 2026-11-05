@@ -24,7 +24,7 @@ The Core and Git SDK examples reconstruct generated or explicitly supplied files
 
 ## Compact raw-byte manifests — 0.163
 
-The optional compact format stores the same checked plan with raw literal bytes and fixed-width little-endian integers. Its exact 112-byte header is: eight signature bytes `CYUEDLT\\0`, uint32 version (1), uint32 flags (0), uint32 block size, uint32 reserved (0), uint64 base size, uint64 target size, uint64 operation count, then two raw 32-byte SHA-256 identities. Each copy is byte tag 0 followed by uint64 original-base offset and uint64 length; each literal is byte tag 1 followed by uint64 length and those raw bytes. Empty operations, trailing bytes, future versions/flags, nonzero reserved fields, truncated data and exhausted limits fail explicitly. Endpoint hashes are verified during application; compact parsing alone does not authenticate content. There is no compression or additional envelope checksum.
+The optional compact format stores the same checked plan with raw literal bytes and fixed-width little-endian integers. Its exact 112-byte header is: eight signature bytes (`CYUEDLT` followed by a zero byte), uint32 version (1), uint32 flags (0), uint32 block size, uint32 reserved (0), uint64 base size, uint64 target size, uint64 operation count, then two raw 32-byte SHA-256 identities. Each copy is byte tag 0 followed by uint64 original-base offset and uint64 length; each literal is byte tag 1 followed by uint64 length and those raw bytes. Empty operations, trailing bytes, future versions/flags, nonzero reserved fields, truncated data and exhausted limits fail explicitly. Endpoint hashes are verified during application; compact parsing alone does not authenticate content. There is no compression or additional envelope checksum.
 
 `BinaryDelta::to_binary` / `from_binary` use the compact contract. `read_binary_delta` detects the complete signature independently of extension and retains strict JSON support. Manifest limits are charged against the selected representation, so compact data does not incur JSON hex accounting. All manifests remain bounded in-memory values.
 
@@ -40,7 +40,7 @@ Input/output operation limits and aggregate literal limits apply, including repe
 
 Sink bytes are **provisional until successful return**. The host owns output reservation, cleanup, durability and publication; it must discard partial output after wrong target hashes, cancellation, source changes or I/O/sink exceptions. Sink exceptions propagate, and byte pointers are valid only during each synchronous callback. Do not mutate the base or delta from callbacks. Observed base size changes are rejected before and after reconstruction; this is not a filesystem snapshot or concurrent-edit service. The Core does not create output files.
 
-## Compact/composed CLI workflows â€” 0.166
+## Compact/composed CLI workflows — 0.166
 
 Local and historical `binary-diff` commands accept `--format json|binary` (JSON remains the default). Binary output requires an explicit new `--out` path and excludes `--summary`, keeping standard output textual. `binary-compose FIRST SECOND` accepts either input representation and emits the composed plan, with optional `--summary`, `--format` and `--max-composition-fragments`. Composition returns 0 on success, even for a changed target. `binary-info DELTA` emits checked metadata and explicitly reports `identitiesVerified: false`, since it has no endpoint bytes. These commands share no-replace output guards and manifest limits.
 
@@ -53,6 +53,12 @@ cyuediff binary-compose A-B.delta B-C.delta --format binary --out A-C.delta
 cyuediff binary-info A-C.delta
 cyuediff binary-apply A.uasset A-C.delta --out Rebuilt-C.uasset
 ```
+
+## Installed SDK and independent chain validation — 0.167
+
+The installed Core example now verifies JSON and compact round-trips, bounded file-backed reconstruction, and composition. Optional `BASE TARGET [DELTA]` arguments can check a supplied JSON/compact plan directly, including composed plans. The Git example also verifies compact and file-backed reconstruction of owned historical base content. Distribution validation checks these results against independently compiled installed consumers.
+
+`validate_binary_deltas.py --format json|binary --compose` adds a second edited copy and composed reconstruction for each explicit original. A separate stdlib-only interpreter decodes the compact integers/raw bytes and checks copy ranges, sizes and hashes before comparing CLI and optional installed SDK results. Source/companion fingerprints remain checked. The retained JSON default remains compatible with earlier invocation forms.
 
 ## Commands and SDK
 
@@ -75,7 +81,7 @@ auto restored = cyuediff::apply_binary_delta(
     cyuediff::BinaryDelta::parse(wire));
 ```
 
-`CyUEDiff::Core` owns only bounded readers, matching, manifests and reconstruction buffers. Hosts select their persistence and transport. `CyUEDiff::Git` additionally exposes `materialize_file`, `GitRevision::file_path` and `compare_git_binary_files` in `cyuediff/git_binary_delta.hpp`; keep the returned revisions alive while using their materialized files. The exact-file API does not load companion files implicitly. The `examples/binary_delta_consumer` and `examples/git_binary_delta_consumer` projects compile against the installed SDK.
+`CyUEDiff::Core` owns bounded readers, matching, manifests, composition and vector/sink reconstruction. Hosts select their persistence and transport. `CyUEDiff::Git` additionally exposes `materialize_file`, `GitRevision::file_path` and `compare_git_binary_files` in `cyuediff/git_binary_delta.hpp`; keep the returned revisions alive while using their materialized files. The exact-file API does not load companion files implicitly. The `examples/binary_delta_consumer` and `examples/git_binary_delta_consumer` projects compile against the installed SDK.
 
 ## Default limits and interpretation
 
@@ -89,7 +95,7 @@ auto restored = cyuediff::apply_binary_delta(
 | Candidate bytes compared | 512 MiB |
 | Block size | 64 KiB; allowed 16 bytes–1 MiB |
 
-The CLI accepts `--block-size` for comparisons and `--max-input-bytes`, `--max-literal-bytes` and `--max-manifest-bytes` for explicit budgets. Other limits are available in `BinaryDeltaOptions`. Invalid limits and exhausted budgets fail explicitly. Inputs, literals, JSON and reconstruction are buffered in memory within the selected limits. File-size changes during reads are rejected, but this is not a filesystem snapshot service.
+The CLI accepts `--block-size` for comparisons and `--max-input-bytes`, `--max-literal-bytes` and `--max-manifest-bytes` for explicit budgets. Other limits are available in `BinaryDeltaOptions`. Invalid limits and exhausted budgets fail explicitly. Generation inputs, literals and manifests are buffered in memory within the selected limits. File-backed application uses a fixed 1-MiB work buffer; the vector-returning API buffers its target. File-size changes during reads are rejected, but this is not a filesystem snapshot service.
 
 All copy offsets address the original base. Target windows can be unaligned; base blocks are aligned, and successful matches extend forward until different bytes. Files smaller than one block may require all literal bytes when changed. Copy/literal ordering is deterministic for fixed inputs/options; no optimal-size guarantee is made. SHA-256 establishes endpoint integrity when the base and reconstructed target are checked. Hash identities in a manifest or summary alone do not authenticate their author. A binary delta says which bytes can be reused; existing Unreal semantic and visual projections explain interpreted asset changes separately.
 

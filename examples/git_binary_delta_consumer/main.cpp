@@ -25,7 +25,25 @@ int run(const std::vector<std::string> &args) {
         const auto rebuilt = apply_binary_delta(base, BinaryDelta::parse(result.delta.to_json().dump()));
         if (rebuilt != target)
             throw Error("verification", "Historical reconstruction failed");
-        std::cout << Json{{"summary", result.summary()}, {"verified", true}}.dump() << '\n';
+        const auto compact = BinaryDelta::from_binary(result.delta.to_binary());
+        if (apply_binary_delta(base, compact) != target)
+            throw Error("verification", "Compact historical reconstruction failed");
+        bool streamed = false;
+        if (result.before.present) {
+            std::vector<std::uint8_t> bytes;
+            apply_binary_delta_file(
+                result.before.file_path(), compact,
+                [&](const std::uint8_t *p, std::size_t n) { bytes.insert(bytes.end(), p, p + n); });
+            if (bytes != target)
+                throw Error("verification", "Streamed historical reconstruction failed");
+            streamed = true;
+        }
+        std::cout << Json{{"summary", result.summary()},
+                          {"verified", true},
+                          {"compactVerified", true},
+                          {"streamVerified", streamed}}
+                         .dump()
+                  << '\n';
         return 0;
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';
@@ -40,5 +58,7 @@ int wmain(int argc, wchar_t **argv) {
     return run(args);
 }
 #else
-int main(int argc, char **argv) { return run({argv + 1, argv + argc}); }
+int main(int argc, char **argv) {
+    return run({argv + 1, argv + argc});
+}
 #endif
