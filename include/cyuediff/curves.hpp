@@ -15,6 +15,10 @@ Json curve_snapshot(const Package &, const CurveOptions & = {});
 // Stored points/segments, explicit defaults and extrapolation settings. No inferred class defaults.
 Json evaluate_curve(const Package &, double time, const std::string &object_path = "",
                     const std::string &lane = "", const CurveOptions & = {});
+// Component values only: raw vector/color axes or one named animation curve group.
+// Transform rotations remain stored Euler X=roll, Y=pitch, Z=yaw in degrees.
+Json evaluate_curve_components(const Package &, double time, const std::string &object_path = "",
+                               const std::string &curve_id = "", const CurveOptions & = {});
 struct CurveValueDiffOptions {
     CurveOptions curves;
     std::string before_object, after_object, before_lane, after_lane;

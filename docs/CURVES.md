@@ -66,3 +66,7 @@ Read-only corpus validation now probes explicit empty curves, both sides of the 
 ## Explicit animation transform curve projection - 0.123
 
 CurveOptions now selects float or transform animation curve scope. The default float scope is unchanged. Exact stored TransformCurves records expose nine named scalar lanes: translation, Euler rotation and scale XYZ. Modern unique names define stable groups; ambiguous or absent names remain indexed and incomplete. Missing vector components, arrays and keys remain unknown, while explicit empty arrays remain known. Stored group and vector metadata is retained with shared projection budgets and cancellation. This does not apply transforms to bones, infer additive defaults or evaluate transient VectorCurves.
+
+## Independent vector, color and transform component values - 0.124
+
+evaluate_curve_components evaluates raw scalar/vector/color channels or one explicitly selected animation transform group at a finite coordinate. Every component retains its own evaluation result and unavailable value; omitted scale never becomes an identity scale. Stored Euler XYZ means roll/pitch/yaw in degrees, without quaternion conversion, blending, additive application or bone evaluation. Invalid time/owner/group selectors, ambiguous identities, partial input and cancellation have explicit coverage.
