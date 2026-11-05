@@ -1,11 +1,14 @@
 #pragma once
 #include <cyuediff/skeleton.hpp>
+#include <cyuediff/animation_metadata_view.hpp>
 #include <cyuediff/reference_pose_viewport.hpp>
 #include <cyuediff/graph_inspector.hpp>
 namespace cyuediff {
 // Owned snapshots; hierarchy and typed details are prepared when binding/selecting.
 class SkeletonView {
-    Json before_, after_;
+    Json before_, after_, animation_before_, animation_after_;
+    AnimationMetadataView animation_;
+    bool animation_preview_ = false;
     std::vector<std::string> objects_;
     std::string object_, rendered_locale_;
     GraphInspector inspector_;
@@ -30,7 +33,17 @@ class SkeletonView {
 
   public:
     void set_packages(const Package *before, const Package *after = nullptr, bool comparing = false);
-    void set_pose_preview(bool enabled) { pose_preview_ = enabled; }
+    void set_pose_preview(bool enabled) {
+        pose_preview_ = enabled;
+        if (enabled)
+            animation_preview_ = false;
+    }
+    void set_animation_preview(bool enabled) {
+        animation_preview_ = enabled;
+        if (enabled)
+            pose_preview_ = false;
+    }
+    AnimationMetadataView &animation_view() { return animation_; }
     bool pose_preview() const { return pose_preview_; }
     const ReferencePose &displayed_pose(bool after = false) const {
         return after ? selected_after_ : selected_before_;

@@ -3,6 +3,7 @@
 namespace cyuediff {
 void AssetView::register_translations() {
     PropertyView::register_translations();
+    AnimationMetadataView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Collisions", "Collisions"},
                {"Click a wire: inspect shape | Alt + drag: orbit | Middle drag: pan | Wheel: zoom",

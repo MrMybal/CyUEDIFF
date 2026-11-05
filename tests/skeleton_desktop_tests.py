@@ -1,13 +1,14 @@
 """Skeleton tab selection and camera/property state survive explicit workspace restart."""
 import hashlib,json,os,subprocess,sys,tempfile
 from pathlib import Path
-exe,generator,retarget_generator=(str(Path(p).resolve()) for p in sys.argv[1:4])
+exe,generator,retarget_generator,marker_generator=(str(Path(p).resolve()) for p in sys.argv[1:5])
 env={k.upper():v for k,v in os.environ.items()}
 checks=0
 with tempfile.TemporaryDirectory(prefix='.test-tmp-skeleton-desktop-',dir=Path.cwd()) as directory:
  root=Path(directory);env['LOCALAPPDATA']=str(root/'unused-profile')
  subprocess.run([generator,'--write-fixtures',str(root)],env=env,check=True)
  subprocess.run([retarget_generator,'--write-fixtures',str(root)],env=env,check=True)
+ subprocess.run([marker_generator,'--write-fixtures',str(root)],env=env,check=True)
  hashes={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
  report=root/'report.json'
  def run(*args,code=0):
@@ -44,6 +45,16 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-skeleton-desktop-',dir=Path.c
  retarget_restored=run('--workspace',retarget_workspace,'--locale','fr')
  assert retarget_restored['workspace']['documents'][0]['viewState']['asset']['skeleton']==expected
  assert expected['beforeRetargetSource']=='A~/pose' and expected['afterRetargetSource']=='B'
+ for selection,query in (('/markers/Right','Right'),('/curves/AnimCurveMappingName/Smile~0~1curve','Smile')):
+  metadata_state={'asset':{'skeleton':{'object':'TestAsset','animationPreview':True,'animation':
+    {'selected':selection,'filter':query,'properties':{'changedOnly':False}}}}}
+  metadata_workspace=root/'animation-workspace.json'
+  metadata_saved=run('--before',root/'animation-before.uasset','--after',root/'animation-after.uasset','--view','skeleton',
+                     '--document-action','view-state:'+json.dumps(metadata_state),'--save-workspace',metadata_workspace)
+  metadata_expected=metadata_saved['workspace']['documents'][0]['viewState']['asset']['skeleton']
+  metadata_restored=run('--workspace',metadata_workspace,'--locale','fr')
+  assert metadata_expected['animationPreview'] and metadata_expected['animation']['selected']==selection
+  assert metadata_restored['workspace']['documents'][0]['viewState']['asset']['skeleton']==metadata_expected
  for name in ('invalid','unsupported'):
   assert run('--before',root/(name+'.uasset'),'--view','skeleton')['status']=='ready'
  run('--before',root/'before.uasset','--view','skeleton','--save-workspace',root/'before.uasset',code=2)

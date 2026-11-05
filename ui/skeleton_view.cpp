@@ -21,6 +21,7 @@ void SkeletonView::bind() {
     complete_ = (!a || a->at("complete").get<bool>()) && (!b || b->at("complete").get<bool>()) &&
                 (comparing_ ? a && b : a || b);
     metadata_.set_values(a, b, comparing_);
+    animation_.set_models(body(animation_before_), body(animation_after_), comparing_);
     std::set<std::string> sources;
     for (const auto *object : {a, b})
         if (object)
@@ -109,6 +110,9 @@ void SkeletonView::set_packages(const Package *before, const Package *after, boo
     options.source_indices = true;
     before_ = before ? skeleton_snapshot(*before, options) : Json(nullptr);
     after_ = after ? skeleton_snapshot(*after, options) : Json(nullptr);
+    animation_before_ = before ? skeleton_animation_snapshot(*before) : Json(nullptr);
+    animation_after_ = after ? skeleton_animation_snapshot(*after) : Json(nullptr);
+    animation_preview_ = false;
     poses_before_.clear();
     poses_after_.clear();
     pose_preview_ = false;
@@ -251,6 +255,11 @@ Json SkeletonView::view_state() const {
         const auto &camera = state_.canvas.view;
         out["canvas"] = {{"pan", {camera.origin.x, camera.origin.y}}, {"zoom", camera.zoom}};
     }
+    if (animation_preview_)
+        out["animationPreview"] = true;
+    const auto animation_state = animation_.view_state();
+    if (!animation_state.empty())
+        out["animation"] = animation_state;
     if (pose_preview_)
         out["posePreview"] = true;
     if (!source_before_.empty() || !source_after_.empty()) {
@@ -279,8 +288,12 @@ void SkeletonView::restore_view_state(const Json &state) {
         inspector_.restore_view_state(state["inspection"]);
     if (state.contains("metadata"))
         metadata_.restore_view_state(state["metadata"]);
+    if (state.contains("animationPreview"))
+        set_animation_preview(state.at("animationPreview").get<bool>());
+    if (state.contains("animation"))
+        animation_.restore_view_state(state.at("animation"));
     if (state.contains("posePreview"))
-        pose_preview_ = state["posePreview"].get<bool>();
+        set_pose_preview(state["posePreview"].get<bool>());
     if (state.contains("beforeRetargetSource") || state.contains("afterRetargetSource"))
         select_retarget_sources(state.value("beforeRetargetSource", source_before_),
                                 state.value("afterRetargetSource", source_after_));
@@ -335,20 +348,31 @@ void SkeletonView::draw(const char *id) {
             cyui::tr(
                 "Hierarchy diagram is limited to 4,096 bones. Complete stored data remains in Properties.")
                 .c_str());
-    if (nodes_.empty()) {
-        metadata_.draw("Skeleton metadata");
-        return;
-    }
+
     if (ImGui::CollapsingHeader(cyui::trLabel("Skeleton properties").c_str())) {
         ImGui::BeginChild("Skeleton metadata panel", {0, cyui::dp(200)}, ImGuiChildFlags_Borders);
         metadata_.draw("Skeleton metadata");
         ImGui::EndChild();
     }
-    if (ImGui::RadioButton(cyui::trLabel("Hierarchy").c_str(), !pose_preview_))
+    if (ImGui::RadioButton(cyui::trLabel("Hierarchy").c_str(), !pose_preview_ && !animation_preview_)) {
         pose_preview_ = false;
+        animation_preview_ = false;
+    }
     ImGui::SameLine();
     if (ImGui::RadioButton(cyui::trLabel("Reference pose").c_str(), pose_preview_))
-        pose_preview_ = true;
+        set_pose_preview(true);
+    if (ImGui::GetContentRegionAvail().x > cyui::dp(230))
+        ImGui::SameLine();
+    if (ImGui::RadioButton(cyui::trLabel("Animation metadata").c_str(), animation_preview_))
+        set_animation_preview(true);
+    if (animation_preview_) {
+        animation_.draw();
+        return;
+    }
+    if (nodes_.empty()) {
+        metadata_.draw("Skeleton metadata");
+        return;
+    }
     if (pose_preview_) {
         if (!retarget_sources_.empty() || !source_before_.empty() || !source_after_.empty()) {
             auto choice = [&](const char *label, bool after) {

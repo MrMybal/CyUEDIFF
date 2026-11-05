@@ -1,6 +1,6 @@
 #include <cyuediff/asset_view.hpp>
 #include "collision_fixture.hpp"
-#include "skeleton_model.hpp"
+#include "animation_model.hpp"
 #include "platform_win32.hpp"
 #include <fstream>
 #include <iostream>
@@ -227,12 +227,31 @@ int main(int argc, char **argv) {
             retarget_missing.set_pose_preview(true);
             retarget_missing.select_retarget_sources("A~/pose", "A~/pose");
             retarget_missing.select_bone("arm");
+            auto animation_before = cyuediff::test::animation_model(), animation_after = animation_before;
+            animation_after.exports[0]
+                .native_data["curveMetadata"]["containers"]["AnimationCurves"]["Smile~/curve"]["maxLOD"] = 3;
+            animation_after.exports[0].native_data["syncMarkers"]["names"] = {"Right", "Left"};
+            SkeletonView animation_view, animation_unknown, animation_empty;
+            animation_view.set_packages(&animation_before, &animation_after);
+            animation_view.set_animation_preview(true);
+            animation_view.animation_view().select_curve("AnimationCurves", "Smile~/curve");
+            auto animation_state = animation_view.view_state();
+            animation_state["animation"]["properties"] = {{"changedOnly", false}};
+            animation_view.restore_view_state(animation_state);
+            auto stripped_animation = animation_after;
+            stripped_animation.exports[0].native_data["syncMarkers"] = {
+                {"coverage", "stripped"}, {"stripFlags", {{"global", 1}, {"class", 0}}}};
+            animation_unknown.set_packages(&animation_before, &stripped_animation);
+            animation_unknown.set_animation_preview(true);
+            animation_unknown.animation_view().select_marker("Left");
+            animation_empty.set_packages(&skeleton_before);
+            animation_empty.set_animation_preview(true);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 21; ++scene) {
+                    for (int scene = 0; scene < 25; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -253,7 +272,11 @@ int main(int argc, char **argv) {
                                                "reference-added",
                                                "retarget",
                                                "retarget-narrow",
-                                               "retarget-missing"};
+                                               "retarget-missing",
+                                               "animation-metadata",
+                                               "animation-narrow",
+                                               "animation-unknown",
+                                               "animation-empty"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -262,14 +285,24 @@ int main(int argc, char **argv) {
                             }
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
-                            ImGui::SetNextWindowSize(
-                                (scene == 7 || scene == 10 || scene == 13 || scene == 15 || scene == 19)
-                                    ? ImVec2{640, io.DisplaySize.y}
-                                    : io.DisplaySize);
+                            ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
+                                                      scene == 15 || scene == 19 || scene == 22)
+                                                         ? ImVec2{640, io.DisplaySize.y}
+                                                         : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 21:
+                            case 22:
+                                animation_view.draw();
+                                break;
+                            case 23:
+                                animation_unknown.draw();
+                                break;
+                            case 24:
+                                animation_empty.draw();
+                                break;
                             case 0:
                                 blueprint.draw();
                                 break;
