@@ -117,7 +117,7 @@ Json SkeletonComparison::to_json() const {
     return {{"schema", "cyuediff.skeleton-diff/1"},
             {"complete", complete},
             {"status", status()},
-            {"scope", "stored raw hierarchy, local pose and remaining native fingerprints"},
+            {"scope", "stored hierarchy, reference/retarget poses and remaining native fingerprints"},
             {"changes", changes}};
 }
 SkeletonComparison compare_skeletons(const Package &before, const Package &after,

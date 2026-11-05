@@ -334,6 +334,8 @@ if args.consumer:
  skeleton_data=json.loads(result.stdout)
  if not skeleton_data['snapshot']['complete'] or skeleton_data['comparison']['status']!='changed' or skeleton_data['pose']['joints']['arm']['position']!=[10.,0.,0.]:raise RuntimeError('Installed skeleton SDK consumer failed')
  if skeleton_data['poseComparison']['status']!='changed' or skeleton_data['poseComparison']['joints']['arm']['delta']!=[2.,0.,0.]:raise RuntimeError('Installed reference displacement comparison failed')
+ if skeleton_data['retargetPose']['retargetSource']!='T_Pose' or skeleton_data['retargetPose']['joints']['arm']['position']!=[15.,0.,0.]:raise RuntimeError('Installed named retarget pose failed')
+ if skeleton_data['retargetAgainstRaw']['joints']['arm']['delta']!=[-5.,0.,0.]:raise RuntimeError('Installed independent after source selection failed')
  if skeleton_data['unverifiedNativeTail']['status']!='incomplete':raise RuntimeError('Unhashed native tail falsely establishes equality')
  print('Installed independent skeleton projection/pose consumer validated')
 

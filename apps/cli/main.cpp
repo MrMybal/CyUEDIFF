@@ -37,9 +37,9 @@ int run(const std::vector<std::string> &args) {
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff skeleton-diff BEFORE AFTER [--out FILE]\n"
-               "  cyuediff skeleton-pose ASSET [--object PATH] [--out FILE]\n"
+               "  cyuediff skeleton-pose ASSET [--object PATH] [--retarget-source KEY] [--out FILE]\n"
                "  cyuediff skeleton-pose-diff BEFORE AFTER [--before-object PATH] [--after-object PATH]\n"
-               "    [--position-tolerance N] [--out FILE]\n"
+               "    [--before-retarget-source KEY] [--after-retarget-source KEY] [--position-tolerance N] [--out FILE]\n"
                "  cyuediff collision ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-preview ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-diff BEFORE AFTER [--out FILE]\n"
@@ -89,7 +89,7 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--before-object", "--after-object", "--position-tolerance", "--max-packages",
+    const std::set<std::string> valued = {"--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
                                           "--schema",
                                           "--after-schema",
@@ -163,6 +163,10 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Unsupported history option: " + key);
             continue;
         }
+        if (key=="--retarget-source" && command!="skeleton-pose")
+            throw Error("arguments","--retarget-source requires skeleton-pose");
+        if ((key=="--before-retarget-source"||key=="--after-retarget-source") && command!="skeleton-pose-diff")
+            throw Error("arguments",key+" requires skeleton-pose-diff");
         if ((key == "--before-object" || key == "--after-object" || key == "--position-tolerance") && command != "skeleton-pose-diff")
             throw Error("arguments", key + " requires skeleton-pose-diff");
         if (key == "--max-commits" || key == "--skip")
@@ -602,8 +606,10 @@ int run(const std::vector<std::string> &args) {
             output = package.material_snapshot();
         else if (command == "skeleton")
             output = package.skeleton_snapshot();
-        else if (command == "skeleton-pose")
-            output = reference_pose(package, flags.value("--object",std::string{})).to_json();
+        else if (command == "skeleton-pose") {
+            ReferencePoseOptions pose_options;pose_options.retarget_source=flags.value("--retarget-source",std::string{});
+            output = reference_pose(package, flags.value("--object",std::string{}),pose_options).to_json();
+        }
         else if (command == "collision-preview")
             output = collision_wireframe(package).to_json();
         else if (command == "collision")
@@ -708,6 +714,8 @@ int run(const std::vector<std::string> &args) {
         if (flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments", "Reference pose comparison requires decoded hierarchy data");
         ReferencePoseDiffOptions pose_options;
+        pose_options.pose.retarget_source=flags.value("--before-retarget-source",std::string{});
+        if(flags.contains("--after-retarget-source"))pose_options.after_retarget_source=flags.at("--after-retarget-source").get<std::string>();
         pose_options.position_tolerance = real_option("--position-tolerance", 0, 0, std::numeric_limits<double>::max());
         const auto before = read(positional[0], "--before-project", options);
         const auto after = read(positional[1], "--after-project", options);

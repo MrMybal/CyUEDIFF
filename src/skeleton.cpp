@@ -268,7 +268,7 @@ Json skeleton_snapshot(const Package &package, const SkeletonOptions &options) {
             bodies[e.path] = std::move(body);
         }
     return {{"schema", "cyuediff.skeleton/1"},
-            {"scope", "stored raw reference hierarchy and local pose"},
+            {"scope", "stored raw hierarchy, reference and retarget poses"},
             {"complete", complete && !bodies.empty()},
             {"skeletons", std::move(bodies)}};
 }

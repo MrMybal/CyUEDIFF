@@ -33,6 +33,22 @@ int main(int argc, char **argv) {
                        {"pose", reference_pose(before).to_json()},
                        {"poseComparison", compare_reference_poses(before, after).to_json()}};
         if (argc == 1) {
+            // Explicit host data demonstrates named retarget selection without engine assets.
+            auto retarget = before;
+            auto local = retarget.exports[0].native_data["localPoses"];
+            local[1]["translation"] = {15., 0., 0.};
+            retarget.exports[0].native_data["retargeting"] = {
+                {"coverage", "stored"},
+                {"skeletonGuid", std::string(32, '0')},
+                {"sources", {{"T_Pose", {{"poseName", "Display label"}, {"localPoses", local}}}}}};
+            ReferencePoseOptions selected;
+            selected.retarget_source = "T_Pose";
+            result["retargetPose"] = reference_pose(retarget, "", selected).to_json();
+            ReferencePoseDiffOptions options;
+            options.pose = selected;
+            options.after_retarget_source = std::string{};
+            result["retargetAgainstRaw"] =
+                compare_reference_poses(retarget, retarget, "", "", options).to_json();
             // A declared opaque interval without a fingerprint cannot establish equality.
             auto unverified = before;
             unverified.exports[0].opaque["suffix"] = {{"bytes", 4}};
