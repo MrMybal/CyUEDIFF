@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.129.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.130.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -282,6 +282,9 @@ if(BUILD_TESTING)
             add_test(NAME rich_curve_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/rich_curve_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_rich_curve_eval_tests>")
+            add_test(NAME animation_frame_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_frame_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_animation_frame_tests>")
             add_test(NAME animation_source_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_source_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_animation_frame_tests>")

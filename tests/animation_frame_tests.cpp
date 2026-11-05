@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
             const auto out = fs::u8path(argv[2]);
             fs::create_directories(out);
             for (int v : {1004, 1013})
-                for (int change = 0; change < 6; ++change)
+                for (int change = 0; change < 18; ++change)
                     save(out, "animation-" + std::to_string(change) + "-" + std::to_string(v),
                          animation_model_file_fixture(change, v));
             return 0;
@@ -71,6 +71,40 @@ int main(int argc, char **argv) {
                   "Encoded track storage order irrelevant");
             check(animation_frame(before, 2)["tracks"]["name:root"]["positions"] == Json({20., 20., 20.}),
                   "Last encoded frame");
+            for (int n = 6; n < 18; ++n) {
+                const auto other =
+                    Package::open(save(root, "frame-variant", animation_model_file_fixture(n, v)));
+                const auto d = compare_animation_frames(before, other, 1, 1);
+                const auto &pair = d["tracks"]["name:arm~/track"];
+                if (n == 6)
+                    check(d["status"] == "identical", "Encoded antipodal quaternion orientation");
+                if (n == 7)
+                    check(std::abs(pair["metrics"]["rotationDeltaDegrees"].get<double>() - 90.) < 1e-5,
+                          "Encoded quarter-turn");
+                if (n == 8)
+                    check(pair["metrics"]["scaleMaxDelta"] == 2., "Encoded signed scale");
+                if (n == 9)
+                    check(d["changedTracks"] == 2, "Encoded known empty track table");
+                if (n == 10 || n == 12 || n == 13)
+                    check(d["status"] == "incomplete", "Encoded unavailable table, quaternion or identity");
+                if (n == 11)
+                    check(pair["status"] == "removed", "Encoded track removal");
+                if (n == 14)
+                    check(d["status"] == "identical" && d["beforeTimeSeconds"] != d["afterTimeSeconds"],
+                          "Local value comparison independent of explicit timing");
+                if (n == 15)
+                    check(pair["metrics"]["positionDistance"] == .25,
+                          "Encoded sub-unit translation difference");
+                if (n == 16)
+                    check(pair["metrics"]["rotationDeltaDegrees"] == 180., "Encoded half-turn");
+                if (n == 17)
+                    check(std::abs(compare_animation_frames(
+                                       other, other, 0,
+                                       1)["tracks"]["name:arm~/track"]["metrics"]["rotationDeltaDegrees"]
+                                       .get<double>() -
+                                   2.) < 1e-5,
+                          "Encoded shortest wrapped orientation difference");
+            }
         }
         fs::remove_all(root);
         std::cout << checks << " animation frame/file checks passed\n";

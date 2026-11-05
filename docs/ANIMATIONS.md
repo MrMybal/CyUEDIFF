@@ -56,3 +56,7 @@ Local source-transform metrics now compute Euclidean translation distance, sign-
 ## Named independent-frame transform comparisons - 0.129
 
 compare_animation_frames pairs exact bone track names at independently chosen integer source frames. Reports retain raw before/after samples, Euclidean position, shortest sign-invariant orientation and maximum scale-axis differences, independent tolerances and changed/unavailable counts. Known track additions/removals require a complete identity table; duplicate or unresolved opposite names never confirm absence. Missing timing does not invalidate otherwise usable local values. Partial inputs, unknown channels, limits and cancellation stay explicit.
+
+## Public independent-frame CLI and encoded transform cases - 0.130
+
+animation-frame-diff accepts independent source frame indices and model contexts, position/rotation/scale tolerances and protected JSON outputs. Orientation tolerances use degrees; scale uses maximum absolute axis delta. Independently encoded profiles 1004 and 1013 now include antipodal/quarter-turn/half-turn/wrapped rotations, signed scales, empty/omitted/removed tracks, unknown names/quaternions and explicit timing changes. CLI exit codes preserve identical/changed/incomplete distinctions.

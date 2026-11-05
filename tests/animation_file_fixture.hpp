@@ -1,5 +1,6 @@
 #pragma once
 #include "package_fixture.hpp"
+#include <cmath>
 namespace cyuediff::test {
 inline Fixture animation_key_fixture(int invalid = 0, int version = 1013, int release = 39) {
     return fixture(
@@ -91,7 +92,7 @@ inline Fixture animation_model_file_fixture(int change = 0, int version = 1013) 
             integer(s, "NumberOfKeys", 3);
             integer(s, "NumberOfFrames", 2);
             Bytes rate;
-            integer(rate, "Numerator", 30);
+            integer(rate, "Numerator", change == 14 ? 60 : 30);
             if (change != 4)
                 integer(rate, "Denominator", 1);
             name(rate, "None");
@@ -100,36 +101,63 @@ inline Fixture animation_model_file_fixture(int change = 0, int version = 1013) 
             length.put<float>(2.f / 30.f);
             tag(s, "PlayLength", "FloatProperty", length);
             Bytes tracks;
-            tracks.i(2);
+            const int track_count = change == 9 ? 0 : change == 11 ? 1 : 2;
+            tracks.i(track_count);
             if (version < 1012) {
                 Bytes empty;
                 tag(tracks, "BoneAnimationTracks", "StructProperty", empty, "BoneAnimationTrack");
             }
-            for (int i = 0; i < 2; ++i) {
+            for (int i = 0; i < track_count; ++i) {
                 const auto bone = change == 2 ? 1 - i : i;
                 Bytes n;
                 name(n, bone == 0 || change == 5 ? "root" : "arm~/track");
-                tag(tracks, "Name", "NameProperty", n);
+                if (change != 13 || bone != 0)
+                    tag(tracks, "Name", "NameProperty", n);
                 integer(tracks, "BoneTreeIndex", bone);
                 Bytes raw;
                 for (unsigned channel = 0; channel < 3; ++channel) {
-                    const auto width = channel == 1 ? 4u : 3u, count = channel == 0                  ? 3u
-                                                                       : change == 3 && channel == 2 ? 2u
-                                                                                                     : 1u;
+                    const auto width = channel == 1 ? 4u : 3u;
+                    const unsigned count = channel == 0 || (change == 17 && channel == 1) ? 3u
+                                           : change == 3 && channel == 2                  ? 2u
+                                                                                          : 1u;
                     raw.i(width * 4);
                     raw.i(count);
                     for (unsigned key = 0; key < count; ++key)
-                        for (unsigned c = 0; c < width; ++c)
-                            raw.put<float>(
-                                channel == 0   ? float(key * 10 +
-                                                     (change == 1 && bone == 1 && key == 1 && c == 0 ? 1 : 0))
-                                : channel == 1 ? (c == 3 ? 1.f : 0.f)
-                                               : 1.f);
+                        for (unsigned c = 0; c < width; ++c) {
+                            float v = channel == 0   ? float(key * 10)
+                                      : channel == 1 ? (c == 3 ? 1.f : 0.f)
+                                                     : 1.f;
+                            if (channel == 0 && bone == 1 && key == 1 && c == 0) {
+                                if (change == 1)
+                                    v += 1.f;
+                                if (change == 15)
+                                    v += .25f;
+                            }
+                            if (channel == 1) {
+                                if (change == 6)
+                                    v = c == 3 ? -1.f : 0.f;
+                                if (change == 7 && bone == 1)
+                                    v = c == 2 || c == 3 ? std::sqrt(.5f) : 0.f;
+                                if (change == 12 && bone == 1)
+                                    v = c == 3 ? 2.f : 0.f;
+                                if (change == 16 && bone == 1)
+                                    v = c == 0 ? 1.f : 0.f;
+                                if (change == 17 && bone == 1) {
+                                    constexpr double pi = 3.14159265358979323846;
+                                    const auto angle = (key == 1 ? -179. : 179.) * pi / 360.;
+                                    v = float(c == 2 ? std::sin(angle) : c == 3 ? std::cos(angle) : 0.);
+                                }
+                            }
+                            if (change == 8 && channel == 2 && bone == 1 && c == 0)
+                                v = -1.f;
+                            raw.put<float>(v);
+                        }
                 }
                 tag(tracks, "InternalTrackData", "StructProperty", raw, "RawAnimSequenceTrack");
                 name(tracks, "None");
             }
-            tag(s, "BoneAnimationTracks", "ArrayProperty", tracks, "BoneAnimationTrack", true);
+            if (change != 10)
+                tag(s, "BoneAnimationTracks", "ArrayProperty", tracks, "BoneAnimationTrack", true);
         },
         -1, 39, -1, -1, -1, -1, -1, "AnimDataModel", "/Script/Engine");
 }

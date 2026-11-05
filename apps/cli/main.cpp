@@ -47,6 +47,9 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff curve-value ASSET --time NUMBER [--object PATH] [--lane KEY] [--out FILE]\n"
                "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
+               "  cyuediff animation-frame-diff BEFORE AFTER --before-frame N --after-frame N\n"
+               "    [--before-object PATH] [--after-object PATH] [--position-tolerance N]\n"
+               "    [--rotation-tolerance DEGREES] [--scale-tolerance N] [--out FILE]\n"
                "  cyuediff animation-frame ASSET --frame N [--object PATH] [--out FILE]\n"
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff attachments ASSET [--project PROJECT] [--out FILE]\n"
@@ -109,7 +112,7 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--curve-family","--curve-id","--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
+    const std::set<std::string> valued = {"--before-frame","--after-frame","--rotation-tolerance","--scale-tolerance","--curve-family","--curve-id","--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
                                           "--schema",
                                           "--after-schema",
@@ -155,7 +158,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "curve-value-diff" || command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "animation-frame-diff" || command == "curve-value-diff" || command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -194,10 +197,11 @@ int run(const std::vector<std::string> &args) {
         if(key=="--time" && command!="curve-value" && command!="curve-components")throw Error("arguments","--time requires curve-value or curve-components");
         if(key=="--lane" && command!="curve-value")throw Error("arguments","--lane requires curve-value");
         if(key=="--frame" && command!="animation-frame")throw Error("arguments","--frame requires animation-frame");
-        if ((key == "--before-object" || key == "--after-object") && command != "curve-value-diff" && command != "curves-diff" && command != "animation-diff" &&
+        if((key=="--before-frame" || key=="--after-frame" || key=="--rotation-tolerance" || key=="--scale-tolerance") && command!="animation-frame-diff")throw Error("arguments",key+" requires animation-frame-diff");
+        if ((key == "--before-object" || key == "--after-object") && command != "curve-value-diff" && command != "curves-diff" && command != "animation-diff" && command != "animation-frame-diff" &&
             command != "skeleton-pose-diff" && command != "socket-pose-diff")
             throw Error("arguments", key + " requires a model or pose comparison");
-        if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff")
+        if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff" && command!="animation-frame-diff")
             throw Error("arguments","--position-tolerance requires a pose comparison");
         if (key == "--max-commits" || key == "--skip")
             throw Error("arguments", key + " requires git-history");
@@ -651,6 +655,16 @@ int run(const std::vector<std::string> &args) {
         }else output=curve_snapshot(before,curve_options);
         if(!before.complete_input)exit_code=2;
         }
+    } else if(command=="animation-frame-diff") {
+        if(flags.contains("--metadata") || flags.contains("--snapshot") || !flags.contains("--before-frame") || !flags.contains("--after-frame"))throw Error("arguments","animation-frame-diff requires decoded properties, --before-frame and --after-frame");
+        AnimationFrameDiffOptions selected;
+        selected.position_tolerance=real_option("--position-tolerance",0,0,std::numeric_limits<double>::max());
+        selected.rotation_tolerance_degrees=real_option("--rotation-tolerance",0,0,180);
+        selected.scale_tolerance=real_option("--scale-tolerance",0,0,std::numeric_limits<double>::max());
+        const auto af=integer_option("--before-frame",INT32_MAX),bf=integer_option("--after-frame",INT32_MAX);
+        const auto before=read(positional[0],"--before-project",options),after=read(positional[1],"--after-project",options);
+        output=compare_animation_frames(before,after,af,bf,flags.value("--before-object",std::string{}),flags.value("--after-object",std::string{}),selected);
+        exit_code=output["status"]=="identical"?0:output["status"]=="changed"?1:2;
     } else if(command=="animation" || command=="animation-frame" || command=="animation-diff") {
         if(flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments","Animation source inspection requires decoded properties");
