@@ -1,6 +1,43 @@
 #include "animation_document.hpp"
 namespace cyuediff::desktop {
 namespace {
+void open_skeleton(Document &document, const LoadRequest &request, const ReadOptions &read,
+                   const std::string &name, bool after) {
+    auto &skeleton = after ? document.after_skeleton : document.before_skeleton;
+#ifdef CYUEDIFF_HAS_GIT
+    if (document.git) {
+        if (!request.project.empty())
+            throw Error("desktop-animation-pose", "Historical mounted Skeleton bindings are not enabled");
+        GitOptions options;
+        options.control = request.control;
+        options.lfs_objects = request.git->lfs_objects;
+        auto repository = GitRepository::open(request.git->repository, options);
+        const auto &animation = after ? document.git->after : document.git->before;
+        auto &revision = after ? document.after_skeleton_revision : document.before_skeleton_revision;
+        revision = std::make_shared<const GitRevision>(repository.materialize(animation.commit, name));
+        auto path = repository.root() / fs::u8path(revision->repository_path);
+        document.protected_files.push_back(path);
+        for (const auto *extension : {".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload"}) {
+            auto companion = path;
+            companion.replace_extension(extension);
+            document.protected_files.push_back(companion);
+        }
+        // The revision owns all materialized payloads; a cache entry alone cannot retain them.
+        skeleton = std::make_shared<const Package>(revision->open(read));
+        return;
+    }
+#endif
+    const auto &context = after && document.after_project ? document.after_project : document.project;
+    const auto path = context && name.front() == '/' ? context->resolve(name) : fs::u8path(name);
+    document.protected_files.push_back(path);
+    for (const auto *extension : {".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload"}) {
+        auto companion = path;
+        companion.replace_extension(extension);
+        document.protected_files.push_back(companion);
+    }
+    skeleton = request.cache ? request.cache->open(path, read)
+                             : std::make_shared<const Package>(Package::open(path, read));
+}
 void prepare_side(Document &document, const LoadRequest &request, const ReadOptions &read, bool after) {
     const auto &input = *request.animation_pose;
     const auto &animation = after ? document.after : document.before;
@@ -15,16 +52,7 @@ void prepare_side(Document &document, const LoadRequest &request, const ReadOpti
                                    document.after ? 2 : 1);
         if (name.empty())
             throw Error("desktop-animation-pose", "Choose an explicit Skeleton for this side");
-        const auto &context = after && document.after_project ? document.after_project : document.project;
-        const auto path = context && name.front() == '/' ? context->resolve(name) : fs::u8path(name);
-        document.protected_files.push_back(path);
-        for (const auto *extension : {".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload"}) {
-            auto companion = path;
-            companion.replace_extension(extension);
-            document.protected_files.push_back(companion);
-        }
-        skeleton = request.cache ? request.cache->open(path, read)
-                                 : std::make_shared<const Package>(Package::open(path, read));
+        open_skeleton(document, request, read, name, after);
         AnimationPoseOptions options;
         options.control = request.control;
         pose = animation_pose(*animation, *skeleton, selection.frame, selection.animation_object,
@@ -84,7 +112,31 @@ Json animation_pose_report(const Document &document) {
     auto source = [](const std::shared_ptr<const Package> &p) -> Json {
         return p ? Json(p->source.u8string()) : Json(nullptr);
     };
+    auto binding = [&](bool after) -> Json {
+        if (!requested)
+            return nullptr;
+        const auto &input = *document.request.animation_pose;
+        Json result = {{"input", after ? input.after_skeleton : input.before_skeleton},
+                       {"storage", "local"},
+                       {"commit", nullptr},
+                       {"revision", nullptr}};
+#ifdef CYUEDIFF_HAS_GIT
+        if (document.git) {
+            result["storage"] = "git";
+            result["commit"] = (after ? document.git->after : document.git->before).commit;
+            const auto &revision =
+                after ? document.after_skeleton_revision : document.before_skeleton_revision;
+            if (revision) {
+                result["storage"] = revision->storage;
+                result["revision"] = revision->to_json();
+            }
+        }
+#endif
+        return result;
+    };
     return {
+        {"beforeBinding", binding(false)},
+        {"afterBinding", binding(true)},
         {"requested", requested},
         {"complete", complete},
         {"status", !requested  ? "disabled"

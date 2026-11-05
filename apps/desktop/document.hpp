@@ -64,6 +64,7 @@ struct Document {
 #ifdef CYUEDIFF_HAS_GIT
     // Own materialized files while packages and previews can still use them.
     std::shared_ptr<const GitComparison> git;
+    std::shared_ptr<const GitRevision> before_skeleton_revision, after_skeleton_revision;
 #endif
     std::string status() const;
     Json report() const;

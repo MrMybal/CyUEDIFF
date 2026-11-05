@@ -139,3 +139,7 @@ Local package inputs expose an opt-in source-hierarchy section with independent 
 ## Native bound animation pose validation and distribution - 0.142
 
 The reusable desktop-pose validator compares native worker results against public Core CLI poses for first/middle/last stored frames, with explicit Skeleton binding, input/companion hashes, protected output paths and an isolated unused preference profile. Optional captures retain a middle-frame view. Native process tests cover binding failures, owner/frame choices, independent project contexts, document duplication/reopen/reload, workspace persistence and inactive input protection. Full build, corpus, visual, extracted archive and security results are recorded in VALIDATION.md.
+
+## Historical Skeleton bindings - 0.143
+
+Desktop document workers can explicitly bind repository-relative Skeleton packages at the immutable commit of each animation. Split payloads and locally verified LFS objects are retained by the document, with commit, blob and content provenance in animationPose.beforeBinding/afterBinding. Missing bindings preserve package inspection and report unavailable joints. Working tree files are never substituted. Historical mounted project paths follow in the next milestone.

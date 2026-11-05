@@ -105,8 +105,8 @@ Json Document::report() const {
 std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     if (request.before.empty() && !request.container)
         throw Error("desktop-input", "Choose a package before loading");
-    if (request.animation_pose && (request.git || request.container))
-        throw Error("desktop-animation-pose", "External Skeleton bindings currently require local packages");
+    if (request.animation_pose && request.container)
+        throw Error("desktop-animation-pose", "External Skeleton bindings require loose or Git packages");
     request.control.checkpoint("Opening document");
     ReadOptions read;
     read.control = request.control;
