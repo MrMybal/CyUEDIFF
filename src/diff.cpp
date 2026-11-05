@@ -116,7 +116,7 @@ std::string AttachmentComparison::status() const {
 }
 Json AttachmentComparison::to_json() const {
     return {{"schema","cyuediff.attachments-diff/1"},
-            {"scope","stored reflected sockets and explicit owner lists; no defaults or external loading"},
+            {"scope","stored skeletal sockets, explicit membership and virtual-bone definitions; no defaults or external loading"},
             {"status",status()},{"complete",complete},{"changes",changes}};
 }
 AttachmentComparison compare_attachments(const Package &before,const Package &after,const AttachmentOptions &options) {

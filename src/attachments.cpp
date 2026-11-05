@@ -47,7 +47,7 @@ Json vector_value(const Json &v, bool rotation) {
 struct Projection {
     const Package &package;
     const AttachmentOptions &options;
-    std::size_t nodes = 0, text_bytes = 0, references = 0;
+    std::size_t nodes = 0, text_bytes = 0, references = 0, virtual_count = 0, reference_bones = 0;
     void text(std::size_t n) {
         if (n > options.max_text_bytes - text_bytes)
             throw Error("limit", "Attachment text budget exceeded");
@@ -142,6 +142,168 @@ struct Projection {
             out["diagnostics"].push_back("Stored socket properties are incomplete");
         return out;
     }
+    Json virtual_bones(const ObjectExport &e) {
+        Json out = {
+            {"coverage", e.class_name == "/Script/Engine.Skeleton" ? "unavailable" : "not-applicable"},
+            {"definitions", Json::object()},
+            {"complete", e.class_name != "/Script/Engine.Skeleton"}};
+        if (e.class_name != "/Script/Engine.Skeleton")
+            return out;
+        const auto *t = tag(e.properties, "VirtualBones"),
+                   *array = value(t, "ArrayProperty", "StructProperty");
+        bool shape = false;
+        if (array && array->is_array()) {
+            const auto &inner = t->at("type").at("parameters")[0];
+            shape = inner.contains("parameters") && inner.at("parameters").is_array() &&
+                    !inner.at("parameters").empty() && type_name(inner.at("parameters")[0]) == "VirtualBone";
+            if(!inner.contains("parameters") && package.summary.ue5_version>0 && package.summary.ue5_version<1012)
+                shape=true; // Legacy descriptors omit the decoded element struct name.
+
+        }
+        if (!shape) {
+            if (t) {
+                out["coverage"] = "malformed";
+                out["unresolvedProperty"] = copy(*t);
+            }
+            return out;
+        }
+        if (array->size() > options.max_virtual_bones - virtual_count ||
+            array->size() > (options.max_references - references) / 2)
+            throw Error("limit", "Virtual-bone aggregate budget exceeded");
+        virtual_count += array->size();
+        references += array->size() * 2;
+        out["coverage"] = "stored";
+        out["complete"] = e.coverage == "properties";
+        if (const auto *guid = tag(e.properties, "VirtualBoneGuid"))
+            out["storedGuidProperty"] = copy(*guid);
+        std::map<std::string, unsigned> labels;
+        for (const auto &entry : *array) {
+            options.control.check();
+            if (const auto *v = value(tag(entry, "VirtualBoneName"), "NameProperty");
+                named(v) && *v != "None")
+                ++labels[v->get<std::string>()];
+        }
+        std::set<std::string> raw;
+        if (!array->empty() && e.native_coverage == "reference-skeleton" && e.native_data.is_object() &&
+            e.native_data.value("kind", "") == "reference-skeleton") {
+            const auto it = e.native_data.find("bones");
+            if (it == e.native_data.end() || !it->is_array())
+                throw Error("attachment-value", "Malformed raw bone name table");
+            if (it->size() > options.max_reference_bones - reference_bones)
+                throw Error("limit", "Attachment raw bone budget exceeded");
+            reference_bones += it->size();
+            for (const auto &bone : *it) {
+                options.control.check();
+                if (!bone.is_object() || !bone.contains("name") || !named(&bone.at("name")) ||
+                    !raw.insert(bone.at("name").get<std::string>()).second)
+                    throw Error("attachment-value", "Invalid raw bone identities");
+            }
+        }
+        auto resolution = [&](const Json &v) -> std::string {
+            if (!v.is_string())
+                return "unresolved";
+            const auto name = v.get<std::string>();
+            const bool is_raw = raw.count(name) != 0;
+            const auto virtual_name = labels.find(name);
+            const bool is_virtual = virtual_name != labels.end() && virtual_name->second == 1;
+            if (is_raw && is_virtual)
+                return "ambiguous";
+            return is_raw ? "raw" : is_virtual ? "virtual" : "unresolved";
+        };
+        auto &definitions = out["definitions"];
+        std::map<std::string, std::string> keys;
+        for (std::size_t i = 0; i < array->size(); ++i) {
+            options.control.checkpoint("Projecting virtual-bone definitions", i, array->size());
+            const auto &entry = (*array)[i];
+            const auto *name = value(tag(entry, "VirtualBoneName"), "NameProperty");
+            const bool unique = named(name) && *name != "None" && labels.at(name->get<std::string>()) == 1;
+            const auto key = unique ? "name:" + name->get<std::string>() : "index:" + std::to_string(i);
+            text(key.size());
+            Json bone = {{"identity", unique ? "name" : "index"},
+                         {"name", nullptr},
+                         {"source", nullptr},
+                         {"target", nullptr},
+                         {"sourceResolution", "unresolved"},
+                         {"targetResolution", "unresolved"},
+                         {"cycleBlocked", false},
+                         {"complete", unique},
+                         {"extraProperties", Json::object()},
+                         {"unresolvedProperties", Json::object()},
+                         {"diagnostics", Json::array()}};
+            if (options.source_indices || !unique)
+                bone["sourceIndex"] = i;
+            if (unique)
+                keys[name->get<std::string>()] = key;
+            for (auto field :
+                 {std::make_pair("VirtualBoneName", "name"), std::make_pair("SourceBoneName", "source"),
+                  std::make_pair("TargetBoneName", "target")}) {
+                const auto *stored = tag(entry, field.first), *v = value(stored, "NameProperty");
+                if (named(v))
+                    bone[field.second] = copy(*v);
+                else {
+                    bone["complete"] = false;
+                    if (stored)
+                        bone["unresolvedProperties"][field.first] = copy(*stored);
+                }
+            }
+            if (!entry.is_object()) {
+                bone["unresolvedProperties"]["element"] = copy(entry);
+                bone["complete"] = false;
+            } else
+                for (auto it = entry.begin(); it != entry.end(); ++it)
+                    if (it.key() != "VirtualBoneName" && it.key() != "SourceBoneName" &&
+                        it.key() != "TargetBoneName")
+                        bone["extraProperties"][it.key()] = copy(*it);
+            if (!unique)
+                bone["diagnostics"].push_back(
+                    "No unique stored virtual-bone name; identity uses array index");
+            if (bone["name"].is_string() && raw.count(bone["name"].get<std::string>())) {
+                bone["complete"] = false;
+                bone["diagnostics"].push_back("Virtual-bone name collides with a raw bone");
+            }
+            for (const auto *field : {"source", "target"}) {
+                const auto state = resolution(bone[field]);
+                bone[std::string(field) + "Resolution"] = state;
+                if (state != "raw" && state != "virtual")
+                    bone["complete"] = false;
+            }
+            definitions[key] = std::move(bone);
+        }
+        // Iterative dependency pass. A blocked node may depend on a cycle without being on it.
+        std::map<std::string, std::size_t> indegree;
+        std::map<std::string, std::vector<std::string>> dependents;
+        for (auto it = definitions.begin(); it != definitions.end(); ++it) {
+            indegree[it.key()] = 0;
+            std::set<std::string> deps;
+            for (const auto *field : {"source", "target"})
+                if (it->at(std::string(field) + "Resolution") == "virtual")
+                    deps.insert(keys.at(it->at(field).get<std::string>()));
+            indegree[it.key()] = deps.size();
+            for (const auto &dep : deps)
+                dependents[dep].push_back(it.key());
+        }
+        std::vector<std::string> ready;
+        for (const auto &entry : indegree)
+            if (!entry.second)
+                ready.push_back(entry.first);
+        for (std::size_t i = 0; i < ready.size(); ++i) {
+            options.control.check();
+            for (const auto &child : dependents[ready[i]])
+                if (--indegree.at(child) == 0)
+                    ready.push_back(child);
+        }
+        for (const auto &entry : indegree)
+            if (entry.second) {
+                definitions[entry.first]["cycleBlocked"] = true;
+                definitions[entry.first]["complete"] = false;
+                definitions[entry.first]["diagnostics"].push_back(
+                    "Virtual definition depends on a cycle; no pose is rebuilt");
+            }
+        for (const auto &entry : definitions)
+            if (!entry.at("complete").get<bool>())
+                out["complete"] = false;
+        return out;
+    }
     Json owner(const ObjectExport &e, const Json &sockets,
                const std::map<std::string, std::vector<std::string>> &contained) {
         if (!e.properties.is_object())
@@ -208,7 +370,8 @@ struct Projection {
                 else
                     out["unresolvedSkeletonReference"] = copy(*s);
             }
-        out["complete"] = out["socketsComplete"];
+        out["virtualBones"] = virtual_bones(e);
+        out["complete"] = out["socketsComplete"].get<bool>() && out["virtualBones"]["complete"].get<bool>();
         return out;
     }
 };
@@ -248,7 +411,8 @@ Json attachment_snapshot(const Package &package, const AttachmentOptions &option
             owners[e.path] = std::move(owner);
         }
     return {{"schema", "cyuediff.attachments/1"},
-            {"scope", "stored reflected sockets and explicit owner lists; no defaults or external loading"},
+            {"scope", "stored skeletal sockets, explicit membership and virtual-bone definitions; no "
+                      "defaults or external loading"},
             {"complete", complete && !owners.empty()},
             {"owners", std::move(owners)},
             {"sockets", std::move(sockets)}};

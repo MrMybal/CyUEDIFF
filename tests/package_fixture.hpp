@@ -28,6 +28,7 @@ struct Bytes {
 struct Fixture {
     Bytes header, script;
     std::size_t export_offset = 0, serial_offset_field = 0;
+    std::size_t header_size_field=0,export_count_field=0,export_offset_field=0,import_count_field=0;
 };
 using NameWriter = std::function<void(Bytes &, const std::string &)>;
 using ExtraScript = std::function<void(Bytes &, const NameWriter &)>;
@@ -169,6 +170,7 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
         size_pos = b.data.size();
         b.i(0);
     }
+    f.header_size_field=size_pos;
     b.string("/Game/TestAsset");
     b.i(0);
     b.i(static_cast<int>(names.size()));
@@ -178,9 +180,11 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
         b.zeros(8);
     b.string("");
     b.zeros(8);
+    f.export_count_field=b.data.size();
     b.i(1);
-    auto export_pos = b.data.size();
+    auto export_pos = b.data.size();f.export_offset_field=export_pos;
     b.i(0);
+    f.import_count_field=b.data.size();
     b.i(1);
     auto import_pos = b.data.size();
     b.i(0);

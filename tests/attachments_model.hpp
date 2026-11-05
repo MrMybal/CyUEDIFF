@@ -13,6 +13,9 @@ inline Package attachments_model() {
     owner.path = owner.name = "Rig";
     owner.properties["Sockets"] =
         attachment_property({"Rig.Grip", "Rig.Muzzle"}, "ArrayProperty", "ObjectProperty");
+    owner.properties["VirtualBones"] = attachment_property(Json::array(), "ArrayProperty", "StructProperty");
+    owner.properties["VirtualBones"]["type"]["parameters"][0]["parameters"] =
+        Json::array({{{"name", "VirtualBone"}}});
     for (const char *key : {"Grip", "Muzzle"}) {
         ObjectExport socket;
         socket.name = key;
@@ -29,6 +32,18 @@ inline Package attachments_model() {
             {"bForceAlwaysAnimated", attachment_property(true, "BoolProperty")}};
         p.exports.push_back(socket);
     }
+    return p;
+}
+inline Json virtual_definition(const std::string &name, const std::string &source,
+                               const std::string &target) {
+    return {{"VirtualBoneName", attachment_property(name, "NameProperty")},
+            {"SourceBoneName", attachment_property(source, "NameProperty")},
+            {"TargetBoneName", attachment_property(target, "NameProperty")}};
+}
+inline Package virtual_bones_model() {
+    auto p = attachments_model();
+    p.exports[0].properties["VirtualBones"]["value"] = Json::array(
+        {virtual_definition("VB~/Grip", "root", "arm"), virtual_definition("VB_tip", "VB~/Grip", "tip")});
     return p;
 }
 } // namespace cyuediff::test
