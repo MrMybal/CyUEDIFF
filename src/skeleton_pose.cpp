@@ -1,4 +1,4 @@
-#include <cyuediff/skeleton_pose.hpp>
+#include "skeleton_pose_internal.hpp"
 #include <algorithm>
 #include <cmath>
 namespace cyuediff {
@@ -50,21 +50,12 @@ Json ReferencePose::to_json() const {
             {"joints", std::move(values)},
             {"diagnostics", diagnostics}};
 }
-ReferencePose reference_pose(const Package &package, const std::string &path,
-                             const ReferencePoseOptions &options) {
-    auto projection_options = options.skeleton;
-    projection_options.source_indices = true;
-    const auto model = skeleton_snapshot(package, projection_options);
-    const auto &skeletons = model.at("skeletons");
-    if (path.empty() && skeletons.size() != 1)
-        throw Error("skeleton-selection", "Select exactly one Skeleton or SkeletalMesh object path");
-    auto it = path.empty() ? skeletons.begin() : skeletons.find(path);
-    if (it == skeletons.end())
-        throw Error("skeleton-selection", "Skeleton object path not found");
+ReferencePose detail::compose_reference_pose(const Json &body, const std::string &path, bool complete_input,
+                                             const ReferencePoseOptions &options) {
     ReferencePose result;
-    result.object_path = it.key();
-    result.complete = package.complete_input && it->at("referenceComplete").get<bool>();
-    const auto &bones = it->at("bones");
+    result.object_path = path;
+    result.complete = complete_input && body.at("referenceComplete").get<bool>();
+    const auto &bones = body.at("bones");
     if (bones.size() > options.max_joints)
         throw Error("limit", "Reference pose joint budget exceeded");
     if (!result.complete)
@@ -108,5 +99,18 @@ ReferencePose reference_pose(const Package &package, const std::string &path,
         result.joints.push_back(std::move(joint));
     }
     return result;
+}
+ReferencePose reference_pose(const Package &package, const std::string &path,
+                             const ReferencePoseOptions &options) {
+    auto projection_options = options.skeleton;
+    projection_options.source_indices = true;
+    const auto model = skeleton_snapshot(package, projection_options);
+    const auto &skeletons = model.at("skeletons");
+    if (path.empty() && skeletons.size() != 1)
+        throw Error("skeleton-selection", "Select exactly one Skeleton or SkeletalMesh object path");
+    auto it = path.empty() ? skeletons.begin() : skeletons.find(path);
+    if (it == skeletons.end())
+        throw Error("skeleton-selection", "Skeleton object path not found");
+    return detail::compose_reference_pose(*it, it.key(), package.complete_input, options);
 }
 } // namespace cyuediff

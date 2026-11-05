@@ -274,3 +274,11 @@ The Collisions tab prepares stored body-local geometry outside the frame loop. C
 ## Raw reference skeleton review - 0.87
 
 The Skeleton tab presents a read-only union of stored raw bone hierarchies. Search/select a bone to compare local transforms and parents; node outlines mark stored changes. The Skeleton properties section retains UObject metadata and native tail fingerprints. Explicit workspace files retain object/bone selection, typed property filter/preview and graph canvas. Connections may include both before/after parents. No animation, virtual-bone reconstruction or skinning occurs.
+
+## Reference pose preview - 0.92
+
+In the Skeleton tab, choose Reference pose to inspect prepared affine joint positions from supported Skeleton or SkeletalMesh objects. Before/after share a camera and stack vertically in narrow panels. Click a joint or select its exact name in Bone to inspect its stored local transform and derived position. The displayed displacement is after minus before, in stored coordinate units. Moved joints only filters position/parent changes; hierarchy outlines continue to compare the stored bone fields. Alt-drag orbits, middle-drag pans, and the wheel zooms. Fit reference pose frames the visible prepared positions.
+
+Pose mode, camera, selected bone and pose property inspector state are saved in explicit workspace files. The renderer limits work to 4,096 joint identities and marks positions outside the display camera range unavailable without changing Core data. Unknown rotations or missing ancestor poses never receive defaults. Animation, skinning and mesh vertices are not evaluated.
+
+Windows output guards resolve the nearest existing ancestor before comparing missing companion/output paths. This also covers long and 8.3 temporary Git materialization directories, while existing input and hard-link protection remains active.

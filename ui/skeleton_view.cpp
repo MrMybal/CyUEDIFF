@@ -1,5 +1,6 @@
 #include <cyuediff/skeleton_view.hpp>
 #include "diff_style.hpp"
+#include "../src/skeleton_pose_internal.hpp"
 #include <algorithm>
 #include <set>
 namespace cyuediff {
@@ -20,6 +21,11 @@ void SkeletonView::bind() {
     complete_ = (!a || a->at("complete").get<bool>()) && (!b || b->at("complete").get<bool>()) &&
                 (comparing_ ? a && b : a || b);
     metadata_.set_values(a, b, comparing_);
+    const auto pose_a = poses_before_.find(object_), pose_b = poses_after_.find(object_);
+    pose_view_.set_models(pose_a == poses_before_.end() ? nullptr : &pose_a->second,
+                          pose_b == poses_after_.end() ? nullptr : &pose_b->second, comparing_);
+    pose_selection_.clear();
+    pose_details_.set_values(nullptr, nullptr, comparing_);
     const auto *bones_a = a ? &a->at("bones") : nullptr, *bones_b = b ? &b->at("bones") : nullptr;
     auto value = [](const Json *model, const std::string &key) -> const Json * {
         if (!model)
@@ -97,9 +103,31 @@ void SkeletonView::bind() {
 }
 void SkeletonView::set_packages(const Package *before, const Package *after, bool comparing) {
     SkeletonOptions options;
-    options.source_indices = false;
+    options.source_indices = true;
     before_ = before ? skeleton_snapshot(*before, options) : Json(nullptr);
     after_ = after ? skeleton_snapshot(*after, options) : Json(nullptr);
+    poses_before_.clear();
+    poses_after_.clear();
+    pose_preview_ = false;
+    auto prepare = [&](Json &model, auto &poses, bool complete_input) {
+        if (model.is_null())
+            return;
+        for (auto it = model["skeletons"].begin(); it != model["skeletons"].end(); ++it) {
+            try {
+                poses[it.key()] = detail::compose_reference_pose(*it, it.key(), complete_input, {});
+            } catch (const Error &error) {
+                ReferencePose unavailable;
+                unavailable.object_path = it.key();
+                unavailable.diagnostics.push_back(error.what());
+                poses[it.key()] = std::move(unavailable);
+            }
+            // Stored-node outlines stay independent of source array order and derived display positions.
+            for (auto &bone : (*it)["bones"])
+                bone.erase("sourceIndex");
+        }
+    };
+    prepare(before_, poses_before_, before && before->complete_input);
+    prepare(after_, poses_after_, after && after->complete_input);
     comparing_ = comparing || (before && after);
     std::set<std::string> paths;
     for (const auto *model : {&before_, &after_})
@@ -117,8 +145,41 @@ bool SkeletonView::select_object(const std::string &path) {
     bind();
     return true;
 }
-bool SkeletonView::select_bone(const std::string &name) { return inspector_.select_node(name); }
-bool SkeletonView::next_changed_bone(bool previous) { return comparing_ && inspector_.next_change(previous); }
+void SkeletonView::update_pose_selection() {
+    const auto &selected = inspector_.selected_node();
+    if (pose_selection_ == selected)
+        return;
+    pose_selection_ = selected;
+    pose_view_.select(selected);
+    auto model = [&](const Json &snapshot, const auto &poses) -> Json {
+        const auto *object = body(snapshot);
+        if (!object || !object->at("bones").contains(selected))
+            return nullptr;
+        Json value = {{"stored", object->at("bones").at(selected)}};
+        auto pose = poses.find(object_);
+        if (pose != poses.end())
+            for (const auto &joint : pose->second.joints)
+                if (joint.name == selected) {
+                    value["reference"] = {{"position", joint.ready ? Json(joint.position) : Json(nullptr)},
+                                          {"ready", joint.ready},
+                                          {"diagnostics", joint.diagnostics}};
+                    break;
+                }
+        return value;
+    };
+    const auto a = model(before_, poses_before_), b = model(after_, poses_after_);
+    pose_details_.set_values(a.is_null() ? nullptr : &a, b.is_null() ? nullptr : &b, comparing_);
+}
+bool SkeletonView::select_bone(const std::string &name) {
+    const bool selected = inspector_.select_node(name);
+    update_pose_selection();
+    return selected;
+}
+bool SkeletonView::next_changed_bone(bool previous) {
+    const bool selected = comparing_ && inspector_.next_change(previous);
+    update_pose_selection();
+    return selected;
+}
 void SkeletonView::set_filter(std::string query) { inspector_.set_filter(std::move(query)); }
 void SkeletonView::set_changed_only(bool enabled) { inspector_.set_changed_only(enabled); }
 Json SkeletonView::view_state() const {
@@ -130,6 +191,14 @@ Json SkeletonView::view_state() const {
         const auto &camera = state_.canvas.view;
         out["canvas"] = {{"pan", {camera.origin.x, camera.origin.y}}, {"zoom", camera.zoom}};
     }
+    if (pose_preview_)
+        out["posePreview"] = true;
+    const auto pose_camera = pose_view_.view_state();
+    if (!pose_camera.empty())
+        out["poseCamera"] = pose_camera;
+    const auto pose_properties = pose_details_.view_state();
+    if (!pose_properties.empty())
+        out["poseProperties"] = pose_properties;
     const auto metadata = metadata_.view_state();
     if (!metadata.empty())
         out["metadata"] = metadata;
@@ -146,6 +215,13 @@ void SkeletonView::restore_view_state(const Json &state) {
         inspector_.restore_view_state(state["inspection"]);
     if (state.contains("metadata"))
         metadata_.restore_view_state(state["metadata"]);
+    if (state.contains("posePreview"))
+        pose_preview_ = state["posePreview"].get<bool>();
+    if (state.contains("poseCamera"))
+        pose_view_.restore_view_state(state["poseCamera"]);
+    update_pose_selection();
+    if (state.contains("poseProperties"))
+        pose_details_.restore_view_state(state["poseProperties"]);
     const bool explicit_camera = state.contains("canvas") && !state["canvas"].empty();
     if (!explicit_camera && state.contains("inspection") && state["inspection"].contains("selected") &&
         state["inspection"]["selected"].is_string())
@@ -170,7 +246,7 @@ void SkeletonView::draw(const char *id) {
     }
     if (empty()) {
         cyui::emptyState(cyui::tr("No stored reference skeleton").c_str(),
-                         cyui::tr("This package has no supported Skeleton object.").c_str(),
+                         cyui::tr("This package has no supported Skeleton or SkeletalMesh object.").c_str(),
                          cyui::icon::document);
         return;
     }
@@ -200,6 +276,47 @@ void SkeletonView::draw(const char *id) {
         ImGui::BeginChild("Skeleton metadata panel", {0, cyui::dp(200)}, ImGuiChildFlags_Borders);
         metadata_.draw("Skeleton metadata");
         ImGui::EndChild();
+    }
+    if (ImGui::RadioButton(cyui::trLabel("Hierarchy").c_str(), !pose_preview_))
+        pose_preview_ = false;
+    ImGui::SameLine();
+    if (ImGui::RadioButton(cyui::trLabel("Reference pose").c_str(), pose_preview_))
+        pose_preview_ = true;
+    if (pose_preview_) {
+        update_pose_selection();
+        const auto &selected = inspector_.selected_node();
+        ImGui::SetNextItemWidth(std::min(cyui::dp(300), ImGui::GetContentRegionAvail().x));
+        if (ImGui::BeginCombo(cyui::trLabel("Bone").c_str(), selected.c_str())) {
+            for (const auto &node : nodes_)
+                if (ImGui::Selectable(node.label.c_str(), node.label == selected))
+                    select_bone(node.label);
+            ImGui::EndCombo();
+        }
+        if (comparing_ && !selected.empty()) {
+            const auto *difference = pose_view_.joint_difference(selected);
+            if (difference && difference->at("distance").is_number()) {
+                const auto &delta = difference->at("delta");
+                ImGui::TextWrapped(
+                    cyui::tr("Reference displacement: %.6g | delta (%.6g, %.6g, %.6g)").c_str(),
+                    difference->at("distance").get<double>(), delta[0].get<double>(), delta[1].get<double>(),
+                    delta[2].get<double>());
+            }
+        }
+        const auto available = ImGui::GetContentRegionAvail();
+        const bool details = !selected.empty();
+        const float height = details ? std::max(cyui::dp(180), available.y * .62f) : available.y;
+        ImGui::BeginChild("##reference-pose-panel", {0, height});
+        pose_view_.draw();
+        const auto picked = pose_view_.take_picked_joint();
+        ImGui::EndChild();
+        if (!picked.empty())
+            select_bone(picked);
+        if (details) {
+            ImGui::BeginChild("##reference-joint-details", {0, 0}, ImGuiChildFlags_Borders);
+            pose_details_.draw("Reference joint details");
+            ImGui::EndChild();
+        }
+        return;
     }
     if (comparing_)
         cyui::textDim("%s", cyui::tr("Connections include both stored parent relationships.").c_str());

@@ -198,17 +198,45 @@ int main(int argc, char **argv) {
                 {{"inspection",
                   {{"selected", "arm"},
                    {"properties", {{"filter", "translation"}, {"selected", "/localPose/translation/0"}}}}}});
+            auto pose_before = skeleton_before, pose_after = pose_before;
+            pose_before.exports[0].native_data["bones"][2]["parentIndex"] = 1;
+            pose_before.exports[0].native_data["localPoses"][2]["translation"] = {0., 10., 5.};
+            pose_after = pose_before;
+            pose_after.exports[0].native_data["localPoses"][0]["translation"] = {0., 0., 4.};
+            SkeletonView reference_pose_view, reference_unavailable, reference_added;
+            reference_pose_view.set_packages(&pose_before, &pose_after);
+            reference_pose_view.set_pose_preview(true);
+            reference_pose_view.select_bone("arm");
+            auto unavailable = pose_before;
+            unavailable.exports[0].native_data["localPoses"][0]["rotation"] = {0., 0., 0., 0.};
+            reference_unavailable.set_packages(&unavailable);
+            reference_unavailable.set_pose_preview(true);
+            reference_added.set_packages(nullptr, &pose_after, true);
+            reference_added.set_pose_preview(true);
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 14; ++scene) {
-                        const char *names[] = {"blueprint",     "material",         "parameters",
-                                               "mesh",          "texture",          "no-nodes",
-                                               "no-edges",      "narrow-blueprint", "collisions",
-                                               "collision-all", "collision-narrow", "collision-incomplete",
-                                               "skeleton",      "skeleton-narrow"};
+                    for (int scene = 0; scene < 18; ++scene) {
+                        const char *names[] = {"blueprint",
+                                               "material",
+                                               "parameters",
+                                               "mesh",
+                                               "texture",
+                                               "no-nodes",
+                                               "no-edges",
+                                               "narrow-blueprint",
+                                               "collisions",
+                                               "collision-all",
+                                               "collision-narrow",
+                                               "collision-incomplete",
+                                               "skeleton",
+                                               "skeleton-narrow",
+                                               "reference-pose",
+                                               "reference-narrow",
+                                               "reference-unavailable",
+                                               "reference-added"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -217,7 +245,7 @@ int main(int argc, char **argv) {
                             }
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
-                            ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13)
+                            ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 || scene == 15)
                                                          ? ImVec2{640, io.DisplaySize.y}
                                                          : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
@@ -258,6 +286,16 @@ int main(int argc, char **argv) {
                             case 11:
                                 collision_incomplete.draw();
                                 break;
+                            case 14:
+                            case 15:
+                                reference_pose_view.draw();
+                                break;
+                            case 16:
+                                reference_unavailable.draw();
+                                break;
+                            case 17:
+                                reference_added.draw();
+                                break;
                             case 12:
                             case 13:
                                 skeleton.draw();
@@ -297,6 +335,12 @@ int main(int argc, char **argv) {
                             check(x > 100 && x < 540,
                                   "Narrow skeleton view keeps the restored selected bone visible");
                         }
+                        if (scene == 14 || scene == 15)
+                            check(reference_pose_view.rendered_pose_joints() == 6,
+                                  "Both native pose panes render all ready joints");
+                        if (scene == 16)
+                            check(reference_unavailable.rendered_pose_joints() == 0,
+                                  "Unavailable pose does not render invented joints");
                         if (scene == 4)
                             check(texture.view_state()["zoom"].get<double>() > 1,
                                   "Native texture focuses changed pixels");
@@ -310,6 +354,7 @@ int main(int argc, char **argv) {
             saved["parameters"] = parameters.view_state();
             saved["collisions"] = collision.view_state();
             saved["skeleton"] = skeleton.view_state();
+            saved["referencePose"] = reference_pose_view.view_state();
             saved["mesh"] = changed_mesh.view_state();
             saved["texture"] = texture.view_state();
             saved["frames"] = frames;

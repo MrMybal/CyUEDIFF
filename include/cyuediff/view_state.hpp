@@ -167,6 +167,9 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
         } else if(kind=="skeleton") {
+            flag({"posePreview"});
+            child("poseCamera","mesh");
+            child("poseProperties","property");
             string({"object"},true);
             child("inspection","graph-inspection");
             child("canvas","canvas");

@@ -1,3 +1,4 @@
+#include "path_guard.hpp"
 #include "document.hpp"
 #include "workspace.hpp"
 #include "workspace_file.hpp"
@@ -530,8 +531,8 @@ bool same_path(const fs::path &a, const fs::path &b) {
     std::error_code error;
     if (fs::exists(a) && fs::exists(b) && fs::equivalent(a, b, error) && !error)
         return true;
-    auto left = fs::weakly_canonical(fs::absolute(a)).native(),
-         right = fs::weakly_canonical(fs::absolute(b)).native();
+    auto left = resolved_output_path(a).native(),
+         right = resolved_output_path(b).native();
     std::transform(left.begin(), left.end(), left.begin(), [](wchar_t c) { return std::towlower(c); });
     std::transform(right.begin(), right.end(), right.begin(), [](wchar_t c) { return std::towlower(c); });
     return left == right;
@@ -660,7 +661,7 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
                 if (same_path(input, output))
                     throw Error("desktop-output", "Output overlaps an input");
     auto normalized = [](const fs::path &path) {
-        auto name = fs::weakly_canonical(fs::absolute(path)).make_preferred().native();
+        auto name = resolved_output_path(path).make_preferred().native();
         std::transform(name.begin(), name.end(), name.begin(), [](wchar_t c) { return std::towlower(c); });
         return name;
     };

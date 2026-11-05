@@ -792,7 +792,7 @@ int run(const std::vector<std::string> &args) {
             const auto parent = existing.parent_path();
             if (parent == existing || parent.empty())
                 throw Error("output-path", "Cannot resolve output ancestor");
-            suffix = existing.filename() / suffix;
+            suffix = suffix.empty() ? existing.filename() : existing.filename() / suffix;
             existing = parent;
         }
         const auto resolved = fs::canonical(existing);

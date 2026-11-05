@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/skeleton.hpp>
+#include <cyuediff/reference_pose_viewport.hpp>
 #include <cyuediff/graph_inspector.hpp>
 namespace cyuediff {
 // Owned snapshots; hierarchy and typed details are prepared when binding/selecting.
@@ -8,7 +9,11 @@ class SkeletonView {
     std::vector<std::string> objects_;
     std::string object_, rendered_locale_;
     GraphInspector inspector_;
-    PropertyView metadata_;
+    PropertyView metadata_, pose_details_;
+    ReferencePoseViewport pose_view_;
+    std::map<std::string, ReferencePose> poses_before_, poses_after_;
+    std::string pose_selection_;
+    bool pose_preview_ = false;
     cyui::NodeState state_;
     std::vector<cyui::Node> nodes_;
     std::vector<cyui::NodeLink> links_;
@@ -17,9 +22,13 @@ class SkeletonView {
     bool comparing_ = false, complete_ = false, fit_ = true, truncated_ = false;
     const Json *body(const Json &) const;
     void bind();
+    void update_pose_selection();
 
   public:
     void set_packages(const Package *before, const Package *after = nullptr, bool comparing = false);
+    void set_pose_preview(bool enabled) { pose_preview_ = enabled; }
+    bool pose_preview() const { return pose_preview_; }
+    std::size_t rendered_pose_joints() const { return pose_view_.rendered_joints(); }
     bool empty() const { return objects_.empty(); }
     bool select_object(const std::string &);
     bool select_bone(const std::string &);

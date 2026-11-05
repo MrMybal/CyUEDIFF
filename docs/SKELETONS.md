@@ -20,7 +20,7 @@ skeleton exports the stored named hierarchy; skeleton-diff compares two projecti
 
 ## Reader profile and scope
 
-The current native prefix supports UE4 file version 522 with UE5 file versions 1004 or 1013. Cooked packages, other file profiles and custom licensee serializers remain opaque. The native window starts with UObject's optional GUID marker, followed by raw bone infos, local transforms and the stored name/index map. Remaining native state stays fingerprinted and opaque. Three real engine-owned packages saved by UE 5.0 use profile 1004; modern profile 1013 has independently encoded fixture coverage. The reader does not rebuild virtual bones, evaluate animation, read skin weights or decode SkeletalMesh source/skin/LOD/render payloads beyond the reference prefix.
+The current native prefix supports UE4 file version 522 with UE5 file versions 1004 or 1013. Cooked native data and other file profiles remain opaque; custom licensee packages require a dedicated backend. The native window starts with UObject's optional GUID marker, followed by raw bone infos, local transforms and the stored name/index map. Remaining native state stays fingerprinted and opaque. Three real engine-owned packages saved by UE 5.0 use profile 1004; modern profile 1013 has independently encoded fixture coverage. The reader does not rebuild virtual bones, evaluate animation, read skin weights or decode SkeletalMesh source/skin/LOD/render payloads beyond the reference prefix.
 
 The GUID marker was added to the fixtures after checking actual engine packages; invalid markers and optional nonzero GUIDs have explicit regressions. Filtered editor export-name omission has bounded archive-prefix coverage, rather than a claimed real filtered-package corpus.
 
@@ -55,3 +55,15 @@ The renderer-independent compare_reference_poses API pairs exact bone names acro
 ## CLI displacement reports and installed SDK validation - 0.91
 
 skeleton-pose-diff compares two package reference poses with independent --before-object/--after-object selection and finite --position-tolerance. Exit codes are 0 for identical positions/parents within tolerance, 1 for changes and 2 for incomplete/error. The existing skeleton commands now accept SkeletalMesh assets. Tests cover native mesh inputs, bad tolerances/selections, incomplete data, source/companion output protection and JSON output. The installed independent Core consumer exercises pose comparison without Unreal/CyUI/Git. The local corpus validator records object classes, raw-reference readiness and reference-only self-comparisons separately from full stored-property completeness.
+
+## Synchronized CyUI reference-pose review - 0.92
+
+The Skeleton tab now switches between the stored hierarchy graph and a bounded 3D affine-reference preview. Before/after panes share a camera and stack at narrow widths. Joint picking synchronizes exact bone selection and typed stored/derived details; displacement vectors and magnitudes are explicit. Preview colors/filter follow derived position or parent changes, while hierarchy outlines continue to follow stored local data. The preview caps at 4,096 joints and rejects display coordinates beyond its camera range without modifying Core values. Missing rotations/ancestors stay unavailable. Pose mode, camera and selected-property state persist through explicit workspace save/reopen. All drawing consumes prepared owned positions, with no package I/O or pose evaluation per frame. Animation, skinning and SkeletalMesh source/render geometry remain unimplemented.
+
+The SkeletalMesh prefix additionally requires stored Editor custom version 8–40, Core version 3–4 and Rendering version 10–45. Missing or out-of-range versions remain opaque, including future layouts. The material array keeps numeric slot order even when slot labels are unique. These bounds are a supported serialization contract, rather than certification of every engine release in between. Real input verification currently covers the three UE5.0-saved meshes; independent fixtures cover the modern file profile.
+
+    cyuediff skeleton Content/Character.uasset
+    cyuediff skeleton-pose-diff before/Character.uasset after/Character.uasset --position-tolerance 0.001
+    cyuediff skeleton-pose-diff before.uasset after.uasset --before-object RigA --after-object RigB
+
+Reference displacement units are the stored coordinate units. A tolerance applies to the Euclidean distance; equality at the tolerance is accepted. Position equality does not establish equal rotations, scale, skinned geometry, animation or undecoded bytes. Use skeleton-diff or the general package diff for the stored structural data and remaining native fingerprints.

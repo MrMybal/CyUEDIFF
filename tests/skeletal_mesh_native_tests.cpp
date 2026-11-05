@@ -2,6 +2,7 @@
 #include <cyuediff/cache.hpp>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <iostream>
 using namespace cyuediff;
 using namespace cyuediff::test;
@@ -75,6 +76,21 @@ int main(int argc, char **argv) {
             check(Package::open(save(root, "cut", cut)).exports[0].native_data.empty(),
                   "Truncated prefix never partially published");
         }
+        auto corrupt_bounds = f;
+        const auto bad_double = std::numeric_limits<double>::quiet_NaN();
+        std::memcpy(corrupt_bounds.script.data.data() + e.native_start + 6, &bad_double, 8);
+        check(Package::open(save(root, "nonfinite-bounds", corrupt_bounds)).exports[0].native_data.empty(),
+              "Nonfinite imported bounds stay opaque");
+        auto corrupt_uv = f;
+        const auto bad_float = std::numeric_limits<float>::infinity();
+        std::memcpy(corrupt_uv.script.data.data() + e.native_start + 98, &bad_float, 4);
+        check(Package::open(save(root, "nonfinite-uv", corrupt_uv)).exports[0].native_data.empty(),
+              "Nonfinite UV density stays opaque");
+        auto licensee = f;
+        licensee.header.patch(20, 1);
+        bool licensee_rejected=false;
+        try{Package::open(save(root,"licensee",licensee));}catch(const Error&error){licensee_rejected=error.code=="licensee-version";}
+        check(licensee_rejected,"Licensee package requires a dedicated backend");
         ReadOptions disabled;
         disabled.native_skeletons = false;
         PackageCache cache;
