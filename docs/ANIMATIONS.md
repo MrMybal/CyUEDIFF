@@ -52,3 +52,7 @@ Stored AnimDataModel float and transform curves are available through curves.hpp
 ## Stable local transform difference metrics - 0.128
 
 Local source-transform metrics now compute Euclidean translation distance, sign-invariant shortest quaternion orientation distance in degrees and maximum absolute scale-axis delta. The orientation metric uses stable atan2 differences after accepting only near-unit stored quaternions; source components remain untouched. Independent finite nonnegative tolerances, signed scales, tiny/half-turn/wrapped orientations, unknown channels, overflow and cancellation are checked. These are bone-local value metrics without hierarchy evaluation or retargeting.
+
+## Named independent-frame transform comparisons - 0.129
+
+compare_animation_frames pairs exact bone track names at independently chosen integer source frames. Reports retain raw before/after samples, Euclidean position, shortest sign-invariant orientation and maximum scale-axis differences, independent tolerances and changed/unavailable counts. Known track additions/removals require a complete identity table; duplicate or unresolved opposite names never confirm absence. Missing timing does not invalidate otherwise usable local values. Partial inputs, unknown channels, limits and cancellation stay explicit.

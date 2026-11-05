@@ -13,6 +13,16 @@ Json animation_snapshot(const Package &, const AnimationOptions & = {});
 // Integer source-key frame; constant one-key channels are reused, other cardinalities stay unavailable.
 Json animation_frame(const Package &, std::uint32_t frame, const std::string &object_path = "",
                      const AnimationOptions & = {});
+struct AnimationFrameDiffOptions {
+    AnimationOptions animation;
+    double position_tolerance = 0, rotation_tolerance_degrees = 0, scale_tolerance = 0;
+    std::size_t max_track_pairs = 100000;
+};
+// Exact names pair independently chosen source-key frames in bone-local space.
+// Orientation is sign-invariant; stored key serialization is compared separately.
+Json compare_animation_frames(const Package &, const Package &, std::uint32_t before_frame,
+                              std::uint32_t after_frame, const std::string &before_object = "",
+                              const std::string &after_object = "", const AnimationFrameDiffOptions & = {});
 struct AnimationComparison {
     Json changes = Json::array();
     std::string before_object, after_object;

@@ -266,6 +266,17 @@ Json detail::sample_animation_track(const Json &track, std::uint32_t frame, std:
     }
     return point;
 }
+bool detail::animation_track_identities_known(const Json &model, const OperationControl &control) {
+    if (model.value("tracksCoverage", std::string()) != "stored")
+        return false;
+    for (auto t = model.at("tracks").begin(); t != model.at("tracks").end(); ++t) {
+        control.check();
+        if (!t->contains("name") || !t->at("name").is_string() ||
+            t.key() != "name:" + t->at("name").get<std::string>())
+            return false;
+    }
+    return true;
+}
 Json detail::sample_animation_frame(const Json &model, std::uint32_t frame, const std::string &path,
                                     bool complete_input, const OperationControl &control) {
     control.check();
@@ -282,6 +293,9 @@ Json detail::sample_animation_frame(const Json &model, std::uint32_t frame, cons
         {"object", path},
         {"frame", frame},
         {"numberOfKeys", count},
+        {"completeInput", complete_input},
+        {"tracksCoverage", model.value("tracksCoverage", std::string("unavailable"))},
+        {"identitiesComplete", detail::animation_track_identities_known(model, control)},
         {"complete", complete_input && model.value("tracksCoverage", std::string()) == "stored"},
         {"tracks", Json::object()}};
     if (model.contains("frameRate")) {
