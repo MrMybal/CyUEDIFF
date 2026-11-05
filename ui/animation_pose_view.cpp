@@ -16,6 +16,9 @@ void AnimationPoseView::register_translations() {
          {"Animated socket details", "Détails du socket animé"},
          {"Socket absent from stored membership", "Socket absent de la liste enregistrée"},
          {"Socket origin difference: %.6g", "Écart d’origine du socket : %.6g"},
+         {"Stored socket offset", "Décalage local enregistré"},
+         {"Stored socket offset unavailable", "Décalage local enregistré indisponible"},
+         {"Parent source transform unavailable", "Transformation source du parent indisponible"},
          {"Source socket origins", "Origines des sockets animés"},
          {"No source socket positions available", "Aucune position de socket source disponible"},
          {"Some source socket origins are unavailable.",
@@ -264,6 +267,23 @@ void AnimationPoseView::draw(const char *id) {
             return;
         }
         cyui::textDim("%s | %s: %s", cyui::tr(side).c_str(), cyui::tr("Parent").c_str(), it->parent.c_str());
+        if (socket_mode_) {
+            const auto binding = pose->bindings.find(selected_);
+            const Json *offset =
+                binding != pose->bindings.end() && binding->is_object() && binding->contains("location")
+                    ? &binding->at("location")
+                    : nullptr;
+            if (offset && offset->is_array() && offset->size() == 3 && (*offset)[0].is_number() &&
+                (*offset)[1].is_number() && (*offset)[2].is_number())
+                ImGui::Text("%s: (%.6g, %.6g, %.6g)", cyui::tr("Stored socket offset").c_str(),
+                            (*offset)[0].get<double>(), (*offset)[1].get<double>(),
+                            (*offset)[2].get<double>());
+            else
+                cyui::textDim("%s", cyui::tr("Stored socket offset unavailable").c_str());
+            if (binding != pose->bindings.end() && binding->is_object() && binding->contains("affineReady") &&
+                binding->at("affineReady").is_boolean() && !binding->at("affineReady").get<bool>())
+                cyui::textDim("%s", cyui::tr("Parent source transform unavailable").c_str());
+        }
         if (it->ready)
             ImGui::Text("%s: (%.6g, %.6g, %.6g)", cyui::tr("Position").c_str(), it->position[0],
                         it->position[1], it->position[2]);

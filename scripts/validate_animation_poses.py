@@ -6,6 +6,7 @@ p.add_argument('--cli',type=Path,default=Path('build-native/Release/cyuediff.exe
 p.add_argument('--asset',type=Path,action='append',required=True)
 p.add_argument('--skeleton',type=Path,required=True)
 p.add_argument('--skeleton-object',default='')
+p.add_argument('--sockets',action='store_true',help='Also check socket offsets using the independent ancestor-walk oracle')
 p.add_argument('--out-dir',type=Path,default=Path('build-native/animation-pose-corpus'))
 a=p.parse_args();workspace=Path(__file__).resolve().parents[1];out=a.out_dir.resolve()
 if not out.is_relative_to(workspace/'build-native'):p.error('--out-dir must be under build-native')
@@ -15,7 +16,12 @@ inputs={skeleton,*assets};hashes={}
 for file in inputs:
  for path in [file,*[file.with_suffix(ext) for ext in ('.uexp','.ubulk','.uptnl','.m.ubulk','.o.ubulk','.upayload')]]:
   if path.is_file():hashes[path]=hashlib.sha256(path.read_bytes()).hexdigest()
+if any(path.is_relative_to(out) for path in hashes):p.error('--out-dir must not contain source inputs')
 out.mkdir(parents=True,exist_ok=True)
+def destination(name):
+ path=(out/name).resolve()
+ if not path.is_relative_to(out) or path in hashes:raise RuntimeError('Validation output overlaps source or escapes output directory')
+ return path
 def run(command,*args,codes=(0,)):
  r=subprocess.run([str(cli),command,*map(str,args)],capture_output=True,timeout=60)
  if r.returncode not in codes:raise RuntimeError((command,r.returncode,r.stderr.decode('utf-8','replace')))
@@ -24,6 +30,7 @@ snapshot=run('skeleton',skeleton);owners=snapshot['skeletons']
 owner=a.skeleton_object or (next(iter(owners)) if len(owners)==1 else '')
 if not owner or owner not in owners:p.error('Select one --skeleton-object')
 bones=owners[owner]['bones']
+attachments=run('attachments',skeleton,codes=(0,2)) if a.sockets else None
 def cross(a,b):return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]
 def transform(point,track):
  # Rotate the scaled vector with two cross products, without constructing affine matrices.
@@ -31,16 +38,18 @@ def transform(point,track):
  scaled=[point[i]*track['scales'][i] for i in range(3)]
  uv=cross(q[:3],scaled);uuv=cross(q[:3],uv)
  return [scaled[i]+2*q[3]*uv[i]+2*uuv[i]+track['positions'][i] for i in range(3)]
-def oracle(name,sample,hierarchy_ready):
+def oracle(name,sample,hierarchy_ready,offset=None):
  if not hierarchy_ready or not sample['completeInput'] or sample['tracksCoverage']!='stored':return None
- point=[0.,0.,0.];visited=set()
+ point=list(offset) if offset is not None else [0.,0.,0.];visited=set()
  while name is not None:
   if name in visited or len(visited)>512:raise RuntimeError('Invalid oracle ancestor chain')
   visited.add(name);track=sample['tracks'].get('name:'+name)
   if not track or not track['ready']:return None
+  norm=math.hypot(*track['rotations'])
+  if not math.isfinite(norm) or abs(norm-1)>1e-4:return None
   point=transform(point,track);name=bones[name]['parent']
  return point
-summary={'assets':len(assets),'models':0,'rawBones':len(bones),'sampledPoses':0,'readyJoints':0,'unavailableJoints':0,'completePoses':0,'oraclePositions':0,'selfComparisons':0,'temporalComparisons':0,'temporallyChangedJoints':0,'failures':[],'inputsUnchanged':False,'records':[]}
+summary={'assets':len(assets),'models':0,'rawBones':len(bones),'sampledPoses':0,'readyJoints':0,'unavailableJoints':0,'completePoses':0,'oraclePositions':0,'sampledSocketPoses':0,'readySockets':0,'unavailableSockets':0,'socketOraclePositions':0,'socketSelfComparisons':0,'selfComparisons':0,'temporalComparisons':0,'temporallyChangedJoints':0,'failures':[],'inputsUnchanged':False,'records':[]}
 for index,asset in enumerate(assets):
  try:
   models=run('animation',asset)['models']
@@ -61,13 +70,30 @@ for index,asset in enumerate(assets):
     ready=sum(int(x['ready']) for x in pose['joints'].values())
     comparison=run('animation-pose-diff',asset,asset,'--before-skeleton',skeleton,'--after-skeleton',skeleton,'--before-frame',frame,'--after-frame',frame,'--before-object',model,'--after-object',model,'--before-skeleton-object',owner,'--after-skeleton-object',owner,codes=(0,2))
     assert comparison['changedJoints']==0 and comparison['complete']==pose['complete']
-    (out/f'{index}-{model_index}-{frame}.json').write_text(json.dumps({'pose':pose,'selfComparison':comparison},indent=2),encoding='utf-8')
+    record={'pose':pose,'selfComparison':comparison}
+    if a.sockets:
+     sockets=run('animation-socket-pose',asset,skeleton,'--frame',frame,'--object',model,'--skeleton-object',owner,codes=(0,2))
+     refs=attachments['owners'][owner]['socketReferences'];listed={r['path'] for r in refs if isinstance(r['path'],str) and r['path'] not in ('None','')}
+     assert set(sockets['sockets'])==listed
+     for name,point in sockets['sockets'].items():
+      definition=attachments['sockets'].get(name);expected=None
+      if definition and 'location' in definition and definition['bone'] in bones:
+       expected=oracle(definition['bone'],sample,pose['hierarchyComplete'],definition['location'])
+      assert point['ready']==(expected is not None),(asset,frame,name,'socket availability')
+      if expected is not None:
+       assert all(math.isclose(x,y,rel_tol=1e-10,abs_tol=1e-7) for x,y in zip(expected,point['position'])),(asset,frame,name,'socket origin',expected,point['position'])
+       summary['socketOraclePositions']+=1
+     self_socket=run('animation-socket-pose-diff',asset,asset,'--before-skeleton',skeleton,'--after-skeleton',skeleton,'--before-frame',frame,'--after-frame',frame,'--before-object',model,'--after-object',model,'--before-skeleton-object',owner,'--after-skeleton-object',owner,codes=(0,2))
+     assert self_socket['changedSockets']==0 and self_socket['complete']==sockets['complete']
+     ready_sockets=sum(int(point['ready']) for point in sockets['sockets'].values());summary['sampledSocketPoses']+=1;summary['readySockets']+=ready_sockets;summary['unavailableSockets']+=len(sockets['sockets'])-ready_sockets;summary['socketSelfComparisons']+=1
+     record.update(socketPose=sockets,socketSelfComparison=self_socket)
+    destination(f'{index}-{model_index}-{frame}.json').write_text(json.dumps(record,indent=2),encoding='utf-8')
     summary['sampledPoses']+=1;summary['readyJoints']+=ready;summary['unavailableJoints']+=len(pose['joints'])-ready;summary['completePoses']+=int(pose['complete']);summary['selfComparisons']+=1
     summary['records'].append({'source':str(asset),'model':model,'frame':frame,'complete':pose['complete'],'readyJoints':ready,'unboundTracks':len(pose['unboundTracks'])})
    temporal=run('animation-pose-diff',asset,asset,'--before-skeleton',skeleton,'--after-skeleton',skeleton,'--before-frame',0,'--after-frame',count-1,'--before-object',model,'--after-object',model,'--before-skeleton-object',owner,'--after-skeleton-object',owner,codes=(0,1,2))
    summary['temporalComparisons']+=1;summary['temporallyChangedJoints']+=temporal['changedJoints']
-   (out/f'{index}-{model_index}-temporal.json').write_text(json.dumps(temporal,indent=2),encoding='utf-8')
+   destination(f'{index}-{model_index}-temporal.json').write_text(json.dumps(temporal,indent=2),encoding='utf-8')
  except Exception as error:summary['failures'].append({'source':str(asset),'error':str(error)})
 summary['inputsUnchanged']=all(hashlib.sha256(path.read_bytes()).hexdigest()==digest for path,digest in hashes.items())
-(out/'summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8');print(json.dumps({k:v for k,v in summary.items() if k!='records'},indent=2))
+destination('summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8');print(json.dumps({k:v for k,v in summary.items() if k!='records'},indent=2))
 if summary['failures'] or not summary['inputsUnchanged']:raise SystemExit(1)

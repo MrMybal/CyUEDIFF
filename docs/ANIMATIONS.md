@@ -175,3 +175,33 @@ The animation-socket-pose and animation-socket-pose-diff commands expose prepare
 ## Prepared source socket review in CyUI and desktop - 0.151
 
 AnimationPoseView can own and review bounded prepared source socket origins with dedicated labels, exact object-path selection, position tolerance and synchronized camera. The native document worker prepares socket origins from each explicitly bound Skeleton, including pinned historical Git definitions, independently of preview decoding and unrelated missing bone tracks. The Animations tab switches between joint and socket origins; both retain validated data-only state across workspace save/reopen, duplication and reload. Missing requested bindings remain unknown; known absent animation sides can certify added/removed sockets. English and French use the five existing themes.
+
+## Independent socket validation and installed SDK examples - 0.152
+
+The source pose validators optionally verify animated sockets against an independent quaternion ancestor-walk oracle, the native desktop and installed Core/Git consumers. The installed pose examples demonstrate explicit stored offsets, source matrices and socket comparisons without UI dependencies. Real and independently encoded inputs remain read-only, generated reports/captures stay outside source inputs and Git storage is not fetched or modified. Final build, visual, corpus, SDK, archive and secret-scan evidence is recorded in VALIDATION.md.
+
+
+### Source socket API and commands
+
+`AnimationPose::source_affines` contains only ready source-bone transforms, in row-major 3x4 form applied to column vectors. Translation occupies entries 3, 7 and 11. The additive JSON `affines` table exposes these same checked matrices. A ready joint origin alone cannot recover the rotation/scale terms needed to place a socket offset.
+
+```cpp
+auto source = cyuediff::animation_pose(animation, skeleton, 12);
+auto sockets = cyuediff::animation_socket_pose(source, skeleton);
+auto report = sockets.to_json();
+```
+
+The prepared overload reads only the explicitly supplied socket definitions package. Its owner must exactly match `source.skeleton_object`; callers remain responsible for supplying the intended definitions. The package overload accepts an `AnimationPoseSelection` and computes the source frame first. Ready matrices must agree with the prepared parent origin; missing, nonfinite or inconsistent entries remain unavailable. Position overflow, point/parent/text budgets and cooperative cancellation are checked.
+
+```powershell
+cyuediff animation-socket-pose Clip.uasset Rig.uasset --frame 12
+cyuediff animation-socket-pose-diff Before.uasset After.uasset `
+  --before-skeleton BeforeRig.uasset --after-skeleton AfterRig.uasset `
+  --before-frame 10 --after-frame 12 --position-tolerance 0.01
+```
+
+Use `--object`/`--skeleton-object` for a single source and the corresponding before/after owner selectors for comparisons. Explicit project contexts and `/Game/...` paths follow the existing source-pose CLI rules. Socket reports use `cyuediff.animation-socket-pose/1`, with `membershipComplete`, exact socket object paths, named parents, readiness, positions and stored offset/affine provenance. Comparisons use `cyuediff.animation-socket-pose-diff/1`, `changedSockets`, `unavailableSockets`, finite deltas and position tolerance. Unknown opposite membership cannot certify removal. A known empty list can. Unlisted contained sockets are not inserted, and repeated references are evaluated once per exact object path.
+
+Only socket origins are derived. Omitted relative locations remain unknown; socket-local rotation/scale do not affect the socket's own origin and are not defaulted. Source parent rotation/scale do affect its offset. Raw reference transforms, virtual-bone definitions, runtime interpolation/retargeting, root motion, skinned vertices and socket orientations are outside this contract. A missing source track on an unrelated bone does not invalidate sockets whose actual ancestors and stored offsets are ready.
+
+The `--sockets` option of `validate_animation_poses.py` starts the independent quaternion ancestor walk at each stored socket location instead of at zero. It compares availability and resulting positions without reconstructing affine matrices. The native and Git SDK pose validators also accept `--sockets` to check reports and optionally capture the socket view. Original inputs and companions are hashed; validation destinations remain separate from source inputs under `build-native`.

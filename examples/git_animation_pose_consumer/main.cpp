@@ -1,5 +1,6 @@
 #include <cyuediff/git.hpp>
 #include <cyuediff/animation_pose.hpp>
+#include <cyuediff/animation_socket_pose.hpp>
 #include <charconv>
 #include <iostream>
 namespace {
@@ -50,10 +51,17 @@ int run(const std::vector<std::string> &args) {
             t = repository.materialize(b.commit, args[6]);
         }
         // Keep all four revisions alive while their packages and payloads are used.
-        const auto before = animation_pose(a.open(), s.open(), before_frame);
-        const auto after = animation_pose(b.open(), t.open(), after_frame);
+        const auto before_animation = a.open(), before_skeleton = s.open(), after_animation = b.open(),
+                   after_skeleton = t.open();
+        const auto before = animation_pose(before_animation, before_skeleton, before_frame);
+        const auto after = animation_pose(after_animation, after_skeleton, after_frame);
+        const auto before_sockets = animation_socket_pose(before, before_skeleton),
+                   after_sockets = animation_socket_pose(after, after_skeleton);
         const auto comparison = compare_animation_poses(before, after);
-        std::cout << Json{{"beforeRevision", a.to_json()},
+        std::cout << Json{{"beforeSocketOrigins", before_sockets.to_json()},
+                          {"afterSocketOrigins", after_sockets.to_json()},
+                          {"socketComparison", compare_animation_socket_poses(before_sockets, after_sockets)},
+                          {"beforeRevision", a.to_json()},
                           {"afterRevision", b.to_json()},
                           {"beforeBinding", s.to_json()},
                           {"afterBinding", t.to_json()},

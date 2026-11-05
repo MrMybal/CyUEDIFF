@@ -1,4 +1,5 @@
 #include <cyuediff/animation_pose.hpp>
+#include <cyuediff/animation_socket_pose.hpp>
 #include <iostream>
 namespace {
 cyuediff::Json tag(const char *type, cyuediff::Json value, const char *parameter = nullptr) {
@@ -51,22 +52,38 @@ cyuediff::Package skeleton_model() {
                                             {{"name", "arm"}, {"parentIndex", 0}}})},
                      {"localPoses", Json::array({pose, pose})},
                      {"nameToIndex", {{"root", 0}, {"arm", 1}}}};
+    e.properties["Sockets"] = tag("ArrayProperty", {"Rig.Grip"}, "ObjectProperty");
     p.exports.push_back(e);
+    ObjectExport socket;
+    socket.path = "Rig.Grip";
+    socket.name = "Grip";
+    socket.outer_index = 1;
+    socket.class_name = "/Script/Engine.SkeletalMeshSocket";
+    socket.coverage = "properties";
+    socket.properties = {{"SocketName", tag("NameProperty", "Grip")},
+                         {"BoneName", tag("NameProperty", "arm")},
+                         {"RelativeLocation", tag("StructProperty", {1., 2., 3.}, "Vector")}};
+    p.exports.push_back(std::move(socket));
     return p;
 }
 } // namespace
-int main(int argc, char **argv) {
+int run(const std::vector<std::string> &args) {
     using namespace cyuediff;
     try {
-        if (argc != 1 && argc != 3 && argc != 5)
+        if (args.size() != 0 && args.size() != 2 && args.size() != 4)
             throw Error("arguments", "Expected zero, two or four paths: BEFORE_ANIMATION BEFORE_SKELETON "
                                      "[AFTER_ANIMATION AFTER_SKELETON]");
-        const auto a = argc == 1 ? animation_model() : Package::open(fs::u8path(argv[1]));
-        const auto s = argc == 1 ? skeleton_model() : Package::open(fs::u8path(argv[2]));
-        const auto b = argc == 5 ? Package::open(fs::u8path(argv[3])) : a;
-        const auto t = argc == 5 ? Package::open(fs::u8path(argv[4])) : s;
+        const auto a = args.empty() ? animation_model() : Package::open(fs::u8path(args[0]));
+        const auto s = args.empty() ? skeleton_model() : Package::open(fs::u8path(args[1]));
+        const auto b = args.size() == 4 ? Package::open(fs::u8path(args[2])) : a;
+        const auto t = args.size() == 4 ? Package::open(fs::u8path(args[3])) : s;
         const auto before = animation_pose(a, s, 0), after = animation_pose(b, t, 1);
-        std::cout << Json{{"before", before.to_json()},
+        const auto before_sockets = animation_socket_pose(before, s),
+                   after_sockets = animation_socket_pose(after, t);
+        std::cout << Json{{"beforeSocketOrigins", before_sockets.to_json()},
+                          {"afterSocketOrigins", after_sockets.to_json()},
+                          {"socketComparison", compare_animation_socket_poses(before_sockets, after_sockets)},
+                          {"before", before.to_json()},
                           {"after", after.to_json()},
                           {"comparison", compare_animation_poses(before, after)},
                           {"selfComparison", compare_animation_poses(before, before)}}
@@ -78,3 +95,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
+
+#ifdef _WIN32
+int wmain(int argc, wchar_t **argv) {
+    std::vector<std::string> args;
+    for (int i = 1; i < argc; ++i)
+        args.push_back(cyuediff::fs::path(argv[i]).u8string());
+    return run(args);
+}
+#else
+int main(int argc, char **argv) { return run({argv + 1, argv + argc}); }
+#endif

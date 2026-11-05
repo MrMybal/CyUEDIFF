@@ -30,3 +30,6 @@ The pinned official Actions releases are [checkout v7.0.1](https://github.com/ac
 
 
 For caller-supplied historical animation data, `examples/git_animation_pose_consumer` builds against the installed `CyUEDiff::Git` target and uses Core poses without CyUI. `scripts/validate_git_desktop_poses.py` compares that installed executable against the native desktop and original explicit animation/Skeleton files. The distribution validator compiles and starts the consumer; a real/fixture corpus run remains separate and never adds host-owned assets to the ZIP.
+
+
+The installed animation pose and Git animation pose examples also compute stored socket origins from prepared source affines. The Core example constructs its own socket definition and checks a known offset/displacement; the Git example retains both historical Skeleton materializations while projecting their stored socket definitions. `--sockets` enables the additional original/native/installed checks in the pose validators.

@@ -370,7 +370,9 @@ if args.consumer:
  if not pose_data['before']['complete'] or pose_data['before']['joints']['arm']['position']!=[10.,0.,0.] or pose_data['after']['joints']['arm']['position']!=[13.,4.,0.]:raise RuntimeError('Installed explicit animation hierarchy pose failed')
  if pose_data['comparison']['status']!='changed' or pose_data['comparison']['changedJoints']!=2 or pose_data['comparison']['joints']['arm']['distance']!=5.:raise RuntimeError('Installed source animation pose comparison failed')
  if pose_data['selfComparison']['status']!='identical':raise RuntimeError('Installed source animation pose self comparison failed')
- print('Installed independent Skeleton-bound animation pose Core consumer validated')
+ if not pose_data['beforeSocketOrigins']['complete'] or pose_data['beforeSocketOrigins']['sockets']['Rig.Grip']['position']!=[11.,2.,3.]:raise RuntimeError('Installed source socket origin failed')
+ if pose_data['afterSocketOrigins']['sockets']['Rig.Grip']['position']!=[14.,6.,3.] or pose_data['socketComparison']['changedSockets']!=1 or pose_data['socketComparison']['sockets']['Rig.Grip']['distance']!=5.:raise RuntimeError('Installed source socket displacement comparison failed')
+ print('Installed independent Skeleton-bound animation pose/socket Core consumer validated')
  curve_build=target/'curve-consumer'
  configure=[cmake,'-S',str(root/'examples/curve_consumer'),'-B',str(curve_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')

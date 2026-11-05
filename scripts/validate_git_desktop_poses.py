@@ -12,6 +12,7 @@ p.add_argument('--desktop',type=Path,default=Path('build-native/Release/cyuediff
 p.add_argument('--out-dir',type=Path,required=True)
 p.add_argument('--locale',choices=['en','fr'],default='en')
 p.add_argument('--theme',choices=['mid-grey','light-grey','amber-night','violet','navy'],default='mid-grey')
+p.add_argument('--sockets',action='store_true',help='Also compare installed/native/original source socket origins')
 p.add_argument('--capture',action='store_true')
 a=p.parse_args();workspace=Path(__file__).resolve().parents[1];out=a.out_dir.resolve();repo=a.repository.resolve(strict=True)
 if not out.is_relative_to(workspace/'build-native') or out.is_relative_to(repo) or repo.is_relative_to(out):p.error('Output must stay under build-native and separate from the input repository')
@@ -39,7 +40,7 @@ for file in files[:2]:
  count=next(iter(models.values())).get('numberOfKeys',0)
  if not count:p.error('Both source models require a known nonzero key count')
  counts.append(count)
-summary={'schema':'cyuediff.git-desktop-pose-validation/1','sampledComparisons':0,'sampledPoses':0,'readyJoints':0,'completePoses':0,'records':[]}
+summary={'schema':'cyuediff.git-desktop-pose-validation/1','sampledComparisons':0,'sampledPoses':0,'sampledSocketPoses':0,'completeSocketPoses':0,'readySockets':0,'unavailableSockets':0,'readyJoints':0,'completePoses':0,'records':[]}
 for index,frames in enumerate(zip((0,counts[0]//2,counts[0]-1),(0,counts[1]//2,counts[1]-1))):
  args=[repo,a.before_revision,a.after_revision,a.before,a.after,a.before_skeleton,a.after_skeleton,*frames]
  if a.before_project:args += [a.before_project,a.after_project]
@@ -48,12 +49,20 @@ for index,frames in enumerate(zip((0,counts[0]//2,counts[0]-1),(0,counts[1]//2,c
  assert sdk['before']==expected[0] and sdk['after']==expected[1],'Installed SDK/original Core pose mismatch'
  report=destination(f'{index}-desktop.json')
  args=['--smoke','--no-preferences','--no-previews','--repo',repo,'--before-revision',a.before_revision,'--after-revision',a.after_revision,'--before',a.before,'--after',a.after,'--pose-before-skeleton',a.before_skeleton,'--pose-after-skeleton',a.after_skeleton,'--pose-before-frame',frames[0],'--pose-after-frame',frames[1],'--view','animations','--locale',a.locale,'--theme',a.theme,'--report',report]
+ if a.sockets:args += ['--document-action','view-state:'+json.dumps({'asset':{'animationPosePreview':True,'animationSocketsPreview':True}})]
  if a.before_project:args += ['--before-project',a.before_project,'--after-project',a.after_project,'--no-engine']
  if a.capture and index==1:args += ['--capture',destination('middle.png')]
  result=subprocess.run([str(desktop),*map(str,args)],env=env,capture_output=True,timeout=90)
  if result.returncode:raise RuntimeError(result.stderr.decode('utf-8','replace'))
  observed=json.loads(report.read_text(encoding='utf-8'))['document']['animationPose']
  assert observed['before']==sdk['before'] and observed['after']==sdk['after'] and observed['comparison']==sdk['comparison'],'Desktop/installed SDK pose mismatch'
+ if a.sockets:
+  expected_sockets=[execute(cli,['animation-socket-pose',files[side],files[side+2],'--frame',frames[side]]) for side in (0,1)]
+  for side,label in enumerate(('before','after')):
+   assert observed['socketOrigins'][label]==sdk[label+'SocketOrigins']==expected_sockets[side],'Historical source socket pose mismatch'
+   ready=sum(int(j['ready']) for j in expected_sockets[side]['sockets'].values())
+   summary['sampledSocketPoses']+=1;summary['completeSocketPoses']+=int(expected_sockets[side]['complete']);summary['readySockets']+=ready;summary['unavailableSockets']+=len(expected_sockets[side]['sockets'])-ready
+  assert observed['socketOrigins']['comparison']==sdk['socketComparison'],'Historical source socket comparison mismatch'
  for side,label in enumerate(('before','after')):
   revision=sdk[label+'Binding'];assert observed[label+'Binding']['revision']==revision,'Skeleton provenance mismatch'
   assert revision['commit']==sdk[label+'Revision']['commit'],'Animation/Skeleton commit mismatch'
