@@ -25,10 +25,11 @@ Json SocketPoseComparison::to_json() const {
     return out;
 }
 SocketPose detail::compose_socket_pose(const Json &attachments, const Json &body, const std::string &path,
-                                       bool complete_input, const ReferencePoseOptions &options) {
+                                       bool complete_input, const ReferencePoseOptions &options,
+                                       ReferencePose *parent_origins) {
     const auto &owner = attachments.at("owners").at(path);
     std::map<std::string, std::array<double, 12>> matrices;
-    const auto bones = compose_reference_pose(body, path, complete_input, options, &matrices);
+    auto bones = compose_reference_pose(body, path, complete_input, options, &matrices);
     SocketPose out;
     out.object_path = path;
     out.retarget_source = options.retarget_source;
@@ -36,6 +37,8 @@ SocketPose detail::compose_socket_pose(const Json &attachments, const Json &body
     if (owner.at("socketListCoverage") != "stored") {
         out.complete = false;
         out.diagnostics.push_back("Stored socket membership is unavailable");
+        if (parent_origins)
+            *parent_origins = std::move(bones);
         return out;
     }
     std::set<std::string> seen;
@@ -88,6 +91,8 @@ SocketPose detail::compose_socket_pose(const Json &attachments, const Json &body
         for (const auto &diagnostic : bones.diagnostics)
             out.diagnostics.push_back(diagnostic);
     }
+    if (parent_origins)
+        *parent_origins = std::move(bones);
     return out;
 }
 SocketPose socket_pose(const Package &package, const std::string &path, const ReferencePoseOptions &options,
@@ -132,7 +137,16 @@ SocketPoseComparison compare_socket_poses(const Package &before, const Package &
         after_options.retarget_source = *options.after_retarget_source;
     const auto b = socket_pose(after, after_object, after_options, attachments);
     SocketPoseComparison out;
-    static_cast<ReferencePoseComparison &>(out) = compare_reference_poses(a, b, options);
+    auto comparison_options=options;
+    comparison_options.pose.skeleton.control.cancelled=[&]{
+        return (options.pose.skeleton.control.cancelled && options.pose.skeleton.control.cancelled()) ||
+               (attachments.control.cancelled && attachments.control.cancelled());
+    };
+    comparison_options.pose.skeleton.control.progress=[&](const OperationProgress &progress){
+        if(options.pose.skeleton.control.progress)options.pose.skeleton.control.progress(progress);
+        if(attachments.control.progress)attachments.control.progress(progress);
+    };
+    static_cast<ReferencePoseComparison &>(out) = compare_reference_poses(a, b, comparison_options);
     return out;
 }
 } // namespace cyuediff

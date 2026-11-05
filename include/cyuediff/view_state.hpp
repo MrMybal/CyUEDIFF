@@ -167,7 +167,8 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
         } else if(kind=="skeleton") {
-            flag({"posePreview","animationPreview"});
+            flag({"posePreview","animationPreview","attachmentsPreview"});
+            child("attachments","attachments");
             child("animation","graph-inspection");
             string({"beforeRetargetSource","afterRetargetSource"});
             child("poseCamera","mesh");
@@ -176,6 +177,11 @@ inline void validate(const Json &v, std::string_view kind) {
             child("inspection","graph-inspection");
             child("canvas","canvas");
             child("metadata","property");
+        } else if(kind=="attachments"){
+            flag({"preview"});
+            string({"beforeSource","afterSource"});
+            child("inspection","graph-inspection");
+            child("camera","mesh");
         } else if (kind == "collision") {
             child("viewport", "mesh");
             string({"body", "shape"}, true);
@@ -202,7 +208,7 @@ inline void validate(const Json &v, std::string_view kind) {
         require(known);
     }
     if(kind=="skeleton")
-        require(!(v.value("posePreview",false) && v.value("animationPreview",false)));
+        require(int(v.value("posePreview",false))+int(v.value("animationPreview",false))+int(v.value("attachmentsPreview",false))<=1);
     // Also validates programmatically supplied UTF-8, before any host resources are touched.
     require(v.dump().size() <= 256 * 1024);
 }

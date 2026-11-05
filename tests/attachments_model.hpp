@@ -30,6 +30,8 @@ inline Package attachments_model() {
             {"RelativeRotation", attachment_property({0., 90., 0.}, "StructProperty", "Rotator")},
             {"RelativeScale", attachment_property({1., 1., 1.}, "StructProperty", "Vector")},
             {"bForceAlwaysAnimated", attachment_property(true, "BoolProperty")}};
+        if (std::string(key) == "Muzzle")
+            socket.properties["RelativeLocation"]["value"] = {3., -2., 5.};
         p.exports.push_back(socket);
     }
     return p;

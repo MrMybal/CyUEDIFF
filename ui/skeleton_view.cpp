@@ -21,6 +21,7 @@ void SkeletonView::bind() {
     complete_ = (!a || a->at("complete").get<bool>()) && (!b || b->at("complete").get<bool>()) &&
                 (comparing_ ? a && b : a || b);
     metadata_.set_values(a, b, comparing_);
+    attachments_.select_owner(object_);
     animation_.set_models(body(animation_before_), body(animation_after_), comparing_);
     std::set<std::string> sources;
     for (const auto *object : {a, b})
@@ -110,6 +111,13 @@ void SkeletonView::set_packages(const Package *before, const Package *after, boo
     options.source_indices = true;
     before_ = before ? skeleton_snapshot(*before, options) : Json(nullptr);
     after_ = after ? skeleton_snapshot(*after, options) : Json(nullptr);
+    AttachmentOptions attachment_options;
+    attachment_options.source_indices = false;
+    attachments_.set_models(before ? attachment_snapshot(*before, attachment_options) : Json(nullptr),
+                            after ? attachment_snapshot(*after, attachment_options) : Json(nullptr), before_,
+                            after_, comparing || (before && after), before && before->complete_input,
+                            after && after->complete_input);
+    attachments_preview_ = false;
     animation_before_ = before ? skeleton_animation_snapshot(*before) : Json(nullptr);
     animation_after_ = after ? skeleton_animation_snapshot(*after) : Json(nullptr);
     animation_preview_ = false;
@@ -255,6 +263,11 @@ Json SkeletonView::view_state() const {
         const auto &camera = state_.canvas.view;
         out["canvas"] = {{"pan", {camera.origin.x, camera.origin.y}}, {"zoom", camera.zoom}};
     }
+    if (attachments_preview_)
+        out["attachmentsPreview"] = true;
+    const auto attachment_state = attachments_.view_state();
+    if (!attachment_state.empty())
+        out["attachments"] = attachment_state;
     if (animation_preview_)
         out["animationPreview"] = true;
     const auto animation_state = animation_.view_state();
@@ -288,6 +301,10 @@ void SkeletonView::restore_view_state(const Json &state) {
         inspector_.restore_view_state(state["inspection"]);
     if (state.contains("metadata"))
         metadata_.restore_view_state(state["metadata"]);
+    if (state.contains("attachmentsPreview"))
+        set_attachments_preview(state.at("attachmentsPreview").get<bool>());
+    if (state.contains("attachments"))
+        attachments_.restore_view_state(state.at("attachments"));
     if (state.contains("animationPreview"))
         set_animation_preview(state.at("animationPreview").get<bool>());
     if (state.contains("animation"))
@@ -354,9 +371,11 @@ void SkeletonView::draw(const char *id) {
         metadata_.draw("Skeleton metadata");
         ImGui::EndChild();
     }
-    if (ImGui::RadioButton(cyui::trLabel("Hierarchy").c_str(), !pose_preview_ && !animation_preview_)) {
+    if (ImGui::RadioButton(cyui::trLabel("Hierarchy").c_str(),
+                           !pose_preview_ && !animation_preview_ && !attachments_preview_)) {
         pose_preview_ = false;
         animation_preview_ = false;
+        attachments_preview_ = false;
     }
     ImGui::SameLine();
     if (ImGui::RadioButton(cyui::trLabel("Reference pose").c_str(), pose_preview_))
@@ -365,6 +384,14 @@ void SkeletonView::draw(const char *id) {
         ImGui::SameLine();
     if (ImGui::RadioButton(cyui::trLabel("Animation metadata").c_str(), animation_preview_))
         set_animation_preview(true);
+    if (ImGui::GetContentRegionAvail().x > cyui::dp(200))
+        ImGui::SameLine();
+    if (ImGui::RadioButton(cyui::trLabel("Attachments").c_str(), attachments_preview_))
+        set_attachments_preview(true);
+    if (attachments_preview_) {
+        attachments_.draw();
+        return;
+    }
     if (animation_preview_) {
         animation_.draw();
         return;

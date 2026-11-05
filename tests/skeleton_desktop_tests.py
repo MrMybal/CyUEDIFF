@@ -1,7 +1,7 @@
 """Skeleton tab selection and camera/property state survive explicit workspace restart."""
 import hashlib,json,os,subprocess,sys,tempfile
 from pathlib import Path
-exe,generator,retarget_generator,marker_generator=(str(Path(p).resolve()) for p in sys.argv[1:5])
+exe,generator,retarget_generator,marker_generator,attachment_generator=(str(Path(p).resolve()) for p in sys.argv[1:6])
 env={k.upper():v for k,v in os.environ.items()}
 checks=0
 with tempfile.TemporaryDirectory(prefix='.test-tmp-skeleton-desktop-',dir=Path.cwd()) as directory:
@@ -9,6 +9,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-skeleton-desktop-',dir=Path.c
  subprocess.run([generator,'--write-fixtures',str(root)],env=env,check=True)
  subprocess.run([retarget_generator,'--write-fixtures',str(root)],env=env,check=True)
  subprocess.run([marker_generator,'--write-fixtures',str(root)],env=env,check=True)
+ subprocess.run([attachment_generator,'--write-fixtures',str(root)],env=env,check=True)
  hashes={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
  report=root/'report.json'
  def run(*args,code=0):
@@ -55,6 +56,16 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-skeleton-desktop-',dir=Path.c
   metadata_restored=run('--workspace',metadata_workspace,'--locale','fr')
   assert metadata_expected['animationPreview'] and metadata_expected['animation']['selected']==selection
   assert metadata_restored['workspace']['documents'][0]['viewState']['asset']['skeleton']==metadata_expected
+ for selection in ('/sockets/Rig.Grip','/virtual/name:VB~0~1Grip'):
+  attachment_state={'asset':{'skeleton':{'object':'Rig','attachmentsPreview':True,'attachments':
+    {'preview':True,'beforeSource':'A~/pose','afterSource':'','inspection':{'selected':selection,'properties':{'changedOnly':False}}}}}}
+  attachment_workspace=root/'attachments-workspace.json'
+  attachment_saved=run('--before',root/'attachments-before-1013.uasset','--after',root/'attachments-after-1013.uasset','--view','skeleton',
+                       '--document-action','view-state:'+json.dumps(attachment_state),'--save-workspace',attachment_workspace)
+  expected_attachment=attachment_saved['workspace']['documents'][0]['viewState']['asset']['skeleton']
+  reopened=run('--workspace',attachment_workspace,'--locale','fr')
+  assert expected_attachment['attachmentsPreview'] and expected_attachment['attachments']['inspection']['selected']==selection
+  assert reopened['workspace']['documents'][0]['viewState']['asset']['skeleton']==expected_attachment
  for name in ('invalid','unsupported'):
   assert run('--before',root/(name+'.uasset'),'--view','skeleton')['status']=='ready'
  run('--before',root/'before.uasset','--view','skeleton','--save-workspace',root/'before.uasset',code=2)

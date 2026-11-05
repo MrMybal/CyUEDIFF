@@ -93,6 +93,10 @@ int main() {
             rejected = e.code == "cancelled";
         }
         check(rejected, "Socket-stage cancellation");
+        stop=false;AttachmentOptions diff_cancel;diff_cancel.control.cancelled=[&]{return stop;};
+        diff_cancel.control.progress=[&](const OperationProgress &progress){if(progress.phase=="Comparing reference poses")stop=true;};
+        rejected=false;try{compare_socket_poses(p,p,"","",{},diff_cancel);}catch(const Error &e){rejected=e.code=="cancelled";}
+        check(rejected,"Attachment controller also cancels the displacement comparison phase");
         rejected = false;
         try {
             socket_pose(p, "Missing");

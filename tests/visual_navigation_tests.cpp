@@ -1,6 +1,7 @@
 #include <cyuediff/asset_view.hpp>
 #include "collision_fixture.hpp"
 #include "animation_model.hpp"
+#include "attachments_model.hpp"
 #include "platform_win32.hpp"
 #include <fstream>
 #include <iostream>
@@ -246,12 +247,44 @@ int main(int argc, char **argv) {
             animation_unknown.animation_view().select_marker("Left");
             animation_empty.set_packages(&skeleton_before);
             animation_empty.set_animation_preview(true);
+            auto attachment_before = cyuediff::test::virtual_bones_model(),
+                 attachment_after = attachment_before;
+            attachment_after.exports[1].properties["RelativeLocation"]["value"][0] = 4.;
+            attachment_after.exports[0].properties["VirtualBones"]["value"][0]["TargetBoneName"]["value"] =
+                "tip";
+            SkeletonView attachment_view, attachment_virtual, attachment_unknown, attachment_missing;
+            attachment_view.set_packages(&attachment_before, &attachment_after);
+            attachment_view.set_attachments_preview(true);
+            attachment_view.attachments_view().set_preview(true);
+            attachment_view.attachments_view().select_socket("Rig.Grip");
+            auto attachment_state = attachment_view.view_state();
+            attachment_state["attachments"]["inspection"]["properties"]["changedOnly"] = false;
+            attachment_view.restore_view_state(attachment_state);
+            auto cyclic_attachment = attachment_after;
+            cyclic_attachment.exports[0].properties["VirtualBones"]["value"][0]["SourceBoneName"]["value"] =
+                "VB_tip";
+            attachment_virtual.set_packages(&attachment_before, &cyclic_attachment);
+            attachment_virtual.set_attachments_preview(true);
+            attachment_virtual.attachments_view().select_virtual_bone("name:VB_tip");
+            auto unknown_attachment = attachment_after;
+            unknown_attachment.exports.resize(1);
+            unknown_attachment.exports[0].properties.erase("Sockets");
+            unknown_attachment.exports[0].properties.erase("VirtualBones");
+            attachment_unknown.set_packages(&attachment_before, &unknown_attachment);
+            attachment_unknown.set_attachments_preview(true);
+            attachment_unknown.attachments_view().select_socket("Rig.Grip");
+            attachment_unknown.attachments_view().set_preview(true);
+            attachment_missing.set_packages(&attachment_before, &attachment_after);
+            attachment_missing.set_attachments_preview(true);
+            attachment_missing.attachments_view().set_preview(true);
+            attachment_missing.attachments_view().select_sources("A~/pose", "Missing");
+            attachment_missing.attachments_view().select_socket("Rig.Grip");
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 25; ++scene) {
+                    for (int scene = 0; scene < 30; ++scene) {
                         const char *names[] = {"blueprint",
                                                "material",
                                                "parameters",
@@ -276,7 +309,12 @@ int main(int argc, char **argv) {
                                                "animation-metadata",
                                                "animation-narrow",
                                                "animation-unknown",
-                                               "animation-empty"};
+                                               "animation-empty",
+                                               "attachments",
+                                               "attachments-narrow",
+                                               "attachments-virtual",
+                                               "attachments-unknown",
+                                               "attachments-missing-source"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -286,13 +324,27 @@ int main(int argc, char **argv) {
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
                             ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13 ||
-                                                      scene == 15 || scene == 19 || scene == 22)
+                                                      scene == 15 || scene == 19 || scene == 22 ||
+                                                      scene == 26)
                                                          ? ImVec2{640, io.DisplaySize.y}
                                                          : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
                             switch (scene) {
+                            case 25:
+                            case 26:
+                                attachment_view.draw();
+                                break;
+                            case 27:
+                                attachment_virtual.draw();
+                                break;
+                            case 28:
+                                attachment_unknown.draw();
+                                break;
+                            case 29:
+                                attachment_missing.draw();
+                                break;
                             case 21:
                             case 22:
                                 animation_view.draw();

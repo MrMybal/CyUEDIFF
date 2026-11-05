@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/skeleton.hpp>
 #include <cyuediff/animation_metadata_view.hpp>
+#include <cyuediff/attachments_view.hpp>
 #include <cyuediff/reference_pose_viewport.hpp>
 #include <cyuediff/graph_inspector.hpp>
 namespace cyuediff {
@@ -8,6 +9,8 @@ namespace cyuediff {
 class SkeletonView {
     Json before_, after_, animation_before_, animation_after_;
     AnimationMetadataView animation_;
+    AttachmentsView attachments_;
+    bool attachments_preview_ = false;
     bool animation_preview_ = false;
     std::vector<std::string> objects_;
     std::string object_, rendered_locale_;
@@ -35,14 +38,26 @@ class SkeletonView {
     void set_packages(const Package *before, const Package *after = nullptr, bool comparing = false);
     void set_pose_preview(bool enabled) {
         pose_preview_ = enabled;
-        if (enabled)
+        if (enabled) {
             animation_preview_ = false;
+            attachments_preview_ = false;
+        }
     }
     void set_animation_preview(bool enabled) {
         animation_preview_ = enabled;
-        if (enabled)
+        if (enabled) {
             pose_preview_ = false;
+            attachments_preview_ = false;
+        }
     }
+    void set_attachments_preview(bool enabled) {
+        attachments_preview_ = enabled;
+        if (enabled) {
+            animation_preview_ = false;
+            pose_preview_ = false;
+        }
+    }
+    AttachmentsView &attachments_view() { return attachments_; }
     AnimationMetadataView &animation_view() { return animation_; }
     bool pose_preview() const { return pose_preview_; }
     const ReferencePose &displayed_pose(bool after = false) const {
