@@ -1,3 +1,4 @@
+#include "curve_weighted.hpp"
 #include "curves_internal.hpp"
 #include <cmath>
 #include <cstring>
@@ -356,14 +357,22 @@ Json detail::evaluate_curve_lane(const Json &lane, double time, bool complete_in
         out["method"] = "linear";
     } else if (mode == 2) {
         const auto left = a.at("tangentWeightMode").get<int>(), right = b.at("tangentWeightMode").get<int>();
-        if ((left != 0 && left != 1) || (right != 0 && right != 2))
-            return unavailable("Weighted or unknown tangent segment is not evaluated");
-        const double t2 = alpha * alpha, t3 = t2 * alpha;
-        result = (2 * t3 - 3 * t2 + 1) * a.at("value").get<double>() +
-                 (t3 - 2 * t2 + alpha) * delta * a.at("leaveTangent").get<double>() +
-                 (-2 * t3 + 3 * t2) * b.at("value").get<double>() +
-                 (t3 - t2) * delta * b.at("arriveTangent").get<double>();
-        out["method"] = "cubic-hermite";
+        if ((left != 0 && left != 1) || (right != 0 && right != 2)) {
+            const auto weighted = detail::weighted_curve_segment(a, b, alpha, delta, control);
+            if (!weighted.at("ready").get<bool>()) {
+                out["diagnostics"].push_back(weighted.at("reason"));
+                return out;
+            }
+            result = weighted.at("value").get<double>();
+            out["method"] = "cubic-weighted";
+        } else {
+            const double t2 = alpha * alpha, t3 = t2 * alpha;
+            result = (2 * t3 - 3 * t2 + 1) * a.at("value").get<double>() +
+                     (t3 - 2 * t2 + alpha) * delta * a.at("leaveTangent").get<double>() +
+                     (-2 * t3 + 3 * t2) * b.at("value").get<double>() +
+                     (t3 - t2) * delta * b.at("arriveTangent").get<double>();
+            out["method"] = "cubic-hermite";
+        }
     } else
         return unavailable("Stored interpolation mode is not evaluated");
     if (!std::isfinite(result))

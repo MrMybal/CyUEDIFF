@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='rich-curve-cli-') as tmp:
   assert run('curves-diff',duplicate,duplicate,code=2)['status']=='incomplete'
   assert run('curve-value',before,'--time','.5')['value']==5.
   assert run('curve-value',cubic,'--time','.5')['value']==4.625
-  assert not run('curve-value',weighted,'--time','.5',code=2)['ready']
+  assert run('curve-value',weighted,'--time','.5')['ready']
   assert run('curve-value',weighted,'--time','0')['ready']
   for asset in (empty,unknown,unordered,duplicate):assert not run('curve-value',asset,'--time','.5',code=2)['ready']
   for args in [('curve-value',before),('curve-value',before,'--time','nan'),('curve-value',before,'--time','inf'),

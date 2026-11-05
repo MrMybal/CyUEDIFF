@@ -39,3 +39,7 @@ The independent `examples/curve_consumer` constructs a host-owned curve without 
 ## Read-only curve corpora and installed SDK verification - 0.117
 
 The curve corpus validator checks source/companion hashes, per-owner self-comparison coverage and selected stored/in-segment sample coordinates. The ninth independent installed Core consumer validates source keys, a changed value and supported evaluation without Unreal, Git or CyUI. The distribution validator and prepared CI include this consumer. Native and Core-only configuration results, real and synthetic coverage, visual captures and secret scans are recorded in VALIDATION.md.
+
+## Bounded weighted cubic evaluation - 0.118
+
+Stored active tangent weights now form two-dimensional cubic Bezier handles. A bounded solver isolates time-monotone branches at derivative roots, bisects each branch with cancellation, verifies the normalized time residual and selects the largest valid parameter when time handles create multiple roots. Independent parametric tests verify inverse evaluation, overshooting time handles, zero-length weights, negative/unknown active weights and cancellation. Inactive weights retain their existing Hermite semantics. Non-finite geometry, unresolved roots or overflow remain unavailable; no engine load-time repair or float-runtime identity is claimed. Existing encoded weighted fixtures and public CLI expectations now confirm usable weighted segments.

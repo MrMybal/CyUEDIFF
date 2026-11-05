@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
         a["leaveTangent"] = 4.;
         check(evaluate_curve(p, .5)["value"] == 5.5, "Unweighted cubic Hermite uses stored slopes");
         a["tangentWeightMode"] = 2;
-        check(!evaluate_curve(p, .5)["ready"].get<bool>() && evaluate_curve(p, 0.)["ready"],
-              "Weighted segment unavailable but exact key usable");
+        check(evaluate_curve(p, .5)["ready"] && evaluate_curve(p, 0.)["ready"],
+              "Stored weighted segment and exact key usable");
         a["tangentWeightMode"] = 1;
         check(evaluate_curve(p, .5)["ready"], "Inactive arrive weight does not affect outgoing segment");
         a["interpMode"] = 255;
@@ -78,8 +78,8 @@ int main(int argc, char **argv) {
             const auto cubic = Package::open(save(root, "cubic", rich_curve_file_fixture(8, v)));
             check(evaluate_curve(cubic, .5)["value"] == 4.625, "Encoded cubic slopes");
             const auto weighted = Package::open(save(root, "weighted", rich_curve_file_fixture(4, v)));
-            check(!evaluate_curve(weighted, .5)["ready"].get<bool>(),
-                  "Encoded weighted segment stays unavailable");
+            check(evaluate_curve(weighted, .5)["ready"].get<bool>(),
+                  "Encoded weighted segment evaluated");
         }
         fs::remove_all(root);
         std::cout << checks << " rich curve evaluation/file checks passed\n";

@@ -54,7 +54,7 @@ int main() {
         CurveView weight;
         weight.set_packages(&weighted);
         weight.set_time(.5);
-        check(!weight.value()["ready"].get<bool>(), "Weighted segments stay unavailable");
+        check(weight.value()["ready"].get<bool>(), "Stored weighted segments are evaluated");
         auto unknown = a;
         unknown.exports[0].properties["FloatCurve"]["value"].erase("Keys");
         CurveView unavailable;
