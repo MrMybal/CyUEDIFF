@@ -55,6 +55,7 @@ AssetTab tab(const std::string &name) {
         return AssetTab::textures;
     if (name == "meshes")
         return AssetTab::meshes;
+    if(name=="skeleton") return AssetTab::skeleton;
     if (name == "collisions")
         return AssetTab::collisions;
     if (name == "comparison")
@@ -1022,7 +1023,7 @@ class Shell {
         WorkspaceFile result;
         result.documents.clear();
         const char *views[] = {"properties", "blueprint",  "materials", "textures",
-                               "meshes",     "comparison", "collisions"};
+                               "meshes",     "comparison", "collisions", "skeleton"};
         for (const auto &entry : session_.documents()) {
             const auto &p = *presentations_.at(entry.id);
             SavedDocument d;
@@ -2129,7 +2130,7 @@ int run(Options options) {
                "  --history --smoke [--history-before ID --history-after ID --history-compare]\n"
                "  --browse [--include-engine] [--browse-filter TEXT] : browse project or revision content\n"
                "  [--codec DLL] [--no-previews] [--locale en|fr] [--theme KEY]\n"
-               "  [--view properties|blueprint|materials|textures|meshes|comparison|collisions]\n"
+               "  [--view properties|blueprint|materials|textures|meshes|comparison|collisions|skeleton]\n"
                "  [--preferences FILE.json | --no-preferences] : appearance and preview preferences\n"
                "  [--previews] [--exclude-engine] : override saved display options\n"
                "  --smoke --preferences FILE.json --save-preferences : explicit preference test write\n"

@@ -126,7 +126,19 @@ SkeletonComparison compare_skeletons(const Package &before, const Package &after
     normalized.source_indices = false;
     const auto a = skeleton_snapshot(before, normalized), b = skeleton_snapshot(after, normalized);
     SkeletonComparison result;
-    result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>();
+    auto verified_tails = [&](const Json &snapshot) {
+        for (const auto &body : snapshot.at("skeletons")) {
+            options.control.check();
+            for (const auto &range : body.at("native").at("opaque"))
+                if (range.is_object() && range.value("bytes", std::uint64_t(0)) &&
+                    (!range.contains("sha256") || !range.at("sha256").is_string() ||
+                     range.at("sha256").get_ref<const std::string &>().size() != 64))
+                    return false;
+        }
+        return true;
+    };
+    result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>() && verified_tails(a) &&
+                      verified_tails(b);
     walk(a, b, "", result.changes, options.control);
     return result;
 }

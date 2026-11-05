@@ -35,6 +35,26 @@ void AssetView::register_translations() {
                 "restent explicites."},
                {"Previous changed shape", "Forme modifi\u00e9e pr\u00e9c\u00e9dente"},
                {"Next changed shape", "Forme modifi\u00e9e suivante"}});
+    cyui::registerTranslations(
+        "fr",
+        {{"Skeleton", "Squelette"},
+         {"Skeleton object", "Objet squelette"},
+         {"Parent", "Parent"},
+         {"Children", "Enfants"},
+         {"No stored reference skeleton", "Aucun squelette de r\u00e9f\u00e9rence enregistr\u00e9"},
+         {"This package has no supported Skeleton object.",
+          "Ce package ne contient aucun objet Skeleton pris en charge."},
+         {"Raw reference hierarchy and local pose; animations and skinning are not evaluated.",
+          "Hi\u00e9rarchie de r\u00e9f\u00e9rence et pose locale ; animations et skinning non "
+          "\u00e9valu\u00e9s."},
+         {"Skeleton data is incomplete. Unknown native data remains opaque.",
+          "Donn\u00e9es du squelette incompl\u00e8tes. Les donn\u00e9es natives inconnues restent opaques."},
+         {"Hierarchy diagram is limited to 4,096 bones. Complete stored data remains in Properties.",
+          "Le diagramme est limit\u00e9 \u00e0 4 096 os. Les donn\u00e9es compl\u00e8tes restent dans "
+          "Propri\u00e9t\u00e9s."},
+         {"Skeleton properties", "Propri\u00e9t\u00e9s du squelette"},
+         {"Connections include both stored parent relationships.",
+          "Les connexions incluent les deux parent\u00e9s enregistr\u00e9es."}});
     GraphInspector::register_translations();
     cyui::registerTranslations("fr",
                                {{"Actual pixels", "Pixels r\u00e9els"},
@@ -204,6 +224,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
             }
 
     collisions_.set_packages(before_.get(), after_.get(), comparison_);
+    skeleton_.set_packages(before_.get(), after_.get(), comparison_);
     before_geometry_.reset();
     after_geometry_.reset();
     graph_after_ = texture_after_ = mesh_after_ = material_after_ = !before_;
@@ -326,6 +347,8 @@ Json AssetView::view_state() const {
         result["layout"] = layout_.snapshot();
     if (!collisions_.empty())
         result["collisions"] = collisions_.view_state();
+    if (!skeleton_.empty())
+        result["skeleton"] = skeleton_.view_state();
     result["before"] = side(false);
     result["after"] = side(true);
     return result;
@@ -336,6 +359,8 @@ void AssetView::restore_view_state(const Json &state) {
         layout_.restore(state["layout"], "asset-layout");
     if (state.contains("collisions"))
         collisions_.restore_view_state(state["collisions"]);
+    if (state.contains("skeleton"))
+        skeleton_.restore_view_state(state["skeleton"]);
     auto flag = [&](const char *key, bool &out) {
         if (state.contains(key))
             out = state[key].get<bool>();
@@ -566,6 +591,11 @@ void AssetView::draw(const char *id, bool show_language) {
                     mesh_after_ = true;
             }
             (mesh_after_ ? after_mesh_ : before_mesh_).draw();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(cyui::trLabel("Skeleton").c_str(), nullptr, flags(AssetTab::skeleton))) {
+            active_tab_ = AssetTab::skeleton;
+            skeleton_.draw();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Collisions").c_str(), nullptr, flags(AssetTab::collisions))) {

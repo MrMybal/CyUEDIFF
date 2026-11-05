@@ -69,7 +69,10 @@ struct Projection {
                         bone.contains("parentIndex") && bone.at("parentIndex").is_number_integer(),
                     "Malformed stored bone identity");
             const auto &name = bone.at("name").get_ref<const std::string &>();
-            const auto parent = bone.at("parentIndex").get<std::int64_t>();
+            const auto &stored_parent = bone.at("parentIndex");
+            require(!stored_parent.is_number_unsigned() || stored_parent.get<std::uint64_t>() < i,
+                    "Unsigned parent index is out of range");
+            const auto parent = stored_parent.get<std::int64_t>();
             require(!name.empty() && name != "None" && !out["bones"].contains(name) && parent >= -1 &&
                         parent < std::int64_t(i),
                     "Invalid stored skeleton hierarchy");
@@ -95,6 +98,8 @@ struct Projection {
                 entry["exportName"] = copy(bone.at("exportName"));
             out["bones"][name] = std::move(entry);
         }
+        if (raw.contains("objectGuid"))
+            out["native"]["objectGuid"] = copy(raw.at("objectGuid"));
         if (raw.contains("layout"))
             out["native"]["layout"] = copy(raw.at("layout"));
         out["complete"] = e.coverage == "properties";

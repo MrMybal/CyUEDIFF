@@ -8,13 +8,14 @@
 #include <cyuediff/material_view.hpp>
 #include <cyuediff/property_view.hpp>
 #include <cyuediff/collision_view.hpp>
+#include <cyuediff/skeleton_view.hpp>
 #include <cyui/modules/Diff.h>
 #include <memory>
 #include <optional>
 namespace cyuediff {
 // The host owns the window/backend and loads packages outside its render loop.
 // No platform window, Unreal dependency or file I/O is introduced by draw().
-enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison, collisions };
+enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison, collisions, skeleton };
 class AssetView {
     ViewLayout layout_;
     std::shared_ptr<const Package> before_, after_;
@@ -31,6 +32,7 @@ class AssetView {
     BlueprintView before_graph_, after_graph_;
     MaterialView before_material_, after_material_;
     CollisionView collisions_;
+    SkeletonView skeleton_;
     bool material_after_ = false;
     MeshView before_mesh_, after_mesh_;
     bool mesh_after_ = false;
@@ -53,12 +55,8 @@ class AssetView {
                                 const cyui::ImageData &, const HdrImageComparison &);
     bool clear_texture_preview(const std::string &object_path, bool after = false);
     void set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after = false);
-    AssetTab active_tab() const {
-        return requested_tab_.value_or(active_tab_);
-    }
-    void select_tab(AssetTab tab) {
-        requested_tab_ = tab;
-    }
+    AssetTab active_tab() const { return requested_tab_.value_or(active_tab_); }
+    void select_tab(AssetTab tab) { requested_tab_ = tab; }
     void draw(const char *id = "CyUEDiff", bool show_language = true);
 };
 } // namespace cyuediff

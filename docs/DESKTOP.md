@@ -1,4 +1,4 @@
-# Desktop application — 0.82
+# Desktop application — 0.87
 
 `cyuediff_desktop` is an optional Windows host for the CyUI views. It inspects local Unreal packages and compares local Git/LFS revisions without launching Unreal Editor. The Core SDK, CLI, Git adapter and embeddable views remain separate targets.
 
@@ -270,3 +270,7 @@ The Collisions tab and --view collisions select stored bodies and shapes, naviga
 ## Collision geometry review - 0.82
 
 The Collisions tab prepares stored body-local geometry outside the frame loop. Choose one body, then all its stored shapes or one exact shape identity. Before/after panes share scale and camera navigation. Click a wire to select its shape in the typed inspector; Alt-drag orbits, middle-drag pans and the wheel zooms. Changed-shapes filtering, fit-changes and camera presets aid review. Explicit workspace files retain the camera, shape and property selection. Bodies are not placed in a common skeleton/world space. Unavailable geometry and preview limits remain visible while stored properties stay inspectable.
+
+## Raw reference skeleton review - 0.87
+
+The Skeleton tab presents a read-only union of stored raw bone hierarchies. Search/select a bone to compare local transforms and parents; node outlines mark stored changes. The Skeleton properties section retains UObject metadata and native tail fingerprints. Explicit workspace files retain object/bone selection, typed property filter/preview and graph canvas. Connections may include both before/after parents. No animation, virtual-bone reconstruction or skinning occurs.

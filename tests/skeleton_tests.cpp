@@ -37,6 +37,11 @@ int main() {
               "Generic serialized ordering stays visible independently");
         check(!compare(before, after).to_json()["skeletonChanges"].empty(),
               "General diff includes named skeleton changes");
+        ReadOptions without_hashes;
+        without_hashes.fingerprints = false;
+        const auto unhashed = Package::open(save(root, "unhashed", skeleton_file_fixture()), without_hashes);
+        check(compare_skeletons(unhashed, unhashed).status() == "incomplete",
+              "Unhashed opaque native tails cannot establish skeleton equality");
         auto missing = before;
         missing.exports[0].native_coverage = "opaque";
         missing.exports[0].native_data = Json::object();
@@ -57,6 +62,15 @@ int main() {
             rejected = e.code == "skeleton-value";
         }
         check(rejected, "Malformed host-populated skeleton is rejected");
+        invalid = before;
+        invalid.exports[0].native_data["bones"][0]["parentIndex"] = std::uint64_t(-1);
+        rejected = false;
+        try {
+            invalid.skeleton_snapshot();
+        } catch (const Error &e) {
+            rejected = e.code == "skeleton-value";
+        }
+        check(rejected, "Unsigned parent overflow cannot become a root");
         for (unsigned kind = 0; kind < 5; ++kind) {
             SkeletonOptions options;
             if (kind == 0)

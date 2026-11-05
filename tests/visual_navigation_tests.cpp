@@ -1,5 +1,6 @@
 #include <cyuediff/asset_view.hpp>
 #include "collision_fixture.hpp"
+#include "skeleton_model.hpp"
 #include "platform_win32.hpp"
 #include <fstream>
 #include <iostream>
@@ -188,16 +189,26 @@ int main(int argc, char **argv) {
             incomplete_package.exports[0].properties["AggGeom"]["value"]["ConvexElems"]["value"][0].erase(
                 "Transform");
             collision_incomplete.set_packages(&incomplete_package);
+            auto skeleton_before = cyuediff::test::skeleton_model(), skeleton_after = skeleton_before;
+            skeleton_after.exports[0].native_data["localPoses"][1]["translation"][0] = 12.;
+            SkeletonView skeleton;
+            skeleton.set_packages(&skeleton_before, &skeleton_after);
+            check(skeleton.next_changed_bone(), "Native skeleton fixture has a changed bone");
+            skeleton.restore_view_state(
+                {{"inspection",
+                  {{"selected", "arm"},
+                   {"properties", {{"filter", "translation"}, {"selected", "/localPose/translation/0"}}}}}});
             Json saved = Json::object();
             for (const auto *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"}) {
                 cyui::setTheme(theme);
                 for (const auto *locale : {"en", "fr"}) {
                     cyui::setLocale(locale);
-                    for (int scene = 0; scene < 12; ++scene) {
+                    for (int scene = 0; scene < 14; ++scene) {
                         const char *names[] = {"blueprint",     "material",         "parameters",
                                                "mesh",          "texture",          "no-nodes",
                                                "no-edges",      "narrow-blueprint", "collisions",
-                                               "collision-all", "collision-narrow", "collision-incomplete"};
+                                               "collision-all", "collision-narrow", "collision-incomplete",
+                                               "skeleton",      "skeleton-narrow"};
                         for (int n = 0; n < 3; ++n) {
                             check(window.pump(), "Hidden window pump");
                             if (window.resize_width && window.resize_height) {
@@ -206,8 +217,9 @@ int main(int argc, char **argv) {
                             }
                             renderer.new_frame();
                             ImGui::SetNextWindowPos({0, 0});
-                            ImGui::SetNextWindowSize(
-                                (scene == 7 || scene == 10) ? ImVec2{640, io.DisplaySize.y} : io.DisplaySize);
+                            ImGui::SetNextWindowSize((scene == 7 || scene == 10 || scene == 13)
+                                                         ? ImVec2{640, io.DisplaySize.y}
+                                                         : io.DisplaySize);
                             ImGui::Begin("Visual navigation", nullptr,
                                          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_NoSavedSettings);
@@ -246,6 +258,10 @@ int main(int argc, char **argv) {
                             case 11:
                                 collision_incomplete.draw();
                                 break;
+                            case 12:
+                            case 13:
+                                skeleton.draw();
+                                break;
                             }
                             ImGui::End();
                             ImGui::Render();
@@ -273,6 +289,14 @@ int main(int argc, char **argv) {
                             check(center_y > 0 && center_y < io.DisplaySize.y * .4,
                                   "Narrow inspector keeps the selected node within its canvas");
                         }
+                        if (scene == 13) {
+                            const auto hierarchy = skeleton.view_state();
+                            const auto &camera = hierarchy.at("canvas");
+                            const auto x =
+                                (355. - camera["pan"][0].get<double>()) * camera["zoom"].get<double>();
+                            check(x > 100 && x < 540,
+                                  "Narrow skeleton view keeps the restored selected bone visible");
+                        }
                         if (scene == 4)
                             check(texture.view_state()["zoom"].get<double>() > 1,
                                   "Native texture focuses changed pixels");
@@ -285,6 +309,7 @@ int main(int argc, char **argv) {
             saved["material"] = material.view_state();
             saved["parameters"] = parameters.view_state();
             saved["collisions"] = collision.view_state();
+            saved["skeleton"] = skeleton.view_state();
             saved["mesh"] = changed_mesh.view_state();
             saved["texture"] = texture.view_state();
             saved["frames"] = frames;

@@ -166,12 +166,18 @@ inline void validate(const Json &v, std::string_view kind) {
                 scalar(x, 0, 1e9);
                 known = true;
             }
+        } else if(kind=="skeleton") {
+            string({"object"},true);
+            child("inspection","graph-inspection");
+            child("canvas","canvas");
+            child("metadata","property");
         } else if (kind == "collision") {
             child("viewport", "mesh");
             string({"body", "shape"}, true);
             child("properties", "property");
         } else if (kind == "asset") {
             child("collisions", "collision");
+            child("skeleton","skeleton");
             child("layout", "asset-layout");
             string({"filter"});
             string({"selected", "textureSelected"}, true);

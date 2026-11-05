@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
             check(!filtered.data["bones"][0].contains("exportName"),
                   "Filtered editor export names remain absent");
         }
-        for (int kind = 1; kind <= 4; ++kind) {
+        for (int kind = 1; kind <= 5; ++kind) {
             auto bad = Package::open(save(root, "bad", skeleton_file_fixture(false, false, 0, kind)));
             check(bad.exports[0].native_coverage == "opaque" && bad.exports[0].native_data.empty() &&
                       bad.exports[0].opaque.contains("suffix"),
@@ -60,6 +60,9 @@ int main(int argc, char **argv) {
         unsupported_fixture.header.patch(16, 1012);
         auto unsupported = Package::open(save(root, "unsupported-profile", unsupported_fixture));
         check(unsupported.exports[0].native_coverage == "opaque", "Uncertified file profile stays opaque");
+        auto with_guid = Package::open(save(root, "guid", skeleton_file_fixture(false, false, 0, 0, true)));
+        check(with_guid.exports[0].native_data["objectGuid"] == "00000001000000020000000300000004",
+              "Stored UObject GUID is retained before the reference arrays");
         ReadOptions disabled;
         disabled.native_skeletons = false;
         check(Package::open(path, disabled).exports[0].native_data.empty(),

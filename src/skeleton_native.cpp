@@ -5,8 +5,8 @@ namespace cyuediff::detail {
 NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package, std::uint64_t end,
                                              const ReadOptions &options) {
     const auto &summary = package.summary;
-    if (summary.ue4_version != 522 || summary.ue5_version != 1013 || summary.licensee_version ||
-        (summary.flags & 0x200u))
+    if (summary.ue4_version != 522 || (summary.ue5_version != 1004 && summary.ue5_version != 1013) ||
+        summary.licensee_version || (summary.flags & 0x200u))
         throw Error("skeleton-profile", "Unsupported reference skeleton package profile", a.tell());
     const auto start = a.tell();
     Archive::ReadLimit window(a, start + std::min(end - start, options.max_property_bytes));
@@ -33,6 +33,10 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
         charge(value.size());
         return value;
     };
+    const auto has_guid = a.get<std::uint32_t>();
+    if (has_guid > 1)
+        throw Error("skeleton-guid", "Invalid UObject GUID presence marker", a.tell() - 4);
+    const auto object_guid = has_guid ? a.guid() : std::string{};
     const bool export_names = !(summary.flags & 0x80000000u);
     Json bones = Json::array(), poses = Json::array(), lookup = Json::object();
     std::set<std::string> names;
@@ -82,12 +86,11 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
             throw Error("skeleton-map", "Stored bone map is inconsistent", a.tell());
         lookup[key] = index;
     }
-    return {{{"kind", "reference-skeleton"},
-             {"layout", "ue5.5-raw-reference-prefix"},
-             {"bones", std::move(bones)},
-             {"localPoses", std::move(poses)},
-             {"nameToIndex", std::move(lookup)},
-             {"exportNamesStored", export_names}},
-            a.tell()};
+    Json decoded = {{"kind", "reference-skeleton"},     {"layout", "ue5-raw-reference-prefix"},
+                    {"bones", std::move(bones)},        {"localPoses", std::move(poses)},
+                    {"nameToIndex", std::move(lookup)}, {"exportNamesStored", export_names}};
+    if (has_guid)
+        decoded["objectGuid"] = object_guid;
+    return {std::move(decoded), a.tell()};
 }
 } // namespace cyuediff::detail

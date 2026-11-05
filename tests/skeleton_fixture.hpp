@@ -2,7 +2,7 @@
 #include "package_fixture.hpp"
 namespace cyuediff::test {
 inline Fixture skeleton_file_fixture(bool filtered = false, bool reorder = false, int changed = 0,
-                                     int invalid = 0) {
+                                     int invalid = 0, bool guid = false) {
     Bytes class_name, engine_name, payload;
     auto f = fixture(
         1013, 1, false, 0, {"Skeleton", "/Script/Engine", "root", "arm", "tip"},
@@ -11,6 +11,10 @@ inline Fixture skeleton_file_fixture(bool filtered = false, bool reorder = false
             name(engine_name, "/Script/Engine");
             const std::vector<std::string> bones = reorder ? std::vector<std::string>{"root", "tip", "arm"}
                                                            : std::vector<std::string>{"root", "arm", "tip"};
+            payload.i(invalid == 5 ? 2 : guid ? 1 : 0);
+            if (guid)
+                for (std::uint32_t word : {1u, 2u, 3u, 4u})
+                    payload.put(word);
             payload.i(3);
             for (unsigned i = 0; i < 3; ++i) {
                 name(payload, invalid == 1 && i == 2 ? bones[1] : bones[i]);

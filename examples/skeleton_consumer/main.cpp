@@ -28,11 +28,16 @@ int main(int argc, char **argv) {
             after = before;
             after.exports[0].native_data["localPoses"][1]["translation"][0] = 12.;
         }
-        std::cout << Json{{"snapshot", before.skeleton_snapshot()},
-                          {"comparison", compare_skeletons(before, after).to_json()},
-                          {"pose", reference_pose(before).to_json()}}
-                         .dump(2)
-                  << '\n';
+        Json result = {{"snapshot", before.skeleton_snapshot()},
+                       {"comparison", compare_skeletons(before, after).to_json()},
+                       {"pose", reference_pose(before).to_json()}};
+        if (argc == 1) {
+            // A declared opaque interval without a fingerprint cannot establish equality.
+            auto unverified = before;
+            unverified.exports[0].opaque["suffix"] = {{"bytes", 4}};
+            result["unverifiedNativeTail"] = compare_skeletons(unverified, unverified).to_json();
+        }
+        std::cout << result.dump(2) << '\n';
         return 0;
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';
