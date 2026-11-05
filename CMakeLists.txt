@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.155.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.156.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -560,6 +560,14 @@ if(BUILD_TESTING)
         target_link_libraries(cyuediff_preferences_tests PRIVATE cyuediff_desktop_model)
         add_test(NAME desktop_preferences COMMAND cyuediff_preferences_tests)
         if(Python3_Interpreter_FOUND)
+            set(CYUEDIFF_SESSION_TEST_GIT_ARGS "")
+            if(CYUEDIFF_BUILD_GIT)
+                set(CYUEDIFF_SESSION_TEST_GIT_ARGS "${GIT_EXECUTABLE}")
+            endif()
+            add_test(NAME desktop_session_restart COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/session_desktop_tests.py" "$<TARGET_FILE:cyuediff_desktop>"
+                "$<TARGET_FILE:cyuediff_animation_socket_file_tests>" ${CYUEDIFF_SESSION_TEST_GIT_ARGS})
+            set_tests_properties(desktop_session_restart PROPERTIES TIMEOUT 120)
             add_test(NAME desktop_preferences_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/preferences_cli_tests.py" "$<TARGET_FILE:cyuediff_desktop>")
             set_tests_properties(desktop_preferences_cli PROPERTIES TIMEOUT 90)

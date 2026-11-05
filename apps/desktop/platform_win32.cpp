@@ -115,6 +115,19 @@ std::optional<WindowPlacement> NativeWindow::placement() const {
                                  })(handle));
     return result;
 }
+void NativeWindow::reset_placement() {
+    std::vector<WindowWorkArea> areas;
+    EnumDisplayMonitors(nullptr, nullptr, monitor_area, reinterpret_cast<LPARAM>(&areas));
+    if (areas.empty())
+        return;
+    const auto fitted = fit_window_placement(WindowPlacement{}, areas);
+    if (!hidden_ && (IsZoomed(handle) || IsIconic(handle)))
+        ShowWindow(handle, SW_RESTORE);
+    last_placement_ = fitted;
+    SetWindowPos(handle, nullptr, fitted.x, fitted.y, fitted.width, fitted.height,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    remember_placement();
+}
 NativeWindow::~NativeWindow() {
     if (handle && IsWindow(handle))
         DestroyWindow(handle);

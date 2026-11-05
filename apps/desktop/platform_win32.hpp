@@ -27,6 +27,7 @@ class NativeWindow {
     NativeWindow(const NativeWindow &) = delete;
     NativeWindow &operator=(const NativeWindow &) = delete;
     bool pump();
+    void reset_placement();
     std::optional<fs::path> choose_workspace(bool save);
     std::optional<fs::path> choose_file(bool project = false, bool container = false, bool schema = false);
 };

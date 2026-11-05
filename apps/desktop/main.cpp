@@ -5,6 +5,7 @@
 #include "document_tabs.hpp"
 #include "browser.hpp"
 #include "preferences.hpp"
+#include "session_file.hpp"
 #include "container_view.hpp"
 #ifdef CYUEDIFF_HAS_GIT
 #include "history_view.hpp"
@@ -36,7 +37,9 @@ struct Options {
     Json view_state = Json::object();
     bool no_preferences = false, save_preferences = false, preference_write = false;
     bool theme_override = false, locale_override = false, previews_override = false, engine_override = false;
-    std::string preferences_diagnostic;
+    std::string preferences_diagnostic, session_diagnostic;
+    fs::path session_path;
+    bool restore_session = false, session_override = false, save_session = false, session_write = false;
     std::string browse_filter, browse_select, container_filter;
     std::string cooked_view;
     int container_tab = -1;
@@ -87,6 +90,10 @@ Options parse_one(const std::vector<std::string> &args) {
                                                       "--preferences",
                                                       "--no-preferences",
                                                       "--save-preferences",
+                                                      "--session",
+                                                      "--restore-session",
+                                                      "--no-restore-session",
+                                                      "--save-session",
                                                       "--document-action",
                                                       "--document-index",
                                                       "--codec",
@@ -115,7 +122,14 @@ Options parse_one(const std::vector<std::string> &args) {
             if(argument=="--pose-frame"){pose_shared_frame=true;options.settings.pose_before_frame=options.settings.pose_after_frame=frame;}
             else if(argument=="--pose-before-frame"){pose_before_frame=true;options.settings.pose_before_frame=frame;}
             else {pose_after_frame=true;options.settings.pose_after_frame=frame;}
-        } else if (argument == "--workspace")
+        } else if (argument == "--session")
+            options.session_path = fs::u8path(value());
+        else if (argument == "--restore-session" || argument == "--no-restore-session") {
+            options.session_override = true;
+            options.restore_session = argument == "--restore-session";
+        } else if (argument == "--save-session")
+            options.save_session = true;
+        else if (argument == "--workspace")
             options.workspace_input = fs::u8path(value());
         else if (argument == "--save-workspace")
             options.workspace_output = fs::u8path(value());
@@ -306,6 +320,12 @@ Options parse_one(const std::vector<std::string> &args) {
         throw Error("desktop-option", "Preferences require a .json path");
     if (options.save_preferences && (!options.smoke || options.preferences.empty()))
         throw Error("desktop-option", "--save-preferences requires --smoke and --preferences");
+    if (!options.session_path.empty() && options.session_path.extension() != ".json")
+        throw Error("desktop-option", "Session requires a .json path");
+    if (options.save_session && (!options.smoke || options.session_path.empty()))
+        throw Error("desktop-option", "--save-session requires --smoke and --session");
+    if (options.smoke && options.session_override && options.restore_session && options.session_path.empty())
+        throw Error("desktop-option", "Smoke session restoration requires an explicit --session");
     if (options.history_parameters && !options.history)
         throw Error("desktop-option", "History options require --history");
     if (options.history &&
@@ -377,7 +397,8 @@ Options parse(const std::vector<std::string> &args) {
             !entry.report.empty() || !entry.preferences.empty() || entry.no_preferences ||
             !entry.workspace_input.empty() || !entry.workspace_output.empty() ||
             !entry.document_actions.empty() || entry.save_preferences || entry.theme_override ||
-            entry.locale_override || entry.selected_document)
+            entry.locale_override || entry.selected_document || !entry.session_path.empty() ||
+            entry.session_override || entry.save_session)
             throw Error("desktop-option", "Global options must precede --new-document");
         result.additional_documents.push_back(std::move(entry));
     }
@@ -450,6 +471,11 @@ void register_translations() {
          {"Empty selectors require a sole stored object.", "Les sélecteurs vides exigent un seul objet enregistré."},
          {"Choose Skeleton paths, then Load to prepare the selected frames.", "Choisissez les squelettes, puis Charger pour préparer les frames sélectionnées."},
          {"CyUEDiff preferences", "Préférences CyUEDiff"},
+         {"CyUEDiff session", "Session CyUEDiff"},
+         {"Restore previous session on startup", "Restaurer la session précédente au démarrage"},
+         {"Session could not be restored or saved.", "La session n’a pas pu être restaurée ou enregistrée."},
+         {"Session restoration", "Restauration de session"},
+         {"Reset window placement", "Réinitialiser la position de la fenêtre"},
          {"Preferences could not be loaded.", "Les préférences n'ont pas pu être chargées."},
          {"Open workspace...", "Ouvrir un espace de travail..."},
          {"Save workspace", "Enregistrer l'espace de travail"},
@@ -582,6 +608,14 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
                      const std::shared_ptr<const BrowseDocument> &browser = {},
                      const fs::path &history_storage = {}) {
     std::vector<fs::path> outputs;
+    for (const auto &path : {options.capture, options.report, options.workspace_output, options.preferences})
+        if (!path.empty() && !options.session_path.empty() && same_path(path, options.session_path))
+            throw Error("desktop-output", "Output or preferences overlap session storage");
+    if (options.session_write && !options.session_path.empty()) {
+        if (!options.workspace_input.empty() && same_path(options.session_path, options.workspace_input))
+            throw Error("desktop-output", "Session storage overlaps workspace input");
+        outputs.push_back(options.session_path);
+    }
     for (const auto &path : {options.capture, options.report, options.workspace_output})
         if (!path.empty()) {
             if (!options.preferences.empty() && same_path(path, options.preferences))
@@ -606,6 +640,8 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         other.workspace_output = options.workspace_output;
         other.preferences = options.preferences;
         other.preference_write = options.preference_write;
+        other.session_path = options.session_path;
+        other.session_write = options.session_write;
         protect_outputs(other, {}, {}, {});
     }
 
@@ -784,7 +820,8 @@ enum class Action {
     previous_document,
     open_workspace,
     save_workspace,
-    save_workspace_as
+    save_workspace_as,
+    reset_window
 };
 struct DocumentContext {
     Settings settings;
@@ -845,13 +882,15 @@ class Shell {
     CatalogView catalog_view_;
     bool browser_open_ = false, close_browser_ = false;
     std::string browse_select_;
-    std::string preferences_diagnostic_;
+    std::string preferences_diagnostic_, session_diagnostic_;
+    bool restore_session_ = false, session_available_ = false;
 
   public:
     explicit Shell(const Options &options)
         : protections_(options), workspace_path_(options.workspace_input),
           workspace_loaded_(!options.workspace_input.empty()),
-          preferences_diagnostic_(options.preferences_diagnostic) {
+          preferences_diagnostic_(options.preferences_diagnostic), session_diagnostic_(options.session_diagnostic),
+          restore_session_(options.restore_session), session_available_(!options.session_path.empty()) {
         auto initialize = [&](DocumentId id, const Options &entry) {
             auto state = std::make_unique<DocumentPresentation>();
             state->settings = entry.settings;
@@ -891,9 +930,12 @@ class Shell {
     }
     ~Shell() = default;
     DesktopPreferences preferences() const {
-        return {cyui::currentThemeKey(), cyui::locale(), current().settings.previews,
-                current().settings.include_engine};
+        DesktopPreferences result{cyui::currentThemeKey(), cyui::locale(), current().settings.previews,
+                                  current().settings.include_engine};
+        result.restore_session = restore_session_;
+        return result;
     }
+    bool restore_session() const { return restore_session_; }
     const DocumentWorkspace &session() const {
         return session_;
     }
@@ -1263,6 +1305,10 @@ class Shell {
                 cycle_document(true);
             else if (command == "view-state" && !argument.empty())
                 apply_presentation_state(Json::parse(argument));
+            else if (command == "session-enable" && argument.empty() && session_available_)
+                restore_session_ = true;
+            else if (command == "session-disable" && argument.empty())
+                restore_session_ = false;
             else if (command == "workspace-save" && !argument.empty())
                 write_workspace(fs::u8path(argument));
             else if (command == "workspace-open" && !argument.empty())
@@ -1587,6 +1633,11 @@ class Shell {
                             cyui::setLocale(locale.code.c_str());
                     ImGui::EndMenu();
                 }
+                ImGui::Separator();
+                ImGui::MenuItem(cyui::trLabel("Restore previous session on startup").c_str(), nullptr,
+                                &restore_session_, session_available_);
+                if (ImGui::MenuItem(cyui::trLabel("Reset window placement").c_str()))
+                    action = Action::reset_window;
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
@@ -1633,6 +1684,10 @@ class Shell {
                 if (!preferences_diagnostic_.empty()) {
                     cyui::callout(cyui::Tone::warning, cyui::tr("Preferences could not be loaded.").c_str());
                     ImGui::TextWrapped("%s", preferences_diagnostic_.c_str());
+                }
+                if (!session_diagnostic_.empty()) {
+                    cyui::callout(cyui::Tone::warning, cyui::tr("Session could not be restored or saved.").c_str());
+                    ImGui::TextWrapped("%s", session_diagnostic_.c_str());
                 }
                 cyui::heading(
                     cyui::tr(current().settings.source == 2 ? "Containers" : "Compare packages").c_str(), 3);
@@ -2052,6 +2107,7 @@ class Shell {
         return action;
     }
     void perform(Action action, NativeWindow &window) {
+        if (action == Action::reset_window) { window.reset_placement(); return; }
         try {
             if (action == Action::none)
                 return;
@@ -2291,6 +2347,8 @@ int run(Options options) {
                "  [--preferences FILE.json | --no-preferences] : appearance and preview preferences\n"
                "  [--previews] [--exclude-engine] : override saved display options\n"
                "  --smoke --preferences FILE.json --save-preferences : explicit preference test write\n"
+               "  [--restore-session | --no-restore-session] [--session FILE.json] : optional startup session\n"
+               "  --smoke --session FILE.json --restore-session --save-session : explicit session test write\n"
                "  --smoke [--capture FILE.png] [--report FILE.json] : hidden DX11/WARP validation\n";
         return 0;
     }
@@ -2313,8 +2371,33 @@ int run(Options options) {
                     options.settings.previews = saved.value.previews;
                 if (!options.engine_override)
                     options.settings.include_engine = saved.value.include_engine;
+                if (!options.session_override)
+                    options.restore_session = saved.value.restore_session;
             }
             options.preference_write = saved.writable && (!options.smoke || options.save_preferences);
+        }
+    }
+    if (options.session_path.empty() && !options.smoke)
+        options.session_path = session_path_for_preferences(options.preferences);
+    SessionRead saved_session;
+    bool session_restored = false;
+    if (!options.session_path.empty()) {
+        options.session_path = fs::absolute(options.session_path);
+        saved_session = read_session(options.session_path);
+        options.session_diagnostic = saved_session.diagnostic;
+        options.session_write = saved_session.writable && options.restore_session &&
+                                (!options.smoke || options.save_session);
+        if (options.restore_session && saved_session.loaded && options.workspace_input.empty() &&
+            !options.document_parameters && options.additional_documents.empty()) {
+            try {
+                auto restored = workspace_options(options, saved_session.value);
+                protect_outputs(restored, {});
+                options = std::move(restored);
+                session_restored = true;
+            } catch (const std::exception &error) {
+                options.session_diagnostic = error.what();
+                saved_session.writable = options.session_write = false;
+            }
         }
     }
     if (!options.workspace_input.empty()) {
@@ -2338,19 +2421,30 @@ int run(Options options) {
         throw Error("desktop-option", "Unknown theme or locale");
     Renderer renderer(window.handle, options.smoke);
     Shell shell(options);
-    bool preferences_saved = false;
+    bool preferences_saved = false, session_saved = false;
     auto persist = [&]() {
-        if (!options.preference_write)
-            return;
-        try {
-            shell.protect(options);
-            auto value = shell.preferences();
-            value.window = window.placement();
-            value.restore_session = saved.value.restore_session;
-            desktop::save_preferences(options.preferences, value);
-            preferences_saved = true;
-        } catch (const std::exception &error) {
-            options.preferences_diagnostic = error.what();
+        auto guard = options;
+        guard.session_write = shell.restore_session() && !options.session_path.empty() && saved_session.writable &&
+                              (!options.smoke || options.save_session);
+        if (guard.session_write) {
+            try {
+                shell.protect(guard);
+                desktop::save_session(options.session_path, shell.saved_workspace());
+                session_saved = true;
+            } catch (const std::exception &error) {
+                options.session_diagnostic = error.what();
+            }
+        }
+        if (options.preference_write) {
+            try {
+                shell.protect(guard);
+                auto value = shell.preferences();
+                value.window = window.placement();
+                desktop::save_preferences(options.preferences, value);
+                preferences_saved = true;
+            } catch (const std::exception &error) {
+                options.preferences_diagnostic = error.what();
+            }
         }
     };
     int frames = 0, settled = 0;
@@ -2400,7 +2494,11 @@ int run(Options options) {
                              {"loaded", saved.loaded},
                              {"saved", preferences_saved},
                              {"diagnostic", options.preferences_diagnostic},
-                             {"values", [&] { auto value = shell.preferences(); value.window = window.placement(); value.restore_session = saved.value.restore_session; return value.to_json(); }()}}},
+                             {"values", [&] { auto value = shell.preferences(); value.window = window.placement(); return value.to_json(); }()}}},
+                           {"session", {{"enabled", shell.restore_session()},
+                                        {"path", options.session_path.u8string()},
+                                        {"loaded", saved_session.loaded}, {"restored", session_restored},
+                                        {"saved", session_saved}, {"diagnostic", options.session_diagnostic}}},
                            {"window", {{"restored", window.placement_restored},
                                        {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
                            {"uploadedPreviews", shell.images()},
@@ -2428,6 +2526,9 @@ int run(Options options) {
     if (!options.preferences_diagnostic.empty() && options.preference_write && !preferences_saved)
         MessageBoxW(window.handle, wide(options.preferences_diagnostic).c_str(),
                     wide(cyui::tr("CyUEDiff preferences")).c_str(), MB_OK | MB_ICONWARNING);
+    if (!options.session_diagnostic.empty() && shell.restore_session() && !session_saved)
+        MessageBoxW(window.handle, wide(options.session_diagnostic).c_str(),
+                    wide(cyui::tr("CyUEDiff session")).c_str(), MB_OK | MB_ICONWARNING);
     return 0;
 }
 } // namespace
