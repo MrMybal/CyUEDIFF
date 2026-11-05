@@ -195,6 +195,7 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                     "Missing source frame");
             saved.settings.pose_enabled = s.at("pose_enabled").get<bool>();
             saved.settings.pose_independent_frames = s.at("pose_independent_frames").get<bool>();
+            require(!saved.settings.pose_enabled || saved.settings.source == 0, "External Skeleton bindings require local package contexts");
             saved.settings.pose_before_frame = number(s.at("pose_before_frame"), 0, INT32_MAX);
             saved.settings.pose_after_frame = number(s.at("pose_after_frame"), 0, INT32_MAX);
         }

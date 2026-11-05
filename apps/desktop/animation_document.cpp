@@ -36,6 +36,7 @@ void prepare_side(Document &document, const LoadRequest &request, const ReadOpti
         const auto message = std::string(after ? "After: " : "Before: ") +
                              (error ? error->code + ": " : std::string{}) + e.what();
         document.animation_pose_diagnostics.push_back(message);
+        document.diagnostics.push_back("Animation pose: " + message);
         // A failed requested side is unknown, rather than an absent asset/addition.
         pose = AnimationPose{};
         pose->animation_object = selection.animation_object;
@@ -63,6 +64,7 @@ void prepare_animation_poses(Document &document, const LoadRequest &request, con
             if (error && error->code == "cancelled")
                 throw;
             document.animation_pose_diagnostics.push_back(e.what());
+            document.diagnostics.push_back(std::string("Animation pose: ") + e.what());
             document.animation_pose_comparison = {{"schema", "cyuediff.animation-pose-diff/1"},
                                                   {"complete", false},
                                                   {"status", "incomplete"},

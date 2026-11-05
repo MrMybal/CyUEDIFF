@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.140.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.141.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -443,6 +443,10 @@ if(BUILD_TESTING)
         add_test(NAME desktop_visual_navigation COMMAND cyuediff_visual_navigation_tests)
         set_tests_properties(desktop_visual_navigation PROPERTIES TIMEOUT 90)
         if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_animation_pose_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_pose_desktop_tests.py"
+                "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_animation_pose_file_tests>")
+            set_tests_properties(desktop_animation_pose_cli PROPERTIES TIMEOUT 120)
             add_test(NAME desktop_animation_source_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_source_desktop_tests.py"
                 "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_animation_frame_tests>")

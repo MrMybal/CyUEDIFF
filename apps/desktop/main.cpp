@@ -67,7 +67,14 @@ AssetTab tab(const std::string &name) {
 }
 Options parse_one(const std::vector<std::string> &args) {
     Options options;
-    bool git_options = false;
+    bool git_options = false, pose_parameters = false, pose_shared_frame = false,
+         pose_before_frame = false, pose_after_frame = false;
+    auto source_frame = [](const std::string &text) {
+        std::uint64_t result=0;
+        if(text.empty())throw Error("desktop-option","Empty source frame");
+        for(char c:text){if(c<'0'||c>'9'||result>(INT32_MAX-std::uint64_t(c-'0'))/10)throw Error("desktop-option","Source frame must be an integer from 0 to INT32_MAX");result=result*10+std::uint64_t(c-'0');}
+        return static_cast<int>(result);
+    };
     for (std::size_t i = 1; i < args.size(); ++i) {
         const auto &argument = args[i];
         const std::set<std::string> global_options = {"--workspace",
@@ -94,7 +101,21 @@ Options parse_one(const std::vector<std::string> &args) {
                 throw Error("desktop-option", "Missing value for " + argument);
             return args[i];
         };
-        if (argument == "--workspace")
+        if(argument=="--pose-before-skeleton" || argument=="--pose-after-skeleton" || argument=="--pose-before-object" || argument=="--pose-after-object" || argument=="--pose-before-skeleton-object" || argument=="--pose-after-skeleton-object") {
+            pose_parameters=options.settings.pose_enabled=true;
+            auto &settings=options.settings;auto text=value();
+            if(argument=="--pose-before-skeleton")settings.pose_before_skeleton=std::move(text);
+            else if(argument=="--pose-after-skeleton")settings.pose_after_skeleton=std::move(text);
+            else if(argument=="--pose-before-object")settings.pose_before_object=std::move(text);
+            else if(argument=="--pose-after-object")settings.pose_after_object=std::move(text);
+            else if(argument=="--pose-before-skeleton-object")settings.pose_before_skeleton_object=std::move(text);
+            else settings.pose_after_skeleton_object=std::move(text);
+        } else if(argument=="--pose-frame" || argument=="--pose-before-frame" || argument=="--pose-after-frame") {
+            pose_parameters=options.settings.pose_enabled=true;const auto frame=source_frame(value());
+            if(argument=="--pose-frame"){pose_shared_frame=true;options.settings.pose_before_frame=options.settings.pose_after_frame=frame;}
+            else if(argument=="--pose-before-frame"){pose_before_frame=true;options.settings.pose_before_frame=frame;}
+            else {pose_after_frame=true;options.settings.pose_after_frame=frame;}
+        } else if (argument == "--workspace")
             options.workspace_input = fs::u8path(value());
         else if (argument == "--save-workspace")
             options.workspace_output = fs::u8path(value());
@@ -266,6 +287,12 @@ Options parse_one(const std::vector<std::string> &args) {
         else
             throw Error("desktop-option", "Too many package paths");
     }
+    if(pose_parameters) {
+        if(options.settings.source!=0 || options.browse || options.settings.before.empty())throw Error("desktop-option","Source pose options require local package inputs");
+        if(options.settings.pose_before_skeleton.empty() || (!options.settings.after.empty() && options.settings.pose_after_skeleton.empty()))throw Error("desktop-option","Choose an explicit Skeleton for each requested animation side");
+        if((pose_shared_frame&&(pose_before_frame||pose_after_frame)) || pose_before_frame!=pose_after_frame)throw Error("desktop-option","Choose a shared --pose-frame or both independent pose frame options");
+        options.settings.pose_independent_frames=pose_before_frame && pose_after_frame;
+    }
     if (!options.workspace_output.empty() && !options.smoke)
         throw Error("desktop-option", "--save-workspace requires --smoke; use the File menu interactively");
     for (const auto &path : {options.workspace_input, options.workspace_output})
@@ -410,7 +437,18 @@ void register_translations() {
     CatalogView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"CyUEDiff preferences", "Préférences CyUEDiff"},
+        {{"Evaluate source hierarchy pose", "Évaluer la pose hiérarchique source"},
+         {"Animation Skeleton binding", "Association du squelette d’animation"},
+         {"Skeleton before", "Squelette avant"}, {"Skeleton after", "Squelette après"},
+         {"Source frame before", "Frame source avant"}, {"Source frame after", "Frame source après"},
+         {"Independent pose frames", "Frames de pose indépendantes"},
+         {"Choose Skeleton before", "Choisir le squelette avant"}, {"Choose Skeleton after", "Choisir le squelette après"},
+         {"Stored owner selections", "Choix des objets enregistrés"},
+         {"Model before", "Modèle avant"}, {"Model after", "Modèle après"},
+         {"Rig object before", "Objet avant"}, {"Rig object after", "Objet après"},
+         {"Empty selectors require a sole stored object.", "Les sélecteurs vides exigent un seul objet enregistré."},
+         {"Choose Skeleton paths, then Load to prepare the selected frames.", "Choisissez les squelettes, puis Charger pour préparer les frames sélectionnées."},
+         {"CyUEDiff preferences", "Préférences CyUEDiff"},
          {"Preferences could not be loaded.", "Les préférences n'ont pas pu être chargées."},
          {"Open workspace...", "Ouvrir un espace de travail..."},
          {"Save workspace", "Enregistrer l'espace de travail"},
@@ -624,16 +662,14 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
     } else {
         auto request = options.settings.request();
         for (bool after : {false, true}) {
-            const auto &path = after ? request.after : request.before;
-            if (path.empty())
-                continue;
             auto project = after && !request.after_project.empty() ? request.after_project : request.project;
-            auto engine =
-                after && !request.after_engine_root.empty() ? request.after_engine_root : request.engine_root;
-            if (!project.empty() && path.front() == '/')
-                package(ProjectContext::open(project, engine).resolve(path));
-            else
-                package(fs::u8path(path));
+            auto engine = after && !request.after_engine_root.empty() ? request.after_engine_root : request.engine_root;
+            for(const auto &path:{after?request.after:request.before,
+                                 after?options.settings.pose_after_skeleton:options.settings.pose_before_skeleton}) {
+                if(path.empty())continue;
+                if(!project.empty() && path.front()=='/')package(ProjectContext::open(project,engine).resolve(path));
+                else package(fs::u8path(path));
+            }
         }
     }
     if (document) {
@@ -690,6 +726,8 @@ enum class Action {
     open_before,
     open_after,
     project,
+    pose_before_skeleton,
+    pose_after_skeleton,
     load,
     swap,
     browse,
@@ -721,6 +759,7 @@ struct DocumentContext {
     AssetTab initial_tab = AssetTab::properties;
     int container_tab = -1;
     std::string cooked_view;
+    Json retained_state = Json::object();
 };
 struct DocumentPresentation : DocumentContext {
     ViewLayout layout;
@@ -899,6 +938,7 @@ class Shell {
         auto selection =
             historied_->select(id, current().settings.request().git.value_or(GitSource{}), after);
         current().settings.source = 1;
+        current().settings.pose_enabled = false;
         current().settings.repository = selection.repository.u8string();
         current().settings.before_revision = selection.before_revision;
         current().settings.after_revision = selection.after_revision;
@@ -982,7 +1022,7 @@ class Shell {
         if (!session_.find(id))
             return;
         reset_navigation();
-        closed_contexts_[id] = static_cast<const DocumentContext &>(*presentations_.at(id));
+        closed_contexts_[id] = retained_context(*presentations_.at(id));
         session_.close(id);
         presentations_.erase(id);
         prune_closed_contexts();
@@ -1000,6 +1040,15 @@ class Shell {
                                                : Json{{"asset", p.view.view_state()}};
         if (!p.layout.snapshot().empty())
             result["layout"] = p.layout.snapshot();
+        return result;
+    }
+    DocumentContext retained_context(const DocumentPresentation &p) const {
+        auto result=static_cast<const DocumentContext &>(p);
+        result.retained_state=presentation_state(p);
+        if(p.displayed) {
+            if(p.displayed->container)result.container_tab=p.container_view.active_tab();
+            else result.initial_tab=p.view.active_tab();
+        }
         return result;
     }
     void apply_presentation_state(const Json &state) {
@@ -1098,10 +1147,11 @@ class Shell {
         }
     }
     void duplicate_document(DocumentId id) {
-        const auto context = static_cast<const DocumentContext &>(*presentations_.at(id));
+        const auto context = retained_context(*presentations_.at(id));
         const auto created = session_.duplicate(id, false);
         auto state = std::make_unique<DocumentPresentation>();
         static_cast<DocumentContext &>(*state) = context;
+        pending_state(*state,context.retained_state);
         presentations_[created] = std::move(state);
         reset_navigation();
         if (current().settings.ready())
@@ -1115,6 +1165,7 @@ class Shell {
         const auto created = session_.reopen(false);
         auto state = std::make_unique<DocumentPresentation>();
         static_cast<DocumentContext &>(*state) = context;
+        pending_state(*state,context.retained_state);
         presentations_[created] = std::move(state);
         prune_closed_contexts();
         reset_navigation();
@@ -1124,8 +1175,7 @@ class Shell {
     void close_other_documents(DocumentId keep) {
         for (const auto &entry : session_.documents())
             if (entry.id != keep)
-                closed_contexts_[entry.id] =
-                    static_cast<const DocumentContext &>(*presentations_.at(entry.id));
+                closed_contexts_[entry.id] = retained_context(*presentations_.at(entry.id));
         if (!session_.close_others(keep))
             return;
         for (auto it = presentations_.begin(); it != presentations_.end();) {
@@ -1554,12 +1604,12 @@ class Shell {
 #ifdef CYUEDIFF_HAS_GIT
                 const auto git_label = cyui::tr("Git revisions");
                 const char *sources[] = {local_label.c_str(), git_label.c_str(), container_label.c_str()};
-                cyui::segmented("##source", sources, 3, &current().settings.source, cyui::dp(-1));
+                if(cyui::segmented("##source", sources, 3, &current().settings.source, cyui::dp(-1)))current().settings.pose_enabled=false;
 #else
                 const char *sources[] = {local_label.c_str(), container_label.c_str()};
                 int mode = current().settings.source == 2 ? 1 : 0;
                 if (cyui::segmented("##source", sources, 2, &mode, cyui::dp(-1)))
-                    current().settings.source = mode ? 2 : 0;
+                    {current().settings.source = mode ? 2 : 0;current().settings.pose_enabled=false;}
 #endif
                 if (current().settings.source == 2) {
                     if (cyui::button(cyui::trLabel("Open container...").c_str()))
@@ -1696,6 +1746,45 @@ class Shell {
                     }
                     if (current().settings.source == 0 && current().settings.project.empty())
                         ImGui::TextWrapped("%s", cyui::tr("Choose a project to browse its content.").c_str());
+                    if(current().settings.source==0) {
+                        auto &settings=current().settings;
+                        cyui::toggleSwitch(cyui::trLabel("Evaluate source hierarchy pose").c_str(),&settings.pose_enabled);
+                        if(settings.pose_enabled && current().layout.section("animationPose","Animation Skeleton binding",true)) {
+                            if(cyui::beginProperties("##pose-inputs",105)) {
+                                cyui::property(cyui::tr("Skeleton before").c_str());field("##pose-rig-before",settings.pose_before_skeleton);
+                                {cyui::ScopedDisabled inactive(settings.after.empty());
+                                cyui::property(cyui::tr("Skeleton after").c_str());field("##pose-rig-after",settings.pose_after_skeleton);}
+                                cyui::property(cyui::tr("Source frame before").c_str());
+                                if(ImGui::InputInt("##pose-frame-before",&settings.pose_before_frame))settings.pose_before_frame=std::max(0,settings.pose_before_frame);
+                                cyui::endProperties();
+                            }
+                            cyui::toggleSwitch(cyui::trLabel("Independent pose frames").c_str(),&settings.pose_independent_frames);
+                            if(settings.pose_independent_frames) {
+                                cyui::ScopedDisabled inactive(settings.after.empty());
+                                if(cyui::beginProperties("##pose-frame-input",105)) {
+                                    cyui::property(cyui::tr("Source frame after").c_str());
+                                    if(ImGui::InputInt("##pose-frame-after",&settings.pose_after_frame))settings.pose_after_frame=std::max(0,settings.pose_after_frame);
+                                    cyui::endProperties();
+                                }
+                            }
+                            if(cyui::button(cyui::trLabel("Choose Skeleton before").c_str()))action=Action::pose_before_skeleton;
+                            {cyui::ScopedDisabled inactive(settings.after.empty());if(cyui::button(cyui::trLabel("Choose Skeleton after").c_str()))action=Action::pose_after_skeleton;}
+                            if(ImGui::TreeNode(cyui::trLabel("Stored owner selections").c_str())) {
+                                if(cyui::beginProperties("##pose-owners",105)) {
+                                    cyui::property(cyui::tr("Model before").c_str());field("##pose-model-before",settings.pose_before_object);
+                                    cyui::property(cyui::tr("Rig object before").c_str());field("##pose-owner-before",settings.pose_before_skeleton_object);
+                                    {cyui::ScopedDisabled inactive(settings.after.empty());
+                                    cyui::property(cyui::tr("Model after").c_str());field("##pose-model-after",settings.pose_after_object);
+                                    cyui::property(cyui::tr("Rig object after").c_str());field("##pose-owner-after",settings.pose_after_skeleton_object);}
+                                    cyui::endProperties();
+                                }
+                                ImGui::TextWrapped("%s",cyui::tr("Empty selectors require a sole stored object.").c_str());
+                                ImGui::TreePop();
+                            }
+                            ImGui::TextWrapped("%s",cyui::tr("Choose Skeleton paths, then Load to prepare the selected frames.").c_str());
+                            cyui::endSection();
+                        }
+                    }
                     cyui::toggleSwitch(cyui::trLabel("Load previews").c_str(), &current().settings.previews);
                     {
                         cyui::ScopedDisabled disabled(!current().settings.ready());
@@ -2034,6 +2123,7 @@ class Shell {
                 if (!path)
                     return;
                 current().settings.source = 2;
+                current().settings.pose_enabled = false;
                 current().settings.container_path = path->u8string();
                 current().settings.container_entry.clear();
                 current().settings.after_container_path.clear();
@@ -2043,6 +2133,11 @@ class Shell {
                 current().settings.after_cooked_profile = 0;
                 current().settings.compare_container_payloads = false;
                 session_.request(current().settings.request());
+                return;
+            }
+            if(action==Action::pose_before_skeleton || action==Action::pose_after_skeleton) {
+                if(current().settings.source!=0)return;
+                if(auto path=window.choose_file())(action==Action::pose_before_skeleton?current().settings.pose_before_skeleton:current().settings.pose_after_skeleton)=path->u8string();
                 return;
             }
             if (action == Action::before_schema || action == Action::after_schema) {
@@ -2067,6 +2162,7 @@ class Shell {
                         return;
                     const auto &input = current().displayed->container->source;
                     current().settings.source = 2;
+                current().settings.pose_enabled = false;
                     current().settings.container_path = input.path.u8string();
                     current().settings.after_container_path = input.after_path.u8string();
                     current().settings.container_entry = current().container_view.selected_key();
@@ -2088,6 +2184,10 @@ class Shell {
                         path->u8string();
                 }
             } else if (action == Action::swap) {
+                std::swap(current().settings.pose_before_skeleton,current().settings.pose_after_skeleton);
+                std::swap(current().settings.pose_before_object,current().settings.pose_after_object);
+                std::swap(current().settings.pose_before_skeleton_object,current().settings.pose_after_skeleton_object);
+                if(current().settings.pose_independent_frames)std::swap(current().settings.pose_before_frame,current().settings.pose_after_frame);
                 // Materialize inherited values before swapping so both contexts follow their files.
                 if (!current().settings.after_project.empty() || !current().settings.after_engine.empty()) {
                     if (current().settings.after_project.empty())
@@ -2127,6 +2227,10 @@ int run(Options options) {
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
+               "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : local source hierarchy poses\n"
+               "  [--pose-frame N | --pose-before-frame N --pose-after-frame N]\n"
+               "  [--pose-before-object PATH] [--pose-after-object PATH]\n"
+               "  [--pose-before-skeleton-object PATH] [--pose-after-skeleton-object PATH]\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
                "  [--document-action select:N|close|duplicate|reopen|close-others|next|previous|reload] : "
