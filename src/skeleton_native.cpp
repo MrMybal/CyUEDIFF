@@ -3,11 +3,22 @@
 #include <set>
 namespace cyuediff::detail {
 NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package, std::uint64_t end,
-                                             const ReadOptions &options) {
+                                             const ReadOptions &options, bool skeletal_mesh) {
     const auto &summary = package.summary;
     if (summary.ue4_version != 522 || (summary.ue5_version != 1004 && summary.ue5_version != 1013) ||
         summary.licensee_version || (summary.flags & 0x200u))
         throw Error("skeleton-profile", "Unsupported reference skeleton package profile", a.tell());
+    if (skeletal_mesh) {
+        auto version = [&](const char *guid, int low, int high) {
+            const auto it = summary.custom_versions.find(guid);
+            return it != summary.custom_versions.end() && it->is_number_integer() &&
+                   it->get<std::int64_t>() >= low && it->get<std::int64_t>() <= high;
+        };
+        if (!version("e4b068edf49442e9a231da0b2e46bb41", 8, 40) ||
+            !version("375ec13c06e448fbb50084f0262a717e", 3, 4) ||
+            !version("12f88b9f88754afca67cd90c383abd29", 10, 45))
+            throw Error("skeletal-mesh-profile", "Unsupported skeletal material custom versions", a.tell());
+    }
     const auto start = a.tell();
     Archive::ReadLimit window(a, start + std::min(end - start, options.max_property_bytes));
     std::uint32_t work = 0;
@@ -37,6 +48,56 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
     if (has_guid > 1)
         throw Error("skeleton-guid", "Invalid UObject GUID presence marker", a.tell() - 4);
     const auto object_guid = has_guid ? a.guid() : std::string{};
+    Json mesh = Json::object();
+    if (skeletal_mesh) {
+        const auto global = a.get<std::uint8_t>(), specific = a.get<std::uint8_t>();
+        if (global & ~3u)
+            throw Error("skeletal-mesh-strip", "Unknown skeletal mesh global strip flags", a.tell() - 2);
+        mesh["stripFlags"] = {{"global", global}, {"class", specific}};
+        Json bounds = Json::object();
+        for (auto field : {std::make_pair("origin", 3u), std::make_pair("boxExtent", 3u),
+                           std::make_pair("sphereRadius", 1u)}) {
+            Json values = Json::array();
+            for (unsigned k = 0; k < field.second; ++k) {
+                const auto x = a.get<double>();
+                if (!std::isfinite(x))
+                    throw Error("skeletal-mesh-bounds", "Non-finite imported bounds", a.tell() - 8);
+                values.push_back(x);
+            }
+            bounds[field.first] = field.second == 1 ? values[0] : values;
+        }
+        mesh["importedBounds"] = std::move(bounds);
+        auto boolean = [&] {
+            const auto value = a.get<std::uint32_t>();
+            if (value > 1)
+                throw Error("skeletal-mesh-boolean", "Invalid native material boolean", a.tell() - 4);
+            return value != 0;
+        };
+        Json materials = Json::array();
+        const auto material_count = count();
+        for (std::uint32_t i = 0; i < material_count; ++i) {
+            options.control.checkpoint("Reading skeletal mesh materials", i, material_count);
+            const auto material = package.reference(a.get<std::int32_t>());
+            charge(material.size());
+            Json entry = {{"material", material}, {"slotName", name()}};
+            const bool imported = boolean();
+            entry["importedSlotNameStored"] = imported;
+            if (imported)
+                entry["importedSlotName"] = name();
+            Json uv = {{"initialized", boolean()}, {"overrideDensities", boolean()}};
+            Json densities = Json::array();
+            for (unsigned k = 0; k < 4; ++k) {
+                const auto density = a.get<float>();
+                if (!std::isfinite(density))
+                    throw Error("skeletal-mesh-uv", "Non-finite stored UV density", a.tell() - 4);
+                densities.push_back(density);
+            }
+            uv["localDensities"] = std::move(densities);
+            entry["uvChannels"] = std::move(uv);
+            materials.push_back(std::move(entry));
+        }
+        mesh["materials"] = std::move(materials);
+    }
     const bool export_names = !(summary.flags & 0x80000000u);
     Json bones = Json::array(), poses = Json::array(), lookup = Json::object();
     std::set<std::string> names;
@@ -86,9 +147,15 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
             throw Error("skeleton-map", "Stored bone map is inconsistent", a.tell());
         lookup[key] = index;
     }
-    Json decoded = {{"kind", "reference-skeleton"},     {"layout", "ue5-raw-reference-prefix"},
-                    {"bones", std::move(bones)},        {"localPoses", std::move(poses)},
-                    {"nameToIndex", std::move(lookup)}, {"exportNamesStored", export_names}};
+    Json decoded = {
+        {"kind", "reference-skeleton"},
+        {"layout", skeletal_mesh ? "ue5-skeletal-mesh-reference-prefix" : "ue5-raw-reference-prefix"},
+        {"bones", std::move(bones)},
+        {"localPoses", std::move(poses)},
+        {"nameToIndex", std::move(lookup)},
+        {"exportNamesStored", export_names}};
+    if (skeletal_mesh)
+        decoded["mesh"] = std::move(mesh);
     if (has_guid)
         decoded["objectGuid"] = object_guid;
     return {std::move(decoded), a.tell()};

@@ -11,23 +11,15 @@ struct Bytes {
         auto p = reinterpret_cast<unsigned char *>(&value);
         data.insert(data.end(), p, p + sizeof(T));
     }
-    void i(int value) {
-        put<std::int32_t>(value);
-    }
-    void zeros(int n) {
-        data.insert(data.end(), n, 0);
-    }
+    void i(int value) { put<std::int32_t>(value); }
+    void zeros(int n) { data.insert(data.end(), n, 0); }
     void string(const std::string &s) {
         i(static_cast<int>(s.size() + 1));
         data.insert(data.end(), s.begin(), s.end());
         put<char>(0);
     }
-    void patch(std::size_t pos, int value) {
-        std::memcpy(data.data() + pos, &value, 4);
-    }
-    void append(const Bytes &b) {
-        data.insert(data.end(), b.data.begin(), b.data.end());
-    }
+    void patch(std::size_t pos, int value) { std::memcpy(data.data() + pos, &value, 4); }
+    void append(const Bytes &b) { data.insert(data.end(), b.data.begin(), b.data.end()); }
     void save(const fs::path &path) {
         std::ofstream f(path, std::ios::binary);
         f.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
@@ -41,7 +33,8 @@ using NameWriter = std::function<void(Bytes &, const std::string &)>;
 using ExtraScript = std::function<void(Bytes &, const NameWriter &)>;
 Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0,
                 const std::vector<std::string> &extra_names = {}, const ExtraScript &extra = {},
-                int editor_version = -1, int release_version = -1) {
+                int editor_version = -1, int release_version = -1, int core_version = -1,
+                int rendering_version = -1) {
     std::vector<std::string> names = {
         "None",        "TestAsset",   "DataAsset",     "/Script/CoreUObject", "Class",
         "Value",       "IntProperty", "Enabled",       "BoolProperty",        "Text",
@@ -126,7 +119,18 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
         b.i(version);
     b.i(0);
     auto custom_versions = [&] {
-        b.i((editor_version < 0 ? 0 : 1) + (release_version < 0 ? 0 : 1));
+        b.i((editor_version < 0 ? 0 : 1) + (release_version < 0 ? 0 : 1) + (core_version < 0 ? 0 : 1) +
+            (rendering_version < 0 ? 0 : 1));
+        for (auto version : {std::make_pair(core_version, 0), std::make_pair(rendering_version, 1)})
+            if (version.first >= 0) {
+                const auto words =
+                    version.second
+                        ? std::array<unsigned, 4>{0x12f88b9fu, 0x88754afcu, 0xa67cd90cu, 0x383abd29u}
+                        : std::array<unsigned, 4>{0x375ec13cu, 0x06e448fbu, 0xb50084f0u, 0x262a717eu};
+                for (auto word : words)
+                    b.put<std::uint32_t>(word);
+                b.i(version.first);
+            }
         if (editor_version >= 0) {
             for (auto word : {0xe4b068edu, 0xf49442e9u, 0xa231da0bu, 0x2e46bb41u})
                 b.put<std::uint32_t>(word);

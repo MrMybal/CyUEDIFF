@@ -750,10 +750,10 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     data->seek(consumed);
                 }
             }
-            if(!extension_native && options.native_skeletons && entry.class_name=="/Script/Engine.Skeleton") {
+            if(!extension_native && options.native_skeletons && (entry.class_name=="/Script/Engine.Skeleton" || entry.class_name=="/Script/Engine.SkeletalMesh")) {
                 try {
                     entry.native_start=consumed-base;
-                    auto decoded=detail::decode_reference_skeleton(*data,p,base+entry.size,options);
+                    auto decoded=detail::decode_reference_skeleton(*data,p,base+entry.size,options,entry.class_name=="/Script/Engine.SkeletalMesh");
                     entry.native_data=std::move(decoded.data);
                     entry.native_coverage="reference-skeleton";
                     entry.native_end=decoded.end-base;
