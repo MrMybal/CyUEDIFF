@@ -82,3 +82,7 @@ The Animations tab retains independentFrames, afterFrame, positionTolerance, rot
 ## Read-only local frame corpora and installed SDK verification - 0.132
 
 The animation corpus validator now checks same-frame local equality and first/last-frame differences alongside raw source streams, preserving hashes and unknown coverage. The installed Core consumer demonstrates shared and independent frame comparisons. Distribution verification and SDK/CLI parity include the new reports. Configuration, real/encoded corpus, visual capture and secret-scan results are recorded in VALIDATION.md.
+
+## Explicit source animation hierarchy poses - 0.133
+
+The Core animation_pose API binds source frame tracks to a caller-supplied Skeleton or SkeletalMesh by exact case-sensitive names. It composes bounded affine matrices in verified raw hierarchy order, retaining frame, optional stored timing, track provenance and local-versus-ancestor availability. Missing or ambiguous tracks never fall back to reference transforms or BoneTreeIndex. Unbound tracks and incomplete inputs keep the report incomplete. This is derived source geometry, without interpolation, retargeting, root-motion extraction, virtual-bone evaluation or skinning. Twenty-seven focused checks and 34 reference-pose regressions pass; shared affine arithmetic preserves the existing reference-pose contract.
