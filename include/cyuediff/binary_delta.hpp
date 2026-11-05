@@ -23,10 +23,22 @@ struct BinaryDelta {
     std::vector<BinaryDeltaOperation> operations;
     // Checked derived counters. This report contains no literal payload.
     Json summary(const BinaryDeltaOptions & = {}) const;
+    Json to_json(const BinaryDeltaOptions & = {}) const;
+    static BinaryDelta from_json(const Json &, const BinaryDeltaOptions & = {});
+    static BinaryDelta parse(const std::string &, const BinaryDeltaOptions & = {});
 };
 // Rolling target windows recover aligned base blocks after insertions/deletions.
 // Every candidate copy is compared byte-for-byte; weak hashes are lookup hints only.
 // Exact reconstruction is the scope, independently of Unreal serialization semantics.
 BinaryDelta make_binary_delta(const std::vector<std::uint8_t> &base, const std::vector<std::uint8_t> &target,
                               const BinaryDeltaOptions & = {});
+// No partial result is returned: both identities and every operation are checked.
+std::vector<std::uint8_t> apply_binary_delta(const std::vector<std::uint8_t> &base, const BinaryDelta &,
+                                             const BinaryDeltaOptions & = {});
+// Bounded binary file reads; no output file writes or engine/codec discovery.
+std::vector<std::uint8_t> read_binary_file(const fs::path &, std::uint64_t max_bytes,
+                                           const OperationControl & = {});
+BinaryDelta make_binary_delta_files(const fs::path &base, const fs::path &target,
+                                    const BinaryDeltaOptions & = {});
+BinaryDelta read_binary_delta(const fs::path &, const BinaryDeltaOptions & = {});
 } // namespace cyuediff

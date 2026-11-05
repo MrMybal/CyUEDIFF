@@ -77,6 +77,19 @@ int main() {
             }
             verify(base, target);
         }
+        // (257 - 1)^8 == 0 modulo 2^64: distinct windows with the same rolling hash.
+        std::vector<std::uint8_t> collision_base(16, 128), collision_target = collision_base;
+        const int coefficients[] = {1, -8, 28, -56, 70, -56, 28, -8, 1};
+        for (std::size_t i = 0; i < 9; ++i)
+            collision_target[i] += coefficients[i];
+        auto collision_options = o;
+        collision_options.block_size = 16;
+        auto collision = make_binary_delta(collision_base, collision_target, collision_options);
+        check(reconstruct(collision_base, collision) == collision_target);
+        check(collision.summary(collision_options)["copiedBytes"] == 0);
+        collision_base.resize(16 * 1024, 128);
+        collision_options.max_match_bytes = 128;
+        rejects([&] { make_binary_delta(collision_base, collision_target, collision_options); });
         auto d = make_binary_delta(base, base, o);
         d.operations.front().offset = 1;
         rejects([&] { d.summary(o); });
