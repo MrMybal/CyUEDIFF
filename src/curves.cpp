@@ -1,4 +1,4 @@
-#include <cyuediff/curves.hpp>
+#include "curves_internal.hpp"
 #include <cmath>
 #include <iomanip>
 #include <locale>
@@ -290,6 +290,99 @@ Json curve_snapshot(const Package &p, const CurveOptions &o) {
     }
     if (out["owners"].empty())
         out["complete"] = false;
+    return out;
+}
+Json detail::evaluate_curve_lane(const Json &lane, double time, bool complete_input,
+                                 const OperationControl &control) {
+    control.check();
+    if (!std::isfinite(time))
+        throw Error("curve-time", "Curve time must be finite");
+    Json out = {{"time", time},
+                {"ready", false},
+                {"value", nullptr},
+                {"method", "unavailable"},
+                {"diagnostics", Json::array()}};
+    auto unavailable = [&](const char *message) {
+        out["diagnostics"].push_back(message);
+        return out;
+    };
+    if (!complete_input || !lane.value("complete", false) ||
+        lane.value("timeOrder", std::string()) != "strict")
+        return unavailable("Stored curve or input coverage is incomplete");
+    const auto &order = lane.at("keyOrder"), &keys = lane.at("keys");
+    if (order.empty())
+        return unavailable("No stored source keys");
+    std::size_t first = 0, last = order.size();
+    while (first < last) {
+        control.check();
+        const auto middle = first + (last - first) / 2;
+        if (keys.at(order[middle].get<std::string>()).at("time").get<double>() < time)
+            first = middle + 1;
+        else
+            last = middle;
+    }
+    if (first < order.size()) {
+        const auto &key = keys.at(order[first].get<std::string>());
+        if (key.at("time").get<double>() == time) {
+            out["ready"] = true;
+            out["value"] = key.at("value");
+            out["method"] = "stored-key";
+            out["key"] = order[first];
+            return out;
+        }
+    }
+    if (first == 0 || first >= order.size())
+        return unavailable("Time is outside the stored key range; extrapolation is unavailable");
+    const auto &a = keys.at(order[first - 1].get<std::string>()),
+               &b = keys.at(order[first].get<std::string>());
+    const double delta = b.at("time").get<double>() - a.at("time").get<double>();
+    const double alpha = (time - a.at("time").get<double>()) / delta;
+    if (!std::isfinite(delta) || !std::isfinite(alpha))
+        return unavailable("Source segment arithmetic overflow");
+    const int mode = a.at("interpMode").get<int>();
+    double result = 0;
+    if (mode == 1) {
+        result = a.at("value").get<double>();
+        out["method"] = "constant";
+    } else if (mode == 0) {
+        result = (1. - alpha) * a.at("value").get<double>() + alpha * b.at("value").get<double>();
+        out["method"] = "linear";
+    } else if (mode == 2) {
+        const auto left = a.at("tangentWeightMode").get<int>(), right = b.at("tangentWeightMode").get<int>();
+        if ((left != 0 && left != 1) || (right != 0 && right != 2))
+            return unavailable("Weighted or unknown tangent segment is not evaluated");
+        const double t2 = alpha * alpha, t3 = t2 * alpha;
+        result = (2 * t3 - 3 * t2 + 1) * a.at("value").get<double>() +
+                 (t3 - 2 * t2 + alpha) * delta * a.at("leaveTangent").get<double>() +
+                 (-2 * t3 + 3 * t2) * b.at("value").get<double>() +
+                 (t3 - t2) * delta * b.at("arriveTangent").get<double>();
+        out["method"] = "cubic-hermite";
+    } else
+        return unavailable("Stored interpolation mode is not evaluated");
+    if (!std::isfinite(result))
+        return unavailable("Curve value arithmetic overflow");
+    out["ready"] = true;
+    out["value"] = result;
+    out["beforeKey"] = order[first - 1];
+    out["afterKey"] = order[first];
+    return out;
+}
+Json evaluate_curve(const Package &p, double time, const std::string &object_path,
+                    const std::string &lane_path, const CurveOptions &o) {
+    const auto root = curve_snapshot(p, o);
+    const auto &owners = root.at("owners");
+    const auto owner = object_path.empty() && owners.size() == 1 ? owners.begin().key() : object_path;
+    if (owner.empty() || !owners.contains(owner))
+        throw Error("curve-object", "Select exactly one stored curve owner");
+    const auto &lanes = owners.at(owner).at("lanes");
+    const auto id = lane_path.empty() && lanes.size() == 1 ? lanes.begin().key() : lane_path;
+    if (id.empty() || !lanes.contains(id))
+        throw Error("curve-lane", "Select exactly one stored curve lane");
+    auto out = detail::evaluate_curve_lane(lanes.at(id), time, p.complete_input, o.control);
+    out["schema"] = "cyuediff.curve-value/1";
+    out["scope"] = "double-precision evaluation of supported stored segments; no defaults or extrapolation";
+    out["object"] = owner;
+    out["lane"] = id;
     return out;
 }
 } // namespace cyuediff

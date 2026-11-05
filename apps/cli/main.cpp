@@ -1,3 +1,4 @@
+#include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/collision.hpp>
@@ -37,9 +38,12 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff hdr-diff BEFORE AFTER [--threshold SAMPLE_DELTA] [--heatmap MASK.png] [--codec "
                "MODULE.dll]\n"
                "  preview accepts --exposure EV for HDR source display.\n"
-               "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\\n"
-               "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\\n"
-               "  cyuediff animation-frame ASSET --frame N [--object PATH] [--out FILE]\\n"
+               "  cyuediff curves ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff curves-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
+               "  cyuediff curve-value ASSET --time SECONDS [--object PATH] [--lane KEY] [--out FILE]\n"
+               "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
+               "  cyuediff animation-frame ASSET --frame N [--object PATH] [--out FILE]\n"
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff attachments ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff attachments-diff BEFORE AFTER [--out FILE]\n"
@@ -101,7 +105,7 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
+    const std::set<std::string> valued = {"--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
                                           "--schema",
                                           "--after-schema",
@@ -147,7 +151,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -179,8 +183,9 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments","--retarget-source requires skeleton-pose or socket-pose");
         if ((key=="--before-retarget-source"||key=="--after-retarget-source") && command!="skeleton-pose-diff" && command!="socket-pose-diff")
             throw Error("arguments",key+" requires skeleton-pose-diff or socket-pose-diff");
+        if((key=="--time" || key=="--lane") && command!="curve-value")throw Error("arguments",key+" requires curve-value");
         if(key=="--frame" && command!="animation-frame")throw Error("arguments","--frame requires animation-frame");
-        if ((key == "--before-object" || key == "--after-object") && command != "animation-diff" &&
+        if ((key == "--before-object" || key == "--after-object") && command != "curves-diff" && command != "animation-diff" &&
             command != "skeleton-pose-diff" && command != "socket-pose-diff")
             throw Error("arguments", key + " requires a model or pose comparison");
         if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff")
@@ -231,7 +236,7 @@ int run(const std::vector<std::string> &args) {
              key == "--before-engine-root" || key == "--after-engine-root"))
             throw Error("arguments", key + " requires a Git command");
         if (((key == "--mip") && !image_command) ||
-            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose" && command != "animation-frame"))
+            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose" && command != "animation-frame" && command != "curve-value"))
             throw Error("arguments", key + " requires an image or geometry command");
         if ((key == "--threshold" || key == "--heatmap") && command != "image-diff" && command != "hdr-diff")
             throw Error("arguments", key + " requires image-diff or hdr-diff");
@@ -601,6 +606,20 @@ int run(const std::vector<std::string> &args) {
 #else
         throw Error("git-unavailable", "Configure CYUEDIFF_BUILD_GIT=ON to enable Git commands");
 #endif
+    } else if(command=="curves" || command=="curves-diff" || command=="curve-value"){
+        if(flags.contains("--metadata") || flags.contains("--snapshot"))throw Error("arguments","Curve inspection requires decoded properties");
+        if(command=="curve-value" && !flags.contains("--time"))throw Error("arguments","curve-value requires --time");
+        const auto before=read(positional[0],command=="curves-diff"?"--before-project":"--project",options);
+        if(command=="curves-diff"){
+            const auto after=read(positional[1],"--after-project",options);
+            const auto comparison=compare_curves(before,after,flags.value("--before-object",std::string{}),flags.value("--after-object",std::string{}));
+            output=comparison.to_json();exit_code=!comparison.complete?2:comparison.changes.empty()?0:1;
+        }else if(command=="curve-value") {
+            output=evaluate_curve(before,real_option("--time",0,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max()),
+                                  flags.value("--object",std::string{}),flags.value("--lane",std::string{}));
+            if(!output.at("ready").get<bool>())exit_code=2;
+        }else output=curve_snapshot(before);
+        if(!before.complete_input)exit_code=2;
     } else if(command=="animation" || command=="animation-frame" || command=="animation-diff") {
         if(flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments","Animation source inspection requires decoded properties");

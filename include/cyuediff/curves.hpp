@@ -10,6 +10,9 @@ struct CurveOptions {
 };
 // Exact CurveFloat/CurveVector/CurveLinearColor and AnimDataModel float source curves.
 Json curve_snapshot(const Package &, const CurveOptions & = {});
+// In-range stored points, constant/linear and unweighted cubic segments. No default/extrapolation.
+Json evaluate_curve(const Package &, double time, const std::string &object_path = "",
+                    const std::string &lane = "", const CurveOptions & = {});
 struct CurveComparison {
     Json changes = Json::array();
     std::string before_object, after_object;

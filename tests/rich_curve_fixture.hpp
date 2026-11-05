@@ -46,4 +46,71 @@ inline Fixture rich_key_fixture(int invalid = 0, int version = 1013) {
                        }
                    });
 }
+inline Fixture rich_curve_file_fixture(int change = 0, int version = 1013) {
+    return fixture(
+        version, 1, false, 0, {"FloatCurve", "RichCurve", "Keys", "RichCurveKey"},
+        [=](Bytes &s, const NameWriter &name) {
+            auto tag = [&](Bytes &out, const char *field, const char *kind, const Bytes &payload,
+                           const char *structure, bool array = false) {
+                name(out, field);
+                name(out, kind);
+                if (version >= 1012) {
+                    out.i(1);
+                    if (array) {
+                        name(out, "StructProperty");
+                        out.i(1);
+                    }
+                    name(out, structure);
+                    out.i(0);
+                }
+                out.i(static_cast<int>(payload.data.size()));
+                if (version >= 1012)
+                    out.put<std::uint8_t>(0);
+                else {
+                    out.i(0);
+                    if (array)
+                        name(out, "StructProperty");
+                    else {
+                        name(out, structure);
+                        out.zeros(16);
+                    }
+                    out.put<std::uint8_t>(0);
+                    if (version >= 1011)
+                        out.put<std::uint8_t>(0);
+                }
+                out.append(payload);
+            };
+            Bytes body, array;
+            const int n = change == 5 ? 0 : change == 2 ? 4 : 3;
+            array.i(n);
+            if (version < 1012) {
+                Bytes none;
+                tag(array, "Keys", "StructProperty", none, "RichCurveKey");
+            }
+            for (int i = 0; i < n; ++i) {
+                const float time = change == 2             ? (i == 0   ? 0.f
+                                                              : i == 1 ? .5f
+                                                                       : float(i - 1))
+                                   : change == 3 && i == 1 ? 0.f
+                                   : change == 7           ? (i == 0   ? 1.f
+                                                              : i == 1 ? 0.f
+                                                                       : 2.f)
+                                                           : float(i);
+                const float value = change == 2 ? (i == 0 || i == 3 ? 0.f
+                                                   : i == 1         ? 4.f
+                                                                    : 10.f)
+                                    : i == 1    ? (change == 1 ? 12.f : 10.f)
+                                                : 0.f;
+                auto key = rich_curve_key(time, value, (change == 4 || change == 8) && i == 0 ? 2 : 0);
+                if (change == 4 && i == 0)
+                    key.data[2] = 2;
+                array.append(key);
+            }
+            if (change != 6)
+                tag(body, "Keys", "ArrayProperty", array, "RichCurveKey", true);
+            name(body, "None");
+            tag(s, "FloatCurve", "StructProperty", body, "RichCurve");
+        },
+        -1, -1, -1, -1, -1, -1, -1, "CurveFloat", "/Script/Engine");
+}
 } // namespace cyuediff::test
