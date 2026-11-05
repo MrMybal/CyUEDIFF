@@ -34,7 +34,7 @@ using ExtraScript = std::function<void(Bytes &, const NameWriter &)>;
 Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0,
                 const std::vector<std::string> &extra_names = {}, const ExtraScript &extra = {},
                 int editor_version = -1, int release_version = -1, int core_version = -1,
-                int rendering_version = -1) {
+                int rendering_version = -1, int anim_phys_version = -1) {
     std::vector<std::string> names = {
         "None",        "TestAsset",   "DataAsset",     "/Script/CoreUObject", "Class",
         "Value",       "IntProperty", "Enabled",       "BoolProperty",        "Text",
@@ -120,7 +120,11 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
     b.i(0);
     auto custom_versions = [&] {
         b.i((editor_version < 0 ? 0 : 1) + (release_version < 0 ? 0 : 1) + (core_version < 0 ? 0 : 1) +
-            (rendering_version < 0 ? 0 : 1));
+            (rendering_version < 0 ? 0 : 1) + (anim_phys_version < 0 ? 0 : 1));
+        if(anim_phys_version>=0) {
+            for(auto word:{0x29e575ddu,0xe0a34627u,0x9d10d276u,0x232cdceau})b.put<std::uint32_t>(word);
+            b.i(anim_phys_version);
+        }
         for (auto version : {std::make_pair(core_version, 0), std::make_pair(rendering_version, 1)})
             if (version.first >= 0) {
                 const auto words =

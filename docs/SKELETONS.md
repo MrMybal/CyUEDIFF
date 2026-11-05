@@ -67,3 +67,7 @@ The SkeletalMesh prefix additionally requires stored Editor custom version 8–4
     cyuediff skeleton-pose-diff before.uasset after.uasset --before-object RigA --after-object RigB
 
 Reference displacement units are the stored coordinate units. A tolerance applies to the Euclidean distance; equality at the tolerance is accepted. Position equality does not establish equal rotations, scale, skinned geometry, animation or undecoded bytes. Use skeleton-diff or the general package diff for the stored structural data and remaining native fingerprints.
+
+## Bounded native Skeleton retarget sources - 0.93
+
+The optional Skeleton continuation reads the counted retarget-source map, distinct stored pose labels, bounded local transform arrays, supported hard/soft mesh references and the Skeleton GUID. Nonempty tables require explicit AnimPhys versions 0-17; the soft-reference transition and verified file profiles use their stored layouts. Filtered reference omission is preserved. Unsupported or damaged details leave the already checked raw reference hierarchy available and keep the complete continuation opaque; cancellation still propagates. Raw bones, material arrays and retarget arrays share work/byte/text budgets, and the new read option participates in cache identity. The native suite passes 618 checks. Real verification covers three empty engine-owned tables; nonempty tables have independent binary fixture coverage.

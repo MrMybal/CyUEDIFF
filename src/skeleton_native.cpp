@@ -48,6 +48,21 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
     if (has_guid > 1)
         throw Error("skeleton-guid", "Invalid UObject GUID presence marker", a.tell() - 4);
     const auto object_guid = has_guid ? a.guid() : std::string{};
+    auto transform = [&] {
+        Json pose = Json::object();
+        for (auto field : {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
+                           std::make_pair("scale", 3u)}) {
+            Json values = Json::array();
+            for (unsigned k = 0; k < field.second; ++k) {
+                const auto x = a.get<double>();
+                if (!std::isfinite(x))
+                    throw Error("skeleton-pose", "Non-finite stored reference pose", a.tell() - 8);
+                values.push_back(x);
+            }
+            pose[field.first] = std::move(values);
+        }
+        return pose;
+    };
     Json mesh = Json::object();
     if (skeletal_mesh) {
         const auto global = a.get<std::uint8_t>(), specific = a.get<std::uint8_t>();
@@ -122,19 +137,7 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
         throw Error("skeleton-pose", "Bone and pose counts differ", a.tell() - 4);
     for (std::uint32_t i = 0; i < n; ++i) {
         options.control.check();
-        Json pose = Json::object();
-        for (auto field : {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
-                           std::make_pair("scale", 3u)}) {
-            Json values = Json::array();
-            for (unsigned k = 0; k < field.second; ++k) {
-                const auto x = a.get<double>();
-                if (!std::isfinite(x))
-                    throw Error("skeleton-pose", "Non-finite stored reference pose", a.tell() - 8);
-                values.push_back(x);
-            }
-            pose[field.first] = std::move(values);
-        }
-        poses.push_back(std::move(pose));
+        poses.push_back(transform());
     }
     const auto map_count = count();
     if (map_count != n)
@@ -158,6 +161,70 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
         decoded["mesh"] = std::move(mesh);
     if (has_guid)
         decoded["objectGuid"] = object_guid;
+    const auto reference_end = a.tell();
+    if (!skeletal_mesh) {
+        decoded["retargeting"] = {{"coverage", options.native_skeleton_retargeting ? "opaque" : "disabled"}};
+        if (options.native_skeleton_retargeting) {
+            try {
+                const auto source_count = count();
+                const auto custom = summary.custom_versions.find("29e575dde0a346279d10d276232cdcea");
+                int anim_phys = -1;
+                if (custom != summary.custom_versions.end() && custom->is_number_integer() &&
+                    custom->get<std::int64_t>() >= 0 && custom->get<std::int64_t>() <= 17)
+                    anim_phys = custom->get<int>();
+                if (source_count && anim_phys < 0)
+                    throw Error("skeleton-retarget-profile",
+                                "Nonempty retarget sources require a supported AnimPhys version", a.tell());
+                Json sources = Json::object();
+                for (std::uint32_t i = 0; i < source_count; ++i) {
+                    options.control.checkpoint("Reading skeleton retarget sources", i, source_count);
+                    const auto key = name();
+                    if (key.empty() || sources.contains(key))
+                        throw Error("skeleton-retarget-identity", "Empty or duplicate retarget source key",
+                                    a.tell());
+                    Json source = {{"poseName", name()}};
+                    const auto transforms = count();
+                    Json local = Json::array();
+                    for (std::uint32_t j = 0; j < transforms; ++j) {
+                        options.control.check();
+                        local.push_back(transform());
+                    }
+                    source["localPoses"] = std::move(local);
+                    if (!(summary.flags & 0x80000000u)) {
+                        Json mesh_ref;
+                        if (anim_phys < 15) {
+                            const auto path = package.reference(a.get<std::int32_t>());
+                            charge(path.size());
+                            mesh_ref = {{"kind", "object"}, {"path", path}};
+                        } else {
+                            auto path = name();
+                            if (summary.ue5_version >= 1007) {
+                                const auto asset = name();
+                                if (asset != "None")
+                                    path += "." + asset;
+                            }
+                            const auto sub = a.string();
+                            charge(sub.size());
+                            if (!sub.empty())
+                                path += ":" + sub;
+                            charge(path.size());
+                            mesh_ref = {{"kind", "soft-object"}, {"path", std::move(path)}};
+                        }
+                        source["sourceReferenceMesh"] = std::move(mesh_ref);
+                    }
+                    sources[key] = std::move(source);
+                }
+                const auto guid = a.guid();
+                decoded["retargeting"] = {
+                    {"coverage", "stored"}, {"sources", std::move(sources)}, {"skeletonGuid", guid}};
+            } catch (const Error &error) {
+                if (error.code == "cancelled")
+                    throw;
+                a.seek(reference_end);
+                decoded["retargeting"] = {{"coverage", "opaque"}, {"reason", error.code}};
+            }
+        }
+    }
     return {std::move(decoded), a.tell()};
 }
 } // namespace cyuediff::detail
