@@ -48,3 +48,7 @@ The source validator hashes all input packages and existing companions before an
 ## Separate stored transform curve API
 
 Stored AnimDataModel float and transform curves are available through curves.hpp and the Curves tab. Explicit transform scope exposes translation/Euler/scale XYZ components with named differences, independent raw evaluation and sampled comparisons. It does not bind those curves to bone tracks or evaluate an animated hierarchy. See [curve contracts](CURVES.md).
+
+## Stable local transform difference metrics - 0.128
+
+Local source-transform metrics now compute Euclidean translation distance, sign-invariant shortest quaternion orientation distance in degrees and maximum absolute scale-axis delta. The orientation metric uses stable atan2 differences after accepting only near-unit stored quaternions; source components remain untouched. Independent finite nonnegative tolerances, signed scales, tiny/half-turn/wrapped orientations, unknown channels, overflow and cancellation are checked. These are bone-local value metrics without hierarchy evaluation or retargeting.
