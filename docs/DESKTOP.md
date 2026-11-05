@@ -348,3 +348,7 @@ Workspace format four retains `animationSockets`, `animationSocketsPreview` and 
 ## Window placement policy — 0.153
 
 The desktop model provides checked outer-window screen-pixel placement, monitor selection by overlap then distance, DPI size conversion, minimum usable dimensions and work-area clamping. Negative monitor coordinates and maximized intent are retained. Disconnected monitors and smaller work areas have deterministic fallbacks. The policy does not depend on CyUI or affect the Core SDK.
+
+## Native window restoration and preference migration — 0.154
+
+Preference schema 2 stores an optional checked normal window rectangle, its DPI and maximized state. Schema 1 remains readable and migrates on a permitted save; invalid or future files retain their exact bytes. Windows restores a fitted rectangle before showing the application, remembers the normal rectangle while maximized or minimized, and keeps the window alive until clean-close persistence finishes. Smoke validation stays hidden and never reads or writes the default user profile.

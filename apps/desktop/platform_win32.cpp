@@ -5,6 +5,7 @@
 #include <commdlg.h>
 #include <cstring>
 #include <optional>
+#include <cmath>
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 namespace cyuediff::desktop {
 namespace {
@@ -38,7 +39,19 @@ std::wstring wide(const std::string &text) {
                         result.data(), chars);
     return result;
 }
-NativeWindow::NativeWindow(bool hidden) {
+namespace {
+BOOL CALLBACK monitor_area(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
+    auto &areas = *reinterpret_cast<std::vector<WindowWorkArea> *>(data);
+    MONITORINFO info{sizeof(MONITORINFO)};
+    if (areas.size() < 256 && GetMonitorInfoW(monitor, &info)) {
+        const auto &r = info.rcWork;
+        areas.push_back({r.left, r.top, r.right - r.left, r.bottom - r.top,
+                         int(std::lround(96 * ImGui_ImplWin32_GetDpiScaleForMonitor(monitor)))});
+    }
+    return TRUE;
+}
+} // namespace
+NativeWindow::NativeWindow(bool hidden, const std::optional<WindowPlacement> &placement) : hidden_(hidden) {
     ImGui_ImplWin32_EnableDpiAwareness();
     instance_ = GetModuleHandleW(nullptr);
     WNDCLASSEXW definition{};
@@ -58,10 +71,49 @@ NativeWindow::NativeWindow(bool hidden) {
         UnregisterClassW(definition.lpszClassName, instance_);
         throw Error("desktop-window", "Cannot create window");
     }
+    if (placement) {
+        std::vector<WindowWorkArea> areas;
+        EnumDisplayMonitors(nullptr, nullptr, monitor_area, reinterpret_cast<LPARAM>(&areas));
+        if (!areas.empty()) {
+            const auto fitted = fit_window_placement(*placement, areas);
+            SetWindowPos(handle, nullptr, fitted.x, fitted.y, fitted.width, fitted.height,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            last_placement_ = fitted;
+            placement_restored = true;
+        }
+    }
+    remember_placement();
     if (!hidden) {
-        ShowWindow(handle, SW_SHOWDEFAULT);
+        ShowWindow(handle, placement_restored && placement->maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
         UpdateWindow(handle);
     }
+}
+void NativeWindow::remember_placement() {
+    if (!handle || !IsWindow(handle) || IsIconic(handle) || IsZoomed(handle))
+        return;
+    RECT r{};
+    if (GetWindowRect(handle, &r)) {
+        WindowPlacement p{r.left,
+                          r.top,
+                          r.right - r.left,
+                          r.bottom - r.top,
+                          int(std::lround(96 * ImGui_ImplWin32_GetDpiScaleForHwnd(handle))),
+                          false};
+        // Hidden validation keeps maximized intent without showing or maximizing a test window.
+        if (hidden_ && last_placement_)
+            p.maximized = last_placement_->maximized;
+        last_placement_ = p;
+    }
+}
+std::optional<WindowPlacement> NativeWindow::placement() const {
+    auto result = last_placement_;
+    if (result && handle && IsWindow(handle) && !hidden_)
+        result->maximized =
+            IsZoomed(handle) || (IsIconic(handle) && ([](HWND h) {
+                                     WINDOWPLACEMENT p{sizeof(WINDOWPLACEMENT)};
+                                     return GetWindowPlacement(h, &p) && (p.flags & WPF_RESTORETOMAXIMIZED);
+                                 })(handle));
+    return result;
 }
 NativeWindow::~NativeWindow() {
     if (handle && IsWindow(handle))
@@ -87,6 +139,14 @@ LRESULT CALLBACK NativeWindow::procedure(HWND window, UINT message, WPARAM wpara
     if (ImGui::GetCurrentContext() && ImGui_ImplWin32_WndProcHandler(window, message, wparam, lparam))
         return 1;
     if (self) {
+        if (message == WM_CLOSE) {
+            self->remember_placement();
+            self->quit = true;
+            return 0;
+        }
+        if (message == WM_WINDOWPOSCHANGED) {
+            self->remember_placement();
+        }
         if (message == WM_SIZE) {
             self->minimized = wparam == SIZE_MINIMIZED;
             if (!self->minimized) {
@@ -106,7 +166,11 @@ LRESULT CALLBACK NativeWindow::procedure(HWND window, UINT message, WPARAM wpara
         if (message == WM_GETMINMAXINFO) {
             auto info = reinterpret_cast<MINMAXINFO *>(lparam);
             const auto scale = ImGui_ImplWin32_GetDpiScaleForHwnd(window);
-            info->ptMinTrackSize = {LONG(960 * scale), LONG(640 * scale)};
+            MONITORINFO monitor{sizeof(MONITORINFO)};
+            if (GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor))
+                info->ptMinTrackSize = {
+                    std::min(LONG(960 * scale), monitor.rcWork.right - monitor.rcWork.left),
+                    std::min(LONG(640 * scale), monitor.rcWork.bottom - monitor.rcWork.top)};
             return 0;
         }
         if (message == WM_DESTROY) {

@@ -16,16 +16,23 @@ void require(bool condition, const char *message) {
 }
 } // namespace
 Json DesktopPreferences::to_json() const {
-    return {{"schema", "cyuediff.preferences/1"},
+    return {{"schema", "cyuediff.preferences/2"},
             {"theme", theme},
             {"locale", locale},
             {"previews", previews},
-            {"includeEngine", include_engine}};
+            {"includeEngine", include_engine},
+            {"window", window ? window->to_json() : Json(nullptr)},
+            {"restoreSession", restore_session}};
 }
 DesktopPreferences DesktopPreferences::from_json(const Json &value) {
-    require(value.is_object() && value.size() == 5, "Unexpected preferences fields");
-    require(value.contains("schema") && value["schema"] == "cyuediff.preferences/1",
-            "Unsupported preferences schema");
+    require(value.is_object() && value.contains("schema"), "Unexpected preferences fields");
+    const bool legacy = value["schema"] == "cyuediff.preferences/1";
+    require(legacy || value["schema"] == "cyuediff.preferences/2", "Unsupported preferences schema");
+    require(value.size() == (legacy ? 5 : 7), "Unexpected preferences fields");
+    if (!legacy)
+        require(value.contains("window") && value.contains("restoreSession") &&
+                    value["restoreSession"].is_boolean(),
+                "Invalid window/session preferences");
     require(value.contains("theme") && value["theme"].is_string() && value.contains("locale") &&
                 value["locale"].is_string() && value.contains("previews") && value["previews"].is_boolean() &&
                 value.contains("includeEngine") && value["includeEngine"].is_boolean(),
@@ -35,6 +42,11 @@ DesktopPreferences DesktopPreferences::from_json(const Json &value) {
     const std::set<std::string> themes = {"mid-grey", "light-grey", "amber-night", "violet", "navy"};
     require(themes.count(result.theme) != 0, "Unknown preferences theme");
     require(result.locale == "en" || result.locale == "fr", "Unknown preferences locale");
+    if (!legacy) {
+        if (!value["window"].is_null())
+            result.window = WindowPlacement::from_json(value["window"]);
+        result.restore_session = value["restoreSession"].get<bool>();
+    }
     return result;
 }
 fs::path default_preferences_path() {

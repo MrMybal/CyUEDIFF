@@ -2323,7 +2323,7 @@ int run(Options options) {
         options = workspace_options(std::move(options), file);
     }
     protect_outputs(options, {});
-    NativeWindow window(options.smoke);
+    NativeWindow window(options.smoke, saved.value.window);
     ImGuiContextOwner context;
     ImGui::GetIO().IniFilename = nullptr;
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -2344,7 +2344,10 @@ int run(Options options) {
             return;
         try {
             shell.protect(options);
-            desktop::save_preferences(options.preferences, shell.preferences());
+            auto value = shell.preferences();
+            value.window = window.placement();
+            value.restore_session = saved.value.restore_session;
+            desktop::save_preferences(options.preferences, value);
             preferences_saved = true;
         } catch (const std::exception &error) {
             options.preferences_diagnostic = error.what();
@@ -2397,7 +2400,9 @@ int run(Options options) {
                              {"loaded", saved.loaded},
                              {"saved", preferences_saved},
                              {"diagnostic", options.preferences_diagnostic},
-                             {"values", shell.preferences().to_json()}}},
+                             {"values", [&] { auto value = shell.preferences(); value.window = window.placement(); value.restore_session = saved.value.restore_session; return value.to_json(); }()}}},
+                           {"window", {{"restored", window.placement_restored},
+                                       {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
                            {"uploadedPreviews", shell.images()},
                            {"browser", shell.browser_report()},
                            {"history", shell.history_report()},

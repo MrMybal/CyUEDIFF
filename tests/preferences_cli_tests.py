@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-preferences-cli-', dir=Path.c
     original = prefs.read_bytes()
     report = run('--preferences', prefs)
     assert report['theme'] == 'light-grey' and report['locale'] == 'fr'
-    assert report['preferences']['values'] == data and report['preferences']['loaded']
+    assert all(report['preferences']['values'][k] == v for k, v in data.items() if k != 'schema') and report['preferences']['loaded']
     assert not report['preferences']['saved'] and prefs.read_bytes() == original
     checks += 1
     report = run('--preferences', prefs, '--locale', 'en', '--theme', 'violet', '--previews', '--exclude-engine')
@@ -48,7 +48,21 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-preferences-cli-', dir=Path.c
     saved = json.loads(prefs.read_text(encoding='utf-8'))
     report = run('--preferences', prefs)
     assert report['preferences']['loaded'] and report['preferences']['values'] == saved
-    assert set(saved) == {'schema', 'theme', 'locale', 'previews', 'includeEngine'}
+    assert set(saved) == {'schema', 'theme', 'locale', 'previews', 'includeEngine', 'window', 'restoreSession'}
+    assert saved['schema'] == 'cyuediff.preferences/2' and saved['window']['width'] > 0
+    assert report['window']['restored'] and not saved['restoreSession']
+    checks += 1
+    # A disconnected, high-DPI maximized placement stays hidden, is fitted, then remains stable.
+    saved['window'] = {'x': 900000, 'y': -900000, 'width': 2400, 'height': 1600,
+                       'dpi': 192, 'maximized': True}
+    prefs.write_text(json.dumps(saved), encoding='utf-8')
+    report = run('--preferences', prefs, '--save-preferences')
+    fitted = report['window']['placement']
+    assert report['window']['restored'] and fitted['x'] != 900000 and fitted['y'] != -900000
+    assert fitted['maximized'] and fitted['width'] > 0 and fitted['height'] > 0
+    assert json.loads(prefs.read_text(encoding='utf-8'))['window'] == fitted
+    report = run('--preferences', prefs)
+    assert report['window']['placement'] == fitted
     checks += 1
     # Malformed/future/foreign files retain exact bytes, even with an explicit save request.
     for text in ['{', '{"schema":"future"}', '{"theme":"navy","theme":"violet"}']:

@@ -1,10 +1,12 @@
 #pragma once
-#include <cyuediff/core.hpp>
+#include "window_placement.hpp"
 
 namespace cyuediff::desktop {
 struct DesktopPreferences {
     std::string theme = "mid-grey", locale = "en";
     bool previews = true, include_engine = false;
+    std::optional<WindowPlacement> window;
+    bool restore_session = false;
     Json to_json() const;
     static DesktopPreferences from_json(const Json &value);
 };

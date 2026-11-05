@@ -49,6 +49,19 @@ int main() {
             save_preferences(path, value);
             check(read_preferences(path).value.theme == theme, "Every built-in theme persists");
         }
+        auto legacy = value.to_json();
+        legacy["schema"] = "cyuediff.preferences/1";
+        legacy.erase("window");
+        legacy.erase("restoreSession");
+        write(path, legacy.dump());
+        auto migrated = read_preferences(path);
+        check(migrated.loaded && !migrated.value.window && !migrated.value.restore_session,
+              "Legacy preferences migrate without enabling restoration");
+        value.window = WindowPlacement{-1600, 80, 1200, 800, 144, true};
+        value.restore_session = true;
+        save_preferences(path, value);
+        check(read_preferences(path).value.to_json() == value.to_json(),
+              "Window and session settings round trip");
         const auto valid = value.to_json();
         auto invalid = [&](const std::string &text) {
             write(path, text);
@@ -69,7 +82,7 @@ int main() {
         invalid("[]");
         invalid("null");
         auto malformed = valid;
-        malformed["schema"] = "cyuediff.preferences/2";
+        malformed["schema"] = "cyuediff.preferences/3";
         invalid(malformed.dump());
         malformed = valid;
         malformed["theme"] = "missing";
@@ -85,6 +98,15 @@ int main() {
         invalid(malformed.dump());
         malformed = valid;
         malformed["extra"] = true;
+        invalid(malformed.dump());
+        malformed = valid;
+        malformed["window"]["width"] = -1;
+        invalid(malformed.dump());
+        malformed = valid;
+        malformed["restoreSession"] = "yes";
+        invalid(malformed.dump());
+        malformed = valid;
+        malformed.erase("window");
         invalid(malformed.dump());
         invalid("{\"theme\":\"navy\"," + valid.dump().substr(1));
         invalid(std::string(65537, ' '));
