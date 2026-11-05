@@ -289,6 +289,42 @@ NativeDecodeResult decode_reference_skeleton(Archive &a, const Package &package,
                 decoded["curveMetadata"] = {{"coverage", "opaque"}, {"reason", error.code}};
             }
         }
+        decoded["syncMarkers"] = {{"coverage", enabled ? "unavailable" : "disabled"}};
+        if (enabled && decoded["curveMetadata"]["coverage"] == "stored") {
+            const auto marker_start = a.tell();
+            try {
+                const int anim = version("af43a65d7fd3494798733e8ed9c1bb05", 0, 15);
+                if (anim < 0)
+                    throw Error("skeleton-marker-profile", "Sync markers require a supported Anim version",
+                                a.tell());
+                Json markers;
+                if (anim < 2) {
+                    markers = {{"coverage", "not-stored"}};
+                } else {
+                    const auto global = a.get<std::uint8_t>(), specific = a.get<std::uint8_t>();
+                    if (global & ~3u)
+                        throw Error("skeleton-marker-strip", "Unknown skeleton global strip flags",
+                                    a.tell() - 2);
+                    markers = {{"coverage", (global & 1u) ? "stripped" : "stored"},
+                               {"stripFlags", {{"global", global}, {"class", specific}}}};
+                    if (!(global & 1u)) {
+                        Json marker_names = Json::array();
+                        const auto marker_count = count();
+                        for (std::uint32_t i = 0; i < marker_count; ++i) {
+                            options.control.checkpoint("Reading skeleton sync markers", i, marker_count);
+                            marker_names.push_back(name());
+                        }
+                        markers["names"] = std::move(marker_names);
+                    }
+                }
+                decoded["syncMarkers"] = std::move(markers);
+            } catch (const Error &error) {
+                if (error.code == "cancelled")
+                    throw;
+                a.seek(marker_start);
+                decoded["syncMarkers"] = {{"coverage", "opaque"}, {"reason", error.code}};
+            }
+        }
     }
     return {std::move(decoded), a.tell()};
 }
