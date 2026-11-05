@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.104.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.105.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -20,7 +20,7 @@ endif()
 option(CYUEDIFF_BUILD_UI "Build the separate CyUI view library" OFF)
 set(CYUEDIFF_CYUI_SOURCE_DIR "" CACHE PATH "CyUI source checkout")
 add_library(cyuediff_core STATIC
-    src/archive.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
+    src/archive.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
 target_compile_features(cyuediff_core PUBLIC cxx_std_17)
@@ -108,6 +108,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_attachments_pose_tests tests/attachments_pose_tests.cpp)
+    target_link_libraries(cyuediff_attachments_pose_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME skeleton_socket_pose COMMAND cyuediff_attachments_pose_tests)
     add_executable(cyuediff_attachments_file_tests tests/attachments_file_tests.cpp)
     target_link_libraries(cyuediff_attachments_file_tests PRIVATE CyUEDiff::Core)
     add_test(NAME skeleton_attachment_files COMMAND cyuediff_attachments_file_tests)
@@ -231,6 +234,9 @@ if(BUILD_TESTING)
     if(CYUEDIFF_BUILD_CLI)
         find_package(Python3 QUIET COMPONENTS Interpreter)
         if(Python3_Interpreter_FOUND)
+            add_test(NAME skeleton_attachment_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/attachments_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_attachments_file_tests>")
             add_test(NAME skeleton_animation_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_marker_native_tests>")

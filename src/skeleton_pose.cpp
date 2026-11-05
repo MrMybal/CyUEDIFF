@@ -52,7 +52,8 @@ Json ReferencePose::to_json() const {
             {"diagnostics", diagnostics}};
 }
 ReferencePose detail::compose_reference_pose(const Json &body, const std::string &path, bool complete_input,
-                                             const ReferencePoseOptions &options) {
+                                             const ReferencePoseOptions &options,
+                                             std::map<std::string, std::array<double, 12>> *affines) {
     ReferencePose result;
     result.object_path = path;
     result.retarget_source = options.retarget_source;
@@ -116,6 +117,8 @@ ReferencePose detail::compose_reference_pose(const Json &body, const std::string
                     throw Error("skeleton-pose-value", "Reference affine transform overflow");
             joint.position = {matrices[i][3], matrices[i][7], matrices[i][11]};
             joint.ready = true;
+            if (affines)
+                affines->emplace(name, matrices[i]);
         } else
             result.complete = false;
         indices.emplace(name, i);

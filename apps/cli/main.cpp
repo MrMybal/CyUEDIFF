@@ -2,6 +2,7 @@
 #include <cyuediff/collision.hpp>
 #include <cyuediff/collision_wireframe.hpp>
 #include <cyuediff/skeleton_pose.hpp>
+#include <cyuediff/attachments_pose.hpp>
 #include <cyuediff/catalog.hpp>
 #include <cyuediff/hdr.hpp>
 #include <cyuediff/container.hpp>
@@ -36,6 +37,11 @@ int run(const std::vector<std::string> &args) {
                "MODULE.dll]\n"
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff attachments ASSET [--project PROJECT] [--out FILE]\n"
+               "  cyuediff attachments-diff BEFORE AFTER [--out FILE]\n"
+               "  cyuediff socket-pose ASSET [--object PATH] [--retarget-source KEY] [--out FILE]\n"
+               "  cyuediff socket-pose-diff BEFORE AFTER [--before-object PATH] [--after-object PATH]\n"
+               "    [--before-retarget-source KEY] [--after-retarget-source KEY] [--position-tolerance N]\n"
                "  cyuediff skeleton-animation ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff skeleton-animation-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff skeleton-diff BEFORE AFTER [--out FILE]\n"
@@ -137,7 +143,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -165,12 +171,12 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Unsupported history option: " + key);
             continue;
         }
-        if (key=="--retarget-source" && command!="skeleton-pose")
-            throw Error("arguments","--retarget-source requires skeleton-pose");
-        if ((key=="--before-retarget-source"||key=="--after-retarget-source") && command!="skeleton-pose-diff")
-            throw Error("arguments",key+" requires skeleton-pose-diff");
-        if ((key == "--before-object" || key == "--after-object" || key == "--position-tolerance") && command != "skeleton-pose-diff")
-            throw Error("arguments", key + " requires skeleton-pose-diff");
+        if (key=="--retarget-source" && command!="skeleton-pose" && command!="socket-pose")
+            throw Error("arguments","--retarget-source requires skeleton-pose or socket-pose");
+        if ((key=="--before-retarget-source"||key=="--after-retarget-source") && command!="skeleton-pose-diff" && command!="socket-pose-diff")
+            throw Error("arguments",key+" requires skeleton-pose-diff or socket-pose-diff");
+        if ((key == "--before-object" || key == "--after-object" || key == "--position-tolerance") && command != "skeleton-pose-diff" && command != "socket-pose-diff")
+            throw Error("arguments", key + " requires skeleton-pose-diff or socket-pose-diff");
         if (key == "--max-commits" || key == "--skip")
             throw Error("arguments", key + " requires git-history");
         if (schema_command) {
@@ -217,7 +223,7 @@ int run(const std::vector<std::string> &args) {
              key == "--before-engine-root" || key == "--after-engine-root"))
             throw Error("arguments", key + " requires a Git command");
         if (((key == "--mip") && !image_command) ||
-            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose"))
+            (key == "--object" && !image_command && !geometry_command && command != "skeleton-pose" && command != "socket-pose"))
             throw Error("arguments", key + " requires an image or geometry command");
         if ((key == "--threshold" || key == "--heatmap") && command != "image-diff" && command != "hdr-diff")
             throw Error("arguments", key + " requires image-diff or hdr-diff");
@@ -589,10 +595,10 @@ int run(const std::vector<std::string> &args) {
 #endif
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
                command == "mesh" || command == "material" || command == "collision" ||
-               command == "collision-preview" || command == "skeleton" || command == "skeleton-animation" || command == "skeleton-pose") {
+               command == "collision-preview" || command == "skeleton" || command == "skeleton-animation" || command == "skeleton-pose" || command=="attachments" || command=="socket-pose") {
         if ((command == "graph" || command == "texture" || command == "mesh" || command == "material" ||
              command == "collision" || command == "collision-preview" || command == "skeleton" ||
-             command == "skeleton-pose" || command == "skeleton-animation") &&
+             command == "skeleton-pose" || command == "skeleton-animation" || command=="attachments" || command=="socket-pose") &&
             flags.contains("--metadata"))
             throw Error("arguments", "Graph/texture inspection requires properties");
         if (flags.contains("--metadata"))
@@ -610,6 +616,11 @@ int run(const std::vector<std::string> &args) {
             output = package.skeleton_snapshot();
         else if (command == "skeleton-animation")
             output = skeleton_animation_snapshot(package);
+        else if(command=="attachments")output=attachment_snapshot(package);
+        else if(command=="socket-pose"){
+            ReferencePoseOptions pose_options;pose_options.retarget_source=flags.value("--retarget-source",std::string{});
+            output=socket_pose(package,flags.value("--object",std::string{}),pose_options).to_json();
+        }
         else if (command == "skeleton-pose") {
             ReferencePoseOptions pose_options;pose_options.retarget_source=flags.value("--retarget-source",std::string{});
             output = reference_pose(package, flags.value("--object",std::string{}),pose_options).to_json();
@@ -714,7 +725,7 @@ int run(const std::vector<std::string> &args) {
             output["lod"] = lod;
             exit_code = comparison.changes.empty() ? 0 : 1;
         }
-    } else if (command == "skeleton-pose-diff") {
+    } else if (command == "skeleton-pose-diff" || command=="socket-pose-diff") {
         if (flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments", "Reference pose comparison requires decoded hierarchy data");
         ReferencePoseDiffOptions pose_options;
@@ -723,10 +734,23 @@ int run(const std::vector<std::string> &args) {
         pose_options.position_tolerance = real_option("--position-tolerance", 0, 0, std::numeric_limits<double>::max());
         const auto before = read(positional[0], "--before-project", options);
         const auto after = read(positional[1], "--after-project", options);
+        if(command=="socket-pose-diff"){
+            const auto comparison=compare_socket_poses(before,after,flags.value("--before-object",std::string{}),
+                                                       flags.value("--after-object",std::string{}),pose_options);
+            output=comparison.to_json();exit_code=comparison.status()=="identical"?0:comparison.status()=="changed"?1:2;
+        }else{
         const auto comparison = compare_reference_poses(before, after, flags.value("--before-object",std::string{}),
                                                         flags.value("--after-object",std::string{}),pose_options);
         output = comparison.to_json();
         exit_code = comparison.status()=="identical" ? 0 : comparison.status()=="changed" ? 1 : 2;
+        }
+    } else if(command=="attachments-diff"){
+        if(flags.contains("--metadata") || flags.contains("--snapshot"))
+            throw Error("arguments","Attachment comparison requires decoded stored properties");
+        const auto before=read(positional[0],"--before-project",options);
+        const auto after=read(positional[1],"--after-project",options);
+        const auto comparison=compare_attachments(before,after);
+        output=comparison.to_json();exit_code=!comparison.complete?2:comparison.changes.empty()?0:1;
     } else if (command == "skeleton-animation-diff") {
         if (flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments","Skeleton animation metadata comparison requires native decoding");
