@@ -200,6 +200,9 @@ BinaryDelta make_binary_delta_files(const fs::path &base, const fs::path &target
 }
 BinaryDelta read_binary_delta(const fs::path &path, const BinaryDeltaOptions &o) {
     auto bytes = read_binary_file(path, o.max_manifest_bytes, o.control);
+    constexpr std::uint8_t magic[] = {'C', 'Y', 'U', 'E', 'D', 'L', 'T', 0};
+    if (bytes.size() >= sizeof(magic) && std::equal(std::begin(magic), std::end(magic), bytes.begin()))
+        return BinaryDelta::from_binary(bytes, o);
     return BinaryDelta::parse(std::string(bytes.begin(), bytes.end()), o);
 }
 } // namespace cyuediff

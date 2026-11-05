@@ -22,6 +22,12 @@ CyUEDiff::Git can materialize one exact portable repository file and compare its
 
 The Core and Git SDK examples reconstruct generated or explicitly supplied files through serialized deltas and verify exact bytes. The distribution validator compiles both consumers independently against installed headers/libraries, verifies a generated shifted/deleted payload and reconstructs a historical Git README. The public validate_binary_deltas.py script independently interprets the manifest with Python slicing and SHA-256, then compares CLI reconstruction and optional installed SDK results for self comparisons, byte-edited copies and pairs of distinct original files. Original assets/companions are fingerprinted and outputs remain in new ignored build directories. Primitive manifest nodes are work-bounded as well as objects, and delete-to-empty plans avoid an unused block index. This byte layer does not expand semantic Unreal format coverage, stream multi-gigabyte files, provide a chunk server or replace Git/LFS storage.
 
+## Compact raw-byte manifests — 0.163
+
+The optional compact format stores the same checked plan with raw literal bytes and fixed-width little-endian integers. Its exact 112-byte header is: eight signature bytes `CYUEDLT\\0`, uint32 version (1), uint32 flags (0), uint32 block size, uint32 reserved (0), uint64 base size, uint64 target size, uint64 operation count, then two raw 32-byte SHA-256 identities. Each copy is byte tag 0 followed by uint64 original-base offset and uint64 length; each literal is byte tag 1 followed by uint64 length and those raw bytes. Empty operations, trailing bytes, future versions/flags, nonzero reserved fields, truncated data and exhausted limits fail explicitly. Endpoint hashes are verified during application; compact parsing alone does not authenticate content. There is no compression or additional envelope checksum.
+
+`BinaryDelta::to_binary` / `from_binary` use the compact contract. `read_binary_delta` detects the complete signature independently of extension and retains strict JSON support. Manifest limits are charged against the selected representation, so compact data does not incur JSON hex accounting. All manifests remain bounded in-memory values.
+
 ## Commands and SDK
 
 ```powershell

@@ -26,6 +26,9 @@ struct BinaryDelta {
     Json to_json(const BinaryDeltaOptions & = {}) const;
     static BinaryDelta from_json(const Json &, const BinaryDeltaOptions & = {});
     static BinaryDelta parse(const std::string &, const BinaryDeltaOptions & = {});
+    // Compact wire format: fixed little-endian integers and raw literal bytes.
+    std::vector<std::uint8_t> to_binary(const BinaryDeltaOptions & = {}) const;
+    static BinaryDelta from_binary(const std::vector<std::uint8_t> &, const BinaryDeltaOptions & = {});
 };
 // Rolling target windows recover aligned base blocks after insertions/deletions.
 // Every candidate copy is compared byte-for-byte; weak hashes are lookup hints only.
