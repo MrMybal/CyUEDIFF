@@ -171,3 +171,7 @@ The reusable AnimationSocketPose API applies explicitly stored socket locations 
 ## Binary and CLI source socket inspection - 0.150
 
 The animation-socket-pose and animation-socket-pose-diff commands expose prepared source socket origins with explicit Skeleton bindings, owner/frame selection, independent project contexts, finite position tolerance and protected outputs. Independent encoded fixtures cover old/new tagged-property profiles, changed offsets/parents, missing membership/locations, stored empty lists, unlisted contained sockets, omitted unused orientation and source rotation/scale failures. An unrelated raw bone without a source track does not invalidate a ready socket parent.
+
+## Prepared source socket review in CyUI and desktop - 0.151
+
+AnimationPoseView can own and review bounded prepared source socket origins with dedicated labels, exact object-path selection, position tolerance and synchronized camera. The native document worker prepares socket origins from each explicitly bound Skeleton, including pinned historical Git definitions, independently of preview decoding and unrelated missing bone tracks. The Animations tab switches between joint and socket origins; both retain validated data-only state across workspace save/reopen, duplication and reload. Missing requested bindings remain unknown; known absent animation sides can certify added/removed sockets. English and French use the five existing themes.

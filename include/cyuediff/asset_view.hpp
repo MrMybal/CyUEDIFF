@@ -37,7 +37,8 @@ class AssetView {
     CollisionView collisions_;
     SkeletonView skeleton_;
     AnimationSourceView animations_;
-    AnimationPoseView animation_pose_;
+    AnimationPoseView animation_pose_, animation_sockets_;
+    bool sockets_bound_ = false, sockets_preview_ = false;
     bool pose_bound_ = false, pose_preview_ = false;
     CurveView curves_;
     bool material_after_ = false;
@@ -57,6 +58,7 @@ class AssetView {
                       bool compare_missing_side = false);
     // Prepared by the host worker; drawing never resolves an external Skeleton.
     void set_animation_poses(const AnimationPose *before, const AnimationPose *after = nullptr, bool comparing = false);
+    void set_animation_socket_poses(const AnimationSocketPose *before, const AnimationSocketPose *after = nullptr, bool comparing = false);
     bool set_texture_preview(const std::string &object_path, const cyui::ImageData &, bool after = false);
     bool set_texture_difference(const std::string &before_path, const std::string &after_path,
                                 const cyui::ImageData &, const ImageComparison &);

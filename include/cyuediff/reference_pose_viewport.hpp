@@ -5,7 +5,7 @@
 #include <cyui/modules/Viewport.h>
 namespace cyuediff {
 // Owned, bounded display positions. No package access or pose evaluation while drawing.
-enum class PosePreviewSpace { reference, source_animation };
+enum class PosePreviewSpace { reference, source_animation, source_animation_sockets };
 class ReferencePoseViewport {
     PosePreviewSpace space_ = PosePreviewSpace::reference;
     std::map<std::string, ReferenceJoint> before_, after_;

@@ -213,7 +213,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("skeleton","skeleton");
             child("animations","animation-source");
             child("animationPose","animation-pose");
-            flag({"animationPosePreview"});
+            child("animationSockets","animation-pose");
+            flag({"animationPosePreview","animationSocketsPreview"});
             child("curves","curves");
             child("layout", "asset-layout");
             string({"filter"});

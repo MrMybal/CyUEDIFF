@@ -82,6 +82,38 @@ void prepare_side(Document &document, const LoadRequest &request, const ReadOpti
         pose->display_pose.diagnostics.push_back(message);
     }
 }
+void prepare_socket_side(Document &document, const LoadRequest &request, bool after) {
+    const auto &animation = after ? document.after : document.before;
+    if (!animation)
+        return;
+    const auto &source = after ? document.after_animation_pose : document.before_animation_pose;
+    const auto &skeleton = after ? document.after_skeleton : document.before_skeleton;
+    auto &out = after ? document.after_animation_sockets : document.before_animation_sockets;
+    const auto &selection = after ? request.animation_pose->after : request.animation_pose->before;
+    try {
+        request.control.checkpoint("Preparing source animation sockets", after ? 1 : 0,
+                                   document.after ? 2 : 1);
+        if (!source || !skeleton)
+            throw Error("desktop-animation-sockets", "Explicit source Skeleton is unavailable");
+        AnimationSocketOptions options;
+        options.control = request.control;
+        out = animation_socket_pose(*source, *skeleton, options);
+    } catch (const std::exception &e) {
+        const auto *error = dynamic_cast<const Error *>(&e);
+        if (error && error->code == "cancelled")
+            throw;
+        const auto message = std::string(after ? "After: " : "Before: ") +
+                             (error ? error->code + ": " : std::string{}) + e.what();
+        document.animation_socket_diagnostics.push_back(message);
+        document.diagnostics.push_back("Animation sockets: " + message);
+        out = AnimationSocketPose{};
+        out->frame = selection.frame;
+        out->animation_object = source ? source->animation_object : selection.animation_object;
+        out->skeleton_object = source ? source->skeleton_object : selection.skeleton_object;
+        out->display_pose.object_path = out->skeleton_object;
+        out->display_pose.diagnostics.push_back(message);
+    }
+}
 } // namespace
 void prepare_animation_poses(Document &document, const LoadRequest &request, const ReadOptions &read) {
     if (!request.animation_pose)
@@ -114,6 +146,55 @@ void prepare_animation_poses(Document &document, const LoadRequest &request, con
                                                   {"diagnostics", {e.what()}}};
         }
     }
+    prepare_socket_side(document, request, false);
+    prepare_socket_side(document, request, true);
+    if ((document.before_animation_sockets && document.after_animation_sockets) ||
+        (request.git && (document.before_animation_sockets || document.after_animation_sockets))) {
+        try {
+            AnimationSocketPose absent;
+            absent.membership_complete = true;
+            absent.display_pose.complete = true;
+            AnimationPoseDiffOptions options;
+            options.pose.control = request.control;
+            document.animation_socket_comparison = compare_animation_socket_poses(
+                document.before_animation_sockets ? *document.before_animation_sockets : absent,
+                document.after_animation_sockets ? *document.after_animation_sockets : absent, options);
+        } catch (const std::exception &e) {
+            const auto *error = dynamic_cast<const Error *>(&e);
+            if (error && error->code == "cancelled")
+                throw;
+            document.animation_socket_diagnostics.push_back(e.what());
+            document.animation_socket_comparison = {{"schema", "cyuediff.animation-socket-pose-diff/1"},
+                                                    {"complete", false},
+                                                    {"status", "incomplete"},
+                                                    {"diagnostics", {e.what()}}};
+        }
+    }
+}
+Json animation_socket_report(const Document &document) {
+    const bool requested = document.request.animation_pose.has_value();
+    bool complete = requested && (document.before || document.after);
+    for (bool after : {false, true}) {
+        const auto &animation = after ? document.after : document.before;
+        const auto &pose = after ? document.after_animation_sockets : document.before_animation_sockets;
+        if (animation)
+            complete = complete && pose && pose->display_pose.complete;
+    }
+    if (!document.animation_socket_comparison.is_null())
+        complete = complete && document.animation_socket_comparison.value("complete", false);
+    return {{"requested", requested},
+            {"complete", complete},
+            {"status", !requested  ? "disabled"
+                       : !complete ? "incomplete"
+                       : document.animation_socket_comparison.is_null()
+                           ? "ready"
+                           : document.animation_socket_comparison.at("status").get<std::string>()},
+            {"before", document.before_animation_sockets ? document.before_animation_sockets->to_json()
+                                                         : Json(nullptr)},
+            {"after",
+             document.after_animation_sockets ? document.after_animation_sockets->to_json() : Json(nullptr)},
+            {"comparison", document.animation_socket_comparison},
+            {"diagnostics", document.animation_socket_diagnostics}};
 }
 Json animation_pose_report(const Document &document) {
     const bool requested = document.request.animation_pose.has_value();
@@ -152,6 +233,7 @@ Json animation_pose_report(const Document &document) {
         return result;
     };
     return {
+        {"socketOrigins", animation_socket_report(document)},
         {"beforeBinding", binding(false)},
         {"afterBinding", binding(true)},
         {"requested", requested},

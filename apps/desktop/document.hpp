@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/cache.hpp>
 #include <cyuediff/animation_pose.hpp>
+#include <cyuediff/animation_socket_pose.hpp>
 #include <cyuediff/hdr.hpp>
 #include "container_document.hpp"
 #ifdef CYUEDIFF_HAS_GIT
@@ -52,6 +53,9 @@ struct Document {
     std::shared_ptr<const Package> before, after;
     std::shared_ptr<const Package> before_skeleton, after_skeleton;
     std::optional<AnimationPose> before_animation_pose, after_animation_pose;
+    std::optional<AnimationSocketPose> before_animation_sockets, after_animation_sockets;
+    Json animation_socket_comparison = nullptr;
+    std::vector<std::string> animation_socket_diagnostics;
     Json animation_pose_comparison = nullptr;
     std::vector<std::string> animation_pose_diagnostics;
     std::optional<ProjectContext> project, after_project;

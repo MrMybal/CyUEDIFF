@@ -1416,7 +1416,7 @@ class Shell {
         Json previous_pose_state=Json::object();
         if(current().displayed && !current().displayed->container) {
             const auto previous=current().view.view_state();
-            for(const char *key:{"animationPose","animationPosePreview"})
+            for(const char *key:{"animationPose","animationPosePreview","animationSockets","animationSocketsPreview"})
                 if(previous.contains(key))previous_pose_state[key]=previous.at(key);
         }
         current().displayed = session_.document();
@@ -1440,7 +1440,10 @@ class Shell {
                                     current().displayed->request.git.has_value());
         current().view.set_animation_poses(current().displayed->before_animation_pose?&*current().displayed->before_animation_pose:nullptr,
                                             current().displayed->after_animation_pose?&*current().displayed->after_animation_pose:nullptr,
-                                            current().displayed->after!=nullptr);
+                                            current().displayed->request.git.has_value() || current().displayed->after!=nullptr);
+        current().view.set_animation_socket_poses(current().displayed->before_animation_sockets?&*current().displayed->before_animation_sockets:nullptr,
+                                                 current().displayed->after_animation_sockets?&*current().displayed->after_animation_sockets:nullptr,
+                                                 current().displayed->request.git.has_value() || current().displayed->after!=nullptr);
         if(current().displayed->request.animation_pose && !previous_pose_state.empty())
             current().view.restore_view_state(previous_pose_state);
         current().context_details.clear();

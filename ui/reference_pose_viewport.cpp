@@ -40,6 +40,8 @@ void ReferencePoseViewport::set_models(const ReferencePose *before, const Refere
             for (const auto &joint : model->joints)
                 if (displayed.count(joint.name)) {
                     auto limited_joint = joint;
+                    if (!limited_joint.ready)
+                        incomplete_ = true;
                     if (limited_joint.ready)
                         for (double x : limited_joint.position)
                             if (std::abs(x) > 1e12) {
@@ -229,7 +231,9 @@ void ReferencePoseViewport::pane(const char *label, const std::map<std::string, 
         picked_ = std::move(hit);
     if (model.empty())
         draw->AddText({origin.x + cyui::dp(10), origin.y + cyui::dp(10)}, cyui::palette().text,
-                      cyui::tr(space_ == PosePreviewSpace::source_animation
+                      cyui::tr(space_ == PosePreviewSpace::source_animation_sockets
+                                   ? "No source socket positions available"
+                               : space_ == PosePreviewSpace::source_animation
                                    ? "No source animation positions available"
                                    : "No reference positions available")
                           .c_str());
@@ -240,28 +244,39 @@ void ReferencePoseViewport::draw(const char *id) {
     cyui::ScopedID scope(id);
     rendered_joints_ = 0;
     if (incomplete_)
-        cyui::callout(cyui::Tone::warning, cyui::tr(space_ == PosePreviewSpace::source_animation
+        cyui::callout(cyui::Tone::warning, cyui::tr(space_ == PosePreviewSpace::source_animation_sockets
+                                                        ? "Some source socket origins are unavailable."
+                                                    : space_ == PosePreviewSpace::source_animation
                                                         ? "Some source animation joints are unavailable."
                                                         : "Some reference joints are unavailable.")
                                                .c_str());
     if (truncated_)
         cyui::textDim("%s", cyui::tr("Pose preview is limited to 4,096 joints.").c_str());
     if (comparing_) {
-        if (ImGui::Checkbox(cyui::trLabel("Moved joints only").c_str(), &changed_only_))
+        if (ImGui::Checkbox(cyui::trLabel(space_ == PosePreviewSpace::source_animation_sockets
+                                              ? "Moved sockets only"
+                                              : "Moved joints only")
+                                .c_str(),
+                            &changed_only_))
             fit_pending_ = true;
     }
-    if (cyui::button(cyui::trLabel(space_ == PosePreviewSpace::source_animation ? "Fit animation pose"
-                                                                                : "Fit reference pose")
+    if (cyui::button(cyui::trLabel(space_ == PosePreviewSpace::source_animation_sockets ? "Fit source sockets"
+                                   : space_ == PosePreviewSpace::source_animation       ? "Fit animation pose"
+                                                                                  : "Fit reference pose")
                          .c_str()))
         fit_pending_ = true;
     ImGui::TextWrapped("%s",
-                       cyui::tr(space_ == PosePreviewSpace::source_animation
+                       cyui::tr(space_ == PosePreviewSpace::source_animation_sockets
+                                    ? "Source socket origins; colors show position or parent changes."
+                                : space_ == PosePreviewSpace::source_animation
                                     ? "Affine source positions; colors show position or parent changes."
                                     : "Affine reference positions; colors show position or parent changes.")
                            .c_str());
     ImGui::TextWrapped(
-        "%s",
-        cyui::tr("Click a joint: inspect | Alt + drag: orbit | Middle drag: pan | Wheel: zoom").c_str());
+        "%s", cyui::tr(space_ == PosePreviewSpace::source_animation_sockets
+                           ? "Click a socket: inspect | Alt + drag: orbit | Middle drag: pan | Wheel: zoom"
+                           : "Click a joint: inspect | Alt + drag: orbit | Middle drag: pan | Wheel: zoom")
+                  .c_str());
     auto size = ImGui::GetContentRegionAvail();
     if (size.x < cyui::dp(20) || size.y < cyui::dp(50))
         return;
@@ -272,9 +287,10 @@ void ReferencePoseViewport::draw(const char *id) {
     if (fit_pending_)
         fit(width / std::max(cyui::dp(1), height - ImGui::GetTextLineHeightWithSpacing()));
     const auto shown = camera_.camera;
-    pane(comparing_                                     ? "Before"
-         : space_ == PosePreviewSpace::source_animation ? "Animation pose"
-                                                        : "Reference pose",
+    pane(comparing_                                             ? "Before"
+         : space_ == PosePreviewSpace::source_animation_sockets ? "Source socket origins"
+         : space_ == PosePreviewSpace::source_animation         ? "Animation pose"
+                                                                : "Reference pose",
          !comparing_ && before_.empty() ? after_ : before_, {width, height}, 1, shown);
     if (comparing_) {
         if (!stacked)

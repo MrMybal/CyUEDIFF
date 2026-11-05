@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.150.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.151.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -452,6 +452,9 @@ if(BUILD_TESTING)
         add_test(NAME desktop_visual_navigation COMMAND cyuediff_visual_navigation_tests)
         set_tests_properties(desktop_visual_navigation PROPERTIES TIMEOUT 90)
         if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_animation_socket_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_socket_desktop_tests.py"
+                "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_animation_socket_file_tests>")
             add_test(NAME desktop_animation_pose_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_pose_desktop_tests.py"
                 "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_animation_pose_file_tests>")
@@ -474,6 +477,9 @@ if(BUILD_TESTING)
         add_executable(cyuediff_curve_view_tests tests/curve_view_tests.cpp)
         target_link_libraries(cyuediff_curve_view_tests PRIVATE CyUEDiff::UI)
         add_test(NAME desktop_rich_curve_view COMMAND cyuediff_curve_view_tests)
+        add_executable(cyuediff_animation_socket_view_tests tests/animation_socket_view_tests.cpp)
+        target_link_libraries(cyuediff_animation_socket_view_tests PRIVATE CyUEDiff::UI)
+        add_test(NAME animation_socket_view COMMAND cyuediff_animation_socket_view_tests)
         add_executable(cyuediff_animation_pose_view_tests tests/animation_pose_view_tests.cpp)
         target_link_libraries(cyuediff_animation_pose_view_tests PRIVATE CyUEDiff::UI)
         add_test(NAME animation_hierarchy_view COMMAND cyuediff_animation_pose_view_tests)
@@ -535,6 +541,9 @@ if(BUILD_TESTING)
         target_link_libraries(cyuediff_browser_tests PRIVATE cyuediff_desktop_model)
         add_test(NAME desktop_browser COMMAND cyuediff_browser_tests)
         set_tests_properties(desktop_browser PROPERTIES TIMEOUT 45)
+        add_executable(cyuediff_animation_socket_document_tests tests/animation_socket_document_tests.cpp)
+        target_link_libraries(cyuediff_animation_socket_document_tests PRIVATE cyuediff_desktop_model)
+        add_test(NAME desktop_animation_socket_model COMMAND cyuediff_animation_socket_document_tests)
         add_executable(cyuediff_animation_document_tests tests/animation_document_tests.cpp)
         target_link_libraries(cyuediff_animation_document_tests PRIVATE cyuediff_desktop_model)
         add_test(NAME desktop_animation_pose_model COMMAND cyuediff_animation_document_tests)
@@ -558,6 +567,10 @@ if(BUILD_TESTING)
                     "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff>"
                     "$<TARGET_FILE:cyuediff_git_history_tests>" "${GIT_EXECUTABLE}")
                 set_tests_properties(desktop_history_cli PROPERTIES TIMEOUT 90)
+                add_test(NAME desktop_animation_socket_git_cli COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_socket_git_desktop_tests.py"
+                    "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_animation_socket_file_tests>" "${GIT_EXECUTABLE}")
+                set_tests_properties(desktop_animation_socket_git_cli PROPERTIES TIMEOUT 180)
                 add_test(NAME desktop_animation_pose_git_cli COMMAND "${Python3_EXECUTABLE}"
                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/animation_pose_git_desktop_tests.py"
                     "$<TARGET_FILE:cyuediff_desktop>" "$<TARGET_FILE:cyuediff_animation_pose_file_tests>" "${GIT_EXECUTABLE}")
