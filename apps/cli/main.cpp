@@ -40,6 +40,8 @@ int run(const std::vector<std::string> &args) {
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff curves ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff curves-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
+               "  cyuediff curve-value-diff BEFORE AFTER --time-start N --time-end N [--samples N]\n"
+               "    [--before-object PATH] [--after-object PATH] [--before-lane KEY] [--after-lane KEY] [--value-tolerance N]\n"
                "  cyuediff curve-value ASSET --time NUMBER [--object PATH] [--lane KEY] [--out FILE]\n"
                "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
@@ -105,7 +107,7 @@ int run(const std::vector<std::string> &args) {
     }
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
+    const std::set<std::string> valued = {"--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
                                           "--schema",
                                           "--after-schema",
@@ -151,7 +153,7 @@ int run(const std::vector<std::string> &args) {
     auto path_option = [&](const std::string &key) { return fs::u8path(flags.value(key, std::string{})); };
     const auto command = args[0];
     auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+                     command == "curve-value-diff" || command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
                      command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
                      command == "container-diff")
                         ? 2u
@@ -183,9 +185,11 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments","--retarget-source requires skeleton-pose or socket-pose");
         if ((key=="--before-retarget-source"||key=="--after-retarget-source") && command!="skeleton-pose-diff" && command!="socket-pose-diff")
             throw Error("arguments",key+" requires skeleton-pose-diff or socket-pose-diff");
+        if((key=="--time-start" || key=="--time-end" || key=="--samples" || key=="--before-lane" || key=="--after-lane" || key=="--value-tolerance") && command!="curve-value-diff")
+            throw Error("arguments",key+" requires curve-value-diff");
         if((key=="--time" || key=="--lane") && command!="curve-value")throw Error("arguments",key+" requires curve-value");
         if(key=="--frame" && command!="animation-frame")throw Error("arguments","--frame requires animation-frame");
-        if ((key == "--before-object" || key == "--after-object") && command != "curves-diff" && command != "animation-diff" &&
+        if ((key == "--before-object" || key == "--after-object") && command != "curve-value-diff" && command != "curves-diff" && command != "animation-diff" &&
             command != "skeleton-pose-diff" && command != "socket-pose-diff")
             throw Error("arguments", key + " requires a model or pose comparison");
         if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff")
@@ -606,6 +610,18 @@ int run(const std::vector<std::string> &args) {
 #else
         throw Error("git-unavailable", "Configure CYUEDIFF_BUILD_GIT=ON to enable Git commands");
 #endif
+    } else if(command=="curve-value-diff"){
+        if(flags.contains("--metadata") || flags.contains("--snapshot") || !flags.contains("--time-start") || !flags.contains("--time-end"))
+            throw Error("arguments","curve-value-diff requires decoded properties, --time-start and --time-end");
+        CurveValueDiffOptions selected;
+        selected.time_begin=real_option("--time-start",0,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());
+        selected.time_end=real_option("--time-end",1,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());
+        selected.value_tolerance=real_option("--value-tolerance",0,0,std::numeric_limits<double>::max());
+        if(flags.contains("--samples"))selected.samples=integer_option("--samples",4096);
+        selected.before_object=flags.value("--before-object",std::string{});selected.after_object=flags.value("--after-object",std::string{});
+        selected.before_lane=flags.value("--before-lane",std::string{});selected.after_lane=flags.value("--after-lane",std::string{});
+        const auto before=read(positional[0],"--before-project",options),after=read(positional[1],"--after-project",options);
+        output=compare_curve_values(before,after,selected);exit_code=!output.at("complete").get<bool>()?2:output.at("changedSamples").get<std::size_t>()?1:0;
     } else if(command=="curves" || command=="curves-diff" || command=="curve-value"){
         if(flags.contains("--metadata") || flags.contains("--snapshot"))throw Error("arguments","Curve inspection requires decoded properties");
         if(command=="curve-value" && !flags.contains("--time"))throw Error("arguments","curve-value requires --time");

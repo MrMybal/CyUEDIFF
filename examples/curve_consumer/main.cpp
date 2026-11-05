@@ -42,9 +42,11 @@ int main(int argc, char **argv) {
         auto after = argc > 2 ? Package::open(fs::u8path(argv[2])) : before;
         if (argc == 1)
             after.exports[0].properties["FloatCurve"]["value"]["Keys"]["value"][1]["value"] = 10.;
+        CurveValueDiffOptions grid;grid.time_begin=0;grid.time_end=1;grid.samples=5;
+        const auto sampled=compare_curve_values(before,after,grid);
         std::cout << Json{{"snapshot", curve_snapshot(before)},
                           {"value", evaluate_curve(before, .5)},
-                          {"comparison", compare_curves(before, after).to_json()}}
+                          {"comparison", compare_curves(before, after).to_json()}, {"sampledComparison",sampled}}
                          .dump(2)
                   << '\n';
         return 0;

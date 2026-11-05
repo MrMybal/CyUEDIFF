@@ -29,6 +29,19 @@ with tempfile.TemporaryDirectory(prefix='rich-curve-cli-') as tmp:
                ('curves',before,'--time','1'),('curves',before,'--metadata'),('curves',before,'--snapshot'),
                ('curves-diff',before,after,'--before-object','missing')]:
    run(*args,code=2)
+  grid=['--time-start','0','--time-end','2','--samples','5']
+  assert run('curve-value-diff',before,before,*grid)['status']=='identical'
+  diff=run('curve-value-diff',before,after,*grid,code=1)
+  assert diff['changedSamples']==3 and diff['maximumAbsoluteDelta']==2.
+  assert run('curve-value-diff',before,after,*grid,'--value-tolerance','2')['status']=='identical'
+  assert run('curve-value-diff',before,before,'--time-start','-1','--time-end','2','--samples','5',code=2)['status']=='incomplete'
+  for args in [('curve-value-diff',before,after),('curve-value-diff',before,after,*grid,'--value-tolerance','-1'),
+               ('curve-value-diff',before,after,'--time-start','0','--time-end','2','--samples','0'),
+               ('curve-value-diff',before,after,'--time-start','0','--time-end','2','--samples','4097'),
+               ('curve-value-diff',before,after,*grid,'--before-lane','missing'),
+               ('curves',before,'--time-start','0')]:
+   run(*args,code=2)
+  run('curve-value-diff',before,after,*grid,'--out',before,code=2)
   for target in (before,before.with_suffix('.uexp')):run('curves',before,'--out',target,code=2)
   out=root/'report.json';run('curve-value',before,'--time','.5','--out',out)
   assert json.loads(out.read_text(encoding='utf-8'))['ready']
