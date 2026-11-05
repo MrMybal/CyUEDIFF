@@ -57,13 +57,13 @@ ReferencePose reference_pose(const Package &package, const std::string &path,
     const auto model = skeleton_snapshot(package, projection_options);
     const auto &skeletons = model.at("skeletons");
     if (path.empty() && skeletons.size() != 1)
-        throw Error("skeleton-selection", "Select exactly one Skeleton object path");
+        throw Error("skeleton-selection", "Select exactly one Skeleton or SkeletalMesh object path");
     auto it = path.empty() ? skeletons.begin() : skeletons.find(path);
     if (it == skeletons.end())
         throw Error("skeleton-selection", "Skeleton object path not found");
     ReferencePose result;
     result.object_path = it.key();
-    result.complete = it->at("complete").get<bool>();
+    result.complete = package.complete_input && it->at("referenceComplete").get<bool>();
     const auto &bones = it->at("bones");
     if (bones.size() > options.max_joints)
         throw Error("limit", "Reference pose joint budget exceeded");

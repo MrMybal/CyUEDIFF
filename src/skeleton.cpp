@@ -5,7 +5,7 @@ namespace cyuediff {
 namespace {
 struct Projection {
     const SkeletonOptions &options;
-    std::size_t nodes = 0, text_bytes = 0, bone_count = 0;
+    std::size_t nodes = 0, text_bytes = 0, bone_count = 0, material_count = 0;
     void require(bool ok, const char *message) {
         if (!ok)
             throw Error("skeleton-value", message);
@@ -45,6 +45,7 @@ struct Projection {
                     {"bones", Json::object()},
                     {"native", copy(Json{{"coverage", e.native_coverage}, {"opaque", e.opaque}})},
                     {"complete", false},
+                    {"referenceComplete", false},
                     {"diagnostics", Json::array()}};
         if (e.native_coverage != "reference-skeleton" ||
             e.native_data.value("kind", "") != "reference-skeleton") {
@@ -102,6 +103,61 @@ struct Projection {
             out["native"]["objectGuid"] = copy(raw.at("objectGuid"));
         if (raw.contains("layout"))
             out["native"]["layout"] = copy(raw.at("layout"));
+        if (e.class_name == "/Script/Engine.SkeletalMesh") {
+            require(raw.contains("mesh") && raw.at("mesh").is_object(), "Missing skeletal mesh prefix model");
+            const auto &mesh = raw.at("mesh");
+            require(mesh.contains("importedBounds") && mesh.at("importedBounds").is_object() &&
+                        mesh.contains("materials") && mesh.at("materials").is_array() &&
+                        mesh.contains("stripFlags") && mesh.at("stripFlags").is_object(),
+                    "Malformed skeletal mesh metadata");
+            const auto &bounds = mesh.at("importedBounds");
+            for (auto field : {"origin", "boxExtent"})
+                require(bounds.contains(field) && bounds.at(field).is_array() && bounds.at(field).size() == 3,
+                        "Malformed imported bounds vector");
+            require(bounds.contains("sphereRadius") && bounds.at("sphereRadius").is_number(),
+                    "Malformed imported sphere radius");
+            for (auto field : {"origin", "boxExtent"})
+                for (const auto &x : bounds.at(field))
+                    require(x.is_number(), "Invalid imported bounds component");
+            for (auto field : {"global", "class"})
+                require(mesh.at("stripFlags").contains(field) &&
+                            mesh.at("stripFlags").at(field).is_number_integer() &&
+                            mesh.at("stripFlags").at(field).get<std::int64_t>() >= 0 &&
+                            mesh.at("stripFlags").at(field).get<std::uint64_t>() <= 255,
+                        "Invalid stored mesh strip byte");
+            const auto &materials = mesh.at("materials");
+            if (materials.size() > options.max_materials - material_count)
+                throw Error("limit", "Skeletal material budget exceeded");
+            material_count += materials.size();
+            for (const auto &material : materials) {
+                options.control.check();
+                require(material.is_object(), "Malformed skeletal material");
+                for (auto field : {"material", "slotName"})
+                    require(material.contains(field) && material.at(field).is_string(),
+                            "Malformed skeletal material identity");
+                require(material.contains("importedSlotNameStored") &&
+                            material.at("importedSlotNameStored").is_boolean(),
+                        "Missing imported slot presence flag");
+                require(material.at("importedSlotNameStored").get<bool>()
+                            ? material.contains("importedSlotName") &&
+                                  material.at("importedSlotName").is_string()
+                            : !material.contains("importedSlotName"),
+                        "Inconsistent imported slot presence");
+                require(material.contains("uvChannels") && material.at("uvChannels").is_object(),
+                        "Missing skeletal UV metadata");
+                const auto &uv = material.at("uvChannels");
+                for (auto field : {"initialized", "overrideDensities"})
+                    require(uv.contains(field) && uv.at(field).is_boolean(), "Invalid stored UV flag");
+                require(uv.contains("localDensities") && uv.at("localDensities").is_array() &&
+                            uv.at("localDensities").size() == 4,
+                        "Invalid stored UV densities");
+                for (const auto &x : uv.at("localDensities"))
+                    require(x.is_number(), "Invalid stored UV density");
+            }
+            // Material array order is significant: opaque sections may refer to numeric slot indices.
+            out["mesh"] = copy(mesh);
+        }
+        out["referenceComplete"] = true;
         out["complete"] = e.coverage == "properties";
         if (e.coverage != "properties")
             out["diagnostics"].push_back("Stored UObject properties are incomplete");
@@ -115,7 +171,7 @@ Json skeleton_snapshot(const Package &package, const SkeletonOptions &options) {
     Json bodies = Json::object();
     bool complete = package.complete_input;
     for (const auto &e : package.exports)
-        if (e.class_name == "/Script/Engine.Skeleton") {
+        if (e.class_name == "/Script/Engine.Skeleton" || e.class_name == "/Script/Engine.SkeletalMesh") {
             if (bodies.size() >= options.max_skeletons)
                 throw Error("limit", "Skeleton object budget exceeded");
             if (bodies.contains(e.path))
