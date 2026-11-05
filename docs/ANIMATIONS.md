@@ -147,3 +147,7 @@ Desktop document workers can explicitly bind repository-relative Skeleton packag
 ## Historical project and plugin Skeleton contexts - 0.144
 
 Mounted Skeleton names use the separately retained historical project/plugin catalogue for each animation commit, including independent project descriptors. Explicit engine mounts retain engine-local provenance rather than claiming the engine installation is versioned by Git. Selected sources and all companions are protected even when local LFS objects cannot be read. Per-side failures retain pinned intent; cancellation propagates.
+
+## Git Skeleton controls and workspace review - 0.145
+
+The native Git input panel and command line accept explicit per-revision Skeleton bindings and independent integer source frames. Git paths remain repository-relative or mounted names in workspace format 4; local file pickers remain confined to loose files. History revision selections retain existing Git bindings. Output overlap guards resolve historical mounts for active and inactive documents before writing reports, captures or workspaces. English and French controls use the existing five themes.

@@ -288,8 +288,8 @@ Options parse_one(const std::vector<std::string> &args) {
             throw Error("desktop-option", "Too many package paths");
     }
     if(pose_parameters) {
-        if(options.settings.source!=0 || options.browse || options.settings.before.empty())throw Error("desktop-option","Source pose options require local package inputs");
-        if(options.settings.pose_before_skeleton.empty() || (!options.settings.after.empty() && options.settings.pose_after_skeleton.empty()))throw Error("desktop-option","Choose an explicit Skeleton for each requested animation side");
+        if(options.settings.source==2 || options.browse || options.settings.before.empty())throw Error("desktop-option","Source pose options require loose or Git package inputs");
+        if(options.settings.pose_before_skeleton.empty() || ((options.settings.source==1 || !options.settings.after.empty()) && options.settings.pose_after_skeleton.empty()))throw Error("desktop-option","Choose an explicit Skeleton for each requested animation side");
         if((pose_shared_frame&&(pose_before_frame||pose_after_frame)) || pose_before_frame!=pose_after_frame)throw Error("desktop-option","Choose a shared --pose-frame or both independent pose frame options");
         options.settings.pose_independent_frames=pose_before_frame && pose_after_frame;
     }
@@ -437,7 +437,8 @@ void register_translations() {
     CatalogView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"Evaluate source hierarchy pose", "Évaluer la pose hiérarchique source"},
+        {{"Skeleton paths use each animation revision and its historical project mounts.", "Les chemins des squelettes utilisent la r�vision de chaque animation et ses montages de projet historiques."},
+         {"Evaluate source hierarchy pose", "Évaluer la pose hiérarchique source"},
          {"Animation Skeleton binding", "Association du squelette d’animation"},
          {"Skeleton before", "Squelette avant"}, {"Skeleton after", "Squelette après"},
          {"Frame before", "Frame avant"}, {"Frame after", "Frame après"},
@@ -655,6 +656,36 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         for (const auto &path : {options.settings.before, options.settings.after})
             if (!path.empty() && path.front() != '/')
                 package(repository.root() / fs::u8path(path));
+        if (options.settings.pose_enabled) {
+            for (bool after : {false, true}) {
+                const auto &settings = options.settings;
+                const auto &project = after && !settings.after_project.empty() ? settings.after_project : settings.project;
+                const auto &revision = after ? settings.after_revision : settings.before_revision;
+                std::optional<GitProjectContext> context;
+                if (!project.empty()) {
+                    GitProjectOptions selection;
+                    selection.engine_root = fs::u8path(after && !settings.after_engine.empty() ? settings.after_engine : settings.engine);
+                    selection.discover_engine = settings.discover_engine;
+                    context = repository.project(revision, project, selection);
+                    for (const auto &entry : context->documents)
+                        inputs.push_back(entry.file.blob_oid.empty() ? fs::u8path(entry.file.path) : repository.root() / fs::u8path(entry.file.path));
+                    if (!context->engine.root.empty()) directories.push_back(context->engine.root / "Engine");
+                }
+                const auto &skeleton = after ? settings.pose_after_skeleton : settings.pose_before_skeleton;
+                const auto &asset = after && !settings.after.empty() ? settings.after : settings.before;
+                for (const auto &name : {asset, skeleton}) {
+                    if (name.empty()) continue;
+                    if (name.front() != '/') { package(repository.root() / fs::u8path(name)); continue; }
+                    if (!context) continue;
+                    GitPackageLocation location;
+                    try { location = context->locate(name); }
+                    catch (const Error &) { continue; } // Unresolvable bindings are reported by the worker.
+                    auto base = location.storage == "git" ? repository.root() / fs::u8path(location.path) : fs::u8path(location.path);
+                    auto file = base; file += ".uasset"; package(file);
+                    file = base; file += ".umap"; package(file);
+                }
+            }
+        }
         for (const auto &project : {options.settings.project, options.settings.after_project})
             if (!project.empty())
                 inputs.push_back(repository.root() / fs::u8path(project));
@@ -938,8 +969,9 @@ class Shell {
             throw Error("history-selection", "No ready history page");
         auto selection =
             historied_->select(id, current().settings.request().git.value_or(GitSource{}), after);
+        if (current().settings.source != 1)
+            current().settings.pose_enabled = false;
         current().settings.source = 1;
-        current().settings.pose_enabled = false;
         current().settings.repository = selection.repository.u8string();
         current().settings.before_revision = selection.before_revision;
         current().settings.after_revision = selection.after_revision;
@@ -1747,13 +1779,14 @@ class Shell {
                     }
                     if (current().settings.source == 0 && current().settings.project.empty())
                         ImGui::TextWrapped("%s", cyui::tr("Choose a project to browse its content.").c_str());
-                    if(current().settings.source==0) {
+                    if(current().settings.source!=2) {
                         auto &settings=current().settings;
+                        const bool inactive_after=settings.source==0 && settings.after.empty();
                         cyui::toggleSwitch(cyui::trLabel("Evaluate source hierarchy pose").c_str(),&settings.pose_enabled);
                         if(settings.pose_enabled && current().layout.section("animationPose","Animation Skeleton binding",true)) {
                             if(cyui::beginProperties("##pose-inputs",105)) {
                                 cyui::property(cyui::tr("Skeleton before").c_str());field("##pose-rig-before",settings.pose_before_skeleton);
-                                {cyui::ScopedDisabled inactive(settings.after.empty());
+                                {cyui::ScopedDisabled inactive(inactive_after);
                                 cyui::property(cyui::tr("Skeleton after").c_str());field("##pose-rig-after",settings.pose_after_skeleton);}
                                 cyui::property(cyui::tr("Frame before").c_str());
                                 if(ImGui::InputInt("##pose-frame-before",&settings.pose_before_frame))settings.pose_before_frame=std::max(0,settings.pose_before_frame);
@@ -1761,20 +1794,22 @@ class Shell {
                             }
                             cyui::toggleSwitch(cyui::trLabel("Independent pose frames").c_str(),&settings.pose_independent_frames);
                             if(settings.pose_independent_frames) {
-                                cyui::ScopedDisabled inactive(settings.after.empty());
+                                cyui::ScopedDisabled inactive(inactive_after);
                                 if(cyui::beginProperties("##pose-frame-input",105)) {
                                     cyui::property(cyui::tr("Frame after").c_str());
                                     if(ImGui::InputInt("##pose-frame-after",&settings.pose_after_frame))settings.pose_after_frame=std::max(0,settings.pose_after_frame);
                                     cyui::endProperties();
                                 }
                             }
+                            if(settings.source==0) {
                             if(cyui::button(cyui::trLabel("Choose Skeleton before").c_str()))action=Action::pose_before_skeleton;
-                            {cyui::ScopedDisabled inactive(settings.after.empty());if(cyui::button(cyui::trLabel("Choose Skeleton after").c_str()))action=Action::pose_after_skeleton;}
+                            {cyui::ScopedDisabled inactive(inactive_after);if(cyui::button(cyui::trLabel("Choose Skeleton after").c_str()))action=Action::pose_after_skeleton;}
+                            } else ImGui::TextWrapped("%s",cyui::tr("Skeleton paths use each animation revision and its historical project mounts.").c_str());
                             if(ImGui::TreeNode(cyui::trLabel("Stored owner selections").c_str())) {
                                 if(cyui::beginProperties("##pose-owners",105)) {
                                     cyui::property(cyui::tr("Model before").c_str());field("##pose-model-before",settings.pose_before_object);
                                     cyui::property(cyui::tr("Rig object before").c_str());field("##pose-owner-before",settings.pose_before_skeleton_object);
-                                    {cyui::ScopedDisabled inactive(settings.after.empty());
+                                    {cyui::ScopedDisabled inactive(inactive_after);
                                     cyui::property(cyui::tr("Model after").c_str());field("##pose-model-after",settings.pose_after_object);
                                     cyui::property(cyui::tr("Rig object after").c_str());field("##pose-owner-after",settings.pose_after_skeleton_object);}
                                     cyui::endProperties();
@@ -2228,7 +2263,7 @@ int run(Options options) {
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
-               "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : local source hierarchy poses\n"
+               "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : loose or Git source hierarchy poses\n"
                "  [--pose-frame N | --pose-before-frame N --pose-after-frame N]\n"
                "  [--pose-before-object PATH] [--pose-after-object PATH]\n"
                "  [--pose-before-skeleton-object PATH] [--pose-after-skeleton-object PATH]\n"

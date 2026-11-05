@@ -30,9 +30,9 @@ struct Settings {
         return {fs::u8path(project), fs::u8path(engine), include_engine, request().git};
     }
     LoadRequest request() const {
-        if (pose_enabled && source != 0)
+        if (pose_enabled && source == 2)
             throw Error("desktop-animation-pose",
-                        "External Skeleton bindings currently require local packages");
+                        "External Skeleton bindings require loose or Git packages");
         if (source == 2) {
             LoadRequest result;
             ContainerSource input;

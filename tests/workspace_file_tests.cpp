@@ -132,6 +132,18 @@ int main() {
         check(pose_copy.request().animation_pose->after.frame == 2, "Shared source frame request");
         pose_copy.pose_enabled = false;
         check(!pose_copy.request().animation_pose, "Binding disabled independently of saved fields");
+        auto git_pose = pose_json;
+        auto &git_pose_settings = git_pose["documents"][0]["settings"];
+        git_pose_settings["source"] = 1;
+        git_pose_settings["repository"] = "Repo";
+        git_pose_settings["pose_before_skeleton"] = "Content/Rig.uasset";
+        git_pose_settings["pose_after_skeleton"] = "/RigPack/Rig";
+        auto git_pose_copy = WorkspaceFile::from_json(git_pose).documents[0].settings;
+        check(git_pose_copy.request().git && git_pose_copy.request().animation_pose &&
+              git_pose_copy.pose_before_skeleton == "Content/Rig.uasset" &&
+              git_pose_copy.pose_after_skeleton == "/RigPack/Rig", "Historical binding identities round trip");
+        git_pose_settings["source"] = 2;
+        rejects([&] { WorkspaceFile::from_json(git_pose); });
         auto legacy_three = pose_json;
         legacy_three["schema"] = "cyuediff.workspace/3";
         for (auto &d : legacy_three["documents"])
