@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/skeleton.hpp>
+#include <optional>
 namespace cyuediff {
 struct ReferenceJoint {
     std::string name, parent;
@@ -9,11 +10,13 @@ struct ReferenceJoint {
 };
 struct ReferencePoseOptions {
     SkeletonOptions skeleton;
+    // Empty selects the stored raw reference pose; named selection never falls back to it.
+    std::string retarget_source;
     unsigned max_hierarchy_depth = 512;
     std::size_t max_joints = 100000;
 };
 struct ReferencePose {
-    std::string object_path;
+    std::string object_path, retarget_source;
     std::vector<ReferenceJoint> joints;
     std::vector<std::string> diagnostics;
     bool complete = false;
@@ -25,11 +28,13 @@ ReferencePose reference_pose(const Package &, const std::string &object_path = {
                              const ReferencePoseOptions & = {});
 struct ReferencePoseDiffOptions {
     ReferencePoseOptions pose;
+    // Unset inherits pose.retarget_source. An explicit empty string selects raw after.
+    std::optional<std::string> after_retarget_source;
     double position_tolerance = 0;
     std::size_t max_joint_pairs = 100000;
 };
 struct ReferencePoseComparison {
-    std::string before_object, after_object;
+    std::string before_object, after_object, before_retarget_source, after_retarget_source;
     Json joints = Json::object();
     bool complete = false;
     double position_tolerance = 0;

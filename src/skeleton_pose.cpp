@@ -46,6 +46,7 @@ Json ReferencePose::to_json() const {
     return {{"schema", "cyuediff.reference-pose/1"},
             {"space", "raw-reference-affine"},
             {"object", object_path},
+            {"retargetSource", retarget_source.empty() ? Json(nullptr) : Json(retarget_source)},
             {"complete", complete},
             {"joints", std::move(values)},
             {"diagnostics", diagnostics}};
@@ -54,8 +55,29 @@ ReferencePose detail::compose_reference_pose(const Json &body, const std::string
                                              const ReferencePoseOptions &options) {
     ReferencePose result;
     result.object_path = path;
+    result.retarget_source = options.retarget_source;
     result.complete = complete_input && body.at("referenceComplete").get<bool>();
     const auto &bones = body.at("bones");
+    const Json *selected = nullptr;
+    if (!options.retarget_source.empty()) {
+        const auto &retarget = body.at("retargeting");
+        if (retarget.at("coverage") != "stored") {
+            result.complete = false;
+            result.diagnostics.push_back(
+                "Stored retarget sources are unavailable; raw reference pose is not substituted");
+            return result;
+        }
+        const auto found = retarget.at("sources").find(options.retarget_source);
+        if (found == retarget.at("sources").end())
+            throw Error("skeleton-retarget-selection", "Stored retarget source key not found");
+        if (!found->at("complete").get<bool>()) {
+            result.complete = false;
+            result.diagnostics.push_back(
+                "Stored retarget transforms have no verified raw-bone correspondence");
+            return result;
+        }
+        selected = &found->at("bones");
+    }
     if (bones.size() > options.max_joints)
         throw Error("limit", "Reference pose joint budget exceeded");
     if (!result.complete)
@@ -83,7 +105,8 @@ ReferencePose detail::compose_reference_pose(const Json &body, const std::string
             if (!result.joints[parent].ready)
                 joint.diagnostics.push_back("Parent affine transform is unavailable");
         }
-        const bool valid = local_matrix(bone.at("localPose"), local);
+        const bool valid =
+            local_matrix(selected ? selected->at(name).at("localPose") : bone.at("localPose"), local);
         if (!valid)
             joint.diagnostics.push_back("Stored quaternion is not unit length");
         if (valid && joint.diagnostics.empty()) {

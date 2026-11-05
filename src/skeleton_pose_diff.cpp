@@ -6,17 +6,21 @@ std::string ReferencePoseComparison::status() const {
     return !complete ? "incomplete" : changed_joints ? "changed" : "identical";
 }
 Json ReferencePoseComparison::to_json() const {
-    return {{"schema", "cyuediff.reference-pose-diff/1"},
-            {"space", "raw-reference-affine"},
-            {"scope", "derived joint positions and named parents; no rotation, animation or skin comparison"},
-            {"beforeObject", before_object},
-            {"afterObject", after_object},
-            {"complete", complete},
-            {"status", status()},
-            {"positionTolerance", position_tolerance},
-            {"changedJoints", changed_joints},
-            {"unavailableJoints", unavailable_joints},
-            {"joints", joints}};
+    return {
+        {"schema", "cyuediff.reference-pose-diff/1"},
+        {"space", "raw-reference-affine"},
+        {"scope", "derived joint positions and named parents; no rotation, animation or skin comparison"},
+        {"beforeObject", before_object},
+        {"beforeRetargetSource",
+         before_retarget_source.empty() ? Json(nullptr) : Json(before_retarget_source)},
+        {"afterRetargetSource", after_retarget_source.empty() ? Json(nullptr) : Json(after_retarget_source)},
+        {"afterObject", after_object},
+        {"complete", complete},
+        {"status", status()},
+        {"positionTolerance", position_tolerance},
+        {"changedJoints", changed_joints},
+        {"unavailableJoints", unavailable_joints},
+        {"joints", joints}};
 }
 ReferencePoseComparison compare_reference_poses(const ReferencePose &before, const ReferencePose &after,
                                                 const ReferencePoseDiffOptions &options) {
@@ -32,6 +36,8 @@ ReferencePoseComparison compare_reference_poses(const ReferencePose &before, con
             throw Error("limit", "Reference pose comparison text budget exceeded");
         text += size;
     };
+    charge(before.retarget_source.size());
+    charge(after.retarget_source.size());
     charge(before.object_path.size());
     charge(after.object_path.size());
     auto index = [&](const ReferencePose &pose, auto &map) {
@@ -54,6 +60,8 @@ ReferencePoseComparison compare_reference_poses(const ReferencePose &before, con
     index(before, a);
     index(after, b);
     ReferencePoseComparison result;
+    result.before_retarget_source = before.retarget_source;
+    result.after_retarget_source = after.retarget_source;
     result.before_object = before.object_path;
     result.after_object = after.object_path;
     result.complete = before.complete && after.complete;
@@ -113,7 +121,10 @@ ReferencePoseComparison compare_reference_poses(const Package &before, const Pac
                                                 const std::string &after_object,
                                                 const ReferencePoseDiffOptions &options) {
     const auto a = reference_pose(before, before_object, options.pose);
-    const auto b = reference_pose(after, after_object, options.pose);
+    auto after_options = options.pose;
+    if (options.after_retarget_source)
+        after_options.retarget_source = *options.after_retarget_source;
+    const auto b = reference_pose(after, after_object, after_options);
     return compare_reference_poses(a, b, options);
 }
 } // namespace cyuediff
