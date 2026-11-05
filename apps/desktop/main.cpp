@@ -1330,6 +1330,12 @@ class Shell {
         update_tabs();
         if (session_.document() == current().displayed)
             return;
+        Json previous_pose_state=Json::object();
+        if(current().displayed && !current().displayed->container) {
+            const auto previous=current().view.view_state();
+            for(const char *key:{"animationPose","animationPosePreview"})
+                if(previous.contains(key))previous_pose_state[key]=previous.at(key);
+        }
         current().displayed = session_.document();
         if (!current().displayed)
             return;
@@ -1349,6 +1355,11 @@ class Shell {
         current().container_view.set_document({});
         current().view.set_packages(current().displayed->before, current().displayed->after,
                                     current().displayed->request.git.has_value());
+        current().view.set_animation_poses(current().displayed->before_animation_pose?&*current().displayed->before_animation_pose:nullptr,
+                                            current().displayed->after_animation_pose?&*current().displayed->after_animation_pose:nullptr,
+                                            current().displayed->after!=nullptr);
+        if(current().displayed->request.animation_pose && !previous_pose_state.empty())
+            current().view.restore_view_state(previous_pose_state);
         current().context_details.clear();
 #ifdef CYUEDIFF_HAS_GIT
         if (current().displayed->git && !current().displayed->git->context_changes.empty())

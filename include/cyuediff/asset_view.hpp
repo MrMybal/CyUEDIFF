@@ -1,5 +1,6 @@
 #include <cyuediff/curve_view.hpp>
 #include <cyuediff/animation_source_view.hpp>
+#include <cyuediff/animation_pose_view.hpp>
 #pragma once
 #include <cyuediff/view_layout.hpp>
 #include <cyuediff/view_state.hpp>
@@ -36,6 +37,8 @@ class AssetView {
     CollisionView collisions_;
     SkeletonView skeleton_;
     AnimationSourceView animations_;
+    AnimationPoseView animation_pose_;
+    bool pose_bound_ = false, pose_preview_ = false;
     CurveView curves_;
     bool material_after_ = false;
     MeshView before_mesh_, after_mesh_;
@@ -52,6 +55,8 @@ class AssetView {
     // compare_missing_side enables an addition/removal diff when one side is absent.
     void set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after = {},
                       bool compare_missing_side = false);
+    // Prepared by the host worker; drawing never resolves an external Skeleton.
+    void set_animation_poses(const AnimationPose *before, const AnimationPose *after = nullptr, bool comparing = false);
     bool set_texture_preview(const std::string &object_path, const cyui::ImageData &, bool after = false);
     bool set_texture_difference(const std::string &before_path, const std::string &after_path,
                                 const cyui::ImageData &, const ImageComparison &);

@@ -63,7 +63,14 @@ void AnimationPoseView::set_poses(const AnimationPose *a, const AnimationPose *b
         out.display_pose.object_path = input->display_pose.object_path;
         for (const auto &joint : input->display_pose.joints)
             if (keys.count(joint.name)) {
-                out.display_pose.joints.push_back(joint);
+                auto display_joint = joint;
+                if (display_joint.ready)
+                    for (double value : display_joint.position)
+                        if (!std::isfinite(value) || std::abs(value) > 1e12) {
+                            display_joint.ready = false;
+                            out.display_pose.complete = false;
+                        }
+                out.display_pose.joints.push_back(std::move(display_joint));
                 if (input->bindings.contains(joint.name))
                     out.bindings[joint.name] = input->bindings.at(joint.name);
             }

@@ -79,6 +79,32 @@ int main() {
         AnimationPoseView capped;
         capped.set_poses(&many);
         check(capped.joint_count() == 4096, "Owned preview is bounded");
+        AssetView integrated;
+        integrated.set_packages(std::make_shared<Package>(a), std::make_shared<Package>(a));
+        integrated.set_animation_poses(&before, &after, true);
+        integrated.select_tab(AssetTab::animations);
+        integrated.restore_view_state({{"animationPose", state}, {"animationPosePreview", true}});
+        check(integrated.view_state()["animationPose"] == state &&
+                  integrated.view_state()["animationPosePreview"],
+              "Asset view retains prepared pose and review mode");
+        auto invalid_state = integrated.view_state();
+        invalid_state["animationPose"]["positionTolerance"] = -1;
+        const auto integrated_original = integrated.view_state();
+        bool rejected = false;
+        try {
+            integrated.restore_view_state(invalid_state);
+        } catch (const Error &e) {
+            rejected = e.code == "view-state";
+        }
+        check(rejected && integrated.view_state() == integrated_original,
+              "Integrated pose state validates before mutation");
+        auto oversized = before;
+        oversized.display_pose.joints[0].position = {1e308, 1e308, 1e308};
+        AnimationPoseView extreme;
+        extreme.set_poses(&oversized, &after, true);
+        check(extreme.comparison()["status"] == "incomplete" &&
+                  extreme.comparison()["joints"]["root"]["distance"].is_null(),
+              "Out-of-display-range positions stay unavailable before metric arithmetic");
         for (const char *theme : {"mid-grey", "light-grey", "amber-night", "violet", "navy"})
             for (const char *locale : {"en", "fr"}) {
                 cyui::Config config;

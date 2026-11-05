@@ -127,3 +127,7 @@ Desktop document requests now carry explicit per-side Skeleton paths, animation/
 ## Worker preparation of explicitly bound desktop animation poses - 0.139
 
 The desktop worker opens supplied loose Skeleton paths through the existing verified package cache, resolves each side with its own project context, and prepares selected Core poses before publication even when texture/mesh previews are disabled. Requested failures retain raw package inspection and a per-side unavailable pose, never known absence. Skeleton sources and companions are protected; cancellation propagates. Reports retain separate source-pose readiness, provenance, diagnostics and derived comparison. Seventeen new model checks and forty existing desktop checks pass, including shared cache ownership, invalid names/frames/files, mounted independent projects, input hashes and actual queue publication.
+
+## Prepared hierarchy poses in the desktop Animations tab - 0.140
+
+AssetView accepts host-prepared animation poses, clears old data when packages change, and exposes an EN/FR source-hierarchy review switch inside Animations. Validated asset state retains the pose review mode, selected joint, filter, tolerance and camera. The desktop binds worker results and preserves pose review state through reload, with pending workspace state taking precedence. Out-of-display-range coordinates become unavailable before UI metric arithmetic. Validation passes 297 pose-view checks over 280 frames and the existing 422 source-view checks over 400 frames; the native host builds successfully.

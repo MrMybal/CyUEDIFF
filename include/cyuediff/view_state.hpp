@@ -78,7 +78,7 @@ inline void validate(const Json &v, std::string_view kind) {
                 scalar(x, 180, 640);
                 known = true;
             }
-            flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics"});
+            flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics", "animationPose"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);
@@ -212,6 +212,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("collisions", "collision");
             child("skeleton","skeleton");
             child("animations","animation-source");
+            child("animationPose","animation-pose");
+            flag({"animationPosePreview"});
             child("curves","curves");
             child("layout", "asset-layout");
             string({"filter"});

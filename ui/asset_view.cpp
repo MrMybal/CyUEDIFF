@@ -2,12 +2,17 @@
 #include <cyuediff/animation_pose_view.hpp>
 #include "diff_style.hpp"
 namespace cyuediff {
+void AssetView::set_animation_poses(const AnimationPose *before, const AnimationPose *after, bool comparing) {
+    animation_pose_.set_poses(before,after,comparing);
+    pose_bound_=before || after;pose_preview_=pose_bound_;
+}
 void AssetView::register_translations() {
     PropertyView::register_translations();
     AnimationMetadataView::register_translations();
     AttachmentsView::register_translations();
     AnimationSourceView::register_translations();
     AnimationPoseView::register_translations();
+    cyui::registerTranslations("fr", {{"Show source hierarchy pose", "Afficher la pose hiérarchique source"}});
     CurveView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Collisions", "Collisions"},
@@ -249,6 +254,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     collisions_.set_packages(before_.get(), after_.get(), comparison_);
     skeleton_.set_packages(before_.get(), after_.get(), comparison_);
     animations_.set_packages(before_.get(),after_.get(),comparison_);
+    set_animation_poses(nullptr);
     curves_.set_packages(before_.get(),after_.get(),comparison_);
     before_geometry_.reset();
     after_geometry_.reset();
@@ -375,6 +381,7 @@ Json AssetView::view_state() const {
     if (!skeleton_.empty())
         result["skeleton"] = skeleton_.view_state();
     if(!animations_.empty())result["animations"]=animations_.view_state();
+    if(pose_bound_){result["animationPose"]=animation_pose_.view_state();result["animationPosePreview"]=pose_preview_;}
     if(!curves_.empty())result["curves"]=curves_.view_state();
     result["before"] = side(false);
     result["after"] = side(true);
@@ -389,6 +396,8 @@ void AssetView::restore_view_state(const Json &state) {
     if (state.contains("skeleton"))
         skeleton_.restore_view_state(state["skeleton"]);
     if(state.contains("animations"))animations_.restore_view_state(state["animations"]);
+    if(state.contains("animationPose"))animation_pose_.restore_view_state(state["animationPose"]);
+    if(state.contains("animationPosePreview"))pose_preview_=pose_bound_ && state["animationPosePreview"].get<bool>();
     if(state.contains("curves"))curves_.restore_view_state(state["curves"]);
     auto flag = [&](const char *key, bool &out) {
         if (state.contains(key))
@@ -626,7 +635,10 @@ void AssetView::draw(const char *id, bool show_language) {
             active_tab_=AssetTab::curves;curves_.draw();ImGui::EndTabItem();
         }
         if(ImGui::BeginTabItem(cyui::trLabel("Animations").c_str(),nullptr,flags(AssetTab::animations))){
-            active_tab_=AssetTab::animations;animations_.draw();ImGui::EndTabItem();
+            active_tab_=AssetTab::animations;
+            if(pose_bound_)ImGui::Checkbox(cyui::trLabel("Show source hierarchy pose").c_str(),&pose_preview_);
+            if(pose_bound_ && pose_preview_)animation_pose_.draw();else animations_.draw();
+            ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Skeleton").c_str(), nullptr, flags(AssetTab::skeleton))) {
             active_tab_ = AssetTab::skeleton;
