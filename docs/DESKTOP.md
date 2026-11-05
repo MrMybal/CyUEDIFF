@@ -352,3 +352,7 @@ The desktop model provides checked outer-window screen-pixel placement, monitor 
 ## Native window restoration and preference migration — 0.154
 
 Preference schema 2 stores an optional checked normal window rectangle, its DPI and maximized state. Schema 1 remains readable and migrates on a permitted save; invalid or future files retain their exact bytes. Windows restores a fitted rectangle before showing the application, remembers the normal rectangle while maximized or minimized, and keeps the window alive until clean-close persistence finishes. Smoke validation stays hidden and never reads or writes the default user profile.
+
+## Bounded session persistence — 0.155
+
+Optional session storage reuses workspace schema 4, its eight-document limit, input validation, absolute local path normalization and atomic replacement. Loose, historical Git and explicit cooked contexts retain their meaning; decoder DLL paths, decoded content, callbacks and closed history are excluded. A missing session creates no files, and malformed, oversized, future or unrelated files are never overwritten. Custom preferences use a distinct deterministic sibling session path.
