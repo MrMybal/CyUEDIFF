@@ -14,8 +14,8 @@ int integer(const Json &j, const char *key, int low, int high) {
     return j.at(key).get<int>();
 }
 void validate(const WindowPlacement &p) {
-    require(p.x >= -1000000 && p.x <= 1000000 && p.y >= -1000000 && p.y <= 1000000 && p.width >= 160 &&
-            p.width <= 65536 && p.height >= 120 && p.height <= 65536 && p.dpi >= 48 && p.dpi <= 768);
+    require(p.x >= -1000000 && p.x <= 1000000 && p.y >= -1000000 && p.y <= 1000000 && p.width >= 1 &&
+            p.width <= 65536 && p.height >= 1 && p.height <= 65536 && p.dpi >= 48 && p.dpi <= 768);
 }
 } // namespace
 Json WindowPlacement::to_json() const {
@@ -25,7 +25,7 @@ Json WindowPlacement::to_json() const {
 WindowPlacement WindowPlacement::from_json(const Json &j) {
     require(j.is_object() && j.size() == 6 && j.contains("maximized") && j.at("maximized").is_boolean());
     return {integer(j, "x", -1000000, 1000000), integer(j, "y", -1000000, 1000000),
-            integer(j, "width", 160, 65536),    integer(j, "height", 120, 65536),
+            integer(j, "width", 1, 65536),      integer(j, "height", 1, 65536),
             integer(j, "dpi", 48, 768),         j.at("maximized").get<bool>()};
 }
 WindowPlacement fit_window_placement(const WindowPlacement &p, const std::vector<WindowWorkArea> &areas) {
@@ -60,6 +60,7 @@ WindowPlacement fit_window_placement(const WindowPlacement &p, const std::vector
     result.dpi = a.dpi;
     result.x = std::clamp(p.x, a.x, a.x + a.width - result.width);
     result.y = std::clamp(p.y, a.y, a.y + a.height - result.height);
+    validate(result);
     return result;
 }
 } // namespace cyuediff::desktop

@@ -42,6 +42,9 @@ int main() {
         fit = fit_window_placement({3000, 0, 1200, 800, 96, false},
                                    {{0, 0, 1920, 1040, 96}, {4000, 0, 1920, 1040, 96}});
         check(fit.x == 4000);
+        fit = fit_window_placement(p, {{20, 40, 80, 60, 96}});
+        check(fit.width == 80 && fit.height == 60 && fit.x == 20 && fit.y == 40);
+        check(WindowPlacement::from_json(fit.to_json()).to_json() == fit.to_json());
         // Repeated launches must not compound DPI scaling after a saved placement.
         fit = fit_window_placement(p, {{0, 0, 3840, 2100, 192}});
         check(fit_window_placement(fit, {{0, 0, 3840, 2100, 192}}).to_json() == fit.to_json());

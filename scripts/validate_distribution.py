@@ -61,6 +61,30 @@ if desktop.is_file():
  assert restored['workspaceFile']['loaded'] and restored['document'] is None and workspace_file.read_bytes()==original_workspace
  assert restored['workspaceFile']['context']['documents'][0]['viewState']==saved_workspace['documents'][0]['viewState']
  print('Extracted desktop workspace save/reopen validated')
+ session_file=target/'previous-session.json';preferences_file=target/'preferences.json'
+ session_env=dict(env);session_env['LOCALAPPDATA']=str(target/'unused-profile')
+ subprocess.run([str(desktop),'--smoke','--workspace',str(workspace_file),'--session',str(session_file),
+                 '--restore-session','--save-session','--preferences',str(preferences_file),'--save-preferences',
+                 '--locale','fr','--theme','navy','--report',str(workspace_report)],check=True,env=session_env,timeout=45)
+ session_saved=json.loads(workspace_report.read_text(encoding='utf-8'))
+ assert session_saved['session']['saved'] and session_saved['preferences']['saved']
+ session_bytes=session_file.read_bytes();preferences_bytes=preferences_file.read_bytes()
+ subprocess.run([str(desktop),'--smoke','--session',str(session_file),'--preferences',str(preferences_file),
+                 '--report',str(workspace_report)],check=True,env=session_env,timeout=45)
+ session_restored=json.loads(workspace_report.read_text(encoding='utf-8'))
+ assert session_restored['session']['restored'] and not session_restored['session']['saved']
+ assert session_restored['theme']=='navy' and session_restored['locale']=='fr' and session_restored['window']['restored']
+ assert session_restored['workspaceFile']['context']==session_saved['workspaceFile']['context']
+ assert session_file.read_bytes()==session_bytes and preferences_file.read_bytes()==preferences_bytes
+ assert session_restored['window']['placement']==session_saved['window']['placement']
+ session_file.write_text('{"schema":"future"}',encoding='utf-8')
+ subprocess.run([str(desktop),'--smoke','--no-preferences','--session',str(session_file),'--restore-session',
+                 '--save-session','--report',str(workspace_report)],check=True,env=session_env,timeout=45)
+ damaged=json.loads(workspace_report.read_text(encoding='utf-8'))
+ assert damaged['session']['diagnostic'] and not damaged['session']['saved'] and damaged['document'] is None
+ assert session_file.read_text(encoding='utf-8')=='{"schema":"future"}' and not (target/'unused-profile').exists()
+ print('Extracted desktop preference/window/session restart and damaged-session preservation validated')
+
  if not (prefix/'share/CyUEDiff/licenses/CyUI/LICENSE').is_file():raise RuntimeError('Missing CyUI license')
 if args.consumer:
  cmake=shutil.which('cmake')

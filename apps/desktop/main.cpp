@@ -935,7 +935,9 @@ class Shell {
         result.restore_session = restore_session_;
         return result;
     }
-    bool restore_session() const { return restore_session_; }
+    bool restore_session() const {
+        return restore_session_;
+    }
     const DocumentWorkspace &session() const {
         return session_;
     }
@@ -2107,7 +2109,10 @@ class Shell {
         return action;
     }
     void perform(Action action, NativeWindow &window) {
-        if (action == Action::reset_window) { window.reset_placement(); return; }
+        if (action == Action::reset_window) {
+            window.reset_placement();
+            return;
+        }
         try {
             if (action == Action::none)
                 return;
@@ -2494,7 +2499,11 @@ int run(Options options) {
                              {"loaded", saved.loaded},
                              {"saved", preferences_saved},
                              {"diagnostic", options.preferences_diagnostic},
-                             {"values", [&] { auto value = shell.preferences(); value.window = window.placement(); return value.to_json(); }()}}},
+                             {"values", [&] {
+                                 auto value = shell.preferences();
+                                 value.window = window.placement();
+                                 return value.to_json();
+                             }()}}},
                            {"session", {{"enabled", shell.restore_session()},
                                         {"path", options.session_path.u8string()},
                                         {"loaded", saved_session.loaded}, {"restored", session_restored},
