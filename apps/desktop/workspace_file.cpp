@@ -31,6 +31,8 @@ const std::pair<const char *, std::string Settings::*> strings[] = {
     {"container_schema", &Settings::container_schema},
     {"after_container_schema", &Settings::after_container_schema},
 };
+const std::pair<const char *, std::string Settings::*> layout_strings[] = {
+    {"layouts", &Settings::layouts}, {"after_layouts", &Settings::after_layouts}};
 const std::pair<const char *, bool Settings::*> flags[] = {
     {"previews", &Settings::previews},
     {"discover_engine", &Settings::discover_engine},
@@ -68,7 +70,8 @@ void normalize(Settings &s, const fs::path &base) {
     for (auto member :
          {&Settings::engine, &Settings::after_engine, &Settings::repository, &Settings::lfs_objects,
           &Settings::container_path, &Settings::after_container_path, &Settings::script_objects,
-          &Settings::after_script_objects, &Settings::container_schema, &Settings::after_container_schema})
+          &Settings::after_script_objects, &Settings::container_schema, &Settings::after_container_schema,
+          &Settings::layouts, &Settings::after_layouts})
         path(s.*member);
     if (s.source != 1) {
         for (bool after : {false, true}) {
@@ -112,6 +115,9 @@ Json WorkspaceFile::to_json() const {
         Json s = Json::object();
         for (const auto &field : strings)
             s[field.first] = d.settings.*field.second;
+        for (const auto &field : layout_strings)
+            s[field.first] = d.settings.*field.second;
+        s["inherit_after_layouts"] = d.settings.inherit_after_layouts;
         for (const auto &field : flags)
             s[field.first] = d.settings.*field.second;
         for (const auto &field : pose_strings)
@@ -129,14 +135,15 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/4"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/5"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
 WorkspaceFile WorkspaceFile::from_json(const Json &j) {
     require(j.is_object() && j.size() == 3 && j.contains("schema") &&
                 (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
-                 j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4") &&
+                 j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
+                 j["schema"] == "cyuediff.workspace/5") &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];
@@ -165,12 +172,23 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                 "Unsupported workspace view");
         saved.container_tab = number(d["containerTab"], -1, 4);
         const auto &s = d["settings"];
-        const auto old_fields = std::size(strings) + std::size(flags) + 3;
+        const bool layout_extension = j["schema"] == "cyuediff.workspace/5";
+        const auto old_fields = std::size(strings) + std::size(flags) + 3 +
+                                (layout_extension ? std::size(layout_strings) + 1 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
         require(s.is_object() &&
-                    (pose_extension || (j["schema"] != "cyuediff.workspace/4" && s.size() == old_fields)),
+                    (pose_extension || (j["schema"] != "cyuediff.workspace/4" && !layout_extension && s.size() == old_fields)),
                 "Unexpected workspace settings");
+        if (layout_extension) {
+            for (const auto &field : layout_strings) {
+                require(s.contains(field.first), "Missing workspace layout setting");
+                saved.settings.*field.second = text(s[field.first]);
+            }
+            require(s.contains("inherit_after_layouts") && s["inherit_after_layouts"].is_boolean(),
+                    "Missing workspace layout inheritance");
+            saved.settings.inherit_after_layouts = s["inherit_after_layouts"].get<bool>();
+        }
         for (const auto &field : strings) {
             require(s.contains(field.first), "Missing workspace setting");
             saved.settings.*field.second = text(s[field.first]);

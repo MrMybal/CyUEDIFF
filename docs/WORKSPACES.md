@@ -81,3 +81,7 @@ For example, the following document `viewState` keeps an expanded project sectio
 ```
 
 Single-value tables use `singleColumns` with three weights, comparison tables `comparisonColumns` with five, container members `memberColumns` with four, and object/property splits `objectColumns` with two. Weights are relative; an unchanged saved layout is retained exactly rather than rewritten with floating-point rounding on every frame. Material layouts share a view's parameter column configuration; node selection and canvas poses retain the existing independent contracts.
+
+## Native structure descriptions — 0.176
+
+Workspace format five adds per-document `layouts`, `after_layouts` and `inherit_after_layouts` settings for the declarative native reader. The after description inherits by default; explicitly disabling inheritance and leaving its path empty selects the built-in reader. Paths normalize relative to the workspace file and are protected from output overwrites. Formats one through four still load without overriding their readers. See [binary layout controls](BINARY_LAYOUTS.md#desktop-descriptions--0176).

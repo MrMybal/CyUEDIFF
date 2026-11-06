@@ -4,6 +4,8 @@
 namespace cyuediff::desktop {
 struct Settings {
     std::string before, after, project, engine, codec, repository, lfs_objects, after_project, after_engine;
+    std::string layouts, after_layouts;
+    bool inherit_after_layouts = true;
     std::string pose_before_skeleton, pose_after_skeleton, pose_before_object, pose_after_object,
         pose_before_skeleton_object, pose_after_skeleton_object;
     int pose_before_frame = 0, pose_after_frame = 0;
@@ -34,6 +36,8 @@ struct Settings {
             throw Error("desktop-animation-pose",
                         "External Skeleton bindings require loose or Git packages");
         if (source == 2) {
+            if (!layouts.empty() || !after_layouts.empty() || !inherit_after_layouts)
+                throw Error("desktop-layouts", "Cooked structures use inline schema context layouts");
             LoadRequest result;
             ContainerSource input;
             input.path = fs::u8path(container_path);
@@ -60,6 +64,9 @@ struct Settings {
         }
         LoadRequest result{before,  after, fs::u8path(project), fs::u8path(engine), fs::u8path(codec),
                            previews};
+        result.layouts = fs::u8path(layouts);
+        result.after_layouts = inherit_after_layouts ? fs::path{} : fs::u8path(after_layouts);
+        result.inherit_after_layouts = inherit_after_layouts;
         result.after_project = fs::u8path(after_project);
         result.after_engine_root = fs::u8path(after_engine);
         if (pose_enabled) {

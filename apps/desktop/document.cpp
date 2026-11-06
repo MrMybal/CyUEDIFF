@@ -1,5 +1,6 @@
 #include "document.hpp"
 #include "animation_document.hpp"
+#include <cyuediff/binary_layout.hpp>
 namespace cyuediff::desktop {
 std::vector<TextureDifference> compare_previews(const std::vector<Preview> &previews) {
     std::vector<const Preview *> a, b;
@@ -95,6 +96,7 @@ Json Document::report() const {
                    {"afterMesh", mesh(after_mesh)},
                    {"diagnostics", diagnostics},
                    {"animationPose", animation_pose_report(*this)}};
+    if (!layout_contexts.is_null()) result["layoutContexts"] = layout_contexts;
 #ifdef CYUEDIFF_HAS_GIT
     result["git"] = git ? git->to_json() : Json(nullptr);
 #else
@@ -115,11 +117,35 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     document->request.cache.reset();
     document->request.control = {}; // Do not retain session callbacks in a completed document.
     if (request.container) {
+        if (!request.layouts.empty() || !request.after_layouts.empty() || !request.inherit_after_layouts)
+            throw Error("desktop-layouts", "Cooked structures use inline schema context layouts");
         if (request.git || !request.before.empty() || !request.after.empty())
             throw Error("desktop-container", "Container requests cannot include loose or Git packages");
         document->container = load_container_document(*request.container, request.codec, request.control);
         document->protected_files = document->container->protected_files;
         return document;
+    }
+    auto load_layouts = [&](const fs::path &path) -> std::shared_ptr<const BinaryLayouts> {
+        if (path.empty()) return {};
+        BinaryLayoutOptions options;
+        options.control = request.control;
+        document->protected_files.push_back(path);
+        return std::make_shared<const BinaryLayouts>(BinaryLayouts::read(path, options));
+    };
+    const auto before_layouts = load_layouts(request.layouts);
+    const auto after_layouts = !request.after_layouts.empty() ? load_layouts(request.after_layouts) :
+        (request.inherit_after_layouts ? before_layouts : nullptr);
+    BinaryLayoutReadOptions layout_options;
+    layout_options.control = request.control;
+    if (before_layouts) read.decoders = before_layouts->decoder_registry(layout_options);
+    auto after_read = read;
+    after_read.decoders = after_layouts == before_layouts ? read.decoders :
+        (after_layouts ? after_layouts->decoder_registry(layout_options) : nullptr);
+    if (before_layouts || after_layouts) {
+        document->layout_contexts = {{"beforeSha256", before_layouts ? before_layouts->sha256() : std::string{}},
+                                     {"afterSha256", after_layouts ? after_layouts->sha256() : std::string{}},
+                                     {"contextChanged", before_layouts != after_layouts &&
+                                         (!before_layouts || !after_layouts || before_layouts->sha256() != after_layouts->sha256())}};
     }
     if (request.git) {
 #ifdef CYUEDIFF_HAS_GIT
@@ -164,12 +190,12 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             protect_context(b);
             document->before_git_project = a;
             document->after_git_project = b;
-            comparison = compare_git(repository, a, b, request.before, request.after, read);
+            comparison = compare_git(repository, a, b, request.before, request.after, read, after_read);
         } else {
             if (!request.engine_root.empty() || !source.discover_engine)
                 throw Error("desktop-git", "Engine selection requires a historical project descriptor");
             comparison = compare_git(repository, source.before_revision, source.after_revision,
-                                     request.before, request.after, read);
+                                     request.before, request.after, read, after_read);
         }
         auto protect_revision = [&](const GitRevision &revision) {
             auto asset = revision.storage == "git" ? repository.root() / fs::u8path(revision.repository_path)
@@ -210,17 +236,17 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
                 return context->resolve(name);
             return fs::u8path(name);
         };
-        auto open = [&](const fs::path &path) {
-            return request.cache ? request.cache->open(path, read)
-                                 : std::make_shared<const Package>(Package::open(path, read));
+        auto open = [&](const fs::path &path, const ReadOptions &options) {
+            return request.cache ? request.cache->open(path, options)
+                                 : std::make_shared<const Package>(Package::open(path, options));
         };
-        document->before = open(resolve(request.before));
+        document->before = open(resolve(request.before), read);
         if (!request.after.empty()) {
-            document->after = open(resolve(request.after, true));
+            document->after = open(resolve(request.after, true), after_read);
             document->diff = compare(*document->before, *document->after, request.control);
         }
     }
-    prepare_animation_poses(*document, request, read);
+    prepare_animation_poses(*document, request, read, after_read);
     if (!request.previews)
         return document;
     BlockDecoder decoder;

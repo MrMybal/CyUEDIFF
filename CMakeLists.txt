@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.175.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.176.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -462,6 +462,12 @@ if(BUILD_TESTING)
         endif()
     endif()
     if(CYUEDIFF_BUILD_DESKTOP)
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME desktop_binary_layout_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_layout_desktop_tests.py" "$<TARGET_FILE:cyuediff_desktop>"
+                "$<TARGET_FILE:cyuediff_binary_layout_tests>" "$<TARGET_FILE:cyuediff_schema_layout_tests>")
+            set_tests_properties(desktop_binary_layout_cli PROPERTIES TIMEOUT 120)
+        endif()
         if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
             add_test(NAME desktop_container_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/container_desktop_cli_tests.py"

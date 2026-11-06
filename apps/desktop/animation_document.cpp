@@ -115,11 +115,11 @@ void prepare_socket_side(Document &document, const LoadRequest &request, bool af
     }
 }
 } // namespace
-void prepare_animation_poses(Document &document, const LoadRequest &request, const ReadOptions &read) {
+void prepare_animation_poses(Document &document, const LoadRequest &request, const ReadOptions &read, const ReadOptions &after_read) {
     if (!request.animation_pose)
         return;
     prepare_side(document, request, read, false);
-    prepare_side(document, request, read, true);
+    prepare_side(document, request, after_read, true);
 
     if ((document.before_animation_pose && document.after_animation_pose) ||
         (request.git && (document.before_animation_pose || document.after_animation_pose))) {

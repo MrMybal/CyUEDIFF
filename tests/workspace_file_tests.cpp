@@ -144,7 +144,28 @@ int main() {
               git_pose_copy.pose_after_skeleton == "/RigPack/Rig", "Historical binding identities round trip");
         git_pose_settings["source"] = 2;
         rejects([&] { WorkspaceFile::from_json(git_pose); });
+        auto layouts_json = value.to_json();
+        auto &layout_settings = layouts_json["documents"][0]["settings"];
+        layout_settings["layouts"] = "before-layouts.json";
+        layout_settings["after_layouts"] = "after-layouts.json";
+        layout_settings["inherit_after_layouts"] = false;
+        const auto layouts_copy = WorkspaceFile::from_json(layouts_json).documents[0].settings;
+        check(layouts_copy.request().layouts == "before-layouts.json" &&
+                  layouts_copy.request().after_layouts == "after-layouts.json" && !layouts_copy.request().inherit_after_layouts,
+              "Independent layout contexts round trip");
+        auto inherited = layouts_copy;
+        inherited.inherit_after_layouts = true;
+        check(inherited.request().after_layouts.empty(), "Inactive after layout path is retained without selection");
+        auto legacy_four = value.to_json();
+        legacy_four["schema"] = "cyuediff.workspace/4";
+        for (auto &d : legacy_four["documents"])
+            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts"}) d["settings"].erase(key);
+        const auto old_copy = WorkspaceFile::from_json(legacy_four).documents[0].settings;
+        check(old_copy.layouts.empty() && old_copy.after_layouts.empty() && old_copy.inherit_after_layouts,
+              "Actual version four workspaces retain default readers");
         auto legacy_three = pose_json;
+        for (auto &d : legacy_three["documents"])
+            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts"}) d["settings"].erase(key);
         legacy_three["schema"] = "cyuediff.workspace/3";
         for (auto &d : legacy_three["documents"])
             for (const char *key :
@@ -154,7 +175,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/4",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/5",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -166,8 +187,10 @@ int main() {
         rejects([&] { WorkspaceFile::from_json(invalid_pose); });
         pose_settings.pose_enabled = false;
         auto version_two = value.to_json();
+        for (auto &d : version_two["documents"])
+            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts"}) d["settings"].erase(key);
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/4",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/5",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -178,13 +201,15 @@ int main() {
         bad_layout["documents"][0]["viewState"]["layout"]["sidebarWidth"] = -1;
         rejects([&] { WorkspaceFile::from_json(bad_layout); });
         auto legacy = value.to_json();
+        for (auto &d : legacy["documents"])
+            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts"}) d["settings"].erase(key);
         legacy["schema"] = "cyuediff.workspace/1";
         for (auto &d : legacy["documents"])
             d.erase("viewState");
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/4",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/5",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

@@ -34,6 +34,8 @@ struct LoadRequest {
     std::shared_ptr<PackageCache> cache;
     std::optional<ContainerSource> container;
     std::optional<AnimationPoseRequest> animation_pose;
+    fs::path layouts, after_layouts;
+    bool inherit_after_layouts = true;
 };
 struct Preview {
     std::string object_path;
@@ -64,6 +66,7 @@ struct Document {
     std::vector<TextureDifference> texture_differences;
     std::shared_ptr<const MeshGeometry> before_mesh, after_mesh;
     std::vector<std::string> diagnostics;
+    Json layout_contexts = nullptr;
     std::vector<fs::path> protected_files, protected_directories;
 #ifdef CYUEDIFF_HAS_GIT
     // Own materialized files while packages and previews can still use them.

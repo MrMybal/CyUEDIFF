@@ -78,7 +78,7 @@ inline void validate(const Json &v, std::string_view kind) {
                 scalar(x, 180, 640);
                 known = true;
             }
-            flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics", "animationPose"});
+            flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics", "animationPose", "binaryLayouts"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);

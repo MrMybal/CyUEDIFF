@@ -13,7 +13,8 @@ class ViewLayout {
         return state_;
     }
     void restore(const Json &state, std::string_view kind);
-    bool section(const char *key, const char *label, bool default_open = false, bool tree = false);
+    bool section(const char *key, const char *label, bool default_open = false, bool tree = false,
+                 bool remember_default = true);
     bool begin_table(const char *id, const char *key, int count, ImGuiTableFlags flags = 0, ImVec2 size = {});
     void column(const char *label, int index, float default_weight = 1);
     void end_table();

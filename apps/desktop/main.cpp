@@ -269,6 +269,15 @@ Options parse_one(const std::vector<std::string> &args) {
             options.settings.after_project = value();
         else if (argument == "--after-engine-root")
             options.settings.after_engine = value();
+        else if (argument == "--layouts")
+            options.settings.layouts = value();
+        else if (argument == "--after-layouts") {
+            options.settings.after_layouts = value();
+            options.settings.inherit_after_layouts = false;
+        } else if (argument == "--no-after-layouts") {
+            options.settings.after_layouts.clear();
+            options.settings.inherit_after_layouts = false;
+        }
         else if (argument == "--codec")
             options.settings.codec = value();
         else if (argument == "--no-previews" || argument == "--previews") {
@@ -509,6 +518,10 @@ void register_translations() {
          {"Local files", "Fichiers locaux"},
          {"After project", "Projet après"},
          {"After engine", "Moteur après"},
+         {"Native structure layouts", "Formats des structures natives"},
+         {"Before layout file", "Description avant"}, {"After layout file", "Description après"},
+         {"Use before layouts after", "Réutiliser les descriptions avant"},
+         {"Choose a layout JSON file, then Load.", "Indiquez un fichier JSON de description, puis chargez."},
          {"Empty after context inherits the before context.",
           "Le contexte après vide reprend celui d'avant."},
          {"Decoding HDR source", "Décodage de la source HDR"},
@@ -755,7 +768,8 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
         directories.insert(directories.end(), browser->protected_directories.begin(),
                            browser->protected_directories.end());
     }
-    for (auto path : {options.settings.project, options.settings.after_project, options.settings.codec})
+    for (auto path : {options.settings.project, options.settings.after_project, options.settings.codec,
+                      options.settings.layouts, options.settings.after_layouts})
         if (!path.empty())
             inputs.push_back(fs::u8path(path));
     for (const auto &engine : {options.settings.engine, options.settings.after_engine})
@@ -1822,6 +1836,25 @@ class Shell {
                             action = Action::project;
                         cyui::endSection();
                     }
+                    if (current().layout.section("binaryLayouts", "Native structure layouts", false, false, false)) {
+                        auto &settings = current().settings;
+                        if (cyui::beginProperties("##binary-layout-inputs", 105)) {
+                            cyui::property(cyui::tr("Before layout file").c_str());
+                            field("##layouts", settings.layouts);
+                            cyui::endProperties();
+                        }
+                        cyui::toggleSwitch(cyui::trLabel("Use before layouts after").c_str(), &settings.inherit_after_layouts);
+                        {
+                            cyui::ScopedDisabled inherited(settings.inherit_after_layouts);
+                            if (cyui::beginProperties("##after-binary-layout-input", 105)) {
+                                cyui::property(cyui::tr("After layout file").c_str());
+                                field("##after-layouts", settings.after_layouts);
+                                cyui::endProperties();
+                            }
+                        }
+                        cyui::textDim("%s", cyui::tr("Choose a layout JSON file, then Load.").c_str());
+                        cyui::endSection();
+                    }
                     if (current().settings.source == 1 &&
                         current().layout.section("lfs", "LFS cache (optional)")) {
                         if (cyui::beginProperties("##lfs", 76)) {
@@ -2284,6 +2317,13 @@ class Shell {
                         path->u8string();
                 }
             } else if (action == Action::swap) {
+                if (current().settings.source != 2 && (!current().settings.layouts.empty() ||
+                    !current().settings.after_layouts.empty() || !current().settings.inherit_after_layouts)) {
+                    if (current().settings.inherit_after_layouts)
+                        current().settings.after_layouts = current().settings.layouts;
+                    current().settings.inherit_after_layouts = false;
+                    std::swap(current().settings.layouts, current().settings.after_layouts);
+                }
                 std::swap(current().settings.pose_before_skeleton,current().settings.pose_after_skeleton);
                 std::swap(current().settings.pose_before_object,current().settings.pose_after_object);
                 std::swap(current().settings.pose_before_skeleton_object,current().settings.pose_after_skeleton_object);
@@ -2326,6 +2366,7 @@ int run(Options options) {
             << "CyUEDiff desktop [BEFORE.uasset [AFTER.uasset]] [--project FILE] [--engine-root DIR]\n"
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
+               "  [--layouts JSON] [--after-layouts JSON | --no-after-layouts] : native wire descriptions\n"
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : loose or Git source hierarchy poses\n"
                "  [--pose-frame N | --pose-before-frame N --pose-after-frame N]\n"

@@ -9,13 +9,14 @@ void ViewLayout::restore(const Json &state, std::string_view kind) {
     state_ = state;
     ++generation_;
 }
-bool ViewLayout::section(const char *key, const char *label, bool default_open, bool tree) {
+bool ViewLayout::section(const char *key, const char *label, bool default_open, bool tree, bool remember_default) {
     if (state_.contains(key))
         ImGui::SetNextItemOpen(state_[key].get<bool>(), ImGuiCond_Always);
     const auto translated = cyui::trLabel(label);
     const bool open =
         tree ? ImGui::TreeNode(translated.c_str()) : cyui::beginSection(translated.c_str(), default_open);
-    state_[key] = open;
+    if (remember_default || state_.contains(key) || open != default_open)
+        state_[key] = open;
     return open;
 }
 bool ViewLayout::begin_table(const char *id, const char *key, int count, ImGuiTableFlags flags, ImVec2 size) {

@@ -75,3 +75,11 @@ cyuediff git-diff D:/repo HEAD~1 HEAD Content/Asset.uasset --layouts old-layouts
 Reports with explicit selections include `layoutContexts.beforeSha256`, `afterSha256` and `contextChanged`. This provenance is separate from binary asset changes. Existing commands without these selections keep their report shapes. Descriptions do not load a DLL, execute arbitrary callbacks supplied by JSON or launch Unreal. Cooked commands continue to use `--schema` and version-three inline descriptions.
 
 The Git adapter additionally exposes overloads of both `compare_git` forms with separate before/after `ReadOptions`. Existing single-options overloads retain their behavior. Local LFS materialization and input ownership stay in the Git adapter; descriptions are local host configuration and do not come from or execute historical project code.
+
+## Desktop descriptions — 0.176
+
+The **Native structure layouts** section accepts a before JSON catalogue and an independent after catalogue. **Use before layouts after** is enabled by default. Disabling it with an empty after path selects the built-in reader for that side. These controls and the section state have English/French labels. Load/compare runs on the existing worker; drawing does not open descriptions or execute serializers.
+
+Desktop startup accepts `--layouts FILE`, `--after-layouts FILE` and `--no-after-layouts`. A before/after side swap carries the effective description with its file. Reports preserve catalogue identities separately from asset changes. Both loose and historical local Git inputs use independent registries. Explicit external Skeleton bindings use the corresponding side's reader. Description inputs are protected from report/workspace overwrites.
+
+Workspace format five stores description paths and inheritance per document. It still reads formats one through four with the original default reader; relative description paths resolve beside the workspace. Codec executables remain outside persisted settings. Cooked documents use the existing schema controls with version-three inline descriptions, including the typed property inspector and named comparisons. Standalone description paths on a cooked request are rejected instead of silently ignored.
