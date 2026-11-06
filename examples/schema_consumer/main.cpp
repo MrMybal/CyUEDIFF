@@ -20,6 +20,9 @@ int run(const std::vector<std::string> &args) {
             schemas = *context->schemas;
             options.reflected_structs = context->reflected_structs;
             options.native_structs = context->native_structs;
+            options.binary_layouts = context->binary_layouts;
+            options.struct_layouts = context->struct_layouts;
+            options.narrow_string_encoding = context->narrow_string_encoding;
             options.text_layout = cyuediff::TextLayout::ue5_history;
             options.text_argument_data_layout = cyuediff::TextArgumentDataLayout::variant_int64;
             options.script_reference_layout = cyuediff::ScriptReferenceLayout::package_indices;

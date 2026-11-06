@@ -90,6 +90,16 @@ if args.consumer:
  cmake=shutil.which('cmake')
  if not cmake and os.name=='nt':cmake=str(Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
  if not cmake:raise RuntimeError('CMake is required for --consumer')
+ layout_source=prefix/'share/CyUEDiff/examples/binary_layout_consumer'
+ layout_build=target/'layout-consumer'
+ configure=[cmake,'-S',str(layout_source),'-B',str(layout_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(layout_build),'--config','Release','--parallel','2'],check=True,env=env)
+ layout_exe=layout_build/'Release'/('binary_layout_consumer'+suffix) if os.name=='nt' else layout_build/'binary_layout_consumer'
+ checked_layout=json.loads(subprocess.run([str(layout_exe)],capture_output=True,check=True,env=env,timeout=30).stdout)
+ assert checked_layout['verified'] and checked_layout['value']['strength']==42
+ print('Installed declarative layout consumer verified descriptions and string encodings')
  binary_build=target/'binary-delta-consumer'
  configure=[cmake,'-S',str(root/'examples/binary_delta_consumer'),'-B',str(binary_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')

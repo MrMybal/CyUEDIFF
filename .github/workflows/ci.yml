@@ -33,6 +33,12 @@ jobs:
         run: ctest --test-dir build-ci -C Release --output-on-failure --timeout 120
       - name: Install SDK
         run: cmake --install build-ci --config Release --prefix build-ci/sdk
+      - name: Configure external native layout consumer
+        run: cmake -S examples/binary_layout_consumer -B build-layout-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Link external native layout consumer
+        run: cmake --build build-layout-consumer --config Release --parallel 2
+      - name: Verify standalone native layout SDK
+        run: python -c "from pathlib import Path; import subprocess; p=Path('build-layout-consumer'); exe=p/'Release/binary_layout_consumer.exe' if (p/'Release/binary_layout_consumer.exe').exists() else p/'binary_layout_consumer'; subprocess.run([str(exe.resolve())],check=True)"
       - name: Build external Core consumer
         run: cmake -S examples/catalog_consumer -B build-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
       - name: Link external Core consumer

@@ -257,6 +257,15 @@ int main(int argc, char **argv) {
         Input si(text_payload.data);
         rejects([&] { string_layout.decode(si, "Record", read); }, "layout-limit");
         check(si.position() == 4, "String payload rejected before allocation/read");
+        auto encoded_layout = BinaryLayouts::parse(catalog({{"type", "string"}, {"encoding", "windows-1252"}}));
+        Bytes encoded_payload;
+        encoded_payload.string("\x80");
+        BinaryLayoutReadOptions expansion_limit;
+        expansion_limit.max_string_bytes = 2;
+        rejects([&] {
+            Input i(encoded_payload.data);
+            encoded_layout.decode(i, "Record", expansion_limit);
+        }, "layout-limit");
         for (int version : {0, 1009, 1012, 1013, 1018}) {
             auto path = save(root, "native" + std::to_string(version),
                              native_property_fixture(payload(), "PluginRecord", version));
@@ -279,6 +288,8 @@ int main(int argc, char **argv) {
             const auto out = fs::u8path(argv[2]);
             fs::create_directories(out);
             std::ofstream(out / "layouts.json") << document.dump(2);
+            payload().save(out / "before.bin");
+            payload(true).save(out / "after.bin");
             for (const auto &name : {"before", "after", "bad"}) {
                 auto data = payload(std::string(name) == "after");
                 if (std::string(name) == "bad")

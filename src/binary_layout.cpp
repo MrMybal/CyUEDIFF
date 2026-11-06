@@ -316,10 +316,16 @@ struct LayoutReader {
             input.read(raw.data(), raw.size());
             if (get<std::uint8_t>() != 0)
                 throw Error("layout-value", "Unterminated layout FString", input.position());
-            return decode_narrow_string(
-                raw, encoding,
-                std::min<std::uint64_t>(options.max_string_bytes, options.max_text_bytes - text_bytes),
-                options.control);
+            try {
+                return decode_narrow_string(
+                    raw, encoding,
+                    std::min<std::uint64_t>(options.max_string_bytes, options.max_text_bytes - text_bytes),
+                    options.control);
+            } catch (const Error &error) {
+                if (error.code == "string-limit")
+                    throw Error("layout-limit", error.what(), input.position());
+                throw;
+            }
         }
         std::string result;
         auto append = [&](std::uint32_t cp) {
