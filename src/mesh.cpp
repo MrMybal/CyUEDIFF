@@ -1,4 +1,5 @@
 #include <cyuediff/mesh_skin.hpp>
+#include <cyuediff/mesh_morphs.hpp>
 #include "mesh.hpp"
 #include <algorithm>
 #include <cmath>
@@ -567,6 +568,48 @@ MeshGeometry decode_mesh_description(const std::vector<std::uint8_t> &bytes, con
         skin->validate(options.control);
         mesh.skin = std::move(skin);
     }
+    auto morphs = std::make_shared<MeshMorphs>();
+    auto folded = [](std::string name) {
+        for (auto &c : name)
+            if (c >= 'A' && c <= 'Z')
+                c += 'a' - 'A';
+        return name;
+    };
+    std::map<std::string, std::string> morph_names;
+    for (const auto &item : vertices.attributes) {
+        if (folded(item.first).rfind("morph-", 0) != 0)
+            continue;
+        const auto name = item.first.substr(6), key = folded(name);
+        if (key.empty() || key == "none" || name.find('\0') != std::string::npos ||
+            !morph_names.emplace(key, name).second)
+            throw Error("mesh-morph-identity", "Empty or ambiguous source morph target name");
+        const auto *deltas = attribute(vertices, item.first.c_str(), 1, 1);
+        if (deltas->channels.size() != 1)
+            throw Error("mesh-morph-layout", "Morph deltas require one vector channel");
+        auto &target = morphs->targets[name];
+        for (const auto &v : mesh.vertices)
+            target.positions.emplace(v.id, floats<3>(r, *deltas, v.id));
+    }
+    for (const auto &item : instances.attributes) {
+        if (folded(item.first).rfind("morph-", 0) != 0)
+            continue;
+        const auto found = morph_names.find(folded(item.first.substr(6)));
+        if (found == morph_names.end())
+            throw Error("mesh-morph-reference", "Morph normals have no position attribute");
+        auto &target = morphs->targets.at(found->second);
+        if (target.normals_present)
+            throw Error("mesh-morph-identity", "Duplicate source morph normal attribute");
+        const auto *deltas = attribute(instances, item.first.c_str(), 1, 1);
+        if (deltas->channels.size() != 1)
+            throw Error("mesh-morph-layout", "Morph deltas require one vector channel");
+        target.normals_present = true;
+        for (const auto &i : mesh.instances)
+            target.normals.emplace(i.id, floats<3>(r, *deltas, i.id));
+    }
+    if (!morphs->targets.empty()) {
+        morphs->validate(mesh, options.control);
+        mesh.morphs = std::move(morphs);
+    }
     return mesh;
 }
 } // namespace cyuediff::detail
@@ -604,6 +647,10 @@ Json MeshGeometry::to_json() const {
         {"materialSlots", groups},         {"bounds", bounds}, {"attributes", attributes}};
     if (skin)
         result["skin"] = skin->to_json();
+    if (morphs) {
+        morphs->validate(*this);
+        result["morphs"] = morphs->to_json();
+    }
     return result;
 }
 Json MeshComparison::to_json() const {

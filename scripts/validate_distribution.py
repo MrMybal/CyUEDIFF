@@ -90,6 +90,15 @@ if args.consumer:
  cmake=shutil.which('cmake')
  if not cmake and os.name=='nt':cmake=str(Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
  if not cmake:raise RuntimeError('CMake is required for --consumer')
+ morph_build=target/'mesh-morph-consumer'
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/mesh_morph_consumer'),'-B',str(morph_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(morph_build),'--config','Release','--parallel','2'],check=True,env=env)
+ morph_exe=morph_build/'Release'/('mesh_morph_consumer'+suffix) if os.name=='nt' else morph_build/'mesh_morph_consumer'
+ morph_result=json.loads(subprocess.run([str(morph_exe)],capture_output=True,check=True,env=env,timeout=30).stdout)
+ assert morph_result['verified'] and morph_result['morphs']['targets']['Smile']['positions']['2'][1]==.5
+ print('Installed source morph consumer verified sparse position deltas and named projection')
  skin_build=target/'mesh-skin-consumer'
  configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/mesh_skin_consumer'),'-B',str(skin_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')

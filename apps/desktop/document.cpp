@@ -1,4 +1,5 @@
 #include <cyuediff/mesh_skin.hpp>
+#include <cyuediff/mesh_morphs.hpp>
 #include "document.hpp"
 #include "animation_document.hpp"
 #include <cyuediff/binary_layout.hpp>
@@ -89,6 +90,8 @@ Json Document::report() const {
             result["sourceBones"] = m->skin->bones.size();
             result["skinProfiles"] = m->skin->profiles.size();
         }
+        if (m->morphs)
+            result["morphTargets"] = m->morphs->targets.size();
         return result;
     };
     Json result = {{"status", status()},

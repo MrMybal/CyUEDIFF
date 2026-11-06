@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(mesh_morph_consumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(mesh_morph_consumer main.cpp)
+target_link_libraries(mesh_morph_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(mesh_morph_consumer PRIVATE /EHsc /utf-8)
+endif()

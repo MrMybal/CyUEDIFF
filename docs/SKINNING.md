@@ -39,4 +39,6 @@ The English/French Meshes view includes **Inspect source skinning**, a searchabl
 
 Validation uses original bounded fixtures for modern source packages, native class routing, named comparisons, float/double transforms, chunk boundaries, corruption, cancellation, virtualized integrity, CLI, worker-prepared Desktop previews and workspace restart. The available real older SkeletalMesh has no modern source bulk object, so it remains explicitly unsupported for geometry; its stored object projection is unchanged. Real static source geometry was compared against 0.179 with no change. A matching independently produced modern SkeletalMesh source corpus remains needed before claiming broad real-project coverage.
 
-Legacy `FSkeletalMeshLODModel` import data, cooked render/skin buffers, morph-target decoding, CPU skinning, bind-pose deformation, animation playback and Nanite remain outside this backend. Reading the source MeshDescription does not implement those separate formats.
+Legacy `FSkeletalMeshLODModel` import data, cooked render/skin buffers, cooked/legacy morph-target decoding, CPU skinning, bind-pose deformation, animation playback and Nanite remain outside this backend. Reading the source MeshDescription does not implement those separate formats.
+
+Version 0.181 adds separate typed modern MeshDescription source morph deltas, named differences and affected-edge highlighting. These attributes use vertex and split-normal instance IDs independently of skin weights. See [MORPHS.md](MORPHS.md).

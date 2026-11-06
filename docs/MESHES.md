@@ -81,3 +81,7 @@ Version 0.179 adds a local filesystem store for virtualized editor source payloa
 ## Skeletal editor MeshDescription sources
 
 Version 0.180 adds fixture-validated modern skeletal source geometry, stored source bone transforms and packed skin-weight profiles, including semantic comparisons and typed Desktop inspection. The earlier skeletal exclusion applies to legacy imported models, cooked/runtime skin buffers and runtime deformation. See [SKINNING.md](SKINNING.md) for exact profiles, public types and validation limits.
+
+## Modern source morph targets — 0.181
+
+`MeshGeometry::morphs` retains named MeshDescription position deltas by live vertex ID and optional split-normal deltas by live vertex-instance ID. Geometry JSON and mesh-diff include semantic values, while raw attribute fingerprints remain independent. CyUI provides bilingual persistent typed inspection and affected-edge colors. OBJ exports base geometry only. See [MORPHS.md](MORPHS.md) for the API, wire restrictions, fixtures and missing real/cooked/legacy coverage.

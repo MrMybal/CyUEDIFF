@@ -43,8 +43,8 @@ class AssetView {
     CurveView curves_;
     bool material_after_ = false;
     MeshView before_mesh_, after_mesh_;
-    bool mesh_after_ = false, skin_inspection_ = false;
-    PropertyView skin_;
+    bool mesh_after_ = false, skin_inspection_ = false, morph_inspection_ = false;
+    PropertyView skin_, morphs_;
     bool graph_after_ = false, texture_after_ = false;
     std::size_t texture_selected_ = 0;
     std::vector<TextureView> before_textures_, after_textures_;

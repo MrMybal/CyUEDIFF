@@ -67,6 +67,36 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                         changed_skin_vertices.insert(vertex.id);
         }
     }
+    std::set<std::uint32_t> changed_morph_vertices;
+    if (mesh && peer && (current.contains("morphs") || remote.contains("morphs"))) {
+        const Json empty = Json::object();
+        const auto &a = current.contains("morphs") ? current["morphs"]["targets"] : empty;
+        const auto &b = remote.contains("morphs") ? remote["morphs"]["targets"] : empty;
+        std::set<std::string> names;
+        for (auto it = a.begin(); it != a.end(); ++it)
+            names.insert(it.key());
+        for (auto it = b.begin(); it != b.end(); ++it)
+            names.insert(it.key());
+        for (const auto &name : names) {
+            auto delta = [&](const Json &targets, const char *kind, std::uint32_t id) -> const Json * {
+                if (!targets.contains(name))
+                    return nullptr;
+                const auto &table = targets[name][kind];
+                const auto key = std::to_string(id);
+                return table.is_object() && table.contains(key) ? &table[key] : nullptr;
+            };
+            auto differs = [&](const char *kind, std::uint32_t id) {
+                const auto x = delta(a, kind, id), y = delta(b, kind, id);
+                return bool(x) != bool(y) || (x && *x != *y);
+            };
+            for (const auto &v : mesh->vertices)
+                if (differs("positions", v.id))
+                    changed_morph_vertices.insert(v.id);
+            for (const auto &i : mesh->instances)
+                if (differs("normals", i.id))
+                    changed_morph_vertices.insert(i.vertex);
+        }
+    }
     auto different = [&](const char *table, std::uint32_t id) {
         auto key = std::to_string(id);
         return !peer || !remote.at(table).contains(key) ||
@@ -110,7 +140,9 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                     if (!peer_edges.count(key))
                         change = after ? ChangeKind::added : ChangeKind::removed;
                     else {
-                        bool changed = changed_skin_vertices.count(key.first) ||
+                        bool changed = changed_morph_vertices.count(key.first) ||
+                                       changed_morph_vertices.count(key.second) ||
+                                       changed_skin_vertices.count(key.first) ||
                                        changed_skin_vertices.count(key.second) ||
                                        different("vertices", key.first) ||
                                        different("vertices", key.second) || different("triangles", t.id);

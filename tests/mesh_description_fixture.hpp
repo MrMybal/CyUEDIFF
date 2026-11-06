@@ -40,7 +40,8 @@ struct Bytes {
 struct Fixture {
     Bytes bytes;
     std::size_t vertex = 0, vertex_extent = 0, reference = 0, triangle = 0, sparse = 0, numeric = 0, type = 0,
-                utf = 0, vertex_attributes = 0, after_vertices = 0;
+                utf = 0, vertex_attributes = 0, after_vertices = 0, instance_attributes = 0,
+                after_instances = 0;
 };
 inline Fixture fixture() {
     Fixture f;
@@ -56,6 +57,8 @@ inline Fixture fixture() {
         b.i(bits);
         if (std::string(name) == "Vertices")
             f.vertex_attributes = b.data.size();
+        if (std::string(name) == "VertexInstances")
+            f.instance_attributes = b.data.size();
         b.i(attributes);
     };
     auto fixed = [&](const char *name, int type, int extent, int elements,
@@ -105,6 +108,7 @@ inline Fixture fixture() {
     f.reference = fixed("VertexIndex", 4, 1, 3, {}, {0, 2, 4});
     f.numeric = fixed("Normal", 1, 1, 3, {{0, 0, 1, 0, 0, 1, 0, 0, 1}});
     fixed("TextureCoordinate", 2, 1, 3, {{0, 0, 1, 0, 0, 1}, {.5f, .5f, 1, .5f, .5f, 1}});
+    f.after_instances = b.data.size();
     element("Triangles", 3, 4, 2, 3);
     f.triangle = fixed("VertexInstanceIndex", 4, 3, 3, {}, {-1, -1, -1, -1, -1, -1, 0, 1, 2});
     fixed("PolygonIndex", 4, 1, 3, {}, {-1, -1, 7});

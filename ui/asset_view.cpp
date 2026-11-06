@@ -1,4 +1,5 @@
 #include <cyuediff/mesh_skin.hpp>
+#include <cyuediff/mesh_morphs.hpp>
 #include <cyuediff/asset_view.hpp>
 #include <cyuediff/animation_pose_view.hpp>
 #include "diff_style.hpp"
@@ -173,6 +174,9 @@ void AssetView::register_translations() {
          {"Some output ports are inferred from saved connections.",
           "Certains ports de sortie sont déduits des connexions enregistrées."},
          {"Meshes", "Meshes"},
+         {"Inspect morph targets", "Inspecter les morph targets"},
+         {"Stored position and split-normal deltas in source space",
+          "Deltas de position et de normales par coin dans l’espace source"},
          {"Inspect source skinning", "Inspecter le skinning source"},
          {"Stored bone poses and raw weights (0..65535)", "Poses des os et poids bruts stockés (0..65535)"},
          {"Mesh preview unavailable", "Aperçu du mesh indisponible"},
@@ -269,6 +273,8 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     before_mesh_.set_mesh({});
     skin_.set_values(nullptr, nullptr, false);
     skin_inspection_ = false;
+    morphs_.set_values(nullptr, nullptr, false);
+    morph_inspection_ = false;
     after_mesh_.set_mesh({});
     texture_selected_ = 0;
     before_textures_.clear();
@@ -349,6 +355,12 @@ void AssetView::set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, 
     const auto after_skin = after_geometry_ && after_geometry_->skin ? after_geometry_->skin->to_json() : Json(nullptr);
     skin_.set_values(before_skin.is_null() ? nullptr : &before_skin,
                      after_skin.is_null() ? nullptr : &after_skin, comparison_);
+    const auto before_morphs =
+        before_geometry_ && before_geometry_->morphs ? before_geometry_->morphs->to_json() : Json(nullptr);
+    const auto after_morphs =
+        after_geometry_ && after_geometry_->morphs ? after_geometry_->morphs->to_json() : Json(nullptr);
+    morphs_.set_values(before_morphs.is_null() ? nullptr : &before_morphs,
+                       after_morphs.is_null() ? nullptr : &after_morphs, comparison_);
 }
 Json AssetView::view_state() const {
     const auto &p = properties_after_ ? after_ : before_;
@@ -401,14 +413,24 @@ Json AssetView::view_state() const {
         result["meshSkin"] = skin_.view_state();
         result["meshSkinInspection"] = skin_inspection_;
     }
+    if ((before_geometry_ && before_geometry_->morphs) || (after_geometry_ && after_geometry_->morphs)) {
+        result["meshMorphs"] = morphs_.view_state();
+        result["meshMorphInspection"] = morph_inspection_;
+    }
     result["before"] = side(false);
     result["after"] = side(true);
     return result;
 }
 void AssetView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "asset");
+    if (state.contains("meshMorphs"))
+        morphs_.restore_view_state(state["meshMorphs"]);
+    if (state.contains("meshMorphInspection"))
+        morph_inspection_ = state["meshMorphInspection"].get<bool>();
     if (state.contains("meshSkin")) skin_.restore_view_state(state["meshSkin"]);
     if (state.contains("meshSkinInspection")) skin_inspection_ = state["meshSkinInspection"].get<bool>();
+    if (morph_inspection_)
+        skin_inspection_ = false;
     if (state.contains("layout"))
         layout_.restore(state["layout"], "asset-layout");
     if (state.contains("collisions"))
@@ -651,11 +673,25 @@ void AssetView::draw(const char *id, bool show_language) {
                     mesh_after_ = true;
             }
             const bool has_skin = (before_geometry_ && before_geometry_->skin) || (after_geometry_ && after_geometry_->skin);
-            if (has_skin) ImGui::Checkbox(cyui::trLabel("Inspect source skinning").c_str(), &skin_inspection_);
-            if (has_skin && skin_inspection_) {
+            const bool has_morphs = (before_geometry_ && before_geometry_->morphs) ||
+                                    (after_geometry_ && after_geometry_->morphs);
+            if (has_skin &&
+                ImGui::Checkbox(cyui::trLabel("Inspect source skinning").c_str(), &skin_inspection_) &&
+                skin_inspection_)
+                morph_inspection_ = false;
+            if (has_morphs &&
+                ImGui::Checkbox(cyui::trLabel("Inspect morph targets").c_str(), &morph_inspection_) &&
+                morph_inspection_)
+                skin_inspection_ = false;
+            if (has_morphs && morph_inspection_) {
+                cyui::textDim("%s",
+                              cyui::tr("Stored position and split-normal deltas in source space").c_str());
+                morphs_.draw("##mesh-morph-inspection");
+            } else if (has_skin && skin_inspection_) {
                 cyui::textDim("%s", cyui::tr("Stored bone poses and raw weights (0..65535)").c_str());
                 skin_.draw("##mesh-skin-inspection");
-            } else (mesh_after_ ? after_mesh_ : before_mesh_).draw();
+            } else
+                (mesh_after_ ? after_mesh_ : before_mesh_).draw();
             ImGui::EndTabItem();
         }
         if(ImGui::BeginTabItem(cyui::trLabel("Curves").c_str(),nullptr,flags(AssetTab::curves))){
