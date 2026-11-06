@@ -1,5 +1,7 @@
 # CyUEDiff
 
+**Licence :** [MIT](LICENSE)
+
 [English](README.md) · **Français**
 
 Cœur C++17 pour inspecter des packages Unreal **sans lancer Unreal Editor**, produire une représentation stable et comparer deux versions. Une bibliothèque de vues CyUI reste séparée du lecteur.

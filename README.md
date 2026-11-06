@@ -1,5 +1,7 @@
 # CyUEDiff
 
+**License:** [MIT](LICENSE)
+
 **English** · [Français](README.fr.md)
 
 A reusable C++17 engine for inspecting Unreal Engine packages and comparing serialized asset data **without launching Unreal Editor**. A separate [CyUI](https://github.com/MrMybal/CyUI) library and an optional Windows desktop app provide inspection, graph, image, mesh and diff views.

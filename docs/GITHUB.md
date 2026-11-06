@@ -1,6 +1,6 @@
 # GitHub publishing
 
-Remote: **https://github.com/MrMybal/CyUEDIFF**. This is the existing private repository; publishing must not change its visibility or create another repository.
+Remote: **https://github.com/MrMybal/CyUEDIFF**. Publishing uses this existing repository and preserves its current visibility; it does not create another repository.
 
 ## Repository description
 
@@ -16,11 +16,15 @@ gh repo edit MrMybal/CyUEDIFF --description "Reusable C++17 engine for inspectin
 
 See the [official `gh repo edit` reference](https://cli.github.com/manual/gh_repo_edit). This command changes the description only.
 
+## License
+
+CyUEDiff's original code uses the [MIT License](../LICENSE). Keep the license and copyright notice with distributed copies. Third-party components retain their own licenses; see [third-party notices](../THIRD_PARTY_NOTICES.md). CMake installs both documents, and CPack uses the root MIT license.
+
 ## Source selection and secret scanning
 
 The repository tracks source code, tests, vendored open-source headers/licenses and documentation. Build directories, generated executables/libraries, local credentials/configuration, Unreal packages and payloads, local Oodle artifacts, reports and native captures are ignored. No Git LFS tracking is needed for these source files; the application's Git/LFS adapter is a separate runtime capability.
 
-Gitleaks **8.30.1** was used for the initial checks. The project configuration extends its default rules with no custom exclusions or baseline. The helper exports tracked working-tree files and non-ignored untracked files into a temporary scan directory. Third-party source files are included. The full-history scan covers all local refs. Inline allow comments and an automatic ignore file are not used to suppress findings.
+Gitleaks **8.30.1** was used for the initial checks. The project configuration keeps all default rules and uses no baseline. Its only allowlist matches complete public keyed/derived hash outputs in the exact vendored BLAKE3 test-vector file for the generic API-key rule. Other files, fields, hash lengths and rules remain scanned; upstream fixture bytes are pinned in `third_party/blake3/UPSTREAM.json`. The helper exports tracked working-tree files and non-ignored untracked files into a temporary scan directory. Third-party source files are included. The full-history scan covers all local refs. Inline allow comments and an automatic ignore file are not used to suppress findings.
 
 ```powershell
 # Before the first commit:
