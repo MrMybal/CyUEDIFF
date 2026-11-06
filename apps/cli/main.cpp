@@ -369,7 +369,9 @@ int run(const std::vector<std::string> &args) {
     const auto after_decoders = after_layouts == before_layouts ? before_decoders :
         (after_layouts ? after_layouts->decoder_registry() : nullptr);
     auto read = [&](const std::string &input, const std::string &project_key, ReadOptions options) {
+        const auto &selected_layouts = project_key == "--after-project" ? after_layouts : before_layouts;
         options.decoders = project_key == "--after-project" ? after_decoders : before_decoders;
+        options.narrow_string_encoding = selected_layouts ? selected_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
         auto project = path_option(project_key);
         if (project.empty())
             project = path_option("--project");
@@ -409,8 +411,10 @@ int run(const std::vector<std::string> &args) {
     int exit_code = 0;
     ReadOptions options;
     options.decoders = before_decoders;
+    options.narrow_string_encoding = before_layouts ? before_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     auto after_read_options = options;
     after_read_options.decoders = after_decoders;
+    after_read_options.narrow_string_encoding = after_layouts ? after_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     if (command == "layouts") {
         const auto input = fs::u8path(positional[0]);
         protected_files.push_back(input);

@@ -1,4 +1,5 @@
 #include <cyuediff/zen.hpp>
+#include <cyuediff/string_encoding.hpp>
 #include "archive.hpp"
 #include <algorithm>
 #include <array>
@@ -23,6 +24,8 @@ std::string ZenSchemaContext::fingerprint() const {
         state["binaryLayoutsSha256"] = binary_layouts->sha256();
         state["structLayouts"] = struct_layouts;
     }
+    if (narrow_string_encoding != NarrowStringEncoding::unspecified)
+        state["narrowStringEncoding"] = narrow_string_encoding_name(narrow_string_encoding);
     auto text = state.dump();
     return sha256_bytes(std::vector<std::uint8_t>(text.begin(), text.end()));
 }
@@ -539,6 +542,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     props.native_structs = context.native_structs;
                     props.binary_layouts = context.binary_layouts;
                     props.struct_layouts = context.struct_layouts;
+                    props.narrow_string_encoding = context.narrow_string_encoding;
                     props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
                     props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
                     props.text_layout = TextLayout::ue5_history;

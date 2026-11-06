@@ -1,4 +1,5 @@
 #include <cyuediff/schema_context.hpp>
+#include <cyuediff/string_encoding.hpp>
 #include <algorithm>
 #include <fstream>
 namespace cyuediff {
@@ -74,6 +75,7 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
         if (described_format) {
             allowed.insert("binaryLayouts");
             allowed.insert("structLayouts");
+            allowed.insert("narrowStringEncoding");
         }
         fields(manifest, allowed);
         const auto profile = string_value(manifest.at("profile"));
@@ -147,6 +149,9 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
             layout_options.control = options.control;
             result.binary_layouts_ = std::make_shared<const BinaryLayouts>(
                 BinaryLayouts::parse(manifest.at("binaryLayouts"), layout_options));
+            result.narrow_string_encoding_ = manifest.contains("narrowStringEncoding") ?
+                parse_narrow_string_encoding(string_value(manifest["narrowStringEncoding"])) :
+                result.binary_layouts_->narrow_string_encoding();
             const auto &values = manifest.at("structLayouts");
             if (!values.is_object()) throw Error("schema-context", "Expected structLayouts object");
             const auto used = bindings.size() + result.reflected_structs_.size() + result.native_structs_.size();
@@ -197,6 +202,7 @@ std::shared_ptr<const ZenSchemaContext> ZenSchemaManifest::load(const SchemaRead
             throw Error("schema-context", "Conflicting native/reflected struct binding: " + definition.path);
     }
     result->binary_layouts = binary_layouts_;
+    result->narrow_string_encoding = narrow_string_encoding_;
     for (const auto &binding : struct_layouts_) {
         options.control.check();
         const auto &definition = result->schemas->schema(binding.first);
@@ -224,6 +230,8 @@ Json ZenSchemaManifest::to_json() const {
             {"bindingCount", bindings_.size()},
             {"reflectedStructCount", reflected_structs_.size()},
             {"mappingVerified", false}};
+    if (narrow_string_encoding_ != NarrowStringEncoding::unspecified)
+        result["narrowStringEncoding"] = narrow_string_encoding_name(narrow_string_encoding_);
     if (binary_layouts_) {
         result["binaryLayoutsSha256"] = binary_layouts_->sha256();
         result["structLayouts"] = struct_layouts_;

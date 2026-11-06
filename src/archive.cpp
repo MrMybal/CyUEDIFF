@@ -1,6 +1,7 @@
 #include "archive.hpp"
 #include "sha256.hpp"
 #include "string_value.hpp"
+#include <cyuediff/string_encoding.hpp>
 #include "descriptor.hpp"
 #include <iomanip>
 #include <sstream>
@@ -93,7 +94,8 @@ std::string Archive::string() {
         if (s.back() != 0)
             throw Error("format", "Unterminated FString", tell());
         s.pop_back();
-        return s;
+        return options_.narrow_string_encoding == NarrowStringEncoding::unspecified ? s :
+            decode_narrow_string(s, options_.narrow_string_encoding, options_.max_string_bytes, options_.control);
     }
     std::string s;
     for (std::int64_t i = 0; i < chars; ++i) {
@@ -128,6 +130,8 @@ std::string Archive::byte_string(bool ascii) {
     std::string value(static_cast<std::size_t>(n), '\0');
     const auto offset = tell();
     read(value.data(), value.size());
+    if (ascii && options_.narrow_string_encoding != NarrowStringEncoding::unspecified)
+        return decode_narrow_string(value, options_.narrow_string_encoding, options_.max_string_bytes, options_.control);
     validate_byte_string(value, ascii, options_.control, "string-encoding", offset);
     return value;
 }

@@ -38,6 +38,7 @@ struct OperationControl {
         check();
     }
 };
+enum class NarrowStringEncoding { unspecified, ascii, latin1, windows_1252, utf8 };
 class DecoderRegistry;
 struct ReadOptions {
     bool properties = true, fingerprints = true, native_graphs = true, native_textures = true,
@@ -48,6 +49,7 @@ struct ReadOptions {
     std::uint32_t max_properties = 100'000, max_depth = 48;
     std::shared_ptr<const DecoderRegistry> decoders;
     OperationControl control;
+    NarrowStringEncoding narrow_string_encoding = NarrowStringEncoding::unspecified;
 };
 struct EngineInfo {
     fs::path root;

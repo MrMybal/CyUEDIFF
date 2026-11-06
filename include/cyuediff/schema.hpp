@@ -120,6 +120,7 @@ struct UnversionedReadOptions {
     OptionalLayout optional_layout = OptionalLayout::unspecified;
     FieldPathLayout field_path_layout = FieldPathLayout::unspecified;
     ByteStringLayout byte_string_layout = ByteStringLayout::unspecified;
+    NarrowStringEncoding narrow_string_encoding = NarrowStringEncoding::unspecified;
     std::uint32_t max_values = 100'000, max_depth = 48;
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     OperationControl control;

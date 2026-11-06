@@ -1,5 +1,6 @@
 #include <cyuediff/schema.hpp>
 #include "string_value.hpp"
+#include <cyuediff/string_encoding.hpp>
 #include "archive.hpp"
 #include "text_value.hpp"
 #include <algorithm>
@@ -691,6 +692,7 @@ struct PropertyReader {
         read.max_text_bytes = options.max_text_bytes - result.text_bytes;
         read.max_string_bytes = static_cast<std::uint32_t>(std::min<std::uint64_t>(UINT32_MAX, read.max_text_bytes));
         read.max_read_bytes = r.end - r.pos;
+        read.narrow_string_encoding = options.narrow_string_encoding;
         read.reference = options.reference;
         // Even a null-only reference must consume and interpret its signed package index.
         if (!read.reference) read.reference = [](std::int32_t) -> Json {
@@ -1167,6 +1169,17 @@ struct PropertyReader {
                 r.pos += size;
                 at += size;
             }
+            if (type.kind == 30 && options.narrow_string_encoding != NarrowStringEncoding::unspecified) {
+                try {
+                    auto decoded = decode_narrow_string(value, options.narrow_string_encoding,
+                        options.max_text_bytes - result.text_bytes + value.size(), options.control);
+                    if (decoded.size() > value.size()) text(decoded.size() - value.size());
+                    return decoded;
+                } catch (const Error &error) {
+                    if (error.code == "string-limit") throw Error("schema-limit", error.what(), r.pos);
+                    throw;
+                }
+            }
             detail::validate_byte_string(value, type.kind == 30, options.control,
                                          type.kind == 30 ? "schema-type" : "schema-value", offset);
             return value;
@@ -1182,6 +1195,22 @@ struct PropertyReader {
             if (std::uint64_t(n) > options.max_text_bytes - result.text_bytes)
                 throw Error("schema-limit", "String property exceeds limit", r.pos - 4);
             r.range(std::uint64_t(n) * (wide ? 2 : 1));
+            if (!wide && options.narrow_string_encoding != NarrowStringEncoding::unspecified) {
+                const auto at = r.pos;
+                std::string raw(reinterpret_cast<const char *>(r.data.data() + at), static_cast<std::size_t>(n - 1));
+                r.skip(static_cast<std::uint64_t>(n));
+                if (r.data[static_cast<std::size_t>(r.pos - 1)] || raw.find('\0') != std::string::npos)
+                    throw Error("schema-value", "Invalid narrow FString terminator", at);
+                try {
+                    auto decoded = decode_narrow_string(raw, options.narrow_string_encoding,
+                        options.max_text_bytes - result.text_bytes, options.control);
+                    text(decoded.size());
+                    return decoded;
+                } catch (const Error &error) {
+                    if (error.code == "string-limit") throw Error("schema-limit", error.what(), at);
+                    throw;
+                }
+            }
             std::string value;
             for (std::int64_t j = 0; j < n; ++j) {
                 auto cp = static_cast<std::uint32_t>(r.number(wide ? 2 : 1));

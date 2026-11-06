@@ -138,7 +138,9 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     BinaryLayoutReadOptions layout_options;
     layout_options.control = request.control;
     if (before_layouts) read.decoders = before_layouts->decoder_registry(layout_options);
+    read.narrow_string_encoding = before_layouts ? before_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     auto after_read = read;
+    after_read.narrow_string_encoding = after_layouts ? after_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     after_read.decoders = after_layouts == before_layouts ? read.decoders :
         (after_layouts ? after_layouts->decoder_registry(layout_options) : nullptr);
     if (before_layouts || after_layouts) {
