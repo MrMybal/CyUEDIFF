@@ -1,5 +1,6 @@
 #include "animation_transform.hpp"
 #include <cmath>
+#include <limits>
 namespace cyuediff::detail {
 void validate_animation_tolerances(double p, double r, double s) {
     if (!std::isfinite(p) || p < 0 || !std::isfinite(r) || r < 0 || r > 180 || !std::isfinite(s) || s < 0)
@@ -84,6 +85,11 @@ Json compare_local_animation_values(const Json &a, const Json &b, double pt, dou
     const double distance = std::hypot(std::hypot(dp[0], dp[1]), dp[2]);
     if (!std::isfinite(distance) || !std::isfinite(angle) || !std::isfinite(scale))
         return unavailable("Local transform metric arithmetic overflow");
+    // libm normalization/atan2 rounding can straddle an inclusive angular boundary.
+    // Keep raw metrics and zero-tolerance sensitivity; allow only relative double roundoff.
+    const bool rotation_changed =
+        angle > rt &&
+        (rt == 0 || angle - rt > 8 * std::numeric_limits<double>::epsilon() * std::max(angle, rt));
     out["ready"] = true;
     out["positionDelta"] = dp;
     out["scaleDelta"] = ds;
@@ -91,9 +97,9 @@ Json compare_local_animation_values(const Json &a, const Json &b, double pt, dou
     out["rotationDeltaDegrees"] = angle;
     out["scaleMaxDelta"] = scale;
     out["positionChanged"] = distance > pt;
-    out["rotationChanged"] = angle > rt;
+    out["rotationChanged"] = rotation_changed;
     out["scaleChanged"] = scale > st;
-    out["changed"] = distance > pt || angle > rt || scale > st;
+    out["changed"] = distance > pt || rotation_changed || scale > st;
     return out;
 }
 } // namespace cyuediff::detail

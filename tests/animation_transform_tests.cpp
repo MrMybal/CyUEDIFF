@@ -26,12 +26,20 @@ int main() {
         b["rotations"] = {0., 0., half, half};
         check(std::abs(compare(a, b)["rotationDeltaDegrees"].get<double>() - 90.) < 1e-12,
               "Quarter-turn angular distance");
+        check(!compare(a, b, 0., 90.)["rotationChanged"].get<bool>(),
+              "Mathematical quarter-turn includes tolerance boundary");
+        const auto quarter_angle = compare(a, b)["rotationDeltaDegrees"].get<double>();
+        check(!compare(a, b, 0., std::nextafter(quarter_angle, 0.))["rotationChanged"].get<bool>(),
+              "One-ULP libm boundary drift is tolerated");
+        check(compare(a, b, 0., quarter_angle - 1e-9)["rotationChanged"].get<bool>(),
+              "Real angular threshold excess remains changed");
         b["rotations"] = {1., 0., 0., 0.};
         check(compare(a, b)["rotationDeltaDegrees"] == 180., "Half-turn angular distance");
         const double tiny = 1e-10;
         b["rotations"] = {tiny, 0., 0., std::sqrt(1. - tiny * tiny)};
         check(compare(a, b)["rotationDeltaDegrees"].get<double>() > 0.,
               "Small orientation differences do not collapse through acos rounding");
+        check(compare(a, b)["rotationChanged"].get<bool>(), "Zero tolerance retains tiny rotations");
         auto c = a;
         auto q = [](double degrees) {
             constexpr double pi = 3.14159265358979323846;

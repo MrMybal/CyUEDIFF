@@ -33,8 +33,9 @@ Json vector_value(const Json &v, bool rotation) {
         return v;
     if (v.is_object()) {
         Json out = Json::array();
-        for (auto key : rotation ? std::initializer_list<const char *>{"Pitch", "Yaw", "Roll"}
-                                 : std::initializer_list<const char *>{"X", "Y", "Z"}) {
+        const std::array<const char *, 3> keys = rotation ? std::array<const char *, 3>{"Pitch", "Yaw", "Roll"}
+                                                           : std::array<const char *, 3>{"X", "Y", "Z"};
+        for (const auto *key : keys) {
             const auto *t = tag(v, key);
             if (!t || !t->is_object() || !t->contains("value") || !finite(t->at("value")))
                 return nullptr;

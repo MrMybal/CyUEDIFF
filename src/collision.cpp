@@ -52,8 +52,9 @@ struct Projection {
             return v;
         if (v.is_object()) {
             Json out = Json::array();
-            for (const char *key : rotation ? std::initializer_list<const char *>{"Pitch", "Yaw", "Roll"}
-                                            : std::initializer_list<const char *>{"X", "Y", "Z"}) {
+            const std::array<const char *, 3> keys = rotation ? std::array<const char *, 3>{"Pitch", "Yaw", "Roll"}
+                                                               : std::array<const char *, 3>{"X", "Y", "Z"};
+            for (const auto *key : keys) {
                 const auto *component = value(v, key);
                 if (!component || !number(*component))
                     return nullptr;

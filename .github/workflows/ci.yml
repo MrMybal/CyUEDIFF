@@ -33,6 +33,12 @@ jobs:
         run: ctest --test-dir build-ci -C Release --output-on-failure --timeout 120
       - name: Install SDK
         run: cmake --install build-ci --config Release --prefix build-ci/sdk
+      - name: Configure external source morph consumer
+        run: cmake -S examples/mesh_morph_consumer -B build-morph-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Link external source morph consumer
+        run: cmake --build build-morph-consumer --config Release --parallel 2
+      - name: Verify standalone source morph SDK
+        run: python -c "from pathlib import Path; import subprocess; p=Path('build-morph-consumer'); exe=p/'Release/mesh_morph_consumer.exe' if (p/'Release/mesh_morph_consumer.exe').exists() else p/'mesh_morph_consumer'; subprocess.run([str(exe.resolve())],check=True)"
       - name: Configure external native layout consumer
         run: cmake -S examples/binary_layout_consumer -B build-layout-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
       - name: Link external native layout consumer

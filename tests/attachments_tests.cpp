@@ -25,6 +25,14 @@ int main() {
         check(a["owners"]["Rig"]["socketReferences"][0]["resolved"] &&
                   a["owners"]["Rig"]["containedSockets"].size() == 2,
               "Explicit membership separate from containment");
+        auto reflected = p;
+        reflected.exports[1].properties["RelativeLocation"]["value"] = {
+            {"X", {{"value", 1.}}}, {"Y", {{"value", 2.}}}, {"Z", {{"value", 3.}}}};
+        reflected.exports[1].properties["RelativeRotation"]["value"] = {
+            {"Pitch", {{"value", 0.}}}, {"Yaw", {{"value", 90.}}}, {"Roll", {{"value", 0.}}}};
+        check(attachment_snapshot(reflected)["sockets"]["Rig.Grip"]["location"] == grip["location"] &&
+              attachment_snapshot(reflected)["sockets"]["Rig.Grip"]["rotation"] == grip["rotation"],
+              "Reflected vector and rotator component storage remains valid");
         auto changed = p;
         changed.exports[1].properties["RelativeLocation"]["value"][0] = 4.;
         const auto diff = compare_attachments(p, changed);
