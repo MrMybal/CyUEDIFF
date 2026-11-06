@@ -77,3 +77,7 @@ Référence : [API FMeshDescriptionBulkData d'Epic](https://dev.epicgames.com/do
 ## Explicit local virtualized payloads
 
 Version 0.179 adds a local filesystem store for virtualized editor source payloads, including mandatory full raw BLAKE3 verification and independent before/after roots in CLI/Desktop. See [the backend contract and limits](VIRTUALIZED.md). Local embedded reads can opt into BLAKE3 verification; virtualized reads always require it.
+
+## Skeletal editor MeshDescription sources
+
+Version 0.180 adds fixture-validated modern skeletal source geometry, stored source bone transforms and packed skin-weight profiles, including semantic comparisons and typed Desktop inspection. The earlier skeletal exclusion applies to legacy imported models, cooked/runtime skin buffers and runtime deformation. See [SKINNING.md](SKINNING.md) for exact profiles, public types and validation limits.

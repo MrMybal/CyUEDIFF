@@ -1,3 +1,4 @@
+#include <cyuediff/mesh_skin.hpp>
 #include "document.hpp"
 #include "animation_document.hpp"
 #include <cyuediff/binary_layout.hpp>
@@ -82,7 +83,13 @@ Json Document::report() const {
              {"comparison", d.hdr_comparison ? d.hdr_comparison->to_json() : d.comparison.to_json()},
              {"diagnostic", d.diagnostic}});
     auto mesh = [](const std::shared_ptr<const MeshGeometry> &m) -> Json {
-        return m ? Json{{"vertices", m->vertices.size()}, {"triangles", m->triangles.size()}} : Json(nullptr);
+        if (!m) return Json(nullptr);
+        Json result = {{"vertices", m->vertices.size()}, {"triangles", m->triangles.size()}};
+        if (m->skin) {
+            result["sourceBones"] = m->skin->bones.size();
+            result["skinProfiles"] = m->skin->profiles.size();
+        }
+        return result;
     };
     Json result = {{"status", status()},
                    {"before", package(before)},

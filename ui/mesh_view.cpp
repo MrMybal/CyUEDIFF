@@ -30,6 +30,43 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                 peer_edges.insert(std::minmax(a->second, b->second));
             }
     }
+    std::set<std::uint32_t> changed_skin_vertices;
+    if (mesh && peer && (current.contains("skin") || remote.contains("skin"))) {
+        const Json empty = Json::object();
+        const auto &a = current.contains("skin") ? current["skin"] : empty;
+        const auto &b = remote.contains("skin") ? remote["skin"] : empty;
+        const auto &av = a.contains("vertices") ? a["vertices"] : empty;
+        const auto &bv = b.contains("vertices") ? b["vertices"] : empty;
+        const auto &ab = a.contains("bones") ? a["bones"] : empty;
+        const auto &bb = b.contains("bones") ? b["bones"] : empty;
+        std::set<std::string> affected_bones;
+        std::map<std::string, std::set<std::string>> children;
+        for (const auto *bones : {&ab, &bb})
+            for (auto bone = bones->begin(); bone != bones->end(); ++bone) {
+                if (!ab.contains(bone.key()) || !bb.contains(bone.key()) || ab[bone.key()] != bb[bone.key()])
+                    affected_bones.insert(bone.key());
+                if (bone.value()["parent"].is_string())
+                    children[bone.value()["parent"].get<std::string>()].insert(bone.key());
+            }
+        std::vector<std::string> pending(affected_bones.begin(), affected_bones.end());
+        for (std::size_t i = 0; i < pending.size(); ++i)
+            for (const auto &child : children[pending[i]])
+                if (affected_bones.insert(child).second)
+                    pending.push_back(child);
+        for (const auto &vertex : mesh->vertices) {
+            const auto id = std::to_string(vertex.id);
+            if (av.contains(id) != bv.contains(id) || (av.contains(id) && av[id] != bv[id])) {
+                changed_skin_vertices.insert(vertex.id);
+                continue;
+            }
+            if (!av.contains(id))
+                continue;
+            for (const auto &profile : av[id])
+                for (auto bone = profile.begin(); bone != profile.end(); ++bone)
+                    if (bone.value() != 0 && affected_bones.count(bone.key()))
+                        changed_skin_vertices.insert(vertex.id);
+        }
+    }
     auto different = [&](const char *table, std::uint32_t id) {
         auto key = std::to_string(id);
         return !peer || !remote.at(table).contains(key) ||
@@ -73,7 +110,9 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                     if (!peer_edges.count(key))
                         change = after ? ChangeKind::added : ChangeKind::removed;
                     else {
-                        bool changed = different("vertices", key.first) ||
+                        bool changed = changed_skin_vertices.count(key.first) ||
+                                       changed_skin_vertices.count(key.second) ||
+                                       different("vertices", key.first) ||
                                        different("vertices", key.second) || different("triangles", t.id);
                         for (auto instance : t.instances)
                             changed = changed || different("instances", instance);

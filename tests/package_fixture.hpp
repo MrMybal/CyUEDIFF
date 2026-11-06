@@ -37,7 +37,8 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
                 int editor_version = -1, int release_version = -1, int core_version = -1,
                 int rendering_version = -1, int anim_phys_version = -1, int framework_version = -1,
                 int anim_version = -1, const std::string &asset_class = "DataAsset",
-                const std::string &asset_package = "/Script/CoreUObject") {
+                const std::string &asset_package = "/Script/CoreUObject",
+                const std::vector<std::pair<std::array<std::uint32_t, 4>, int>> &extra_versions = {}) {
     std::vector<std::string> names = {
         "None",        "TestAsset",   "DataAsset",     "/Script/CoreUObject", "Class",
         "Value",       "IntProperty", "Enabled",       "BoolProperty",        "Text",
@@ -127,7 +128,7 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
     auto custom_versions = [&] {
         b.i((editor_version < 0 ? 0 : 1) + (release_version < 0 ? 0 : 1) + (core_version < 0 ? 0 : 1) +
             (rendering_version < 0 ? 0 : 1) + (anim_phys_version < 0 ? 0 : 1) +
-            (framework_version < 0 ? 0 : 1) + (anim_version < 0 ? 0 : 1));
+            (framework_version < 0 ? 0 : 1) + (anim_version < 0 ? 0 : 1) + static_cast<int>(extra_versions.size()));
         for (auto v : {std::make_pair(framework_version, false), std::make_pair(anim_version, true)})
             if (v.first >= 0) {
                 const auto words =
@@ -161,6 +162,10 @@ Fixture fixture(int version, int value = 1, bool reorder = false, int suffix = 0
             for (auto word : {0xd89b5e42u, 0x24bd4d46u, 0x8412aca8u, 0xdf641779u})
                 b.put<std::uint32_t>(word);
             b.i(release_version);
+        }
+        for (const auto &version : extra_versions) {
+            for (const auto word : version.first) b.put<std::uint32_t>(word);
+            b.i(version.second);
         }
     };
     std::size_t size_pos;

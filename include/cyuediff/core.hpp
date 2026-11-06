@@ -183,12 +183,14 @@ struct MeshTriangle {
     std::uint32_t id = 0, polygon = 0, group = 0;
     std::array<std::uint32_t, 3> instances{};
 };
+struct MeshSkin;
 struct MeshGeometry {
     std::vector<MeshVertex> vertices;
     std::vector<MeshInstance> instances;
     std::vector<MeshTriangle> triangles;
     std::map<std::uint32_t, std::string> material_slots;
     Json attributes = Json::object(), bounds = Json::object();
+    std::shared_ptr<const MeshSkin> skin;
     Json to_json() const;
 };
 struct MeshComparison {

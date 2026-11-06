@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(mesh_skin_consumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(mesh_skin_consumer main.cpp)
+target_link_libraries(mesh_skin_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(mesh_skin_consumer PRIVATE /EHsc /utf-8)
+endif()

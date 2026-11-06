@@ -1,3 +1,4 @@
+#include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/asset_view.hpp>
 #include <cyuediff/animation_pose_view.hpp>
 #include "diff_style.hpp"
@@ -172,6 +173,8 @@ void AssetView::register_translations() {
          {"Some output ports are inferred from saved connections.",
           "Certains ports de sortie sont déduits des connexions enregistrées."},
          {"Meshes", "Meshes"},
+         {"Inspect source skinning", "Inspecter le skinning source"},
+         {"Stored bone poses and raw weights (0..65535)", "Poses des os et poids bruts stockés (0..65535)"},
          {"Mesh preview unavailable", "Aperçu du mesh indisponible"},
          {"Load a supported source mesh in the application.",
           "Chargez un mesh source pris en charge dans l'application."},
@@ -264,6 +267,8 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     after_geometry_.reset();
     graph_after_ = texture_after_ = mesh_after_ = material_after_ = !before_;
     before_mesh_.set_mesh({});
+    skin_.set_values(nullptr, nullptr, false);
+    skin_inspection_ = false;
     after_mesh_.set_mesh({});
     texture_selected_ = 0;
     before_textures_.clear();
@@ -340,6 +345,10 @@ void AssetView::set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, 
     (after ? after_geometry_ : before_geometry_) = std::move(geometry);
     before_mesh_.set_mesh(before_geometry_, after_geometry_, false, comparison_);
     after_mesh_.set_mesh(after_geometry_, before_geometry_, true, comparison_);
+    const auto before_skin = before_geometry_ && before_geometry_->skin ? before_geometry_->skin->to_json() : Json(nullptr);
+    const auto after_skin = after_geometry_ && after_geometry_->skin ? after_geometry_->skin->to_json() : Json(nullptr);
+    skin_.set_values(before_skin.is_null() ? nullptr : &before_skin,
+                     after_skin.is_null() ? nullptr : &after_skin, comparison_);
 }
 Json AssetView::view_state() const {
     const auto &p = properties_after_ ? after_ : before_;
@@ -388,12 +397,18 @@ Json AssetView::view_state() const {
     if(sockets_bound_){result["animationSockets"]=animation_sockets_.view_state();result["animationSocketsPreview"]=sockets_preview_;}
     if(pose_bound_){result["animationPose"]=animation_pose_.view_state();result["animationPosePreview"]=pose_preview_;}
     if(!curves_.empty())result["curves"]=curves_.view_state();
+    if ((before_geometry_ && before_geometry_->skin) || (after_geometry_ && after_geometry_->skin)) {
+        result["meshSkin"] = skin_.view_state();
+        result["meshSkinInspection"] = skin_inspection_;
+    }
     result["before"] = side(false);
     result["after"] = side(true);
     return result;
 }
 void AssetView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "asset");
+    if (state.contains("meshSkin")) skin_.restore_view_state(state["meshSkin"]);
+    if (state.contains("meshSkinInspection")) skin_inspection_ = state["meshSkinInspection"].get<bool>();
     if (state.contains("layout"))
         layout_.restore(state["layout"], "asset-layout");
     if (state.contains("collisions"))
@@ -635,7 +650,12 @@ void AssetView::draw(const char *id, bool show_language) {
                 if (ImGui::RadioButton(cyui::trLabel("After").c_str(), mesh_after_))
                     mesh_after_ = true;
             }
-            (mesh_after_ ? after_mesh_ : before_mesh_).draw();
+            const bool has_skin = (before_geometry_ && before_geometry_->skin) || (after_geometry_ && after_geometry_->skin);
+            if (has_skin) ImGui::Checkbox(cyui::trLabel("Inspect source skinning").c_str(), &skin_inspection_);
+            if (has_skin && skin_inspection_) {
+                cyui::textDim("%s", cyui::tr("Stored bone poses and raw weights (0..65535)").c_str());
+                skin_.draw("##mesh-skin-inspection");
+            } else (mesh_after_ ? after_mesh_ : before_mesh_).draw();
             ImGui::EndTabItem();
         }
         if(ImGui::BeginTabItem(cyui::trLabel("Curves").c_str(),nullptr,flags(AssetTab::curves))){

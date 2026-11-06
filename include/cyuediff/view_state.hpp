@@ -209,6 +209,8 @@ inline void validate(const Json &v, std::string_view kind) {
             string({"body", "shape"}, true);
             child("properties", "property");
         } else if (kind == "asset") {
+            child("meshSkin", "property");
+            flag({"meshSkinInspection"});
             child("collisions", "collision");
             child("skeleton","skeleton");
             child("animations","animation-source");

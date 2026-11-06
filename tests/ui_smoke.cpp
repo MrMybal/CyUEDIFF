@@ -1,3 +1,4 @@
+#include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/asset_view.hpp>
 #include <cyuediff/catalog_view.hpp>
 #include <iostream>
@@ -175,6 +176,32 @@ int main() {
     view.set_mesh_geometry(mesh);
     if (mesh_view.empty())
         return 7;
+    {
+        auto source_skin = std::make_shared<cyuediff::MeshSkin>();
+        source_skin->bones = {{0, -1, "root"}, {2, 0, "arm"}};
+        source_skin->profiles["Default"][0] = {{2, 65535}};
+        auto before_skin = std::make_shared<cyuediff::MeshGeometry>(*mesh);
+        auto after_skin = std::make_shared<cyuediff::MeshGeometry>(*mesh);
+        before_skin->skin = source_skin;
+        auto other_skin = std::make_shared<cyuediff::MeshSkin>(*source_skin);
+        other_skin->profiles["Default"][0][0].raw_weight = 32767;
+        after_skin->skin = other_skin;
+        mesh_view.set_mesh(before_skin, after_skin);
+        if (mesh_view.changes().modified != 2 || mesh_view.changes().unchanged != 1) return 61;
+        *other_skin = *source_skin;
+        other_skin->bones[0].translation[0] = 2;
+        mesh_view.set_mesh(before_skin, after_skin);
+        if (mesh_view.changes().modified != 2) return 62; // Weighted child is affected by its parent's pose.
+        view.set_mesh_geometry(before_skin);
+        view.set_mesh_geometry(after_skin, true);
+        auto state = view.view_state();
+        state["meshSkinInspection"] = true;
+        state["meshSkin"]["filter"] = "arm";
+        view.restore_view_state(state);
+        if (!view.view_state()["meshSkinInspection"] || view.view_state()["meshSkin"]["filter"] != "arm") return 63;
+        view.set_mesh_geometry({});
+        view.set_mesh_geometry({}, true);
+    }
     auto changed_mesh = std::make_shared<cyuediff::MeshGeometry>(*mesh);
     changed_mesh->vertices[0].position[2] = 0.5;
     mesh_view.set_mesh(mesh, changed_mesh);

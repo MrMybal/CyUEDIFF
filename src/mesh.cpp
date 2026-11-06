@@ -1,3 +1,4 @@
+#include <cyuediff/mesh_skin.hpp>
 #include "mesh.hpp"
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,7 @@ class Reader {
     std::size_t pos = 0;
     const MeshDecodeOptions &options;
     std::uint64_t values = 0;
+    bool wide_transform = true, legacy_transform = false, transform_version_known = false;
     Reader(const std::vector<std::uint8_t> &bytes, const MeshDecodeOptions &opts)
         : bytes_(bytes), options(opts) {}
     void require(std::size_t n) const {
@@ -112,7 +114,8 @@ class Reader {
         return result;
     }
     std::string hash(std::size_t begin, std::size_t end) const {
-        return sha256_bytes(std::vector<std::uint8_t>(bytes_.begin() + begin, bytes_.begin() + end));
+        return sha256_bytes(std::vector<std::uint8_t>(bytes_.begin() + begin, bytes_.begin() + end),
+                            options.control);
     }
     std::size_t size() const {
         return bytes_.size();
@@ -153,11 +156,31 @@ Json scalar(Reader &r, std::uint32_t type) {
     }
     if (type == 6)
         return r.string();
+    if (type == 7) {
+        Json transform = Json::object();
+        for (auto field : {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
+                           std::make_pair("scale", 3u)}) {
+            Json values = Json::array();
+            for (unsigned i = 0; i < field.second; ++i) {
+                const double value = r.wide_transform ? r.get<double>() : r.get<float>();
+                if (!std::isfinite(value))
+                    throw Error("mesh-number", "Non-finite MeshDescription transform", r.pos);
+                values.push_back(value);
+            }
+            transform[field.first] = std::move(values);
+        }
+        return transform;
+    }
     throw Error("mesh-attribute-type", "Unsupported mesh attribute type", r.pos);
 }
+struct Range {
+    std::size_t offset = 0;
+    std::uint32_t count = 0;
+};
 struct Channel {
     std::size_t offset = 0;
     std::uint32_t count = 0;
+    std::vector<Range> ranges;
 };
 struct Attribute {
     std::uint32_t type = 0, extent = 0, elements = 0;
@@ -170,11 +193,14 @@ struct Container {
     std::map<std::string, Attribute> attributes;
 };
 using Elements = std::map<std::string, std::vector<Container>>;
-Attribute read_attribute(Reader &r, std::uint32_t max_elements) {
+Attribute read_attribute(Reader &r, std::uint32_t max_elements, bool retain_ranges) {
     Attribute a;
     a.type = r.get<std::uint32_t>();
     a.extent = r.get<std::uint32_t>();
-    if (a.type > 6)
+    if (a.type == 7 && !r.transform_version_known)
+        throw Error("mesh-profile", "Transform attributes require an explicit supported UE archive version",
+                    r.pos - 8);
+    if (a.type > 7)
         throw Error("mesh-attribute-type", "Unsupported mesh attribute type", r.pos - 8);
     if (a.extent > 64)
         throw Error("limit", "Mesh attribute extent exceeds limit", r.pos - 4);
@@ -187,33 +213,43 @@ Attribute read_attribute(Reader &r, std::uint32_t max_elements) {
         if (a.extent) {
             if (r.get<std::uint32_t>() != a.extent)
                 throw Error("mesh-attribute", "Attribute extent mismatch", r.pos - 4);
-            if (a.type < 6) {
-                if (r.get<std::int32_t>() != static_cast<int>(stride(a.type)))
+            if (a.type < 6 || (a.type == 7 && r.legacy_transform)) {
+                const auto stored_stride = r.get<std::int32_t>();
+                if (a.type == 7) {
+                    if (stored_stride <= 0)
+                        throw Error("mesh-attribute", "Invalid legacy transform element size", r.pos - 4);
+                } else if (stored_stride != static_cast<int>(stride(a.type)))
                     throw Error("mesh-attribute", "Attribute element size mismatch", r.pos - 4);
             }
             channel.count = r.count(r.options.max_attribute_values);
             if (channel.count != std::uint64_t(a.elements) * a.extent)
                 throw Error("mesh-attribute", "Attribute count does not match element extent", r.pos - 4);
-            r.budget(std::uint64_t(channel.count) * std::max(1u, components(a.type)));
+            if (a.type == 7 && r.legacy_transform && channel.count)
+                throw Error("mesh-profile", "Legacy bulk-serialized transform arrays must be empty",
+                            r.pos - 4);
+            r.budget(std::uint64_t(channel.count) * (a.type == 7 ? 10 : std::max(1u, components(a.type))));
             channel.offset = r.pos;
             if (a.type < 6)
                 r.skip(std::size_t(channel.count) * stride(a.type));
             else
                 for (std::uint32_t i = 0; i < channel.count; ++i)
-                    r.string();
+                    scalar(r, a.type);
         } else {
             auto chunks = r.count(1 + (max_elements - 1) / 256);
             std::uint64_t entries = 0;
             for (std::uint32_t i = 0; i < chunks; ++i) {
                 auto count = r.count(r.options.max_attribute_values);
-                r.budget(std::uint64_t(count) * std::max(1u, components(a.type)));
+                r.budget(std::uint64_t(count) * (a.type == 7 ? 10 : std::max(1u, components(a.type))));
+                const auto values_offset = r.pos;
                 if (a.type < 6)
                     r.skip(std::size_t(count) * stride(a.type));
                 else
                     for (std::uint32_t j = 0; j < count; ++j)
-                        r.string();
+                        scalar(r, a.type);
                 auto elements = r.count(256);
                 entries += elements;
+                if (retain_ranges && a.type == 4)
+                    r.budget(elements);
                 std::vector<std::uint32_t> starts, counts;
                 for (std::uint32_t j = 0; j < elements; ++j)
                     starts.push_back(r.count(count));
@@ -223,6 +259,8 @@ Attribute read_attribute(Reader &r, std::uint32_t max_elements) {
                     auto capacity = r.count(count);
                     if (counts[j] > capacity || capacity > count - starts[j])
                         throw Error("mesh-attribute", "Unbounded attribute range escapes chunk", r.pos);
+                    if (retain_ranges && a.type == 4)
+                        channel.ranges.push_back({values_offset + std::size_t(starts[j]) * 4, counts[j]});
                 }
             }
             auto elements = r.count(max_elements);
@@ -275,7 +313,8 @@ Elements read_elements(Reader &r, Json &metadata) {
                 auto key = r.string();
                 if (container.attributes.count(key))
                     throw Error("mesh-identity", "Duplicate mesh attribute name", r.pos);
-                auto attribute = read_attribute(r, r.options.max_elements);
+                auto attribute = read_attribute(r, r.options.max_elements,
+                                                key == "SkinWeights" || key.rfind("SkinWeights-", 0) == 0);
                 if (attribute.elements != elements)
                     throw Error("mesh-attribute", "Attribute element count disagrees with container", r.pos);
                 attr_info[key] = attribute.metadata;
@@ -333,6 +372,7 @@ std::array<float, N> floats(Reader &r, const Attribute &a, std::uint32_t id, uns
 } // namespace
 bool is_mesh_description(const ObjectExport &object) {
     return object.class_name == "/Script/Engine.StaticMeshDescriptionBulkData" ||
+           object.class_name == "/Script/Engine.SkeletalMeshDescriptionBulkData" ||
            object.class_name == "/Script/MeshDescription.MeshDescriptionBaseBulkData";
 }
 MeshSourceResult decode_mesh_source(Archive &a, const Package &package, std::size_t index, std::uint64_t end,
@@ -343,7 +383,8 @@ MeshSourceResult decode_mesh_source(Archive &a, const Package &package, std::siz
     source.ue5_version = package.summary.ue5_version;
     source.custom_versions = package.summary.custom_versions;
     if (source.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) != 40 ||
-        source.custom_versions.value("9c54d522a8264fbe9421074661b482d0", -1) != 44)
+        (source.custom_versions.value("9c54d522a8264fbe9421074661b482d0", -1) < 44 ||
+         source.custom_versions.value("9c54d522a8264fbe9421074661b482d0", -1) > 51))
         throw Error("mesh-profile", "Unsupported MeshDescription bulk version profile");
     Archive::ReadLimit window(a, end);
     result.native = {{"kind", "mesh-description-source"}};
@@ -359,7 +400,10 @@ MeshSourceResult decode_mesh_source(Archive &a, const Package &package, std::siz
         throw Error("mesh-profile", "Unsupported enterprise bulk version");
     result.native["guidIsHash"] = enterprise >= 8 ? native_bool(a) : false;
     result.end = a.tell();
-    if (source.payload.storage != "local" && source.payload.storage != "empty")
+    if (source.payload.storage == "virtualized")
+        source.diagnostics.push_back(
+            "Virtualized mesh source requires an explicitly selected payload store.");
+    else if (source.payload.storage != "local" && source.payload.storage != "empty")
         source.diagnostics.push_back("Mesh source is " + source.payload.storage +
                                      "; geometry is unavailable.");
     return result;
@@ -369,12 +413,17 @@ MeshGeometry decode_mesh_description(const std::vector<std::uint8_t> &bytes, con
     auto main = source.custom_versions.value("697dd581e64f41abaa4a51ecbeb7b628", -1);
     if (main < 51 || main > 119 ||
         source.custom_versions.value("e4b068edf49442e9a231da0b2e46bb41", -1) != 40 ||
-        source.custom_versions.value("9c54d522a8264fbe9421074661b482d0", -1) != 44)
+        (source.custom_versions.value("9c54d522a8264fbe9421074661b482d0", -1) < 44 ||
+         source.custom_versions.value("9c54d522a8264fbe9421074661b482d0", -1) > 51))
         throw Error("mesh-profile", "Unsupported MeshDescription serialization profile");
     if (!options.max_elements || !options.max_attribute_values)
         throw Error("limit", "Mesh decode limits must be positive");
     options.control.checkpoint("Decoding mesh", 0, bytes.size());
     Reader r(bytes, options);
+    r.wide_transform = source.ue5_version >= 1004;
+    r.transform_version_known = source.ue5_version >= 1000 && source.ue5_version <= 1016;
+    const auto fortnite = source.custom_versions.value("601d1886ac644f84aa16d3de0deac7d6", -1);
+    r.legacy_transform = fortnite >= 0 && fortnite < 133;
     MeshGeometry mesh;
     auto elements = read_elements(r, mesh.attributes);
     const auto &vertices = primary(elements, "Vertices");
@@ -457,6 +506,67 @@ MeshGeometry decode_mesh_description(const std::vector<std::uint8_t> &bytes, con
             }
         mesh.bounds = {{"min", min}, {"max", max}};
     }
+    if (elements.count("BonesElementName") ||
+        std::any_of(vertices.attributes.begin(), vertices.attributes.end(), [](const auto &item) {
+            return item.first == "SkinWeights" || item.first.rfind("SkinWeights-", 0) == 0;
+        })) {
+        auto skin = std::make_shared<MeshSkin>();
+        const auto &bones = primary(elements, "BonesElementName");
+        const auto *names = attribute(bones, "Name", 6, 1);
+        const auto *parents = attribute(bones, "ParentIndex", 4, 1);
+        const auto *poses = attribute(bones, "Pose", 7, 1);
+        if (names->channels.size() != 1 || parents->channels.size() != 1 || poses->channels.size() != 1)
+            throw Error("mesh-skin-layout", "Source bone attributes require a single channel");
+        r.pos = names->channels[0].offset;
+        std::map<std::uint32_t, std::string> bone_names;
+        for (std::uint32_t id = 0; id < names->elements; ++id) {
+            auto name = r.string();
+            if (id < bones.allocated.size() && bones.allocated[id])
+                bone_names[id] = std::move(name);
+        }
+        for (const auto &item : bone_names) {
+            options.control.check();
+            MeshBone bone;
+            bone.id = item.first;
+            bone.name = item.second;
+            bone.parent = integer(r, *parents, bone.id);
+            r.pos = poses->channels[0].offset + std::size_t(bone.id) * (r.wide_transform ? 80 : 40);
+            const auto pose = scalar(r, 7);
+            bone.rotation = pose["rotation"].get<std::array<double, 4>>();
+            bone.translation = pose["translation"].get<std::array<double, 3>>();
+            bone.scale = pose["scale"].get<std::array<double, 3>>();
+            skin->bones.push_back(std::move(bone));
+        }
+        std::set<std::string> profile_keys;
+        for (const auto &item : vertices.attributes) {
+            if (item.first != "SkinWeights" && item.first.rfind("SkinWeights-", 0) != 0)
+                continue;
+            const auto profile = item.first == "SkinWeights" ? std::string("Default") : item.first.substr(12);
+            std::string key = profile;
+            for (auto &c : key)
+                if (c >= 'A' && c <= 'Z')
+                    c += 'a' - 'A';
+            if (key.empty() || (item.first != "SkinWeights" && (key == "none" || key == "default")) ||
+                !profile_keys.insert(key).second)
+                throw Error("mesh-skin-profile", "Empty or duplicate source weight profile");
+            const auto *weights = attribute(vertices, item.first.c_str(), 4, 0);
+            if (weights->channels.size() != 1 || weights->channels[0].ranges.size() != weights->elements)
+                throw Error("mesh-skin-layout", "Skin weights require one unbounded channel");
+            auto &result = skin->profiles[profile];
+            for (const auto &source_vertex : mesh.vertices) {
+                options.control.check();
+                const auto &range = weights->channels[0].ranges.at(source_vertex.id);
+                r.pos = range.offset;
+                auto &influences = result[source_vertex.id];
+                for (std::uint32_t i = 0; i < range.count; ++i) {
+                    const auto packed = r.get<std::uint32_t>();
+                    influences.push_back({packed >> 16, static_cast<std::uint16_t>(packed & 65535)});
+                }
+            }
+        }
+        skin->validate(options.control);
+        mesh.skin = std::move(skin);
+    }
     return mesh;
 }
 } // namespace cyuediff::detail
@@ -489,9 +599,12 @@ Json MeshGeometry::to_json() const {
             {"instances", item.instances}, {"polygon", item.polygon}, {"group", item.group}};
     for (const auto &item : material_slots)
         groups[std::to_string(item.first)] = item.second;
-    return {
+    Json result = {
         {"schema", "cyuediff.geometry/1"}, {"vertices", v},    {"instances", vi},         {"triangles", t},
         {"materialSlots", groups},         {"bounds", bounds}, {"attributes", attributes}};
+    if (skin)
+        result["skin"] = skin->to_json();
+    return result;
 }
 Json MeshComparison::to_json() const {
     return {{"schema", "cyuediff.mesh-diff/1"},
@@ -505,18 +618,23 @@ const MeshSource &Package::mesh_source(const std::string &object, std::uint32_t 
                 return s;
     const ObjectExport *selected = nullptr;
     for (const auto &e : exports)
-        if (e.class_name == "/Script/Engine.StaticMesh" &&
+        if ((e.class_name == "/Script/Engine.StaticMesh" || e.class_name == "/Script/Engine.SkeletalMesh") &&
             (object.empty() || e.path == object || e.name == object)) {
             if (selected)
-                throw Error("mesh-selection", "Several static meshes match; select one with --object");
+                throw Error("mesh-selection", "Several meshes match; select one with --object");
             selected = &e;
         }
-    if (!selected)
-        throw Error("mesh-selection", "No matching StaticMesh in package");
+    if (!selected) {
+        if (object.empty() && lod == 0 && mesh_sources.size() == 1)
+            return mesh_sources.front();
+        throw Error("mesh-selection", "No matching source mesh in package");
+    }
     auto models = detail::value(selected->properties, "SourceModels");
     if (!models || !models->is_array() || lod >= models->size())
         throw Error("mesh-lod", "Requested source LOD does not exist");
-    auto ref = detail::value(models->at(lod), "StaticMeshDescriptionBulkData");
+    auto ref = detail::value(models->at(lod), selected->class_name == "/Script/Engine.SkeletalMesh"
+                                                  ? "MeshDescriptionBulkData"
+                                                  : "StaticMeshDescriptionBulkData");
     if (!ref || !ref->is_string())
         throw Error("mesh-source", "Source LOD has no MeshDescription bulk object");
     for (const auto &s : mesh_sources)
@@ -529,7 +647,7 @@ Json Package::mesh_snapshot() const {
     for (const auto &s : mesh_sources)
         sources[s.object_path] = s.to_json();
     for (const auto &e : exports)
-        if (e.class_name == "/Script/Engine.StaticMesh") {
+        if (e.class_name == "/Script/Engine.StaticMesh" || e.class_name == "/Script/Engine.SkeletalMesh") {
             Json settings = e.properties;
             for (const auto *key : {"SourceModels", "StaticMaterials", "HiResSourceModel", "AssetImportData"})
                 settings.erase(key);
@@ -540,6 +658,8 @@ Json Package::mesh_snapshot() const {
                 entry["lods"] = *models;
             if (auto hi = detail::value(e.properties, "HiResSourceModel"))
                 entry["hiRes"] = *hi;
+            if (e.class_name == "/Script/Engine.SkeletalMesh")
+                entry["kind"] = "skeletal";
             assets[e.path] = std::move(entry);
         }
     return {{"schema", "cyuediff.meshes/1"}, {"meshes", assets}, {"sources", sources}};
