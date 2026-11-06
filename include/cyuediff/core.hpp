@@ -111,6 +111,9 @@ struct BulkDecodeOptions {
     std::uint64_t max_payload_bytes = 256ull * 1024 * 1024;
     BlockDecoder decoder;
     OperationControl control;
+    fs::path virtualized_payload_root;
+    // Virtualized reads always verify the full raw BLAKE3. Local reads may opt in.
+    bool verify_raw_hash = false;
 };
 // Loading is explicit; the Core never discovers or executes an engine automatically.
 BlockDecoder load_block_decoder(const fs::path &module);

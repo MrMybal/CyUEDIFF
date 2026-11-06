@@ -1,3 +1,5 @@
+#include <cyuediff/content_hash.hpp>
+#include <cyuediff/virtualized.hpp>
 #include "texture.hpp"
 #include <iomanip>
 #include <sstream>
@@ -369,7 +371,24 @@ Json Package::texture_snapshot() const {
 } // namespace cyuediff
 
 namespace cyuediff {
-std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDecodeOptions &options) {
+std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &source, const BulkDecodeOptions &options) {
+    auto p = source;
+    const bool virtualized = p.storage == "virtualized";
+    options.control.check();
+    if (virtualized) {
+        if (p.raw_bytes > options.max_payload_bytes || p.raw_bytes > SIZE_MAX)
+            throw Error("limit", "Virtualized bulk source exceeds configured payload limit");
+        p.file = virtualized_payload_file(options.virtualized_payload_root, p.content_id, options.control);
+        ReadOptions read;
+        read.control = options.control;
+        detail::Archive input(p.file, read);
+        if (input.size() < 64 || input.size() > options.max_payload_bytes || input.size() > SIZE_MAX)
+            throw Error("limit", "Virtualized compressed buffer exceeds configured payload limit");
+        p.offset = 0;
+        p.stored_bytes = input.size();
+        p.storage = "local";
+        p.sha256.clear();
+    }
     if (p.storage != "local")
         throw Error("texture-payload", "Bulk source is not locally readable: " + p.storage);
     if (p.stored_bytes < 64 || p.stored_bytes > options.max_payload_bytes ||
@@ -388,8 +407,28 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
     a.read(encoded.data(), encoded.size());
     if (!p.sha256.empty() && sha256_bytes(encoded, options.control) != p.sha256)
         throw Error("source-changed", "Bulk source changed while reading");
+    const bool verify_hash = virtualized || options.verify_raw_hash;
+    constexpr char hex[] = "0123456789abcdef";
+    std::string expected;
+    if (verify_hash) {
+        for (std::size_t i = 32; i < 64; ++i) {
+            expected += hex[encoded[i] >> 4];
+            expected += hex[encoded[i] & 15];
+        }
+        if (expected.find_first_not_of('0') == std::string::npos)
+            throw Error("bulk-hash", "Compressed buffer has no raw BLAKE3 identity");
+    }
+    auto verify = [&](const std::vector<std::uint8_t> &raw) {
+        if (verify_hash) {
+            const auto actual = blake3_bytes(raw, options.control);
+            if (actual != expected || (!p.content_id.empty() && actual.substr(0, 40) != p.content_id))
+                throw Error("bulk-hash", "Bulk payload raw BLAKE3 mismatch");
+        }
+        options.control.check();
+    };
     if (checked.method == 0) {
         encoded.erase(encoded.begin(), encoded.begin() + 64);
+        verify(encoded);
         return encoded;
     }
     auto big = [&](std::size_t at, unsigned count) {
@@ -413,9 +452,6 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
     }
     if (position != encoded.size() || remaining)
         throw Error("bulk-layout", "Compressed blocks do not cover payload");
-    if (!options.decoder)
-        throw Error("texture-codec",
-                    "Bulk source requires a decoder for method " + std::to_string(checked.method));
     std::vector<std::uint8_t> output(static_cast<std::size_t>(p.raw_bytes));
     position = 64 + static_cast<std::size_t>(blocks) * 4;
     std::size_t destination = 0;
@@ -425,6 +461,9 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
         auto raw = std::min<std::size_t>(output.size() - destination, std::size_t(1) << exponent);
         if (size == raw)
             std::copy_n(encoded.data() + position, raw, output.data() + destination);
+        else if (!options.decoder)
+            throw Error("texture-codec",
+                        "Bulk source requires a decoder for method " + std::to_string(checked.method));
         else if (options.decoder(checked.method, encoded.data() + position, size, output.data() + destination,
                                  raw) != raw)
             throw Error("bulk-codec", "Block decoder did not produce the expected byte count");
@@ -433,6 +472,7 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &p, const BulkDe
         options.control.check();
     }
     options.control.checkpoint("Decoding bulk data", p.raw_bytes, p.raw_bytes);
+    verify(output);
     return output;
 }
 } // namespace cyuediff

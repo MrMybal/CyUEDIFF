@@ -36,6 +36,8 @@ struct LoadRequest {
     std::optional<AnimationPoseRequest> animation_pose;
     fs::path layouts, after_layouts;
     bool inherit_after_layouts = true;
+    fs::path payload_root, after_payload_root;
+    bool inherit_after_payload_root = true;
 };
 struct Preview {
     std::string object_path;

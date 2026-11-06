@@ -248,7 +248,7 @@ int main() {
         auto virtualized = decode_native(p);
         check(virtualized.payload.storage == "virtualized",
               "Virtualized source identified without invented bytes");
-        error([&] { decode_texture(virtualized); }, "texture-payload");
+        error([&] { decode_texture(virtualized); }, "virtualized-root");
         container(buffer(raw), 1).save(path);
         check(decode_native(p).payload.storage == "referenced", "Referenced source stays explicit");
         Bytes empty;
@@ -259,7 +259,7 @@ int main() {
         container(buffer(raw, 4)).save(path);
         auto lz4 = decode_native(p);
         check(lz4.payload.method == 4, "Compressed buffer method reported");
-        error([&] { decode_texture(lz4); }, "texture-codec");
+        check(decode_texture(lz4).pixels == image.pixels, "Raw-sized LZ4 buffer blocks require no codec");
         original.save(path);
         auto missing = p;
         missing.exports[0].properties["Source"]["value"]["LayerFormat"] = Json{{"opaque", {{"bytes", 12}}}};

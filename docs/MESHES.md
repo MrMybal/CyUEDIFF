@@ -50,7 +50,7 @@ La vue propose cadrage, orbite Alt + glisser, panoramique avec le bouton central
 
 Le lecteur vise le format moderne par conteneurs et attributs : versions personnalisées UE5 Main 51–119, Editor 40 et Release 44. Le descripteur bulk tient compte du drapeau de hash Enterprise ajouté en version 8 ; les versions Enterprise supérieures à 10 sont refusées. Les types d'attributs 0–6 sont pris en charge, y compris les tableaux à étendue variable ; `FTransform` et types futurs demandent une extension. La validation réelle concerne UE 5.3.2, avec des fixtures pour les variantes et les bornes.
 
-Les formats `FRawMesh`/MeshDescription anciens, ressources cooked, géométrie Nanite, squelettes, skinning, animations et collisions ne sont pas décodés dans cette tranche. Un asset avec Nanite activé peut cependant fournir une MeshDescription éditeur lisible. Les payloads virtualisés, référencés ou absents restent explicites. Le hash BLAKE3 Unreal n'est pas recalculé ; les contrôles de header/CRC, tailles, références et SHA-256 ne constituent pas une validation de l'asset dans Unreal.
+Les formats `FRawMesh`/MeshDescription anciens, ressources cooked, géométrie Nanite, squelettes, skinning, animations et collisions ne sont pas décodés dans cette tranche. Un asset avec Nanite activé peut cependant fournir une MeshDescription éditeur lisible. Virtualized payloads can use an explicitly selected local filesystem store with mandatory full raw BLAKE3 verification; referenced or missing payloads remain explicit. Local embedded reads can opt into BLAKE3 verification. These checks do not validate an asset inside Unreal. See [VIRTUALIZED.md](VIRTUALIZED.md).
 
 ## Validation du 4 novembre 2026
 
@@ -73,3 +73,7 @@ Sur le mur, le script vérifie l'identité d'une comparaison avec elle-même, le
 Les rapports sont dans `build-native/mesh-validation/report.json` et `corpus.json`. `wall-wireframe.png` est une projection de validation générée depuis le JSON du core, et non une capture de CyUI. Le SDK installé a aussi décodé et exporté le mur depuis l'exemple client, sans dépendance CyUI. Aucun asset du corpus n'est redistribué.
 
 Référence : [API FMeshDescriptionBulkData d'Epic](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/MeshDescription/FMeshDescriptionBulkData).
+
+## Explicit local virtualized payloads
+
+Version 0.179 adds a local filesystem store for virtualized editor source payloads, including mandatory full raw BLAKE3 verification and independent before/after roots in CLI/Desktop. See [the backend contract and limits](VIRTUALIZED.md). Local embedded reads can opt into BLAKE3 verification; virtualized reads always require it.

@@ -3,3 +3,14 @@ title = "CyUEDiff secret scanning"
 # Keep all bundled Gitleaks rules. No project-wide exclusions or baselines.
 [extend]
 useDefault = true
+
+# Official public test-vector outputs are not credentials. Match both the exact
+# vendor fixture path and a complete 131-byte keyed/derived hash match; other fields,
+# files and rule types remain scanned. Upstream bytes are pinned in UPSTREAM.json.
+[[allowlists]]
+description = "Public upstream BLAKE3 keyed/derived hash test outputs"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "match"
+paths = ['''(^|[/\\])third_party[/\\]blake3[/\\]test_vectors\.json$''']
+regexes = ['''^(keyed_hash|derive_key)": "[0-9a-f]{262}"$''']

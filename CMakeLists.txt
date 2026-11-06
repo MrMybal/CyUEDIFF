@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.178.0 LANGUAGES CXX)
+project(CyUEDiff VERSION 0.179.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -19,11 +19,22 @@ if(CYUEDIFF_BUILD_DESKTOP)
 endif()
 option(CYUEDIFF_BUILD_UI "Build the separate CyUI view library" OFF)
 set(CYUEDIFF_CYUI_SOURCE_DIR "" CACHE PATH "CyUI source checkout")
+# Portable upstream BLAKE3 objects are embedded in Core with private symbols.
+add_library(cyuediff_blake3 OBJECT third_party/blake3/blake3.c
+    third_party/blake3/blake3_dispatch.c third_party/blake3/blake3_portable.c)
+set_target_properties(cyuediff_blake3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_definitions(cyuediff_blake3 PRIVATE BLAKE3_NO_SSE2 BLAKE3_NO_SSE41
+    BLAKE3_NO_AVX2 BLAKE3_NO_AVX512 BLAKE3_USE_NEON=0)
+if(MSVC)
+    target_compile_options(cyuediff_blake3 PRIVATE /FI${CMAKE_CURRENT_SOURCE_DIR}/src/blake3_prefix.h)
+else()
+    target_compile_options(cyuediff_blake3 PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3_prefix.h)
+endif()
 add_library(cyuediff_core STATIC
     src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
-target_sources(cyuediff_core PRIVATE src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
+target_sources(cyuediff_core PRIVATE $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
 target_compile_features(cyuediff_core PUBLIC cxx_std_17)
 target_include_directories(cyuediff_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -109,6 +120,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_content_hash_tests tests/content_hash_tests.cpp)
+    target_link_libraries(cyuediff_content_hash_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME content_hashes COMMAND cyuediff_content_hash_tests "${CMAKE_CURRENT_SOURCE_DIR}/third_party/blake3/test_vectors.json")
     add_executable(cyuediff_string_encoding_tests tests/string_encoding_tests.cpp)
     target_link_libraries(cyuediff_string_encoding_tests PRIVATE CyUEDiff::Core)
     add_test(NAME string_encodings COMMAND cyuediff_string_encoding_tests)
@@ -704,6 +718,8 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CyUEDiffConfig.cmake" DESTINATION ${C
 
 install(FILES third_party/nlohmann/LICENSE.MIT DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/licenses/nlohmann)
 
+install(FILES third_party/blake3/LICENSE_CC0 third_party/blake3/LICENSE_A2 third_party/blake3/UPSTREAM.json DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/licenses/blake3)
+
 install(FILES third_party/stb/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/licenses/stb)
 
 # Optional locally built codec; never part of the installed Core SDK.
@@ -747,6 +763,7 @@ if(CYUEDIFF_BUILD_DESKTOP)
 endif()
 install(FILES README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff)
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff)
+install(DIRECTORY examples/virtualized_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/binary_layout_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 if(CYUEDIFF_TOP_LEVEL)
     set(CPACK_PACKAGE_NAME "CyUEDiff")

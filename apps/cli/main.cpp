@@ -53,6 +53,8 @@ int run(const std::vector<std::string> &args) {
                "[--heatmap MASK.png] [--out REPORT.json]\n"
                "  cyuediff hdr-diff BEFORE AFTER [--threshold SAMPLE_DELTA] [--heatmap MASK.png] [--codec "
                "MODULE.dll]\n"
+               "  Source decode commands accept --payload-root DIRECTORY for a local virtualized store.\n"
+               "  image-diff/hdr-diff/mesh-diff accept independent --after-payload-root DIRECTORY.\n"
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff curves ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff curves-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
@@ -139,7 +141,7 @@ int run(const std::vector<std::string> &args) {
     Json flags = Json::object();
     const std::set<std::string> valued = {"--before-frame","--after-frame","--rotation-tolerance","--scale-tolerance","--curve-family","--curve-id","--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
                                           "--max-exports",
-                                          "--layouts", "--after-layouts",
+                                          "--layouts", "--after-layouts", "--payload-root", "--after-payload-root",
                                           "--schema",
                                           "--after-schema",
                                           "--cooked-profile",
@@ -210,6 +212,10 @@ int run(const std::vector<std::string> &args) {
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if ((key == "--payload-root" || key == "--after-payload-root") && !image_command && !geometry_command)
+            throw Error("arguments", key + " requires an image or geometry decode command");
+        if (key == "--after-payload-root" && command != "image-diff" && command != "hdr-diff" && command != "mesh-diff")
+            throw Error("arguments", "--after-payload-root requires a source comparison command");
         if (command == "layouts" && key != "--out")
             throw Error("arguments", "Layout catalogue inspection only accepts --out");
         if (key == "--layouts" && command != "inspect" && command != "diff" && command != "git-inspect" && command != "git-diff")
@@ -401,6 +407,16 @@ int run(const std::vector<std::string> &args) {
     texture_options.decoder = decoder;
     MeshDecodeOptions mesh_options;
     mesh_options.decoder = decoder;
+    texture_options.virtualized_payload_root = path_option("--payload-root");
+    mesh_options.virtualized_payload_root = texture_options.virtualized_payload_root;
+    auto after_texture_options = texture_options;
+    auto after_mesh_options = mesh_options;
+    if (flags.contains("--after-payload-root")) {
+        after_texture_options.virtualized_payload_root = path_option("--after-payload-root");
+        after_mesh_options.virtualized_payload_root = after_texture_options.virtualized_payload_root;
+    }
+    for (const auto &root : {texture_options.virtualized_payload_root, after_texture_options.virtualized_payload_root})
+        if (!root.empty()) protected_directories.push_back(root);
     Json output;
     std::vector<std::uint8_t> raw_bytes;
     fs::path raw_destination;
@@ -825,7 +841,7 @@ int run(const std::vector<std::string> &args) {
             auto after = read(positional[1], "--after-project", options);
             if (!after.complete_input)
                 throw Error("incomplete", "Required input payload is missing");
-            auto b = decode_texture_hdr(select_texture(after), mip, texture_options);
+            auto b = decode_texture_hdr(select_texture(after), mip, after_texture_options);
             png_destination = path_option("--heatmap");
             auto comparison =
                 compare_hdr_images(a, b, real_option("--threshold", 0, 0, std::numeric_limits<double>::max()),
@@ -865,7 +881,7 @@ int run(const std::vector<std::string> &args) {
                 throw Error("hdr-comparison",
                             "Use hdr-diff to compare HDR source samples before display conversion");
             auto image = decode_texture(source, mip, texture_options),
-                 other = decode_texture(other_source, mip, texture_options);
+                 other = decode_texture(other_source, mip, after_texture_options);
             png_destination = path_option("--heatmap");
             auto comparison =
                 compare_images(image, other, static_cast<std::uint8_t>(integer_option("--threshold", 255)),
@@ -899,7 +915,7 @@ int run(const std::vector<std::string> &args) {
             auto after = read(positional[1], "--after-project", options);
             if (!after.complete_input)
                 throw Error("incomplete", "Required input payload is missing");
-            auto other = decode_mesh(after.mesh_source(object, lod), mesh_options);
+            auto other = decode_mesh(after.mesh_source(object, lod), after_mesh_options);
             auto comparison = compare_meshes(geometry, other);
             output = comparison.to_json();
             output["lod"] = lod;

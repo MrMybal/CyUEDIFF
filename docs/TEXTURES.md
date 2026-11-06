@@ -27,7 +27,7 @@ Le JSON `cyuediff.textures/1` contient dimensions, format source, compression so
 | Structure d'image | Un bloc 2D, une couche et une slice |
 | UI | Vue `CyUI::Images` avec zoom/panoramique, cadrage et sélection avant/après ; ressource GPU fournie par l'hôte |
 
-Depuis la tranche 0.4, la méthode de buffer 3 (Oodle) peut être décodée via un adaptateur local explicitement fourni avec `--codec` ou `TextureDecodeOptions::decoder`. La méthode 4 (LZ4) est identifiée et empreintée mais aucun adaptateur LZ4 n’est fourni. Voir [CODECS.md](CODECS.md). Les plateformes cooked, anciens bulk data, ressources virtualisées/référencées, UDIM, textures volume/cube/array nécessitent d'autres décodeurs. Les sources HDR/flottantes 2D brutes sont prises en charge depuis 0.14 : voir [HDR.md](HDR.md). Choisir une installation moteur ne charge aucune DLL de codec automatiquement.
+Depuis la tranche 0.4, la méthode de buffer 3 (Oodle) peut être décodée via un adaptateur local explicitement fourni avec `--codec` ou `TextureDecodeOptions::decoder`. La méthode 4 (LZ4) est identifiée et empreintée mais aucun adaptateur LZ4 n’est fourni. Voir [CODECS.md](CODECS.md). Cooked platforms, legacy bulk data, referenced resources, UDIM and volume/cube/array textures require other decoders. Virtualized editor resources can use an explicitly selected local filesystem store; see [VIRTUALIZED.md](VIRTUALIZED.md). Les sources HDR/flottantes 2D brutes sont prises en charge depuis 0.14 : voir [HDR.md](HDR.md). Choisir une installation moteur ne charge aucune DLL de codec automatiquement.
 
 Pour les sources LDR, les aperçus sont des **échantillons RGBA8 encodés**. Aucune transformation sRGB/linéaire, profil ICC ou reconstruction de normal map n'est appliquée. Les sources 16 bits sont réduites à 8 bits pour l'aperçu : ce chemin ne permet pas d'établir une égalité en pleine précision. Les mips sont ceux présents dans la source, sans génération de mips de rendu. Le décodage JPEG peut différer légèrement d'un autre décodeur.
 
@@ -53,7 +53,7 @@ auto result = cyuediff::compare_images(rgba, rgba, 0, true);
 
 `Package::open` ne décode pas les pixels. Il garde un descripteur vers le fichier source, qui doit rester disponible jusqu'à `decode_texture`. Par défaut, SHA-256 vérifie que le payload n'a pas changé entre ces appels. `ReadOptions::native_textures` désactive la lecture native et `fingerprints` désactive les empreintes. Les limites par défaut sont 256 Mio pour le payload, 64 millions de pixels et 512 Mio d'allocations internes au décodeur PNG/JPEG. Les buffers du payload, du résultat RGBA et du masque ont leur propre coût mémoire en plus de ce budget interne. L'hôte peut réduire les limites et exécuter les décodages sur ses workers.
 
-Le CRC vérifie l'en-tête du buffer, pas le corps du payload. L'identité Unreal est comparée entre objet, index et en-tête ; son hash BLAKE3 n'est pas recalculé. Le SHA-256 décrit les octets observés et permet de les comparer, sans certifier leur validité pour Unreal. Les lectures sont bornées par les exports/index et les formats inconnus restent explicites.
+The CRC checks the buffer header. The content ID is checked against object/index/header metadata; virtualized reads additionally require a full raw BLAKE3 match after decompression. Local embedded reads can opt in with `verify_raw_hash`. Le SHA-256 décrit les octets observés et permet de les comparer, sans certifier leur validité pour Unreal. Les lectures sont bornées par les exports/index et les formats inconnus restent explicites.
 
 ## Validation
 
@@ -68,3 +68,7 @@ Ce script lit l'original puis réalise les mutations sur des copies dans le doss
 Deux aperçus réels ont été comparés à Pillow : JPEG `T_caustic` 512 × 512 (écart maximal 2/255) et PNG `T_Voronoi` 4096 × 4096 (égalité exacte). `T_Noise` 2048 × 2048 fournit le cas Oodle refusé sans codec, puis décodé en 0.4 avec l’adaptateur local. Aucun asset de ce corpus n'est redistribué. Rapports locaux : `build-native/texture-validation/report.json` et `corpus.json`. Les commandes de dessin CyUI sont testées sans backend graphique ; il n'y a pas encore d'application desktop autonome ni de revue visuelle de la vue native.
 
 La commande `hdr-diff` compare les échantillons flottants avant la conversion d’affichage. Les aperçus HDR appliquent explicitement exposition, Reinhard et transfert sRGB ; voir [HDR.md](HDR.md).
+
+## Explicit local virtualized payloads
+
+Version 0.179 adds a local filesystem store for virtualized editor source payloads, including mandatory full raw BLAKE3 verification and independent before/after roots in CLI/Desktop. See [the backend contract and limits](VIRTUALIZED.md). Local embedded reads can opt into BLAKE3 verification; virtualized reads always require it.

@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-session-desktop-', dir=Path.c
             '--document-action', 'view-state:' + json.dumps(state), '--document-action', 'duplicate')
     assert d['session']['saved'] and d['preferences']['saved'] and not d['session']['restored']
     saved = json.loads(session.read_text(encoding='utf-8'))
-    assert saved['schema'] == 'cyuediff.workspace/5' and len(saved['documents']) == 2 and saved['active'] == 1
+    assert saved['schema'] == 'cyuediff.workspace/6' and len(saved['documents']) == 2 and saved['active'] == 1
     assert json.loads(prefs.read_text(encoding='utf-8'))['restoreSession']
     retained = d['workspace']['documents'][1]['viewState']['asset']['animationSockets']
     before = session.read_bytes()

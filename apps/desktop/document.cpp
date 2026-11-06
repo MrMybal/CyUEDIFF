@@ -125,6 +125,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
         document->protected_files = document->container->protected_files;
         return document;
     }
+    for (const auto &root : {request.payload_root, request.after_payload_root})
+        if (!root.empty()) document->protected_directories.push_back(root);
     auto load_layouts = [&](const fs::path &path) -> std::shared_ptr<const BinaryLayouts> {
         if (path.empty()) return {};
         BinaryLayoutOptions options;
@@ -263,6 +265,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
         if (!package->textures.empty()) {
             try {
                 TextureDecodeOptions options;
+                options.virtualized_payload_root = after && !request.inherit_after_payload_root
+                    ? request.after_payload_root : request.payload_root;
                 options.decoder = decoder;
                 options.control = request.control;
                 options.max_pixels = 16ull * 1024 * 1024;
@@ -286,6 +290,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
         if (!package->mesh_sources.empty()) {
             try {
                 MeshDecodeOptions options;
+                options.virtualized_payload_root = after && !request.inherit_after_payload_root
+                    ? request.after_payload_root : request.payload_root;
                 options.decoder = decoder;
                 options.control = request.control;
                 options.max_payload_bytes = 128ull * 1024 * 1024;

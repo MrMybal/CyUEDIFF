@@ -278,6 +278,15 @@ Options parse_one(const std::vector<std::string> &args) {
             options.settings.after_layouts.clear();
             options.settings.inherit_after_layouts = false;
         }
+        else if (argument == "--payload-root")
+            options.settings.payload_root = value();
+        else if (argument == "--after-payload-root") {
+            options.settings.after_payload_root = value();
+            options.settings.inherit_after_payload_root = false;
+        } else if (argument == "--no-after-payload-root") {
+            options.settings.after_payload_root.clear();
+            options.settings.inherit_after_payload_root = false;
+        }
         else if (argument == "--codec")
             options.settings.codec = value();
         else if (argument == "--no-previews" || argument == "--previews") {
@@ -518,6 +527,11 @@ void register_translations() {
          {"Local files", "Fichiers locaux"},
          {"After project", "Projet après"},
          {"After engine", "Moteur après"},
+         {"Virtualized payloads", "Ressources virtualisées"},
+         {"Before payload store", "Dépôt avant"},
+         {"After payload store", "Dépôt après"},
+         {"Use before store after", "Réutiliser le dépôt avant"},
+         {"Choose a local payload store, then Load.", "Choisir un dépôt local de ressources, puis Charger."},
          {"Native structure layouts", "Formats des structures natives"},
          {"Before layout file", "Description avant"}, {"After layout file", "Description après"},
          {"Use before layouts after", "Réutiliser les descriptions avant"},
@@ -772,6 +786,8 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
                       options.settings.layouts, options.settings.after_layouts})
         if (!path.empty())
             inputs.push_back(fs::u8path(path));
+    for (const auto &root : {options.settings.payload_root, options.settings.after_payload_root})
+        if (!root.empty()) directories.push_back(fs::u8path(root));
     for (const auto &engine : {options.settings.engine, options.settings.after_engine})
         if (!engine.empty())
             inputs.push_back(fs::u8path(engine) / "Engine/Build/Build.version");
@@ -1836,6 +1852,25 @@ class Shell {
                             action = Action::project;
                         cyui::endSection();
                     }
+                    if (current().layout.section("virtualizedPayloads", "Virtualized payloads", false, false, false)) {
+                        auto &settings = current().settings;
+                        if (cyui::beginProperties("##payload-store-inputs", 105)) {
+                            cyui::property(cyui::tr("Before payload store").c_str());
+                            field("##payload-root", settings.payload_root);
+                            cyui::endProperties();
+                        }
+                        cyui::toggleSwitch(cyui::trLabel("Use before store after").c_str(), &settings.inherit_after_payload_root);
+                        {
+                            cyui::ScopedDisabled inherited(settings.inherit_after_payload_root);
+                            if (cyui::beginProperties("##after-payload-store", 105)) {
+                                cyui::property(cyui::tr("After payload store").c_str());
+                                field("##after-payload-root", settings.after_payload_root);
+                                cyui::endProperties();
+                            }
+                        }
+                        cyui::textDim("%s", cyui::tr("Choose a local payload store, then Load.").c_str());
+                        cyui::endSection();
+                    }
                     if (current().layout.section("binaryLayouts", "Native structure layouts", false, false, false)) {
                         auto &settings = current().settings;
                         if (cyui::beginProperties("##binary-layout-inputs", 105)) {
@@ -2317,6 +2352,13 @@ class Shell {
                         path->u8string();
                 }
             } else if (action == Action::swap) {
+                if (current().settings.source != 2 && (!current().settings.payload_root.empty() ||
+                    !current().settings.after_payload_root.empty() || !current().settings.inherit_after_payload_root)) {
+                    if (current().settings.inherit_after_payload_root)
+                        current().settings.after_payload_root = current().settings.payload_root;
+                    current().settings.inherit_after_payload_root = false;
+                    std::swap(current().settings.payload_root, current().settings.after_payload_root);
+                }
                 if (current().settings.source != 2 && (!current().settings.layouts.empty() ||
                     !current().settings.after_layouts.empty() || !current().settings.inherit_after_layouts)) {
                     if (current().settings.inherit_after_layouts)
@@ -2366,6 +2408,7 @@ int run(Options options) {
             << "CyUEDiff desktop [BEFORE.uasset [AFTER.uasset]] [--project FILE] [--engine-root DIR]\n"
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
+               "  [--payload-root DIRECTORY] [--after-payload-root DIRECTORY | --no-after-payload-root]\n"
                "  [--layouts JSON] [--after-layouts JSON | --no-after-layouts] : native wire descriptions\n"
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : loose or Git source hierarchy poses\n"

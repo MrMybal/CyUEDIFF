@@ -1,3 +1,5 @@
+#include <cyuediff/content_hash.hpp>
+#include <cyuediff/virtualized.hpp>
 #include "../src/mesh.hpp"
 #include <chrono>
 #include <fstream>
@@ -313,6 +315,44 @@ int main() {
         source.custom_versions["697dd581e64f41abaa4a51ecbeb7b628"] = 120;
         error([&] { decode(data); }, "mesh-profile");
         source = profile();
+        {
+            Bytes encoded;
+            auto big = [&](std::uint64_t v, unsigned n) {
+                for (unsigned i = n; i > 0; --i)
+                    encoded.data.push_back(std::uint8_t(v >> ((i - 1) * 8)));
+            };
+            big(0xb7756362, 4);
+            encoded.zeros(4);
+            encoded.zeros(4);
+            big(1, 4);
+            big(data.bytes.data.size(), 8);
+            big(64 + data.bytes.data.size(), 8);
+            const auto hash = blake3_bytes(data.bytes.data);
+            for (std::size_t i = 0; i < 32; ++i)
+                encoded.data.push_back(std::uint8_t(std::stoul(hash.substr(i * 2, 2), nullptr, 16)));
+            std::uint32_t crc = ~0u;
+            for (std::size_t i = 8; i < 64; ++i) {
+                crc ^= encoded.data[i];
+                for (unsigned k = 0; k < 8; ++k)
+                    crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320u : 0);
+            }
+            crc = ~crc;
+            for (unsigned i = 0; i < 4; ++i)
+                encoded.data[4 + i] = std::uint8_t(crc >> (24 - i * 8));
+            encoded.data.insert(encoded.data.end(), data.bytes.data.begin(), data.bytes.data.end());
+            const auto store = root / "payloads";
+            const auto file = store / virtualized_payload_relative_path(hash.substr(0, 40));
+            fs::create_directories(file.parent_path());
+            encoded.save(file);
+            auto virtualized = source;
+            virtualized.payload.storage = "virtualized";
+            virtualized.payload.raw_bytes = data.bytes.data.size();
+            virtualized.payload.content_id = hash.substr(0, 40);
+            MeshDecodeOptions virtual_options;
+            virtual_options.virtualized_payload_root = store;
+            check(decode_mesh(virtualized, virtual_options).to_json() == decode(data).to_json(),
+                  "Public virtualized mesh geometry equals local MeshDescription");
+        }
         auto bulk = compressed();
         checksum(bulk);
         auto path = root / "bulk.bin";

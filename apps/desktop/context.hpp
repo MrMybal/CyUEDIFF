@@ -6,6 +6,8 @@ struct Settings {
     std::string before, after, project, engine, codec, repository, lfs_objects, after_project, after_engine;
     std::string layouts, after_layouts;
     bool inherit_after_layouts = true;
+    std::string payload_root, after_payload_root;
+    bool inherit_after_payload_root = true;
     std::string pose_before_skeleton, pose_after_skeleton, pose_before_object, pose_after_object,
         pose_before_skeleton_object, pose_after_skeleton_object;
     int pose_before_frame = 0, pose_after_frame = 0;
@@ -64,6 +66,9 @@ struct Settings {
         }
         LoadRequest result{before,  after, fs::u8path(project), fs::u8path(engine), fs::u8path(codec),
                            previews};
+        result.payload_root = fs::u8path(payload_root);
+        result.after_payload_root = inherit_after_payload_root ? fs::path{} : fs::u8path(after_payload_root);
+        result.inherit_after_payload_root = inherit_after_payload_root;
         result.layouts = fs::u8path(layouts);
         result.after_layouts = inherit_after_layouts ? fs::path{} : fs::u8path(after_layouts);
         result.inherit_after_layouts = inherit_after_layouts;

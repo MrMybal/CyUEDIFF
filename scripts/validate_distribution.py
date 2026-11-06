@@ -34,7 +34,7 @@ with ZipFile(archive) as package:
  if len(parents)!=1:raise RuntimeError('Expected one package root')
  package.extractall(target)
 prefix=target/next(iter(parents))
-for name in ('LICENSE','THIRD_PARTY_NOTICES.md','licenses/nlohmann/LICENSE.MIT','licenses/stb/LICENSE'):
+for name in ('LICENSE','THIRD_PARTY_NOTICES.md','licenses/nlohmann/LICENSE.MIT','licenses/stb/LICENSE','licenses/blake3/LICENSE_CC0','licenses/blake3/LICENSE_A2','licenses/blake3/UPSTREAM.json'):
  if not (prefix/'share/CyUEDiff'/name).is_file():raise RuntimeError('Missing notice: '+name)
 for file in prefix.rglob('*.cmake'):
  if str(root).replace('\\','/') in file.read_text(encoding='utf-8').replace('\\','/'):raise RuntimeError('SDK exports a source checkout path')
@@ -52,7 +52,7 @@ if desktop.is_file():
  workspace_file=target/'workspace.json';workspace_report=target/'workspace-report.json'
  subprocess.run([str(desktop),'--smoke','--no-preferences','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  saved_workspace=json.loads(workspace_file.read_text(encoding='utf-8'))
- assert saved_workspace['schema']=='cyuediff.workspace/5' and len(saved_workspace['documents'])==1
+ assert saved_workspace['schema']=='cyuediff.workspace/6' and len(saved_workspace['documents'])==1
  saved_workspace['documents'][0]['viewState']={'asset':{'filter':'installed pending state'},'layout':{'sidebarWidth':500,'project':True}}
  workspace_file.write_text(json.dumps(saved_workspace),encoding='utf-8')
  original_workspace=workspace_file.read_bytes()
@@ -90,6 +90,14 @@ if args.consumer:
  cmake=shutil.which('cmake')
  if not cmake and os.name=='nt':cmake=str(Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
  if not cmake:raise RuntimeError('CMake is required for --consumer')
+ payload_build=target/'virtualized-consumer'
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/virtualized_consumer'),'-B',str(payload_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+ subprocess.run(configure,check=True,env=env)
+ subprocess.run([cmake,'--build',str(payload_build),'--config','Release','--parallel','2'],check=True,env=env)
+ payload_exe=payload_build/'Release'/('virtualized_consumer'+suffix) if os.name=='nt' else payload_build/'virtualized_consumer'
+ subprocess.run([str(payload_exe)],check=True,env=env,timeout=30)
+ print('Installed virtualized payload consumer verified Core BLAKE3 linkage')
  layout_source=prefix/'share/CyUEDiff/examples/binary_layout_consumer'
  layout_build=target/'layout-consumer'
  configure=[cmake,'-S',str(layout_source),'-B',str(layout_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
