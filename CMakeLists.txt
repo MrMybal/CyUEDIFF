@@ -784,8 +784,14 @@ if(CYUEDIFF_BUILD_DESKTOP)
         "${CYUEDIFF_CYUI_SOURCE_DIR}/third_party/imgui/imstb_truetype.h"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/CyUEDiff/licenses/CyUI/third_party/imgui")
 endif()
-install(FILES README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff)
+install(FILES README.md README.fr.md VERSION.md VERSION.fr.md DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff)
+install(FILES site/assets/mark.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/site/assets)
+install(FILES site/assets/screenshots/overview-en.png site/assets/screenshots/overview-fr.png
+    site/assets/screenshots/blueprint-en.png site/assets/screenshots/blueprint-fr.png
+    site/assets/screenshots/textures-en.png site/assets/screenshots/textures-fr.png
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/site/assets/screenshots)
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff)
+install(DIRECTORY examples/consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/mesh_morph_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/mesh_skin_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/virtualized_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)

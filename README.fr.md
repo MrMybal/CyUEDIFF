@@ -1,252 +1,152 @@
-# CyUEDiff
+<table width="100%">
+  <tr>
+    <td width="300" align="left" valign="top">
+      <a href="https://mrmybal.github.io/CyUEDIFF/?lang=fr">Présentation</a><br>
+      <a href="https://mrmybal.github.io/CyUEDIFF/guide.html?lang=fr#start">Manuel</a><br>
+      <a href="https://github.com/MrMybal/CyUEDIFF">GitHub</a><br><br>
+      <sub>README</sub><br>
+      <a href="README.md">English</a> · <a href="README.fr.md">Français</a>
+    </td>
+    <td width="400" align="center" valign="middle">
+      <a href="https://mrmybal.github.io/CyUEDIFF/?lang=fr"><img src="site/assets/mark.svg" alt="CyUEDiff" width="128"></a>
+    </td>
+    <td width="300" align="right" valign="top">
+      <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.181.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
+    </td>
+  </tr>
+</table>
 
-**Licence :** [MIT](LICENSE)
+<h1 align="center">CyUEDiff</h1>
 
-[English](README.md) · **Français**
+Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-Cœur C++17 pour inspecter des packages Unreal **sans lancer Unreal Editor**, produire une représentation stable et comparer deux versions. Une bibliothèque de vues CyUI reste séparée du lecteur.
+> **EN DÉVELOPPEMENT · 0.181.0**
+>
+> Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
-Cette version 0.181 lit les objets et propriétés sérialisées, reconstruit les graphes Blueprint et ajoute les sources de textures et de meshes statiques. Le core fournit des aperçus d'images, la géométrie source, des graphes de matériaux et leurs paramètres, des diffs spécialisés et un export OBJ. Les vues CyUI restent séparées. Un adaptateur Oodle local optionnel débloque les sources comprimées, sans lancer Unreal. Le module Git/LFS matérialise les révisions et leurs compagnons depuis les objets locaux, puis les compare avec le core. Les descripteurs de projet et plugins historiques, les installations moteur par côté et leurs différences de contexte sont accessibles. Un registre C++ permet désormais à l’application hôte de fournir ses décodeurs de structures et de fins natives, sélectionnés par type et versions. Une première application desktop Windows/CyUI ouvre et compare désormais ces fichiers dans une fenêtre native, avec chargement en arrière-plan. Elle compare aussi les révisions Git/LFS locales, les ajouts/suppressions et les changements de contexte projet. Un catalogue de métadonnées et un navigateur de contenus permettent de rechercher et sélectionner les packages du projet ou des révisions Git sans les décoder pendant le parcours.
+[![L’application Windows CyUEDiff compare des rich curves enregistrées, avec le contexte des assets et les valeurs typées avant/après](site/assets/screenshots/overview-fr.png)](site/assets/screenshots/overview-fr.png)
 
-Les morph targets des MeshDescription modernes exposent désormais leurs deltas de positions et de normales par coin. Le Core et la CLI produisent des différences nommées ; l’onglet Meshes ajoute une inspection typée persistante et le surlignage des arêtes concernées. Voir [les contrats](docs/MORPHS.md) et [l’exemple SDK Core](examples/mesh_morph_consumer).
+## L’application
 
-Les structures natives peuvent aussi être décrites en JSON : champs imbriqués, tableaux, valeurs optionnelles et références, avec sélection par type et versions. La CLI et le Desktop acceptent des descriptions distinctes avant/après ; les contextes cooked version trois utilisent le même lecteur. Les espaces de travail version cinq conservent ces choix. Les encodages ASCII, Latin-1, Windows-1252 et UTF-8 se sélectionnent explicitement pour les chaînes prises en charge. Voir [le contrat](docs/BINARY_LAYOUTS.md) et [l’exemple SDK Core](examples/binary_layout_consumer).
+Ouvrez un asset ou comparez deux versions, puis passez des propriétés typées aux graphes Blueprint et de matériau, textures, meshes sources, collisions, squelettes, clés d’animation et courbes. Recherchez une propriété ou un nœud, inspectez ses valeurs enregistrées et suivez les changements surlignés. Chaque côté peut utiliser son propre contexte de projet, moteur et schéma.
 
-Les jalons 0.68–0.72 ajoutent la recherche et l’inspection avant/après des nœuds Blueprint/Material, la navigation entre nœuds modifiés, le filtrage des paramètres d’instances, le cadrage de la géométrie modifiée et des pixels modifiés en LDR/HDR. Les sélections et filtres sont conservés dans les workspaces explicites. Voir [le guide de revue visuelle](docs/VISUAL_REVIEW.md).
+Examinez des packages libres `.uasset` / `.umap` avec leurs fichiers compagnons, des révisions Git locales avec un contenu LFS local vérifié ou des membres Pak/IoStore pris en charge. Gardez jusqu’à huit documents ouverts et enregistrez des espaces de travail explicites avec les sélections, filtres, navigations et proportions des panneaux pris en charge. L’anglais est la langue par défaut ; le français est intégré. Les noms d’assets et valeurs sérialisées conservent leur langue d’origine.
 
-La version 0.77 ajoute l’inspection des collisions enregistrées : sphères, boîtes, capsules, capsules effilées et données sources convexes. Les commandes collision/collision-diff et l’onglet Collisions comparent les formes nommées et conservent la sélection dans les workspaces. Les données physiques natives restent opaques ; voir [les contrats](docs/COLLISIONS.md).
+<table>
+  <tr>
+    <td width="50%"><a href="site/assets/screenshots/blueprint-fr.png"><img src="site/assets/screenshots/blueprint-fr.png" alt="La vue Blueprint CyUI inspecte un nœud d’éditeur sélectionné et le texte enregistré de ses pins" width="640"></a><br>Graphe Blueprint d’éditeur et nœud sélectionné</td>
+    <td width="50%"><a href="site/assets/screenshots/textures-fr.png"><img src="site/assets/screenshots/textures-fr.png" alt="La vue Textures CyUI compare des images sources et surligne les pixels modifiés" width="640"></a><br>Comparaison de textures sources et pixels modifiés</td>
+  </tr>
+</table>
 
-Le mode **Conteneurs** permet de parcourir les membres Pak/IoStore, de les filtrer et d’inspecter leurs octets décodés. Un profil UE explicite et un TOC global optionnel donnent accès aux objets et références Zen ; les corps natifs restent opaques. Cette interface fonctionne aussi sans Git. Voir [le guide desktop](docs/DESKTOP.md#pakiostore-browser--026).
+Ces captures réelles de l’application et des composants CyUI intégrables utilisent des données de démonstration originales générées. Cliquez sur une image pour l’ouvrir à sa taille complète. La [vitrine](https://mrmybal.github.io/CyUEDIFF/?lang=fr) présente d’autres vues.
 
-Le navigateur d’historique Git permet maintenant de choisir les commits avant/après, puis de comparer l’asset courant ou d’ouvrir leur catalogue. L’API et la commande `git-history` fournissent aussi cet historique paginé, sans checkout ni téléchargement.
+## Fonctionnalités
 
-Les jalons 0.20–0.22 ajoutent les références soft, interface et GUID lazy aux propriétés cooked prises en charge, un inspecteur avec recherche et aperçu de la sélection, puis la sauvegarde du thème, de la langue et des options d’aperçu/contenu moteur. L’anglais reste la langue par défaut ; le français est intégré et le choix est conservé. Les chemins et documents précédents ne sont pas enregistrés. `--no-preferences` désactive cette sauvegarde ; voir [le guide desktop](docs/DESKTOP.md).
+- **Différences d’assets lisibles** : propriétés typées consultables par recherche, références d’objets stables, textes structurés des pins Blueprint, graphes de matériau et paramètres d’instance enregistrés, avec une couverture partielle ou opaque explicitée.
+- **Inspection des images et géométries sources** : sources et mips Texture2D LDR/HDR pris en charge, différences de pixels/échantillons, filaires MeshDescription modernes, différences de géométrie et export OBJ de la géométrie de base. Les os sources modernes, profils de poids bruts et deltas de morph nommés sont validés sur des jeux de test synthétiques.
+- **Données de mouvement enregistrées** : poses de référence/retarget des squelettes, sockets, clés d’animation locales prises en charge, origines de joints/sockets sources liées à un Skeleton explicite et rich curves avec évaluation pondérée prise en charge. Ces vues inspectent les données sources enregistrées.
+- **Contexte de projet et de révision** : racines de projet et moteur distinctes avant/après, historique Git et contenu LFS locaux, membres Pak 10/11 et IoStore TOC 3–5 pris en charge, tables Zen cooked et propriétés USMAP associées explicitement.
+- **Lecteurs extensibles** : callbacks natifs bornés et descriptions binaires déclaratives avec profils de version explicites ; les magasins locaux de payloads d’éditeur virtualisés exigent une vérification BLAKE3 complète des octets bruts. Le chargement propose une annulation coopérative, une progression et un cache de packages vérifié.
+- **Deltas de blocs réutilisables** : génération, composition et reconstruction de différences de fichiers/blocs avec vérification SHA-256. Cette API de reconstruction binaire est distincte ; l’hébergement distant des objets et leur synchronisation ne sont pas implémentés.
 
-La version 0.17 ajoute le chargement explicite de schémas USMAP et le décodage ciblé de propriétés cooked non versionnées. Les associations classe/schéma/décalage doivent correspondre au build ; les types non pris en charge et les données natives restent opaques. Voir les [contrats et limites des schémas](docs/SCHEMAS.md).
+### Utiliser le moteur dans une autre application
 
-Les collisions disposent d’un aperçu 3D avant/après, d’une sélection par clic, d’un filtre des formes modifiées et d’une caméra conservée dans les fichiers de travail. La commande collision-preview exporte les lignes en JSON pour d’autres applications ; les données absentes restent signalées.
-
-Les objets Skeleton et SkeletalMesh disposent d’une lecture des os et poses locales enregistrés, de différences par nom et d’un inspecteur de hiérarchie dans CyUI. Les commandes skeleton, skeleton-diff et skeleton-pose exposent ces données sans Unreal. La commande skeleton-pose-diff compare aussi les déplacements calculés des articulations, avec une tolérance de position. Les bounds et emplacements de matériaux natifs des SkeletalMesh sont conservés. CyUI propose aussi un aperçu 3D avant/après des poses de référence, avec sélection des articulations et caméra conservée dans le workspace. La géométrie source squelettique, le skinning et les animations restent à développer.
-
-Les poses de retargeting enregistrées dans les Skeleton sont aussi lisibles et comparables par nom. Le CLI, le SDK et CyUI permettent de choisir une source différente avant/après ; les choix sont conservés dans le workspace. Une source absente ou sans correspondance vérifiée reste indisponible. Cela ne lance ni le retargeting Unreal ni les animations.
-
-## Modules
-
-| Cible | Rôle |
+| Composant | Rôle |
 | --- | --- |
-| `CyUEDiff::Core` | Lecture binaire, contexte projet/moteur, snapshots et diff ; aucune dépendance Unreal, ImGui ou CyUI |
-| `CyUEDiff::Git` | Adaptateur optionnel : révisions Git et objets LFS locaux vérifiés, fichiers compagnons, durée de vie des copies temporaires |
-| `cyuediff` | CLI JSON : `inspect`, `diff`, `textconv`, `git-inspect`, `git-diff`, `git-project`, `graph`, `material`, `material-diff`, `texture`, `preview`, `image-diff`, `mesh`, `geometry`, `mesh-diff`, `export-mesh`, `project`, `resolve` |
-| `cyuediff_desktop` | Application Windows optionnelle : ouverture locale, contexte projet/moteur, inspection, comparaison, graphes, images et filaire |
-| `CyUEDiff::UI` | Vues embarquables dans une application ImGui/CyUI : objets, propriétés, graphes Blueprint et matériaux, paramètres d’instances, images, filaire 3D et comparaison côte à côte |
+| `CyUEDiff::Core` | Lecteurs de packages/conteneurs, snapshots, différences spécialisées et reconstruction binaire ; indépendant d’Unreal Editor, de Git et de CyUI. |
+| `CyUEDiff::Git` | Accès optionnel aux révisions locales et au contenu LFS vérifié. Nécessite Git 2.45+. |
+| `CyUEDiff::UI` | Vues CyUI intégrables séparées pour les propriétés, graphes, images et géométries, compilées depuis les sources avec l’hôte. |
+| `cyuediff` / `cyuediff_desktop` | CLI JSON et hôte Windows optionnel. |
 
-Le cœur utilise la bibliothèque MIT nlohmann/json 3.12.0, incluse dans `third_party`. Le décodage PNG/JPEG et l’écriture PNG utilisent stb, également inclus. La compilation du cœur ne télécharge rien. L'interface utilise un checkout de [CyUI](https://github.com/MrMybal/CyUI) fourni par l'application hôte.
+Liez `CyUEDiff::Core` avec `add_subdirectory`, ou installez le SDK et utilisez `find_package(CyUEDiff CONFIG REQUIRED)`. Commencez par l’[exemple Core](examples/consumer/) et l’[exemple des morphs sources](examples/mesh_morph_consumer/). Le SDK installé fournit le Core et l’adaptateur Git sélectionné ; l’intégration UI utilise le dépôt des sources. Voir l’[architecture](docs/ARCHITECTURE.md) et l’[intégration UI](docs/UI.md).
 
-## Compiler
+---
 
-CMake 3.20+, compilateur C++17. Windows/MSVC 2022 est la plateforme vérifiée. Le cœur est conçu pour les autres plateformes, sans validation Linux/macOS à ce stade.
+## Installation
+
+**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Les builds Core/CLI passent la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
+
+Les builds Windows utilisant le runtime MSVC dynamique par défaut nécessitent le runtime Microsoft Visual C++ x64 correspondant. Les fonctions Git nécessitent une installation séparée de Git 2.45+ ; l’inspection de fichiers libres n’en dépend pas. Conservez les archives CPack extraites avec leur documentation et leurs notices de licence. Voir les [conditions de distribution et d’exécution](docs/DISTRIBUTION.md).
+
+Après compilation, lancez `build-native/Release/cyuediff_desktop.exe`, choisissez **Fichiers locaux**, sélectionnez un asset avant et éventuellement sa version après, puis chargez le document. Gardez les fichiers compagnons à côté des packages. Choisissez **Affichage → Langue → Français** ou `--locale fr` pour le français ; `--locale en` sélectionne explicitement l’anglais.
+
+## Sources, compilation et bibliothèques nécessaires
+
+<details>
+<summary>Prérequis et commandes de compilation</summary>
+
+Utilisez CMake 3.20+, un compilateur C++17 et Python 3 pour les scripts. Le build desktop Windows utilise MSVC 2022, le SDK Windows et un [dépôt CyUI séparé](https://github.com/MrMybal/CyUI). Les dépendances du Core sont incluses dans les sources ; le build ne les télécharge pas.
+
+```sh
+git clone https://github.com/MrMybal/CyUEDIFF.git
+cd CyUEDIFF
+```
+
+Pour le Core/CLI sur Windows ou Linux :
+
+```sh
+cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release -DCYUEDIFF_BUILD_GIT=OFF
+cmake --build build-core --config Release --parallel
+ctest --test-dir build-core -C Release --output-on-failure
+cmake --install build-core --config Release --prefix build-core/sdk
+```
+
+Utilisez `CYUEDIFF_BUILD_GIT=ON` pour inclure l’intégration Git locale. Sous Linux, l’exécutable est `build-core/cyuediff` ; avec le générateur Visual Studio sous Windows, il s’agit de `build-core/Release/cyuediff.exe`.
+
+Pour l’application Windows, récupérez CyUI séparément et remplacez le chemin d’exemple :
 
 ```powershell
-python scripts/build.py
-# Core/CLI sans le module Git :
-python scripts/build.py --no-git --build-dir build-core
-# Avec l'adaptateur CyUI :
-python scripts/build.py --cyui D:/path/to/CyUI
-# Avec la fenêtre desktop Windows :
-python scripts/build.py --desktop --cyui D:/path/to/CyUI
+git clone https://github.com/MrMybal/CyUI.git D:/Libraries/CyUI
+python scripts/build.py --desktop --cyui D:/Libraries/CyUI
 build-native/Release/cyuediff_desktop.exe
 ```
 
-Le script compile en Release et exécute CTest. Le module Git est activé par défaut dans un build autonome ; ses commandes demandent Git 2.45+ à l’exécution. Le lecteur Core ne dépend ni de Git ni de Git LFS. Il retrouve le CMake de Visual Studio s'il n'est pas dans PATH. La sortie Windows est dans `build-native/Release/`.
+Le script compile et lance les tests. Pour les vues intégrables sans le desktop, omettez `--desktop`. `--no-git` désactive l’adaptateur Git optionnel. Un codec Oodle ne peut être compilé qu’avec un Data SDK fourni explicitement et sous sa propre licence ; il n’est ni fourni, ni installé avec le Core. Sélectionner une racine de moteur ne lance jamais Unreal et ne charge pas automatiquement de codec. Voir l’[intégration des codecs](docs/CODECS.md).
 
-Équivalent avec CMake :
+</details>
+
+<details>
+<summary>Exemples en ligne de commande</summary>
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=ON
-cmake --build build --config Release --parallel
-ctest --test-dir build -C Release --output-on-failure
+cyuediff inspect Content/DA_Settings.uasset
+cyuediff diff Before.uasset After.uasset --out changes.json
+cyuediff image-diff BeforeTexture.uasset AfterTexture.uasset --heatmap mask.png
+cyuediff mesh-diff BeforeMesh.uasset AfterMesh.uasset
+cyuediff git-diff MyProject HEAD~1 HEAD Content/DA_Settings.uasset
 ```
 
-Pour construire l'adaptateur Oodle optionnel depuis un SDK local, ajouter `--oodle-sdk <chemin du SDK>` au script de build. Le module n'est pas installé avec le SDK core et son chargement reste explicite avec `--codec`. Voir [CODECS.md](docs/CODECS.md).
+Le diff de package ne décode pas automatiquement les gros payloads d’image/géométrie ; utilisez les commandes spécialisées explicites. Le choix du projet/moteur fournit un contexte et des chemins. Les propriétés non versionnées et formats natifs exigent des schémas/profils explicites compatibles. Le lecteur ne modifie pas les assets Unreal. Pour `diff` de package, les codes de sortie sont `0` si identique, `1` si modifié et `2` en cas d’erreur, d’entrée incomplète ou de comparaison non vérifiable.
 
-Pour l'interface, ajouter `-DCYUEDIFF_BUILD_UI=ON -DCYUEDIFF_CYUI_SOURCE_DIR=/chemin/vers/CyUI`. Aucun code du moteur Unreal n'est compilé ni redistribué.
+</details>
 
-## Utiliser le lecteur
+---
 
-```powershell
-build-native/Release/cyuediff.exe inspect Content/BP_Player.uasset
-build-native/Release/cyuediff.exe inspect Content/BP_Player.uasset --metadata
-build-native/Release/cyuediff.exe git-diff D:/MonJeu HEAD~1 HEAD Content/M_Water.uasset
-build-native/Release/cyuediff.exe git-diff D:/MonJeu HEAD~1 HEAD /Game/M_Water --project Game.uproject --no-engine
-build-native/Release/cyuediff.exe material Content/M_Water.uasset
-build-native/Release/cyuediff.exe material-diff before/MI_Water.uasset after/MI_Water.uasset
-build-native/Release/cyuediff.exe preview Content/T_Water.uasset --out water.png
-build-native/Release/cyuediff.exe image-diff before/T_Water.uasset after/T_Water.uasset --heatmap mask.png
-build-native/Release/cyuediff.exe diff revisions/before/BP_Player.uasset revisions/after/BP_Player.uasset
-build-native/Release/cyuediff.exe project MyGame.uproject --engine-root D:/Unreal/UE_5.5
-build-native/Release/cyuediff.exe inspect /Game/BP_Player --project MyGame.uproject --engine-root D:/Unreal/UE_5.5
-```
+## Licence
 
-`--metadata` lit seulement les tables : aucune lecture des propriétés ni calcul d'empreinte. Sans cette option, les empreintes SHA-256 sont calculées par blocs de 64 Kio, sans charger les textures ou les meshes en mémoire. `--out resultat.json` écrit le résultat ; la CLI refuse d'écraser un fichier d'entrée ou un compagnon.
+**Le code original de CyUEDiff utilise la [licence MIT](LICENSE).** Copyright © 2026 CyUEDiff contributors. Les composants tiers conservent leurs propres conditions. Aucun code source, binaire ou asset de projet Unreal Engine n’est redistribué.
 
-Le contexte lit `EngineAssociation` du `.uproject`, accepte un moteur explicite, ou cherche `CYUEDIFF_ENGINE_ROOT`, l'association des moteurs personnalisés dans le registre Windows, puis l'installation Epic standard. Il vérifie `Engine/Build/Build.version` et prépare les chemins `/Game`, `/Engine` et les contenus de plugins disponibles. Les plugins explicitement désactivés sont exclus ; la résolution complète des règles de plugins par plateforme n'est pas encore implémentée.
+### Bibliothèques tierces
 
-Un moteur cible fournit le contexte et les contenus. Il n'est jamais exécuté. Le format réellement lu reste celui enregistré dans chaque fichier : sélectionner UE 5.5 ne force pas un asset UE 5.3 à être interprété comme un asset UE 5.5. Pour comparer deux projets, utiliser `--before-project` et `--after-project` ; une racine moteur distincte pour chaque côté reste accessible via l'API C++.
+| Bibliothèque · sources | Licence · texte | Utilisation / périmètre |
+| --- | --- | --- |
+| [nlohmann/json 3.12.0](https://github.com/nlohmann/json/tree/v3.12.0) | [MIT](https://github.com/nlohmann/json/blob/v3.12.0/LICENSE.MIT) | Représentation JSON incluse dans les sources pour le Core et les rapports. |
+| [BLAKE3 1.8.2](https://github.com/BLAKE3-team/BLAKE3/tree/1.8.2) | [CC0-1.0 sélectionnée](https://github.com/BLAKE3-team/BLAKE3/blob/1.8.2/LICENSE_CC0) parmi CC0/Apache-2.0 ; les deux notices sont conservées | Implémentation C portable incluse pour vérifier les payloads d’éditeur virtualisés locaux. |
+| [stb_image / stb_image_write](https://github.com/nothings/stb/tree/d14d46f6b44456eb88beac58cba833a4135d4c89) | [Option MIT de la double licence MIT/domaine public](https://github.com/MrMybal/CyUEDIFF/blob/main/third_party/stb/LICENSE) | Décodage d’images sources et sortie PNG inclus dans les sources. |
+| [CyUI](https://github.com/MrMybal/CyUI) | [MIT](https://github.com/MrMybal/CyUI/blob/main/LICENSE) | Vues optionnelles fournies par l’hôte et interface Windows ; absent des builds Core seuls. |
+| [Dear ImGui](https://github.com/ocornut/imgui) | [MIT](https://github.com/MrMybal/CyUI/blob/main/third_party/imgui/LICENSE.txt) | Via le dépôt CyUI sélectionné ; interface et backends Win32/Direct3D 11. |
+| [Implémentations stb intégrées à ImGui](https://github.com/MrMybal/CyUI/tree/main/third_party/imgui) | [MIT ou domaine public, au choix de l’utilisateur](https://github.com/MrMybal/CyUI/blob/main/THIRD_PARTY_NOTICES.md) | Gestion des polices, placement et édition de texte compilés avec ImGui. |
+| [Lexilla, en-têtes Scintilla et données SciTE](https://github.com/MrMybal/CyUI/blob/main/THIRD_PARTY_NOTICES.md) | [Conditions permissives de type HPND](https://github.com/MrMybal/CyUI/blob/main/third_party/lexilla/License.txt), avec les notices des en-têtes/données correspondantes | Dépendance Code de CyUI utilisée par Diff : moteurs lexicaux, interfaces et profils de syntaxe ; aucune interface d’éditeur Scintilla. |
 
-## Intégrer le cœur
+Ce tableau est un index. Conservez [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) et tous les textes de licence fournis avec le build exact, y compris les notices CyUI de l’hôte. Les bibliothèques système et polices Windows proviennent du système hôte. L’adaptateur Oodle optionnel nécessite un Data SDK que l’appelant est autorisé à utiliser ; aucun SDK Oodle ou binaire d’adaptateur n’est fourni avec le dépôt/SDK Core.
 
-```cmake
-add_subdirectory(path/to/CyUEDiff)
-target_link_libraries(my_app PRIVATE CyUEDiff::Core)
-```
+## Références et liens
 
-```cpp
-#include <cyuediff/core.hpp>
-
-auto before = cyuediff::Package::open("before/BP_Player.uasset");
-auto after  = cyuediff::Package::open("after/BP_Player.uasset");
-auto diff   = cyuediff::compare(before, after);
-std::cout << diff.to_json().dump(2);
-```
-
-Le module optionnel `CyUEDiff::Git` expose `GitRepository`, `GitRevision` et `compare_git`, sans dépendance CyUI. Il conserve chaque révision et ses compagnons dans un dossier temporaire, avec vérification des contenus LFS locaux. Les contextes `.uproject` et plugins sont lus dans leur commit, avec un moteur local sélectionnable par côté. Voir [GIT.md](docs/GIT.md), [PROJECTS.md](docs/PROJECTS.md) et `examples/git_consumer`.
-
-Les classes et structures propres à une application peuvent être décodées via `<cyuediff/decoders.hpp>`, `SerializationProfile`, `AssetDecoder` et `DecoderRegistry`. Les callbacks reçoivent une entrée bornée ; les échecs conservent les empreintes opaques. Le registre passe aussi dans les lectures Git/LFS. Voir [DECODERS.md](docs/DECODERS.md) et `examples/decoder_consumer`.
-
-L'installation CMake du cœur permet aussi `find_package(CyUEDiff CONFIG REQUIRED)`. Voir `examples/consumer`. Les options de lecture plafonnent les tables, chaînes, tailles de propriétés, nombres de propriétés et profondeurs.
-
-## Couverture actuelle
-
-- Packages classiques `.uasset` / `.umap`, tables de noms, imports, exports, versions personnalisées et références d'objets.
-- Formats de fichier UE4 518–522 et UE5 1000–1018 : branches de lecture implémentées, **pas une certification de tous les assets de toutes ces versions**. Validation réelle initiale UE 5.3.2 et 5.5.4 ; fixtures synthétiques pour les changements de format.
-- Exports intégrés ou séparés dans `.uexp`. Empreintes des compagnons présents `.uexp`, `.ubulk`, `.uptnl`, `.m.ubulk`, `.o.ubulk`, `.upayload`.
-- Propriétés primitives, noms, chaînes, références, chemins souples, GUID, vecteurs/couleurs, structures balisées et tableaux dont les éléments sont décodables.
-- Blueprint : objets, positions, propriétés, pins natifs et connexions ; modèle identifié par GUID et vue CyUI en lecture seule. Profils vérifiés UE 5.3/5.5, bytecode encore opaque. Voir [BLUEPRINTS.md](docs/BLUEPRINTS.md).
-- Texture2D : métadonnées source, index de bulk data, aperçus JPEG/PNG et formats bruts pris en charge, sélection de mip brut, diff RGBA8 avec seuil et masque. Oodle est accessible via un adaptateur local explicite ; LZ4, cooked et ressources virtualisées demandent d’autres décodeurs. Voir [TEXTURES.md](docs/TEXTURES.md).
-- StaticMesh : sources MeshDescription modernes, positions, instances de sommets, UV, normales, tangentes, couleurs, triangles et groupes de matériaux ; diff de géométrie, OBJ et vue filaire CyUI. Réglages et slots de matériaux disponibles dans les métadonnées. Voir [MESHES.md](docs/MESHES.md).
-- Matériau : graphes d’expressions par GUID, entrées natives, masques, constantes, références de fonctions, reroutages nommés et paramètres d’instances identifiés par nom/association/index. Diff spécialisé et vue CyUI ; les parents, fonctions externes et shaders ne sont pas évalués. Voir [MATERIALS.md](docs/MATERIALS.md).
-- Data assets : propriétés balisées et décodeurs C++ de projet enregistrables ; les types natifs sans schéma restent partiellement opaques. Leur catégorie ne peut pas toujours être déduite sans le schéma de la classe du projet.
-
-Les tags non décodés et les données natives sont conservés comme régions opaques avec taille et SHA-256. Les empreintes opaques peuvent changer si les indices internes ou la sérialisation changent, même lorsque le contenu fonctionnel est équivalent. Les propriétés décodées utilisent des références résolues et des identités d'objets stables pour réduire ce bruit.
-
-Les formats non versionnés, sérialisations licensee, packages compressés au niveau conteneur, pak, IoStore, ressources virtualisées et chargement des classes C++ de plugins nécessitent d'autres backends. Les fichiers sources et ressources externes ne sont pas chargés automatiquement.
-
-## Lire un diff
-
-Exemple vérifié en modifiant uniquement une copie d'un Blueprint UE 5.5 :
-
-```json
-{
-  "op": "replace",
-  "path": "/objects/TEST.EventGraph.K2Node_CallFunction_0/properties/NodePosX/value",
-  "before": 256,
-  "after": 320
-}
-```
-
-| Statut | Interprétation |
-| --- | --- |
-| `identical` | Empreintes identiques du package et des compagnons présents, aucun changement observé |
-| `changed` | Propriété, objet, dépendance ou région opaque différente ; le chemin précise laquelle |
-| `binary-only` | Octets différents sans changement dans la représentation inspectée, par exemple une réorganisation des noms |
-| `incomplete` | Export absent ou tronqué, notamment `.uexp` manquant ; aucune conclusion d'égalité |
-| `unverified` | Empreintes désactivées : égalité binaire non vérifiable |
-
-`completeInput` couvre les plages d'exports nécessaires à la lecture. Il ne certifie pas la présence des bulk data externes ou virtualisées : leur découverte exige les décodeurs natifs correspondants. Le périmètre binaire est le fichier principal et les compagnons présents à côté de lui.
-
-Les niveaux `properties` et `partial-properties` décrivent uniquement la couverture du **flux de propriétés** ; une section `opaque` peut encore contenir des données natives. Chaque erreur de décodage d'export produit un diagnostic. Une erreur d'en-tête ou de référence structurelle interrompt la lecture.
-
-`meshChanges`, `textureChanges` et `graphChanges` offrent des projections spécialisées du diff. `image-diff` compare explicitement les pixels décodés, avec ses propres métriques ; `mesh-diff` compare explicitement la géométrie source. Le diff de package ne décode pas ces données lourdes automatiquement.
-
-Codes de sortie de `diff` : `0` identique, `1` changement, `2` erreur/incomplet/non vérifié. Les chemins utilisent JSON Pointer (`~0` et `~1` pour les caractères spéciaux).
-
-## CyUI et Git
-
-L'adaptateur UI se construit séparément et reste embarquable. L’exécutable optionnel `cyuediff_desktop` fournit un premier hôte Windows avec sélection de fichiers, chargement asynchrone, inspection, comparaison et aperçus source. Il utilise Direct3D 11 et CyUI, sans dépendance inverse du core. Voir [l’application desktop](docs/DESKTOP.md) et [l’intégration UI](docs/UI.md).
-
-`textconv` exporte le snapshot pour une intégration Git optionnelle. Git LFS stocke les versions binaires ; le diff lisible vient de ce lecteur. Rien n'est configuré automatiquement dans un dépôt. Voir [l'intégration Git](docs/GIT.md).
-
-La suite synthétique et les tests CyUI sont reproductibles avec le script de build. Le compte rendu initial des essais sur des fichiers locaux est dans [VALIDATION.md](docs/VALIDATION.md). La suite du développement est décrite dans [ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-
-## Mise à jour 0.14
-
-Le code original est désormais sous [licence MIT](LICENSE). Les licences tierces restent applicables.
-
-Les diffs visuels surlignent les nœuds Blueprint/matériau, les paramètres enregistrés, les arêtes et les pixels modifiés. L'inspecteur affiche les propriétés typées avant/après. Les deux côtés peuvent utiliser des contextes projet/moteur distincts. Le chargement dispose d'une annulation coopérative, d'une progression et d'un cache vérifié par empreintes des packages et compagnons.
-
-Les sources HDR FP16/FP32/RGBE se comparent en flottants avant conversion d'aperçu. La lecture des textes localisés, Maps/Sets et transformations natives est étendue. Le corpus CyTrace fourni ajoute 150 packages sources vérifiés ; les exports partiels restent signalés. Voir les guides anglais [HDR](docs/HDR.md), [propriétés](docs/PROPERTIES.md), [exécution](docs/RUNTIME.md) et [distribution](docs/DISTRIBUTION.md).
-
-La CI Windows/Linux est préparée et les archives exécutables/SDK se construisent avec CPack. Les fichiers restent locaux tant qu'aucun push n'est demandé. La lecture cooked native complète, les ressources virtualisées, meshes squelettiques, collisions et données Nanite, ainsi que la sauvegarde complète de la disposition des fenêtres restent à réaliser.
-
-## Ajouts 0.15 : conteneurs Pak / IoStore
-
-Le Core lit les conteneurs Pak 10/11 avec index de répertoires complet et IoStore TOC 3–5 avec leurs partitions UCAS. La CLI fournit l’inventaire, la lecture d’un membre, les empreintes des contenus décompressés et leur comparaison. Un codec reste explicite pour les blocs compressés. Le build CyTrace fourni valide 6 219 membres, avec un second lecteur indépendant et des sources inchangées. Le décodage sémantique des objets cooked/Zen reste à implémenter ; les empreintes BLAKE3 stockées dans IoStore et les signatures ne sont pas vérifiées. Contrats et exemples dans [CONTAINERS.md](docs/CONTAINERS.md).
-
-## Ajouts 0.16 : tables d’objets cooked/Zen
-
-Le Core et la CLI lisent les tables de noms/imports/exports Zen, résolvent les classes avec la table globale et comparent les corps opaques par objet. Les profils UE 5.3 et 5.5 sont explicites ; le profil 5.3 est validé sur les 3 507 packages et 7 502 exports du build CyTrace. Les propriétés non versionnées et les payloads natifs cooked restent à décoder avec leurs schémas. Voir [ZEN.md](docs/ZEN.md).
-
-## Ajouts 0.17 : schémas USMAP explicites
-
-Le Core charge les formats de base USMAP 0–4 et décode les types simples, tableaux, tableaux statiques, références, noms, chaînes et structures réfléchies déclarées explicitement. La CLI accepte `--schema` et `--after-schema` pour les commandes Zen. Les diffs nomment les propriétés lisibles modifiées et conservent l’empreinte complète des exports. Les extensions USMAP, les autres types non versionnés et les données natives restent à traiter. Les nouvelles valeurs sont vérifiées sur des fixtures ; le corpus CyTrace ne fournit pas de schéma correspondant à son build. Contrats et exemples dans [SCHEMAS.md](docs/SCHEMAS.md).
-
-## Ajouts 0.18 : extensions et identités des schémas
-
-Le Core lit CEXT et les extensions PPTH, MODL, EATR et ENVP : chemins de modules, attributs des types et valeurs d’énumération sur 64 bits. Les types homonymes restent distincts grâce à leur identité qualifiée. Les noms courts ambigus, versions inconnues et extensions endommagées sont refusés. Ces métadonnées n’autorisent pas automatiquement un décodeur natif ; la validation sur un schéma correspondant au build reste nécessaire. Voir [SCHEMAS.md](docs/SCHEMAS.md).
-
-## Ajouts 0.19 : Map et Set cooked
-
-Les propriétés non versionnées Map et Set exposent les suppressions et ajouts/remplacements sérialisés, avec des clés stables dans les diffs. Les tableaux et structures réfléchies pris en charge peuvent être imbriqués. Les conteneurs vidés par un masque de zéros se distinguent des deltas vides ; le marqueur de remplacement complet des Map est activé pour le profil UE 5.5. Les valeurs héritées ne sont pas reconstituées. Les clés en double et types non pris en charge conservent l’export opaque, tandis que les limites et l’annulation interrompent l’opération. Validation sur fixtures uniquement faute de schéma correspondant au corpus réel. Voir [SCHEMAS.md](docs/SCHEMAS.md).
-
-La version 0.28 compare deux conteneurs Pak/IoStore dans l'interface : appariement par chemin ou ID, ajouts/suppressions, comparaison explicite des octets décodés et inspection des membres avant/après. Les objets Zen sont appariés par chemin avec leurs classes, références et empreintes de corps opaques ; chaque côté conserve son profil et sa table de scripts. Les membres communs non lus restent « À vérifier ». La comparaison globale est limitée à 512 Mio décodés, avec 64 Mio par membre ; les gros conteneurs restent consultables sans lancer ce scan. Voir [le guide desktop](docs/DESKTOP.md).
-
-La version 0.31 ajoute les contextes de schéma USMAP explicites dans le desktop, avec sélection indépendante avant/après, propriétés nommées et typées, recherche, diff et provenance. Le Core expose un lecteur de manifestes réutilisable, également utilisé par la CLI. Les valeurs d'un côté non décodé restent inconnues ; elles ne deviennent pas des suppressions. La validation des nouvelles propriétés desktop utilise des données synthétiques : le corpus CyTrace ne fournit toujours pas de USMAP compatible.
-
-
-Les jalons 0.32–0.34 ajoutent jusqu'à huit documents en onglets, avec contextes projet/moteur et vues indépendants, une file de décodage commune, duplication, fermeture des autres documents et réouverture des huit derniers onglets fermés pendant la session. Les filtres, sélections et aperçus GPU restent disponibles lors des changements d'onglet. La duplication et la réouverture relisent les sources ; les fichiers d’espace de travail ajoutés en 0.36 permettent de restaurer les contextes après redémarrage. Les commandes sont disponibles en anglais et en français.
-
-La version 0.40 passe 47 suites CTest et 2 251 vérifications, plus 620 frames UI sans renderer. Le Core seul passe 23 suites et le desktop sans Git 39. Dix-neuf nouvelles captures natives vérifient les inspecteurs et la navigation restaurés dans les cinq thèmes et les deux langues, avec une texture, un Blueprint, un matériau et un mesh réels. Les empreintes des sources restent inchangées.
-
-Les jalons 0.35–0.37 ajoutent les fichiers d’espace de travail JSON, les commandes Ouvrir/Enregistrer/Enregistrer sous et la restauration des documents, contextes projet/moteur, révisions Git et vues initiales. L’enregistrement est explicite et atomique. Les fichiers invalides sont préservés et un import invalide conserve les onglets ouverts. Les caches, aperçus GPU et modules de codec ne sont pas enregistrés. Voir [les espaces de travail](docs/WORKSPACES.md), [la validation](docs/VALIDATION.md) et [les commandes desktop](docs/DESKTOP.md).
-
-Les jalons 0.38–0.40 sauvegardent aussi les filtres et sélections par identité, les choix avant/après, les inspecteurs de l’objet courant, le pan/zoom des graphes et textures, ainsi que la caméra du mesh. Les onglets non affichés conservent leur état en attente. Le format v2 lit les anciens espaces de travail v1 ; l’application relit toujours les sources. Les jalons 0.41–0.43 ajoutent le format v3 : largeur latérale, proportions des panneaux/colonnes et sections dépliées. La géométrie des fenêtres et les gestes actifs restent hors du format.
-
-Les jalons 0.44–0.49 ajoutent 17 formats explicites de structures natives mathématiques/couleurs/GUID, les textes cooked localisés, invariants ou issus de tables, les delegates simples/multicast et les références faibles persistantes. Les changements de composantes, sources, fonctions et cibles apparaissent dans les diffs et l’inspecteur, avec restauration des sélections depuis un workspace. Ces lectures exigent des schémas correspondant au build ; la validation des nouvelles valeurs repose sur des fixtures synthétiques. Voir les [contrats des schémas](docs/SCHEMAS.md).
-
-Les jalons 0.50–0.52 ajoutent les propriétés optionnelles du profil UE 5.5 et les chemins de champs modernes (`FieldPath`) des profils pris en charge. Les diffs distinguent une option non définie d’une valeur définie à zéro ou null et montrent les segments/propriétaires modifiés. L’inspecteur, les espaces de travail et le SDK utilisent ces valeurs ; les anciens formats non certifiés conservent leur empreinte opaque.
-
-Les cinq jalons 0.53–0.57 ajoutent les chaînes UTF-8/ANSI prises en charge, les transformations de texte imbriquées, les modèles à arguments nommés/ordonnés et les formats de nombre/pourcentage/monnaie. Les lecteurs classique et cooked partagent ces valeurs structurées. Le diff montre la source, les arguments, la culture et les options d’arrondi enregistrés ; aucun formatage/localisation n’est exécuté. Les nouvelles propriétés sont accessibles depuis le CLI, l’inspecteur et le SDK.
-
-La version 0.62 ajoute les textes de date/heure, les arguments de format versionnés et les structures natives temporelles et de volumes englobants. Les valeurs stockées sont comparables dans le CLI et l’inspecteur, avec conservation des sélections dans les espaces de travail.
-
-La version 0.67 conserve les générateurs de texte inconnus par identité et empreinte, étend les textes des pins Blueprint et ajoute les volumes englobants classiques, les matrices et les plans. Le Core propose 29 dispositions natives explicites.
-
-Les métadonnées d’animation des Skeleton comprennent désormais les conteneurs de courbes natifs pris en charge, leurs indicateurs matériau/morph target, les liens vers les os, les limites de LOD présentes et les noms des marqueurs de synchronisation. Les commandes `skeleton-animation` et `skeleton-animation-diff` et le mode « Métadonnées d’animation » de l’onglet Skeleton proposent une comparaison nommée avec inspection typée. L’ordre des marqueurs est normalisé en conservant leur nombre d’occurrences. Les données illisibles ou retirées du fichier restent signalées comme incomplètes ; aucune animation n’est évaluée.
-
-Les attachements squelettiques disposent d’une projection nommée des sockets et définitions d’os virtuels, de listes de propriétaires explicites et d’une comparaison des origines de sockets dans la pose de référence choisie. Les commandes `attachments`/`attachments-diff` et `socket-pose`/`socket-pose-diff` et le mode « Attachements » de l’onglet Skeleton offrent une inspection typée avec aperçu 3D synchronisé. Les positions locales absentes et parents virtuels non reconstruits restent indisponibles. Les objets externes et valeurs par défaut ne sont pas chargés.
-
-Les pistes source d’animation `AnimDataModel` prises en charge sont maintenant lisibles, comparables par nom d’os et consultables à une frame précise. L’onglet **Animations** propose les courbes superposées et conserve ses choix dans le workspace. `animation-frame-diff --before-frame A --after-frame B` compare les positions, orientations et échelles locales avec des tolérances séparées. L’interface conserve aussi les frames indépendantes et leurs tolérances ; un changement de signe du quaternion reste visible dans les clés enregistrées tout en ayant un écart d’orientation nul. Les valeurs omises restent inconnues ; la lecture des animations compressées et le skinning restent à développer. Voir le [contrat de lecture](docs/ANIMATIONS.md).
-
-L’onglet **Courbes** affiche les clés, tangentes, poids et différences des courbes riches prises en charge. Les commandes `curves`, `curves-diff`, `curve-value --time N` et `curve-value-diff --time-start A --time-end B` proposent les mêmes données. L’évaluation couvre les cubiques pondérées et les réglages d’extrapolation ou valeurs par défaut explicitement enregistrés. La comparaison échantillonnée fournit les écarts, la tolérance et les coordonnées indisponibles ; la plage et la tolérance sont conservées dans le workspace. Les réglages omis restent inconnus. Les courbes de transformation d’animation ajoutent neuf canaux nommés translation/Euler/échelle via `--curve-family transform` ; `curve-components --time N --curve-id ID` fournit leurs valeurs brutes indépendantes. L’interface conserve la famille et le canal choisis. Voir les [contrats de lecture](docs/CURVES.md).
-
-Les poses hiérarchiques d’animation source peuvent être calculées avec un squelette fourni explicitement, comparées sur des frames indépendantes et affichées dans un composant 3D CyUI réutilisable. Voir les [contrats des poses](docs/ANIMATIONS.md#explicit-hierarchy-pose-api-and-commands) et l’[exemple du SDK Core](examples/animation_pose_consumer). L’onglet Animations accepte les squelettes locaux explicites et des frames sources indépendantes ; voir les [contrôles desktop](docs/DESKTOP.md).
-
-Un [exemple du SDK Git sans interface](examples/git_animation_pose_consumer) montre le chargement des animations et squelettes à leurs commits respectifs.
-
-
-Les positions locales enregistrées des sockets peuvent être placées dans des frames sources explicites et comparées avant/après. Les commandes `animation-socket-pose` et `animation-socket-pose-diff` et la vue des origines dans le desktop proposent les mêmes résultats pour les fichiers locaux et les révisions Git. Les positions ou transformations parentes absentes restent indisponibles. Voir les [contrats des sockets animés](docs/ANIMATIONS.md#source-socket-api-and-commands).
-
-## Fenêtre et restauration de session — 0.157
-
-La fenêtre conserve sa position, sa taille normale et son état maximisé. Le placement s’adapte aux écrans disponibles et à leur DPI. **Affichage → Réinitialiser la position de la fenêtre** rétablit une taille adaptée.
-
-**Affichage → Restaurer la session précédente au démarrage** est désactivé par défaut. Une fois activé, la fermeture normale enregistre les contextes des documents ouverts et leurs vues dans un fichier de session distinct. Le lancement suivant relit les sources. Les fichiers passés explicitement et `--workspace` ont priorité ; `--no-restore-session` permet d’ignorer la restauration. Les fichiers de session invalides sont conservés avec un diagnostic. Voir le [contrat desktop](docs/DESKTOP.md).
-
-## Deltas binaires par blocs — 0.172
-
-Le Core calcule des deltas pour les fichiers complets et leurs compagnons, puis reconstruit la cible après vérification des SHA-256 de la base et du résultat. La recherche glissante retrouve les blocs réutilisables après insertion ou suppression d’octets. Les commandes `binary-diff`, `binary-apply` et `git-binary-diff` exposent cette couche, également disponible dans le SDK. Le format compact conserve directement les nouveaux octets. `binary-compose` compose A→B→C sans fichier intermédiaire, `binary-info` inspecte les métadonnées et `binary-apply` reconstruit par blocs avant de publier la cible vérifiée. Le calcul depuis les fichiers utilise des fenêtres de lecture bornées, et la sortie compacte peut être écrite par blocs. L’index et les nouveaux octets restent en mémoire avec leurs limites explicites. Les révisions Git/LFS locales conservent leurs commits, chemins et empreintes. Voir les [contrats, limites et exemples](docs/BINARY_DELTA.md).
-
-## Vitrine
-
-La [vitrine française](https://mrmybal.github.io/CyUEDIFF/?lang=fr) et la [vitrine anglaise](https://mrmybal.github.io/CyUEDIFF/?lang=en) présentent l’application et son guide HTML bilingue. Les sources et les instructions de prévisualisation locale sont dans [site/](site/README.md). La commande `python site/tools/build.py` génère les fichiers dans le dossier ignoré `build-site/pages/`. Le workflow Pages valide et publie les changements du site depuis `main`, sans les archives locales non publiées de l’application.
+- [Manuel français](https://mrmybal.github.io/CyUEDIFF/guide.html?lang=fr#start) · [Vitrine](https://mrmybal.github.io/CyUEDIFF/?lang=fr).
+- [Notes de version et limites](VERSION.fr.md) · [Couverture détaillée des formats et feuille de route](docs/ROADMAP.md).
+- [Guide desktop](docs/DESKTOP.md) · [Inspection visuelle](docs/VISUAL_REVIEW.md) · [Intégration Git](docs/GIT.md).
+- [Morphs sources](docs/MORPHS.md) · [Descriptions binaires](docs/BINARY_LAYOUTS.md) · [Deltas de blocs](docs/BINARY_DELTA.md).
+- [Dépôt des sources](https://github.com/MrMybal/CyUEDIFF) · [Releases](https://github.com/MrMybal/CyUEDIFF/releases) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues).
