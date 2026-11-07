@@ -241,6 +241,6 @@ Local virtualized texture and mesh sources: see [payload stores and integrity ch
 
 Modern skeletal editor source data: see [source bones, skinning weights and comparison limits](docs/SKINNING.md).
 
-## Website preview
+## Website
 
-The static English/French showcase and offline HTML guide are in [site/](site/README.md). Build them with `python site/tools/build.py`; the generated GitHub Pages-compatible files stay under ignored `build-site/pages/`. No website is published automatically.
+The [English website](https://mrmybal.github.io/CyUEDIFF/?lang=en) and [French website](https://mrmybal.github.io/CyUEDIFF/?lang=fr) include the application showcase and bilingual HTML guide. Sources and local preview instructions are in [site/](site/README.md). Build them with `python site/tools/build.py`; generated files stay under ignored `build-site/pages/`. The Pages workflow validates and publishes website changes from `main` without unpublished application archives.

@@ -61,6 +61,8 @@ python site/tools/build.py --output build-site/pages-public
 python site/tools/check.py --output build-site/pages-public
 ```
 
-This task intentionally adds no automatic deployment workflow and performs no push, release creation or Pages publication. Upload/deploy that directory only after the repository owner's explicit publication request. When releases become available, update the download metadata/copy using the actual published artifact URLs and checksums.
+The [Publish website workflow](../.github/workflows/pages.yml) builds and checks this public bundle for website pull requests, then deploys it to GitHub Pages after website changes reach `main`. It can also be run manually from `main`. Configure the repository's Pages publishing source as **GitHub Actions**. Pull requests only build and validate; they do not deploy. The workflow never includes the unpublished local application archive or creates an application release.
+
+Public URLs: [English](https://mrmybal.github.io/CyUEDIFF/?lang=en) and [French](https://mrmybal.github.io/CyUEDIFF/?lang=fr). When application releases become available, update the download metadata/copy using the actual published artifact URLs and checksums.
 
 Original website code and demonstration assets follow the repository MIT license. Application third-party notices remain applicable to any included app archive.

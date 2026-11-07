@@ -23,7 +23,7 @@ Direct `file://` navigation is blocked by this browser's protocol policy. No byp
 
 The download preview archive is checked against the previously verified 0.181 SHA-256, including HTTP byte delivery. The default/public bundle includes no unpublished archive. Building once with the local archive and then without it was tested: the marked output directory is replaced and the unrequested archive is removed.
 
-Styles and scripts use SHA-256-derived filenames, checked against their contents. All local page fragments, HTML links, images, styles and scripts resolve. `.nojekyll` and relative project paths are included for GitHub Pages. No automatic deployment workflow, push, release creation or publication was performed.
+Styles and scripts use SHA-256-derived filenames, checked against their contents. All local page fragments, HTML links, images, styles and scripts resolve. `.nojekyll` and relative project paths are included for GitHub Pages. The initial local-only delivery performed no push, release creation or publication. The subsequent owner-authorized publication adds `.github/workflows/pages.yml`: pull requests build/check the public bundle, and `main` deploys it through GitHub Pages without the unpublished local application archive.
 
 Screenshot contents are generated demonstration data, including a demo Git author; no real user project assets or Git history are shown. Website source and screenshots are intended for the repository's MIT distribution. The Windows application archive stays outside Git under ignored build output.
 
