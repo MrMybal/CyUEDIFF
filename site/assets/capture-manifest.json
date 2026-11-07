@@ -1,0 +1,184 @@
+{
+  "version": "0.181.0",
+  "privateProjectData": false,
+  "records": [
+    {
+      "file": "overview-en.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "d7ce1c51bc8988ce11b7627c7851686b7399754779687aa457bdb1038278f923"
+    },
+    {
+      "file": "morphs-en.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "fae88e7a87d766e91d36bd396623a27c38f9ee4b47976ddbf30b9343aab3c40c"
+    },
+    {
+      "file": "properties-en.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "c241b9a6650161bf8d6bcdd301caff9179d4ed6c29cae8a0098814f9c027a3a8"
+    },
+    {
+      "file": "mesh-en.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "f5a08bcea930cd7912084038aa00a49d346d1942ec0e3dcab1058f0128b48545"
+    },
+    {
+      "file": "containers-en.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "feb4678ca56e0c8a1cd2f996e7e21b87e626fb3eea985c9b60ba88e308e9f143"
+    },
+    {
+      "file": "history-en.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "b9175d88bdedc2dcf5415646a9ff48d0e0205208a9eb5b7cc79aa71bc60298eb"
+    },
+    {
+      "file": "comparison-en.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "c8f42a25ff4280e572bc5a59dc66715ade008c2091b3cfa114e7e20df835a841"
+    },
+    {
+      "file": "blueprint-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "blueprint",
+      "sha256": "d74d504339e2e4acbb7790b731306089ecb9636979514cbe8d17fa5499aaa7cd"
+    },
+    {
+      "file": "materials-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "material",
+      "sha256": "bb51b727f96c84a53a5076243d09e2a27ac68b0c721055a1871b6e2e64f5d016"
+    },
+    {
+      "file": "parameters-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "parameters",
+      "sha256": "9c6d8a6d09f2b30c1a0b3b7887a5c3cb59af74a2a600bbb232cb9e7ab78d5d01"
+    },
+    {
+      "file": "textures-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "texture",
+      "sha256": "bde7a7b12107096fe72f002595337635e93030ad943185f4e4e5657ea00a2127"
+    },
+    {
+      "file": "collisions-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "collision-all",
+      "sha256": "4f6628afca8dd168b7c47c4aabf027ca8c31554555ade9e33a87923f63c2d1eb"
+    },
+    {
+      "file": "skeleton-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "reference-pose",
+      "sha256": "181f5f8f0a0ce5fff0313fa249788abbc32ff6d60238904c632888216e2d322b"
+    },
+    {
+      "file": "animation-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "source-keys",
+      "sha256": "ef49a1f50c76d958f8493e1d1b2474e4f794ef5411d003751c5c1c5eda53071e"
+    },
+    {
+      "file": "curves-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "curve-weighted",
+      "sha256": "28ba8ab4c1791dd203325225691ec740fddcf8996bb2aae41e81d6ee771904f7"
+    },
+    {
+      "file": "pose-en.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "pose-hierarchy",
+      "sha256": "dad876d411fd95e2357112671a608d88d49cf5cd8c6bfa31aa9cd6410364ce90"
+    },
+    {
+      "file": "overview-fr.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "b8efe707bb7d8e7df88882ced7a5998c0ebf9f7a10b8d11ec7f425f8cf03b1e8"
+    },
+    {
+      "file": "morphs-fr.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "d1f776115fa0dcf301d4d23e6531af35ef2d59ee349ec5fab7ca1581cb0ea376"
+    },
+    {
+      "file": "properties-fr.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "40888f92362d8c8828d171256d759dcd3c43b1c2e5c7787848d0e9f7837a9741"
+    },
+    {
+      "file": "mesh-fr.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "9ebd16f84652d680a1e4656c371f589799937a523392ee904a23a13d3f438d27"
+    },
+    {
+      "file": "containers-fr.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "ff167a0b93ab661624db71a4048d419e804f346e43a1ab0c55e5d71f26b82764"
+    },
+    {
+      "file": "history-fr.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "be2ab55a96f6d5994e30b9ee1ade54937e713c7769bf065087b49188bd13da9b"
+    },
+    {
+      "file": "comparison-fr.png",
+      "origin": "Windows desktop with original encoded test fixtures",
+      "sha256": "ce30d894098fe85c762dc7f976e5b445afbb32c80a0c9f5e2635edb020d36116"
+    },
+    {
+      "file": "blueprint-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "blueprint",
+      "sha256": "e9a6437d533410662e5bc0e0c5c5e773f3b15023be2c7b5c06d1ef32152fc4b4"
+    },
+    {
+      "file": "materials-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "material",
+      "sha256": "38fc061697473f7c775f80d13f764b410baa81ebc06dc32a552b2c2ebe12e06b"
+    },
+    {
+      "file": "parameters-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "parameters",
+      "sha256": "113f22b579b0cac521d9b3a98b00dd4a5ac3aaa96e6548b5d1aa5aa8258a7529"
+    },
+    {
+      "file": "textures-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "texture",
+      "sha256": "47361097d48297425130169a85310829112a4c4320f3ce001cd17c37b1a9e086"
+    },
+    {
+      "file": "collisions-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "collision-all",
+      "sha256": "09410d7c28031624d11e88032eabbaaedf270ee44b600d5525a1c2b4d948a180"
+    },
+    {
+      "file": "skeleton-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "reference-pose",
+      "sha256": "4596a0425b2b98da717bc0e329ac5c307cfab076ec2a3304cd2e85066811de9b"
+    },
+    {
+      "file": "animation-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "source-keys",
+      "sha256": "87d4e9eae6c1edae954fb536ef4d481180a4e669821337655ad19e8d21752f28"
+    },
+    {
+      "file": "curves-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "curve-weighted",
+      "sha256": "0ae1d19719800e6392ef4e46c80b5ed00228a1beb2b4c7fdd4480d6fa60eac6b"
+    },
+    {
+      "file": "pose-fr.png",
+      "origin": "Actual CyUI component, original in-memory demo snapshots",
+      "scene": "pose-hierarchy",
+      "sha256": "1b727215b978b5f6dd70b223027137f668d2452c029f69e6114d4b694ad09988"
+    }
+  ]
+}

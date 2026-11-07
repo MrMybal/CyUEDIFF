@@ -1,0 +1,96 @@
+{
+  "en": [
+    {
+      "id": "start",
+      "title": "Start here",
+      "html": "<p>CyUEDiff reads and compares supported Unreal Engine package data without launching Unreal Editor. Use the Windows desktop for visual review, the CLI for JSON reports, or the C++17 Core inside another application.</p><p>This is a development preview. Format coverage is explicit. Unsupported or partial data keeps its diagnostics, opaque ranges and fingerprints; it must not be interpreted as an empty asset.</p><h3>What is available?</h3><ul><li>Windows x64 desktop with English/French controls and five themes.</li><li>A command-line application and reusable Core, optional Git adapter and separate CyUI views.</li><li>A local preview archive when included with this site. No public GitHub release was available when this page was prepared.</li></ul>"
+    },
+    {
+      "id": "review",
+      "title": "Open and compare",
+      "html": "<ol><li>Open <code>cyuediff_desktop.exe</code> and choose <strong>Local files</strong>.</li><li>Select the before package and, for a comparison, its after version. Keep split companion files beside their packages.</li><li>Set project/engine contexts independently when needed. Select an explicit codec or local virtualized payload root for data that requires it.</li><li>Load the document, then use Properties, Blueprint graphs, Materials, Textures, Meshes, Curves, Animations or Skeleton as appropriate.</li></ol><p>The typed property inspector supports path search, changed-only filtering and full selected values. Multiple document tabs and explicit workspace files retain supported selections, cameras and context choices. View preparation happens outside drawing.</p><pre><code>cyuediff inspect Content/DA_Settings.uasset\ncyuediff diff Before.uasset After.uasset --out changes.json</code></pre>"
+    },
+    {
+      "id": "graphs",
+      "title": "Graphs and parameters",
+      "html": "<p>Blueprint review displays stored editor nodes and pins. Search by node, navigate confirmed changes and inspect structured pin values beside the graph. Blueprint bytecode remains opaque.</p><p>The Materials view projects stored expressions, links and material-instance overrides. It does not execute shaders or render the material. Use name and changed-only filters to isolate a parameter.</p><p>Source names and serialized field values remain as stored. Switching the interface language does not translate asset data.</p>"
+    },
+    {
+      "id": "visual",
+      "title": "Textures, geometry and morphs",
+      "html": "<h3>Textures</h3><p>Supported Texture2D source images and mips can be previewed and compared. LDR difference masks and finite floating-point HDR comparisons use separate contracts. A host-supplied codec may be needed for compressed sources; no proprietary codec is bundled.</p><h3>Geometry and collisions</h3><p>Supported modern MeshDescription sources provide base geometry and wireframe diffs. Stored reflected collision shapes have body-local previews. Cooked physics, Nanite and runtime render/skin buffers are separate unfinished formats.</p><h3>Stored skeletal source data</h3><p>Modern source bones, raw weight profiles and named morph deltas are fixture-validated. Morph positions use vertex IDs; normal deltas use vertex-instance IDs. These views inspect stored data and affected edges, without evaluating skinning or applying morph weights.</p><pre><code>cyuediff geometry Mesh.uasset --out geometry.json\ncyuediff mesh-diff Before.uasset After.uasset\ncyuediff export-mesh Mesh.uasset --out mesh.obj</code></pre><p>OBJ export contains supported base geometry, not named morph targets or skin weights.</p>"
+    },
+    {
+      "id": "motion",
+      "title": "Animation and curves",
+      "html": "<p>Skeleton views inspect stored bone hierarchies, reference/retarget poses, sockets and selected metadata. Source animation views read supported AnimDataModel local bone tracks and compare integer frames with independent position, orientation and scale tolerances.</p><p>Explicit Skeleton binding enables prepared affine source joint/socket origins. This does not implement compressed animation playback, runtime retargeting, blending or skinned rendering.</p><p>Rich curves expose stored keys, tangents and weights. Supported segments can be evaluated at a selected time or compared over a sampled range. Missing channels and intervals stay unavailable instead of being filled with defaults.</p><pre><code>cyuediff curves Curve.uasset\ncyuediff curve-value Curve.uasset --time 0.5\ncyuediff animation-frame Clip.uasset --frame 10</code></pre>"
+    },
+    {
+      "id": "history",
+      "title": "Git and containers",
+      "html": "<p>The optional Git adapter reads local repository objects, split companions and verified local LFS content. It does not fetch missing remote LFS content. The desktop history dialog lets you select explicit revisions before opening a comparison.</p><p>Supported Pak/IoStore readers browse members and compare decoded bytes. Cooked Zen contexts expose supported object tables and explicitly mapped unversioned properties. Matching engine/build profiles and schema bindings matter; synthetic mapping tests do not certify arbitrary cooked projects.</p><pre><code>cyuediff git-diff MyProject HEAD~1 HEAD Content/DA_Settings.uasset</code></pre><p>The block-delta API is a separate reconstruction facility. It is not a hosted versioning service or an automatic replacement for Git LFS.</p>"
+    },
+    {
+      "id": "integration",
+      "title": "Embed the Core",
+      "html": "<p>Link <code>CyUEDiff::Core</code> to read packages, project metadata and snapshots without Unreal, Git or CyUI. Add <code>CyUEDiff::Git</code> for local revision access and <code>CyUEDiff::UI</code> for hosted views.</p><pre><code>#include &lt;cyuediff/core.hpp&gt;\n\nauto before = cyuediff::Package::open(\"Before.uasset\");\nauto after = cyuediff::Package::open(\"After.uasset\");\nauto geometry = cyuediff::decode_mesh(before.mesh_source());</code></pre><p>Installed examples cover source geometry, morphs, schemas, containers, animation and file reconstruction. Native decoders may be supplied by an application registry or bounded declarative wire descriptions with explicit version profiles. There is no automatic extraction of arbitrary C++ serializers from an installed engine.</p>"
+    },
+    {
+      "id": "build",
+      "title": "Build and run",
+      "html": "<p>Use CMake 3.20+, a C++17 compiler and Python 3. Windows x64 with MSVC 2022 is the locally verified platform. The Windows desktop requires a host-provided CyUI checkout.</p><pre><code>python scripts/build.py --no-git --build-dir build-core\npython scripts/build.py --desktop --cyui D:/path/to/CyUI\nbuild-native/Release/cyuediff_desktop.exe</code></pre><p>Linux Core/CLI builds ran in hosted CI, but local portability fixes still await their next hosted check. No macOS desktop build is offered. Optional proprietary codecs and Unreal source/assets are not included.</p><p>The original code uses the MIT license. Preserve the license and the notices of third-party components when distributing a build.</p>"
+    },
+    {
+      "id": "coverage",
+      "title": "Coverage and next steps",
+      "html": "<p>Unreal serialization varies with engine builds, custom versions and plugins. CyUEDiff implements bounded, explicit readers for supported profiles. Unknown data remains visible through diagnostics and fingerprints.</p><ul><li>Modern skeletal source geometry and morphs are fixture-validated; a matching independent real source corpus is still needed.</li><li>Real matching-build mapped cooked properties need further corpus validation.</li><li>Nanite, broader legacy/cooked skin data, compressed animation and encrypted containers remain separate unfinished areas.</li></ul><p>See the repository roadmap for the full current scope. The bundled guide works offline; GitHub reference links require a connection.</p>"
+    }
+  ],
+  "fr": [
+    {
+      "id": "start",
+      "title": "Commencer",
+      "html": "<p>CyUEDiff lit et compare les données de packages Unreal Engine prises en charge sans lancer Unreal Editor. Utilisez l’application Windows pour l’inspection visuelle, la CLI pour les rapports JSON ou le Core C++17 dans une autre application.</p><p>Il s’agit d’une version de développement. La couverture des formats est explicite. Les données partielles ou non prises en charge conservent leurs diagnostics, plages opaques et empreintes ; elles ne doivent pas être interprétées comme un asset vide.</p><h3>Qu’est-ce qui est disponible ?</h3><ul><li>Une application Windows x64 avec des contrôles anglais/français et cinq thèmes.</li><li>Une application en ligne de commande, un Core réutilisable, un adaptateur Git optionnel et des vues CyUI séparées.</li><li>Une archive d’aperçu locale lorsqu’elle accompagne ce site. Aucune release GitHub publique n’était disponible lors de la préparation de cette page.</li></ul>"
+    },
+    {
+      "id": "review",
+      "title": "Ouvrir et comparer",
+      "html": "<ol><li>Ouvrez <code>cyuediff_desktop.exe</code> et choisissez <strong>Fichiers locaux</strong>.</li><li>Sélectionnez le package avant et, pour une comparaison, sa version après. Gardez les fichiers compagnons à côté des packages.</li><li>Définissez si nécessaire les contextes de projet et de moteur indépendamment. Sélectionnez un codec explicite ou une racine locale de payloads virtualisés pour les données qui le nécessitent.</li><li>Chargez le document, puis utilisez Propriétés, Graphes Blueprint, Matériaux, Textures, Meshes, Courbes, Animations ou Squelette selon les données.</li></ol><p>L’inspecteur typé propose une recherche par chemin, un filtre des modifications et l’affichage complet des valeurs sélectionnées. Les onglets et les fichiers d’espace de travail explicites conservent les sélections, caméras et contextes pris en charge. La préparation des vues se fait hors du dessin.</p><pre><code>cyuediff inspect Content/DA_Settings.uasset\ncyuediff diff Before.uasset After.uasset --out changes.json</code></pre>"
+    },
+    {
+      "id": "graphs",
+      "title": "Graphes et paramètres",
+      "html": "<p>L’inspection Blueprint affiche les nœuds et pins d’éditeur enregistrés. Recherchez un nœud, parcourez les changements confirmés et inspectez les valeurs structurées des pins à côté du graphe. Le bytecode Blueprint reste opaque.</p><p>La vue Matériaux projette les expressions, liens et surcharges d’instances enregistrés. Elle n’exécute pas de shaders et ne rend pas le matériau. Utilisez les filtres par nom et par modification pour isoler un paramètre.</p><p>Les noms sources et les valeurs des champs sérialisés restent tels qu’enregistrés. Le changement de langue de l’interface ne traduit pas les données des assets.</p>"
+    },
+    {
+      "id": "visual",
+      "title": "Textures, géométrie et morphs",
+      "html": "<h3>Textures</h3><p>Les images et mips sources Texture2D pris en charge peuvent être prévisualisés et comparés. Les masques LDR et les comparaisons HDR en virgule flottante suivent des contrats distincts. Un codec fourni par l’hôte peut être nécessaire pour les sources compressées ; aucun codec propriétaire n’est inclus.</p><h3>Géométrie et collisions</h3><p>Les sources MeshDescription modernes prises en charge fournissent la géométrie de base et des différences filaires. Les formes de collision réfléchies enregistrées ont des aperçus locaux au corps. La physique cooked, Nanite et les buffers de rendu/skinning à l’exécution restent des formats distincts non terminés.</p><h3>Données squelettiques sources</h3><p>Les os sources modernes, profils de poids bruts et deltas de morph nommés sont validés sur des fixtures. Les positions des morphs utilisent les ID de sommets ; les normales utilisent les ID d’instances de sommets. Ces vues inspectent les données et arêtes concernées sans évaluer le skinning ni appliquer les poids de morph.</p><pre><code>cyuediff geometry Mesh.uasset --out geometry.json\ncyuediff mesh-diff Before.uasset After.uasset\ncyuediff export-mesh Mesh.uasset --out mesh.obj</code></pre><p>L’export OBJ contient la géométrie de base prise en charge, sans morph targets nommés ni poids de skinning.</p>"
+    },
+    {
+      "id": "motion",
+      "title": "Animation et courbes",
+      "html": "<p>Les vues de squelette inspectent les hiérarchies osseuses, poses de référence/retarget, sockets et métadonnées sélectionnées. Les vues d’animation source lisent les pistes osseuses locales AnimDataModel prises en charge et comparent des frames entières avec des tolérances indépendantes de position, d’orientation et d’échelle.</p><p>Une liaison Skeleton explicite permet de préparer les origines affines de joints/sockets sources. Cela n’implémente pas la lecture d’animations compressées, le retargeting à l’exécution, le blending ou le rendu skinné.</p><p>Les rich curves exposent les clés, tangentes et poids enregistrés. Les segments pris en charge peuvent être évalués à un instant ou comparés sur une plage échantillonnée. Les canaux et intervalles absents restent indisponibles, sans valeurs par défaut inventées.</p><pre><code>cyuediff curves Curve.uasset\ncyuediff curve-value Curve.uasset --time 0.5\ncyuediff animation-frame Clip.uasset --frame 10</code></pre>"
+    },
+    {
+      "id": "history",
+      "title": "Git et conteneurs",
+      "html": "<p>L’adaptateur Git optionnel lit les objets des dépôts locaux, les fichiers compagnons et les contenus LFS locaux vérifiés. Il ne télécharge pas les objets LFS distants manquants. L’historique de l’application permet de choisir des révisions explicites avant d’ouvrir une comparaison.</p><p>Les lecteurs Pak/IoStore pris en charge parcourent les membres et comparent leurs octets décodés. Les contextes Zen cooked exposent les tables d’objets et propriétés non versionnées associées explicitement. Les profils de moteur/build et les schémas doivent correspondre ; les tests de mappings synthétiques ne certifient pas tous les projets cooked.</p><pre><code>cyuediff git-diff MyProject HEAD~1 HEAD Content/DA_Settings.uasset</code></pre><p>L’API de deltas de blocs est une fonction de reconstruction séparée, pas un service de versionnement hébergé ni un remplacement automatique de Git LFS.</p>"
+    },
+    {
+      "id": "integration",
+      "title": "Intégrer le Core",
+      "html": "<p>Liez <code>CyUEDiff::Core</code> pour lire les packages, métadonnées de projet et snapshots sans Unreal, Git ou CyUI. Ajoutez <code>CyUEDiff::Git</code> pour les révisions locales et <code>CyUEDiff::UI</code> pour les vues intégrables.</p><pre><code>#include &lt;cyuediff/core.hpp&gt;\n\nauto before = cyuediff::Package::open(\"Before.uasset\");\nauto after = cyuediff::Package::open(\"After.uasset\");\nauto geometry = cyuediff::decode_mesh(before.mesh_source());</code></pre><p>Les exemples installés couvrent la géométrie source, les morphs, schémas, conteneurs, animations et la reconstruction de fichiers. L’application peut fournir des décodeurs natifs par registre ou des descriptions binaires déclaratives bornées, avec des profils de version explicites. Il n’y a pas d’extraction automatique des sérialiseurs C++ arbitraires d’un moteur installé.</p>"
+    },
+    {
+      "id": "build",
+      "title": "Compiler et lancer",
+      "html": "<p>Utilisez CMake 3.20+, un compilateur C++17 et Python 3. Windows x64 avec MSVC 2022 est la plateforme vérifiée localement. L’application Windows nécessite un checkout CyUI fourni par l’hôte.</p><pre><code>python scripts/build.py --no-git --build-dir build-core\npython scripts/build.py --desktop --cyui D:/path/to/CyUI\nbuild-native/Release/cyuediff_desktop.exe</code></pre><p>Les builds Core/CLI Linux ont été exécutés en CI, mais les corrections locales de portabilité attendent leur prochaine vérification hébergée. Aucun build desktop macOS n’est proposé. Les codecs propriétaires optionnels, sources et assets Unreal ne sont pas inclus.</p><p>Le code original est sous licence MIT. Conservez la licence et les notices des composants tiers lors de la distribution d’un build.</p>"
+    },
+    {
+      "id": "coverage",
+      "title": "Couverture et suite",
+      "html": "<p>La sérialisation Unreal varie selon les builds moteur, les versions personnalisées et les plugins. CyUEDiff implémente des lecteurs bornés et explicites pour les profils pris en charge. Les données inconnues restent visibles via les diagnostics et empreintes.</p><ul><li>La géométrie squelettique source moderne et les morphs sont validés sur des fixtures ; un corpus source réel, indépendant et compatible reste nécessaire.</li><li>Les propriétés cooked mappées d’un build réel compatible nécessitent des validations supplémentaires.</li><li>Nanite, les données legacy/cooked de skinning plus larges, les animations compressées et les conteneurs chiffrés restent des chantiers distincts non terminés.</li></ul><p>Consultez la feuille de route du dépôt pour le périmètre complet. Le guide fourni fonctionne hors ligne ; les liens de référence GitHub nécessitent une connexion.</p>"
+    }
+  ]
+}

@@ -1,0 +1,437 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title data-i18n="meta.title">{{t:meta.title}}</title><meta name="description" content="{{t:meta.description}}"><meta property="og:title" content="CyUEDiff"><meta property="og:description" content="{{t:meta.description}}"><meta property="og:type" content="website"><meta property="og:image" content="assets/screenshots/overview-en.png"><link rel="icon" href="assets/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="{{styles}}"><script defer src="{{content}}"></script><script defer src="{{app}}"></script></head><body><a class="skip" href="#main"><span data-i18n="skip">{{t:skip}}</span></a>
+<header class="header">
+<div class="header-inner"><a class="brand" href="index.html" aria-label="CyUEDiff"><img src="assets/mark.svg" width="30" height="30" alt=""><span>CyUE<span class="brand-diff">Diff</span></span></a>
+<nav class="main-nav" id="main-nav" aria-label="Navigation"><a href="#review"><span data-i18n="nav.features">{{t:nav.features}}</span></a><a href="guide.html?lang=en#start" data-guide="start"><span data-i18n="nav.docs">{{t:nav.docs}}</span></a><a href="#download" class="mobile-get"><span data-i18n="nav.get">{{t:nav.get}}</span></a></nav>
+
+<div class="header-actions">
+<div class="language" role="group" data-label="nav.language" aria-label="Language"><button type="button" data-language="en" lang="en" aria-pressed="true">EN</button><button type="button" data-language="fr" lang="fr" aria-pressed="false">FR</button></div>
+<a class="button button-github" href="https://github.com/MrMybal/CyUEDIFF" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a><a class="button button-small header-get" href="#download"><span data-i18n="nav.get">{{t:nav.get}}</span></a><button class="menu-toggle" type="button" aria-expanded="false" aria-controls="main-nav" data-label="nav.menu" aria-label="Open navigation"><span></span><span></span></button></div>
+</div>
+</header>
+
+<main id="main">
+<section class="hero shell" aria-labelledby="hero-title">
+<div class="hero-copy">
+<p class="status" data-i18n="hero.status">{{t:hero.status}}</p>
+
+<h1 id="hero-title">CyUE<span>Diff</span></h1>
+
+<p class="hero-description" data-i18n="hero.description">{{t:hero.description}}</p>
+
+<p class="hero-body" data-i18n="hero.body">{{t:hero.body}}</p>
+
+<div class="hero-actions"><a class="button button-primary" href="#review"><span data-i18n="hero.explore">{{t:hero.explore}}</span> <span aria-hidden="true">↘</span></a><a class="text-link" href="https://github.com/MrMybal/CyUEDIFF" target="_blank" rel="noopener noreferrer"><span data-i18n="hero.github">{{t:hero.github}}</span> ↗</a></div>
+
+<p class="platform" data-i18n="hero.platform">{{t:hero.platform}}</p>
+</div>
+
+<div class="hero-media">
+<figure class="figure hero-figure"><button class="shot" data-zoom data-caption="hero.caption" aria-label="{{t:zoom.open}} — {{t:hero.caption}}"><img data-shot="overview" src="assets/screenshots/overview-en.png" alt="{{t:hero.caption}}" width="1360" height="900" loading="eager" decoding="async" fetchpriority="high"></button><figcaption><span data-i18n="hero.caption">{{t:hero.caption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+</section>
+
+<div class="asset-strip shell">
+<p data-i18n="strip.title">{{t:strip.title}}</p>
+
+<div><span data-i18n="strip.blueprint">{{t:strip.blueprint}}</span><span data-i18n="strip.texture">{{t:strip.texture}}</span><span data-i18n="strip.mesh">{{t:strip.mesh}}</span><span data-i18n="strip.material">{{t:strip.material}}</span><span data-i18n="strip.data">{{t:strip.data}}</span></div>
+</div>
+
+<div class="chapter-wrap">
+<nav class="chapters shell" aria-label="Page chapters" data-label="nav.chapters"><a href="#review"><span data-i18n="chapter.review">{{t:chapter.review}}</span></a><a href="#graphs"><span data-i18n="chapter.graphs">{{t:chapter.graphs}}</span></a><a href="#images"><span data-i18n="chapter.images">{{t:chapter.images}}</span></a><a href="#geometry"><span data-i18n="chapter.geometry">{{t:chapter.geometry}}</span></a><a href="#motion"><span data-i18n="chapter.motion">{{t:chapter.motion}}</span></a><a href="#history"><span data-i18n="chapter.history">{{t:chapter.history}}</span></a><a href="#core"><span data-i18n="chapter.core">{{t:chapter.core}}</span></a></nav>
+</div>
+
+<section id="review" class="section shell" data-chapter>
+<div class="section-head">
+<p class="eyebrow" data-i18n="review.kicker">{{t:review.kicker}}</p>
+
+<h2 data-i18n="review.title">{{t:review.title}}</h2>
+
+<p class="intro" data-i18n="review.body">{{t:review.body}}</p>
+</div>
+
+<div class="tabs" role="tablist" aria-label="{{t:nav.views}}" data-label="nav.views"><button role="tab" id="tab-data" aria-controls="panel-data" aria-selected="true" tabindex="0"><span data-i18n="tab.data">{{t:tab.data}}</span></button><button role="tab" id="tab-graphs" aria-controls="panel-graphs" aria-selected="false" tabindex="-1"><span data-i18n="tab.graphs">{{t:tab.graphs}}</span></button><button role="tab" id="tab-textures" aria-controls="panel-textures" aria-selected="false" tabindex="-1"><span data-i18n="tab.textures">{{t:tab.textures}}</span></button><button role="tab" id="tab-mesh" aria-controls="panel-mesh" aria-selected="false" tabindex="-1"><span data-i18n="tab.mesh">{{t:tab.mesh}}</span></button><button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" tabindex="-1"><span data-i18n="tab.history">{{t:tab.history}}</span></button></div>
+
+<div class="mode-panel" id="panel-data" role="tabpanel" aria-labelledby="tab-data" tabindex="0">
+<div class="mode-copy"><span class="mode-number" aria-hidden="true">01</span>
+<h3 data-i18n="mode.data.title">{{t:mode.data.title}}</h3>
+
+<p data-i18n="mode.data.body">{{t:mode.data.body}}</p>
+
+<p class="mode-list" data-i18n="mode.data.list">{{t:mode.data.list}}</p>
+<a class="text-link" href="guide.html?lang=en#review" data-guide="review"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a></div>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="mode.data.title" aria-label="{{t:zoom.open}} — {{t:mode.data.title}}"><img data-shot="properties" src="assets/screenshots/properties-en.png" alt="{{t:mode.data.title}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="mode.data.title">{{t:mode.data.title}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+
+<div class="mode-panel" id="panel-graphs" role="tabpanel" aria-labelledby="tab-graphs" tabindex="0" hidden>
+<div class="mode-copy"><span class="mode-number" aria-hidden="true">02</span>
+<h3 data-i18n="mode.graphs.title">{{t:mode.graphs.title}}</h3>
+
+<p data-i18n="mode.graphs.body">{{t:mode.graphs.body}}</p>
+
+<p class="mode-list" data-i18n="mode.graphs.list">{{t:mode.graphs.list}}</p>
+<a class="text-link" href="guide.html?lang=en#graphs" data-guide="graphs"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a></div>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="mode.graphs.title" aria-label="{{t:zoom.open}} — {{t:mode.graphs.title}}"><img data-shot="blueprint" src="assets/screenshots/blueprint-en.png" alt="{{t:mode.graphs.title}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="mode.graphs.title">{{t:mode.graphs.title}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+
+<div class="mode-panel" id="panel-textures" role="tabpanel" aria-labelledby="tab-textures" tabindex="0" hidden>
+<div class="mode-copy"><span class="mode-number" aria-hidden="true">03</span>
+<h3 data-i18n="mode.textures.title">{{t:mode.textures.title}}</h3>
+
+<p data-i18n="mode.textures.body">{{t:mode.textures.body}}</p>
+
+<p class="mode-list" data-i18n="mode.textures.list">{{t:mode.textures.list}}</p>
+<a class="text-link" href="guide.html?lang=en#visual" data-guide="visual"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a></div>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="mode.textures.title" aria-label="{{t:zoom.open}} — {{t:mode.textures.title}}"><img data-shot="textures" src="assets/screenshots/textures-en.png" alt="{{t:mode.textures.title}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="mode.textures.title">{{t:mode.textures.title}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+
+<div class="mode-panel" id="panel-mesh" role="tabpanel" aria-labelledby="tab-mesh" tabindex="0" hidden>
+<div class="mode-copy"><span class="mode-number" aria-hidden="true">04</span>
+<h3 data-i18n="mode.mesh.title">{{t:mode.mesh.title}}</h3>
+
+<p data-i18n="mode.mesh.body">{{t:mode.mesh.body}}</p>
+
+<p class="mode-list" data-i18n="mode.mesh.list">{{t:mode.mesh.list}}</p>
+<a class="text-link" href="guide.html?lang=en#visual" data-guide="visual"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a></div>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="mode.mesh.title" aria-label="{{t:zoom.open}} — {{t:mode.mesh.title}}"><img data-shot="mesh" src="assets/screenshots/mesh-en.png" alt="{{t:mode.mesh.title}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="mode.mesh.title">{{t:mode.mesh.title}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+
+<div class="mode-panel" id="panel-history" role="tabpanel" aria-labelledby="tab-history" tabindex="0" hidden>
+<div class="mode-copy"><span class="mode-number" aria-hidden="true">05</span>
+<h3 data-i18n="mode.history.title">{{t:mode.history.title}}</h3>
+
+<p data-i18n="mode.history.body">{{t:mode.history.body}}</p>
+
+<p class="mode-list" data-i18n="mode.history.list">{{t:mode.history.list}}</p>
+<a class="text-link" href="guide.html?lang=en#history" data-guide="history"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a></div>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="mode.history.title" aria-label="{{t:zoom.open}} — {{t:mode.history.title}}"><img data-shot="history" src="assets/screenshots/history-en.png" alt="{{t:mode.history.title}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="mode.history.title">{{t:mode.history.title}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+</section>
+
+<section id="graphs" class="section shell" data-chapter>
+<div class="split-heading">
+<div>
+<p class="eyebrow" data-i18n="graphs.kicker">{{t:graphs.kicker}}</p>
+
+<h2 data-i18n="graphs.title">{{t:graphs.title}}</h2>
+</div>
+
+<p class="intro" data-i18n="graphs.body">{{t:graphs.body}}</p>
+</div>
+
+<figure class="figure wide-shot"><button class="shot" data-zoom data-caption="graphs.blueprint" aria-label="{{t:zoom.open}} — {{t:graphs.blueprint}}"><img data-shot="blueprint" src="assets/screenshots/blueprint-en.png" alt="{{t:graphs.blueprint}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="graphs.blueprint">{{t:graphs.blueprint}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+
+<div class="two-features">
+<article>
+<h3 data-i18n="graphs.materialTitle">{{t:graphs.materialTitle}}</h3>
+
+<p data-i18n="graphs.materialBody">{{t:graphs.materialBody}}</p>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="graphs.materialCaption" aria-label="{{t:zoom.open}} — {{t:graphs.materialCaption}}"><img data-shot="materials" src="assets/screenshots/materials-en.png" alt="{{t:graphs.materialCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="graphs.materialCaption">{{t:graphs.materialCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</article>
+
+<article>
+<h3 data-i18n="graphs.paramTitle">{{t:graphs.paramTitle}}</h3>
+
+<p data-i18n="graphs.paramBody">{{t:graphs.paramBody}}</p>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="graphs.paramCaption" aria-label="{{t:zoom.open}} — {{t:graphs.paramCaption}}"><img data-shot="parameters" src="assets/screenshots/parameters-en.png" alt="{{t:graphs.paramCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="graphs.paramCaption">{{t:graphs.paramCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</article>
+</div>
+</section>
+
+<section id="images" class="section feature-band" data-chapter>
+<div class="shell feature-grid image-right">
+<div class="feature-copy">
+<p class="eyebrow" data-i18n="images.kicker">{{t:images.kicker}}</p>
+
+<h2 data-i18n="images.title">{{t:images.title}}</h2>
+
+<p data-i18n="images.body">{{t:images.body}}</p>
+<a class="text-link" href="guide.html?lang=en#visual" data-guide="visual"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a>
+<p class="fine-note" data-i18n="images.note">{{t:images.note}}</p>
+</div>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="images.caption" aria-label="{{t:zoom.open}} — {{t:images.caption}}"><img data-shot="textures" src="assets/screenshots/textures-en.png" alt="{{t:images.caption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="images.caption">{{t:images.caption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+</section>
+
+<section id="geometry" class="section shell" data-chapter>
+<div class="section-head">
+<p class="eyebrow" data-i18n="geometry.kicker">{{t:geometry.kicker}}</p>
+
+<h2 data-i18n="geometry.title">{{t:geometry.title}}</h2>
+
+<p class="intro" data-i18n="geometry.body">{{t:geometry.body}}</p>
+</div>
+
+<div class="two-features">
+<article>
+<figure class="figure "><button class="shot" data-zoom data-caption="geometry.meshCaption" aria-label="{{t:zoom.open}} — {{t:geometry.meshCaption}}"><img data-shot="mesh" src="assets/screenshots/mesh-en.png" alt="{{t:geometry.meshCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="geometry.meshCaption">{{t:geometry.meshCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+
+<h3 data-i18n="geometry.meshTitle">{{t:geometry.meshTitle}}</h3>
+
+<p data-i18n="geometry.meshBody">{{t:geometry.meshBody}}</p>
+</article>
+
+<article>
+<figure class="figure "><button class="shot" data-zoom data-caption="geometry.collisionCaption" aria-label="{{t:zoom.open}} — {{t:geometry.collisionCaption}}"><img data-shot="collisions" src="assets/screenshots/collisions-en.png" alt="{{t:geometry.collisionCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="geometry.collisionCaption">{{t:geometry.collisionCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+
+<h3 data-i18n="geometry.collisionTitle">{{t:geometry.collisionTitle}}</h3>
+
+<p data-i18n="geometry.collisionBody">{{t:geometry.collisionBody}}</p>
+</article>
+</div>
+
+<div class="feature-grid image-left morph-feature">
+<figure class="figure "><button class="shot" data-zoom data-caption="geometry.morphCaption" aria-label="{{t:zoom.open}} — {{t:geometry.morphCaption}}"><img data-shot="morphs" src="assets/screenshots/morphs-en.png" alt="{{t:geometry.morphCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="geometry.morphCaption">{{t:geometry.morphCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+
+<div class="feature-copy">
+<h3 data-i18n="geometry.morphTitle">{{t:geometry.morphTitle}}</h3>
+
+<p data-i18n="geometry.morphBody">{{t:geometry.morphBody}}</p>
+<a class="text-link" href="guide.html?lang=en#visual" data-guide="visual"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a>
+<p class="fine-note" data-i18n="geometry.scope">{{t:geometry.scope}}</p>
+</div>
+</div>
+</section>
+
+<section id="motion" class="section shell" data-chapter>
+<div class="split-heading">
+<div>
+<p class="eyebrow" data-i18n="motion.kicker">{{t:motion.kicker}}</p>
+
+<h2 data-i18n="motion.title">{{t:motion.title}}</h2>
+</div>
+
+<p class="intro" data-i18n="motion.body">{{t:motion.body}}</p>
+</div>
+
+<div class="two-features">
+<article>
+<h3 data-i18n="motion.skeletonTitle">{{t:motion.skeletonTitle}}</h3>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="motion.skeletonCaption" aria-label="{{t:zoom.open}} — {{t:motion.skeletonCaption}}"><img data-shot="skeleton" src="assets/screenshots/skeleton-en.png" alt="{{t:motion.skeletonCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="motion.skeletonCaption">{{t:motion.skeletonCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</article>
+
+<article>
+<h3 data-i18n="motion.animationTitle">{{t:motion.animationTitle}}</h3>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="motion.animationCaption" aria-label="{{t:zoom.open}} — {{t:motion.animationCaption}}"><img data-shot="animation" src="assets/screenshots/animation-en.png" alt="{{t:motion.animationCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="motion.animationCaption">{{t:motion.animationCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</article>
+</div>
+
+<div class="feature-grid image-right curve-feature">
+<div class="feature-copy">
+<h3 data-i18n="motion.curveTitle">{{t:motion.curveTitle}}</h3>
+
+<p data-i18n="motion.curveBody">{{t:motion.curveBody}}</p>
+<a class="text-link" href="guide.html?lang=en#motion" data-guide="motion"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a></div>
+
+<figure class="figure "><button class="shot" data-zoom data-caption="motion.curveCaption" aria-label="{{t:zoom.open}} — {{t:motion.curveCaption}}"><img data-shot="curves" src="assets/screenshots/curves-en.png" alt="{{t:motion.curveCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="motion.curveCaption">{{t:motion.curveCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+
+<div class="feature-grid image-left pose-feature">
+<figure class="figure"><button class="shot" data-zoom data-caption="motion.poseCaption" aria-label="{{t:zoom.open}} — {{t:motion.poseCaption}}"><img data-shot="pose" src="assets/screenshots/pose-en.png" alt="{{t:motion.poseCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="motion.poseCaption">{{t:motion.poseCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+
+<div class="feature-copy">
+<h3 data-i18n="motion.poseTitle">{{t:motion.poseTitle}}</h3>
+
+<p data-i18n="motion.poseBody">{{t:motion.poseBody}}</p>
+</div>
+</div>
+
+<p class="scope-note" data-i18n="motion.note">{{t:motion.note}}</p>
+</section>
+
+<section id="history" class="section feature-band" data-chapter>
+<div class="shell">
+<div class="section-head">
+<p class="eyebrow" data-i18n="history.kicker">{{t:history.kicker}}</p>
+
+<h2 data-i18n="history.title">{{t:history.title}}</h2>
+
+<p class="intro" data-i18n="history.body">{{t:history.body}}</p>
+</div>
+
+<figure class="figure history-shot"><button class="shot" data-zoom data-caption="history.gitCaption" aria-label="{{t:zoom.open}} — {{t:history.gitCaption}}"><img data-shot="history" src="assets/screenshots/history-en.png" alt="{{t:history.gitCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="history.gitCaption">{{t:history.gitCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+
+<div class="feature-grid image-left container-feature">
+<figure class="figure "><button class="shot" data-zoom data-caption="history.containerCaption" aria-label="{{t:zoom.open}} — {{t:history.containerCaption}}"><img data-shot="containers" src="assets/screenshots/containers-en.png" alt="{{t:history.containerCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="history.containerCaption">{{t:history.containerCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+
+<div class="feature-copy">
+<h3 data-i18n="history.containerTitle">{{t:history.containerTitle}}</h3>
+
+<p data-i18n="history.containerBody">{{t:history.containerBody}}</p>
+<a class="text-link" href="guide.html?lang=en#history" data-guide="history"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a></div>
+</div>
+
+<div class="feature-grid image-right compare-feature">
+<div class="feature-copy">
+<h3 data-i18n="history.compareTitle">{{t:history.compareTitle}}</h3>
+
+<p data-i18n="history.compareBody">{{t:history.compareBody}}</p>
+</div>
+
+<figure class="figure"><button class="shot" data-zoom data-caption="history.compareCaption" aria-label="{{t:zoom.open}} — {{t:history.compareCaption}}"><img data-shot="comparison" src="assets/screenshots/comparison-en.png" alt="{{t:history.compareCaption}}" width="1360" height="900" loading="lazy" decoding="async"></button><figcaption><span data-i18n="history.compareCaption">{{t:history.compareCaption}}</span><span class="expand" aria-hidden="true">↗</span></figcaption></figure>
+</div>
+
+<div class="workspace-note"><span class="workspace-symbol" aria-hidden="true">▤</span>
+<div>
+<h3 data-i18n="history.workspaceTitle">{{t:history.workspaceTitle}}</h3>
+
+<p data-i18n="history.workspaceBody">{{t:history.workspaceBody}}</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="core" class="section shell" data-chapter>
+<div class="split-heading">
+<div>
+<p class="eyebrow" data-i18n="core.kicker">{{t:core.kicker}}</p>
+
+<h2 data-i18n="core.title">{{t:core.title}}</h2>
+</div>
+
+<p class="intro" data-i18n="core.body">{{t:core.body}}</p>
+</div>
+
+<div class="modules">
+<article><span class="module-name">CyUEDiff::Core</span>
+<p data-i18n="core.coreBody">{{t:core.coreBody}}</p>
+</article>
+
+<article><span class="module-name">CyUEDiff::Git</span>
+<p data-i18n="core.gitBody">{{t:core.gitBody}}</p>
+</article>
+
+<article><span class="module-name">CyUEDiff::UI</span>
+<p data-i18n="core.uiBody">{{t:core.uiBody}}</p>
+</article>
+</div>
+
+<div class="cli-grid">
+<div>
+<h3 data-i18n="core.cliTitle">{{t:core.cliTitle}}</h3>
+
+<p data-i18n="core.cliBody">{{t:core.cliBody}}</p>
+<a class="text-link" href="guide.html?lang=en#integration" data-guide="integration"><span data-i18n="core.doc">{{t:core.doc}}</span> <span aria-hidden="true">↗</span></a></div>
+
+<div class="terminal">
+<div class="terminal-bar"><span>CLI / JSON</span><button data-copy="cli-commands"><span data-i18n="core.copy">{{t:core.copy}}</span></button></div>
+
+<pre><code id="cli-commands">cyuediff inspect Content/DA_Settings.uasset
+cyuediff mesh-diff Before.uasset After.uasset
+cyuediff git-diff MyProject HEAD~1 HEAD Content/DA_Settings.uasset</code></pre>
+</div>
+</div>
+</section>
+
+<section class="coverage shell">
+<div>
+<p class="eyebrow" data-i18n="coverage.kicker">{{t:coverage.kicker}}</p>
+
+<h2 data-i18n="coverage.title">{{t:coverage.title}}</h2>
+
+<p data-i18n="coverage.body">{{t:coverage.body}}</p>
+</div>
+
+<div class="coverage-details">
+<article><span aria-hidden="true">01</span>
+<div>
+<h3 data-i18n="coverage.opaqueTitle">{{t:coverage.opaqueTitle}}</h3>
+
+<p data-i18n="coverage.opaqueBody">{{t:coverage.opaqueBody}}</p>
+</div>
+</article>
+
+<article><span aria-hidden="true">02</span>
+<div>
+<h3 data-i18n="coverage.schemaTitle">{{t:coverage.schemaTitle}}</h3>
+
+<p data-i18n="coverage.schemaBody">{{t:coverage.schemaBody}}</p>
+</div>
+</article>
+<a class="text-link" href="guide.html?lang=en#coverage" data-guide="coverage"><span data-i18n="coverage.roadmap">{{t:coverage.roadmap}}</span> ↗</a></div>
+</section>
+
+<section class="docs-cta shell">
+<div>
+<p class="eyebrow" data-i18n="docs.kicker">{{t:docs.kicker}}</p>
+
+<h2 data-i18n="docs.title">{{t:docs.title}}</h2>
+
+<p data-i18n="docs.body">{{t:docs.body}}</p>
+</div>
+<a class="button button-secondary" href="guide.html?lang=en#start" data-guide="start"><span data-i18n="docs.open">{{t:docs.open}}</span> ↗</a></section>
+
+<section class="section shell faq">
+<div>
+<h2 data-i18n="faq.title">{{t:faq.title}}</h2>
+</div>
+
+<div><details><summary><span data-i18n="faq.platformQ">{{t:faq.platformQ}}</span><span aria-hidden="true">+</span></summary>
+<p data-i18n="faq.platformA">{{t:faq.platformA}}</p>
+</details><details><summary><span data-i18n="faq.unrealQ">{{t:faq.unrealQ}}</span><span aria-hidden="true">+</span></summary>
+<p data-i18n="faq.unrealA">{{t:faq.unrealA}}</p>
+</details><details><summary><span data-i18n="faq.editQ">{{t:faq.editQ}}</span><span aria-hidden="true">+</span></summary>
+<p data-i18n="faq.editA">{{t:faq.editA}}</p>
+</details><details><summary><span data-i18n="faq.lfsQ">{{t:faq.lfsQ}}</span><span aria-hidden="true">+</span></summary>
+<p data-i18n="faq.lfsA">{{t:faq.lfsA}}</p>
+</details><details><summary><span data-i18n="faq.demoQ">{{t:faq.demoQ}}</span><span aria-hidden="true">+</span></summary>
+<p data-i18n="faq.demoA">{{t:faq.demoA}}</p>
+</details></div>
+</section>
+
+<section id="download" class="download shell">
+<div>
+<p class="eyebrow" data-i18n="download.kicker">{{t:download.kicker}}</p>
+
+<h2 data-i18n="download.title">{{t:download.title}}</h2>
+
+<p data-i18n="download.body">{{t:download.body}}</p>
+</div>
+
+<div class="download-options">
+<div data-local-download hidden>
+<p class="download-label" data-i18n="download.local">{{t:download.local}}</p>
+<a class="button button-primary download-button" data-download-link href="#download"><span data-i18n="download.button">{{t:download.button}}</span> <span aria-hidden="true">↓</span></a>
+<p class="download-note" data-i18n="download.localNote">{{t:download.localNote}}</p>
+<details class="checksum"><summary><span data-i18n="download.checksum">{{t:download.checksum}}</span></summary><code data-checksum></code></details></div>
+
+<div data-no-download>
+<p data-i18n="download.none">{{t:download.none}}</p>
+</div>
+
+<div class="source-links"><a class="text-link" href="https://github.com/MrMybal/CyUEDIFF" target="_blank" rel="noopener noreferrer"><span data-i18n="download.source">{{t:download.source}}</span> ↗</a><a class="text-link" href="guide.html?lang=en#build" data-guide="build"><span data-i18n="download.build">{{t:download.build}}</span> <span aria-hidden="true">↗</span></a><a href="https://github.com/MrMybal/CyUEDIFF/releases" target="_blank" rel="noopener noreferrer"><span data-i18n="download.release">{{t:download.release}}</span> ↗</a></div>
+</div>
+</section>
+</main>
+
+<footer class="footer shell">
+<div><a class="brand" href="index.html" aria-label="CyUEDiff"><img src="assets/mark.svg" width="30" height="30" alt=""><span>CyUE<span class="brand-diff">Diff</span></span></a>
+<p data-i18n="footer.description">{{t:footer.description}}</p>
+
+<p class="footer-demo" data-i18n="footer.demo">{{t:footer.demo}}</p>
+</div>
+
+<nav aria-label="{{t:nav.resources}}" data-label="nav.resources"><a class="text-link" href="guide.html?lang=en#start" data-guide="start"><span data-i18n="nav.docs">{{t:nav.docs}}</span> <span aria-hidden="true">↗</span></a><a href="https://github.com/MrMybal/CyUEDIFF/blob/main/LICENSE" target="_blank" rel="noopener noreferrer"><span data-i18n="footer.license">{{t:footer.license}}</span></a><a href="https://github.com/MrMybal/CyUEDIFF/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener noreferrer"><span data-i18n="footer.notices">{{t:footer.notices}}</span></a></nav>
+
+<p class="legal" data-i18n="footer.note">{{t:footer.note}}</p>
+
+<p class="copyright">© 2026 CyUEDiff contributors</p>
+</footer>
+
+<dialog class="lightbox" id="lightbox" aria-labelledby="lightbox-caption">
+<div class="lightbox-toolbar"><span class="lightbox-hint"><span data-i18n="zoom.hint">{{t:zoom.hint}}</span></span><button class="icon-button" data-close data-label="zoom.close" aria-label="Close screenshot" autofocus><span aria-hidden="true">×</span></button></div>
+
+<div class="lightbox-stage"><button class="icon-button image-prev" data-previous data-label="zoom.previous" aria-label="Previous screenshot">‹</button><img id="lightbox-image" alt=""><button class="icon-button image-next" data-next data-label="zoom.next" aria-label="Next screenshot">›</button></div>
+
+<p id="lightbox-caption"></p>
+</dialog>
+</body></html>

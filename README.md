@@ -240,3 +240,7 @@ The reusable Core computes binary deltas for complete asset or companion files, 
 Local virtualized texture and mesh sources: see [payload stores and integrity checks](docs/VIRTUALIZED.md).
 
 Modern skeletal editor source data: see [source bones, skinning weights and comparison limits](docs/SKINNING.md).
+
+## Website preview
+
+The static English/French showcase and offline HTML guide are in [site/](site/README.md). Build them with `python site/tools/build.py`; the generated GitHub Pages-compatible files stay under ignored `build-site/pages/`. No website is published automatically.

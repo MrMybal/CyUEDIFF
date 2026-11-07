@@ -246,3 +246,7 @@ La fenêtre conserve sa position, sa taille normale et son état maximisé. Le p
 ## Deltas binaires par blocs — 0.172
 
 Le Core calcule des deltas pour les fichiers complets et leurs compagnons, puis reconstruit la cible après vérification des SHA-256 de la base et du résultat. La recherche glissante retrouve les blocs réutilisables après insertion ou suppression d’octets. Les commandes `binary-diff`, `binary-apply` et `git-binary-diff` exposent cette couche, également disponible dans le SDK. Le format compact conserve directement les nouveaux octets. `binary-compose` compose A→B→C sans fichier intermédiaire, `binary-info` inspecte les métadonnées et `binary-apply` reconstruit par blocs avant de publier la cible vérifiée. Le calcul depuis les fichiers utilise des fenêtres de lecture bornées, et la sortie compacte peut être écrite par blocs. L’index et les nouveaux octets restent en mémoire avec leurs limites explicites. Les révisions Git/LFS locales conservent leurs commits, chemins et empreintes. Voir les [contrats, limites et exemples](docs/BINARY_DELTA.md).
+
+## Aperçu du site
+
+La vitrine statique anglais/français et le guide HTML hors ligne sont dans [site/](site/README.md). La commande `python site/tools/build.py` génère les fichiers compatibles GitHub Pages dans le dossier ignoré `build-site/pages/`. Le site n’est pas publié automatiquement.
