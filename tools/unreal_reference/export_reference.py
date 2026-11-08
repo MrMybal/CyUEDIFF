@@ -20,7 +20,7 @@ def main():
     files = set()
     for row in rows:
         name = row['file']
-        if row.get('mode', 'source') not in ('source', 'compressed-animation', 'per-track-synthetic'):
+        if row.get('mode', 'source') not in ('source', 'compressed-animation', 'per-track-synthetic', 'compressed-curves', 'compressed-curve-synthetic'):
             raise ValueError('Unknown reference export mode')
         if not row['object'].startswith('/Game/Corpus/'):
             raise ValueError('Export only explicit /Game/Corpus/ copies')
@@ -35,6 +35,8 @@ def main():
             raise ValueError('Cannot load ' + row['object'])
         mode = row.get('mode', 'source')
         methods = {
+            'compressed-curves': (unreal.CyUEDiffReferenceLibrary.export_compressed_curves_reference, 'cyuediff.unreal-compressed-curves-reference/1'),
+            'compressed-curve-synthetic': (unreal.CyUEDiffReferenceLibrary.export_compressed_curve_synthetic_reference, 'cyuediff.unreal-compressed-curve-synthetic-reference/1'),
             'source': (unreal.CyUEDiffReferenceLibrary.export_reference, 'cyuediff.unreal-reference/1'),
             'compressed-animation': (unreal.CyUEDiffReferenceLibrary.export_compressed_animation_reference, 'cyuediff.unreal-compressed-animation-reference/1'),
             'per-track-synthetic': (unreal.CyUEDiffReferenceLibrary.export_per_track_synthetic_reference, 'cyuediff.unreal-per-track-synthetic-reference/1'),

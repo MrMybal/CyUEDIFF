@@ -17,6 +17,15 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     // Samples the actual compressed codec, bypassing source-model/raw fallback.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportCompressedAnimationReference(UObject *Asset);
+    // Original curve buffers compressed/evaluated by the actual selected Engine codecs; no saves.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportCompressedCurveSyntheticReference(UObject *CodecOwner);
+    // Adds original curves and an explicit codec to an unsaved private copy; never saves a file.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static bool PreparePrivateAnimationCurves(UObject *Asset, int32 Codec);
+    // Direct actual curve codec measurements, with complete compressed-buffer identity.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportCompressedCurvesReference(UObject *Asset);
     // Bounded original wire fixtures, sampled by the actual per-track codec. No asset writes.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportPerTrackSyntheticReference(UObject *CodecOwner);

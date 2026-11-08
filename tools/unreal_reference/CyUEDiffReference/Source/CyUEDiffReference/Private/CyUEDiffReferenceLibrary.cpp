@@ -1,6 +1,12 @@
 #include "CyUEDiffReferenceLibrary.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimBoneCompressionCodec.h"
+#include "Animation/AnimCurveCompressionCodec_CompressedRichCurve.h"
+#include "Animation/AnimCurveCompressionCodec_UniformIndexable.h"
+#include "Animation/AnimCurveCompressionCodec_UniformlySampled.h"
+#include "Animation/AnimCurveCompressionSettings.h"
+#include "Animation/AnimData/IAnimationDataController.h"
+#include "Animation/AnimData/CurveIdentifier.h"
 #include "Animation/AnimSequenceDecompressionContext.h"
 #include "IO/IoHash.h"
 #include "AnimationCompression.h"
@@ -539,4 +545,210 @@ FString UCyUEDiffReferenceLibrary::ExportPerTrackSyntheticReference(UObject *Cod
     auto Writer = TJsonWriterFactory<>::Create(&Output);
     FJsonSerializer::Serialize(Root, Writer);
     return Output;
+}
+
+namespace {
+FFloatCurve OriginalCurve(const FName Name, int32 Kind, int32 Extrapolation) {
+    FFloatCurve C(Name, 4);
+    C.FloatCurve.DefaultValue = Kind == 0 ? MAX_flt : 2.75f;
+    C.FloatCurve.PreInfinityExtrap = static_cast<ERichCurveExtrapolation>(Extrapolation);
+    C.FloatCurve.PostInfinityExtrap = static_cast<ERichCurveExtrapolation>(Extrapolation);
+    if (Kind == 0)
+        return C;
+    const float Times[] = {0.f, .1f, .2f, .4f, .875f, 1.1f, 1.4f, 1.75f, 2.f};
+    const float MixedTimes[] = {0.f, .2f, .875f, 1.4f, 2.f};
+    for (int32 I = 0; I < (Kind == 4 ? 5 : 9); ++I) {
+        const auto Handle = C.FloatCurve.AddKey(Kind == 4 ? MixedTimes[I] : Times[I],
+                                                Kind == 1 ? 3.25f : float((I * I + 3 * I) % 11) - 2.5f);
+        auto &Key = C.FloatCurve.GetKey(Handle);
+        Key.InterpMode = Kind <= 2   ? RCIM_Linear
+                         : Kind == 4 ? static_cast<ERichCurveInterpMode>(I % 3)
+                                     : RCIM_Cubic;
+        Key.TangentMode = RCTM_Break;
+        Key.ArriveTangent = float(I) * .37f - .45f;
+        Key.LeaveTangent = .75f - float(I) * .23f;
+        if (Kind == 5) {
+            Key.TangentWeightMode = static_cast<ERichCurveTangentWeightMode>(I % 4);
+            Key.ArriveTangentWeight = .11f + float(I) * .07f;
+            Key.LeaveTangentWeight = .15f + float(I) * .09f;
+        }
+    }
+    return C;
+}
+UAnimCurveCompressionCodec *CurveCodec(UObject *Owner, int32 Kind) {
+    if (Kind == 0)
+        return NewObject<UAnimCurveCompressionCodec_CompressedRichCurve>(Owner);
+    if (Kind == 1)
+        return NewObject<UAnimCurveCompressionCodec_UniformIndexable>(Owner);
+    if (Kind == 2)
+        return NewObject<UAnimCurveCompressionCodec_UniformlySampled>(Owner);
+    return nullptr;
+}
+Object CurveMeasurements(const FCompressedAnimSequence &D, const TArray<float> &Times) {
+    FMemMark Mark(FMemStack::Get());
+    auto O = MakeShared<FJsonObject>();
+    O->SetStringField(TEXT("codecClass"), D.CurveCompressionCodec->GetClass()->GetPathName());
+    O->SetStringField(TEXT("codecPath"), D.CurveCompressionCodec->GetPathName());
+    O->SetStringField(TEXT("bufferIoHash"),
+                      LexToString(FIoHash::HashBuffer(D.CompressedCurveByteStream.GetData(),
+                                                      D.CompressedCurveByteStream.Num())));
+    O->SetNumberField(TEXT("bufferBytes"), D.CompressedCurveByteStream.Num());
+    O->SetArrayField(TEXT("times"), Integers(Times));
+    Values Names, Permutation, Rows;
+    for (const auto &N : D.IndexedCurveNames) {
+        Names.Add(MakeShared<FJsonValueString>(N.CurveName.ToString()));
+        Permutation.Add(Number(N.CurveIndex));
+    }
+    O->SetArrayField(TEXT("names"), Names);
+    O->SetArrayField(TEXT("runtimeNamePermutation"), Permutation);
+    for (float Time : Times) {
+        FBlendedCurve Batch;
+        D.CurveCompressionCodec->DecompressCurves(D, Batch, Time);
+        Values ValuesAtTime;
+        for (const auto &N : D.IndexedCurveNames) {
+            auto V = MakeShared<FJsonObject>();
+            V->SetStringField(TEXT("name"), N.CurveName.ToString());
+            bool Present = false;
+            const float Value = Batch.Get(N.CurveName, Present);
+            V->SetBoolField(TEXT("batchPresent"), Present);
+            V->SetNumberField(TEXT("batch"), Value);
+            // UE 5.3 UniformlySampled single-curve lookup can use an animated array index past its row.
+            // This adapter never invokes that unsafe path. Batch measurements remain authoritative.
+            if (!D.CurveCompressionCodec->IsA<UAnimCurveCompressionCodec_UniformlySampled>())
+                V->SetNumberField(TEXT("single"),
+                                  D.CurveCompressionCodec->DecompressCurve(D, N.CurveName, Time));
+            ValuesAtTime.Add(Obj(V));
+        }
+        Rows.Add(Array(ValuesAtTime));
+    }
+    O->SetArrayField(TEXT("samples"), Rows);
+    return O;
+}
+FString JsonText(Object O) {
+    FString Text;
+    auto Writer = TJsonWriterFactory<>::Create(&Text);
+    FJsonSerializer::Serialize(O.ToSharedRef(), Writer);
+    return Text;
+}
+} // namespace
+FString UCyUEDiffReferenceLibrary::ExportCompressedCurveSyntheticReference(UObject *CodecOwner) {
+    if (!CodecOwner || !CodecOwner->GetPathName().StartsWith(TEXT("/Game/Corpus/")))
+        return FString();
+    auto O = MakeShared<FJsonObject>();
+    O->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-compressed-curve-synthetic-reference/1"));
+    O->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Values Cases;
+    for (int32 Codec = 0; Codec < 3; ++Codec)
+        for (int32 Kind = 0; Kind < (Codec == 0 ? 6 : 3); ++Kind)
+            for (int32 Extrap = 0; Extrap < (Codec == 0 ? 6 : 1); ++Extrap)
+                for (int32 Precision = 0; Precision < (Codec == 0 ? 2 : 1); ++Precision) {
+                    auto *NativeCodec = CurveCodec(CodecOwner, Codec);
+                    if (auto *Rich = Cast<UAnimCurveCompressionCodec_CompressedRichCurve>(NativeCodec))
+                        Rich->MaxCurveError = Precision ? .002f : 0.f;
+                    FCompressibleAnimData Input;
+                    Input.SequenceLength = 2.;
+                    Input.NumberOfKeys = 61;
+                    Input.SampledFrameRate = FFrameRate(30, 1);
+                    const int32 Count = Codec == 0 ? 1 : Kind == 0 ? 1 : Kind == 1 ? 5 : 37;
+                    for (int32 I = 0; I < Count; ++I)
+                        Input.RawFloatCurves.Add(
+                            OriginalCurve(FName(*FString::Printf(TEXT("CyNumericCurve_%d"), I)),
+                                          Codec == 0 ? Kind : (I % 3 == 0 ? 1 : 2 + I % 4), Extrap));
+                    FAnimCurveCompressionResult Compressed;
+                    if (!NativeCodec->Compress(Input, Compressed))
+                        return FString();
+                    // CompressCurve leaves alignment padding unspecified. Normalize only those gaps,
+                    // then measure the actual codec on the normalized original numerical input.
+                    if (Codec == 0) {
+                        auto &B = Compressed.CompressedBytes;
+                        int32 N = 0, Offset = 0;
+                        FMemory::Memcpy(&N, B.GetData() + 4, 4);
+                        FMemory::Memcpy(&Offset, B.GetData() + 8, 4);
+                        const uint8 Format = B[0], TimeFormat = B[1];
+                        if (Format >= 2 && N > 0) {
+                            const int32 Modes = Format == 4 ? N : Format == 5 ? 2 * N : 0;
+                            const int32 TimeAt = Align(Modes, TimeFormat == 0 ? 2 : 4);
+                            for (int32 I = Modes; I < TimeAt; ++I)
+                                B[Offset + I] = 0;
+                            if (TimeFormat == 0) {
+                                const int32 End = TimeAt + 2 * N;
+                                for (int32 I = End; I < Align(End, 4); ++I)
+                                    B[Offset + I] = 0;
+                            }
+                        }
+                    }
+                    FCompressedAnimSequence D;
+                    D.CompressedCurveByteStream = MoveTemp(Compressed.CompressedBytes);
+                    D.CurveCompressionCodec = NativeCodec;
+                    for (const auto &Curve : Input.RawFloatCurves) {
+                        FAnimCompressedCurveIndexedName N;
+                        N.CurveName = Curve.GetName();
+                        D.IndexedCurveNames.Add(N);
+                    }
+                    D.RebuildCurveIndexTable();
+                    TArray<float> Times = {-2.f, -.5f, -.01f, 0.f,  .0001f, .2f, .875f,
+                                           1.4f, 2.f,  2.01f, 2.5f, 4.f,    6.f};
+                    for (int32 I = 0; I <= 32; ++I)
+                        Times.Add(float(I) / 16.f);
+                    auto Case = CurveMeasurements(D, Times);
+                    Case->SetNumberField(TEXT("codec"), Codec);
+                    Case->SetNumberField(TEXT("kind"), Kind);
+                    Case->SetNumberField(TEXT("extrapolation"), Extrap);
+                    Case->SetNumberField(TEXT("precision"), Precision);
+                    Case->SetArrayField(TEXT("buffer"), Integers(D.CompressedCurveByteStream));
+                    Cases.Add(Obj(Case));
+                }
+    O->SetArrayField(TEXT("cases"), Cases);
+    return JsonText(O);
+}
+bool UCyUEDiffReferenceLibrary::PreparePrivateAnimationCurves(UObject *Asset, int32 Codec) {
+    auto *Anim = Cast<UAnimSequence>(Asset);
+    if (!Anim || !Anim->GetPathName().StartsWith(TEXT("/Game/Corpus/Curve")) || Codec < 0 || Codec > 2 ||
+        Anim->GetDataModel()->GetFloatCurves().Num() != 0)
+        return false;
+    const FString PackageName = Anim->GetOutermost()->GetName() + TEXT("Settings");
+    if (FindPackage(nullptr, *PackageName) || FPackageName::DoesPackageExist(PackageName))
+        return false;
+    auto *Package = CreatePackage(*PackageName);
+    auto *Settings = NewObject<UAnimCurveCompressionSettings>(
+        Package, FName(*FPackageName::GetShortName(PackageName)), RF_Public | RF_Standalone);
+    Settings->Codec = CurveCodec(Settings, Codec);
+    if (!Settings->Codec)
+        return false;
+    Anim->CurveCompressionSettings = Settings;
+    auto &Controller = Anim->GetController();
+    Controller.OpenBracket(FText::FromString(TEXT("Prepare original private curve corpus")), false);
+    bool Success = true;
+    for (int32 Kind = 0; Kind < 6; ++Kind) {
+        const FName Name(*FString::Printf(TEXT("CyValidationCurve_%d"), Kind));
+        const auto Curve = OriginalCurve(Name, Kind, Kind % 6);
+        const FAnimationCurveIdentifier Id(Name, ERawCurveTrackTypes::RCT_Float);
+        Success = Controller.AddCurve(Id, 4, false) && Success;
+        Success = Controller.SetCurveKeys(Id, Curve.FloatCurve.GetConstRefOfKeys(), false) && Success;
+    }
+    Controller.CloseBracket(false);
+    Settings->MarkPackageDirty();
+    Anim->MarkPackageDirty();
+    return Success;
+}
+FString UCyUEDiffReferenceLibrary::ExportCompressedCurvesReference(UObject *Asset) {
+    auto *Anim = Cast<UAnimSequence>(Asset);
+    if (!Anim || !Anim->GetPathName().StartsWith(TEXT("/Game/Corpus/")))
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    const auto &D = Anim->CompressedData;
+    if (!D.CurveCompressionCodec || D.IndexedCurveNames.Num() > 10000 ||
+        D.CompressedCurveByteStream.Num() > 16 * 1024 * 1024)
+        return FString();
+    TArray<float> Times;
+    const float Length = Anim->GetPlayLength();
+    for (int32 I = 0; I <= 256; ++I)
+        Times.Add(Length * (float(I) / 256.f));
+    auto O = CurveMeasurements(D, Times);
+    O->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-compressed-curves-reference/1"));
+    O->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    O->SetStringField(TEXT("object"), Anim->GetPathName());
+    O->SetNumberField(TEXT("duration"), Length);
+    O->SetArrayField(TEXT("buffer"), Integers(D.CompressedCurveByteStream));
+    return JsonText(O);
 }
