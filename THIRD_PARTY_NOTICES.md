@@ -9,3 +9,5 @@
 No Unreal Engine source code, binaries or assets are redistributed. CyUEDiff's original code is licensed under the MIT License; see `LICENSE`. This grant does not replace the licenses of third-party components.
 
 The optional Oodle adapter is built from a host-provided Data SDK. This repository contains no SDK files. Locally built adapter binaries incorporate that library and are excluded from the Core SDK installation; see `docs/CODECS.md`.
+
+The optional original Unreal reference adapter contains only integration source for a separately installed UE 5.3 editor. It is preparation/measurement tooling, outside CyUEDiff runtime targets. Its source installation does not include or grant rights to Engine headers, libraries, binaries, codecs or assets; use of the external engine remains subject to its own terms.

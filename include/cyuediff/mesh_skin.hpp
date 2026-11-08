@@ -12,7 +12,8 @@ struct MeshInfluence {
     std::uint32_t bone = 0;
     std::uint16_t raw_weight = 0;
 };
-// Stored source weights, never normalized or evaluated by the reader.
+// Stored source or cooked weights, never normalized or evaluated by the reader.
+// Cooked uint8 weights expand losslessly by 257; zero padding remains in provenance.
 struct MeshSkin {
     std::vector<MeshBone> bones;
     std::map<std::string, std::map<std::uint32_t, std::vector<MeshInfluence>>> profiles;

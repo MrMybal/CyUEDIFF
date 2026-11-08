@@ -1,0 +1,17 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "CyUEDiff validation reference",
+  "Description": "Optional editor-only independent reference export for explicit local validation.",
+  "Category": "Developer",
+  "CanContainContent": false,
+  "EnabledByDefault": false,
+  "Modules": [
+    {
+      "Name": "CyUEDiffReference",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ]
+}

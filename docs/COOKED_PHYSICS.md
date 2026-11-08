@@ -148,3 +148,5 @@ physics behavior, other producer versions/platforms, custom implicit types, leve
 sets and plugin-native serializers still need their own evidence/implementation.
 The installed/current-development reader does not replace the 0.181 archive or
 imply that the overall product is finished or publicly released.
+
+Additional independently cooked UE 5.3.2 Windows evidence now covers a UV-enabled cylinder: its complete native stream matches the independent Python wire reader, including 1,536 UV indices, 334 UV positions and two 334-value UV channels. A real cooked PhysicsAsset supplies 23 exact SkeletalBodySetup native windows, each correctly reporting no native format payload. This validates the no-format skeletal case; it does not establish nonempty skeletal Chaos streams or simulated bone placement.

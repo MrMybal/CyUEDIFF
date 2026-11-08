@@ -31,7 +31,7 @@ else()
     target_compile_options(cyuediff_blake3 PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3_prefix.h)
 endif()
 add_library(cyuediff_core STATIC
-    src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
+    src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
 target_sources(cyuediff_core PRIVATE $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
@@ -270,6 +270,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_cooked_collision_tests tests/cooked_collision_tests.cpp)
     target_link_libraries(cyuediff_cooked_collision_tests PRIVATE CyUEDiff::Core)
     add_test(NAME cooked_collision_shapes COMMAND cyuediff_cooked_collision_tests)
+    add_executable(cyuediff_cooked_skeletal_tests tests/cooked_skeletal_tests.cpp)
+    target_link_libraries(cyuediff_cooked_skeletal_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME cooked_skeletal_payloads COMMAND cyuediff_cooked_skeletal_tests)
     add_executable(cyuediff_cooked_mesh_tests tests/cooked_mesh_tests.cpp)
     target_link_libraries(cyuediff_cooked_mesh_tests PRIVATE CyUEDiff::Core)
     add_test(NAME cooked_mesh_payloads COMMAND cyuediff_cooked_mesh_tests)
@@ -456,6 +459,9 @@ if(BUILD_TESTING)
             add_test(NAME cooked_collision_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_collision_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_collision_tests>")
+            add_test(NAME cooked_skeletal_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_skeletal_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>")
             add_test(NAME cooked_mesh_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_mesh_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_mesh_tests>")
@@ -865,14 +871,25 @@ install(DIRECTORY examples/virtualized_consumer DESTINATION ${CMAKE_INSTALL_DATA
 install(DIRECTORY examples/binary_layout_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/cooked_physics_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/cooked_collision_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(DIRECTORY examples/cooked_skeletal_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/cooked_mesh_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/mesh_source_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/reflection_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(FILES scripts/validate_cooked_skeletal.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
 install(FILES scripts/export_uht_metadata.py scripts/build_uht_mappings.py scripts/uht_mappings.py
     DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
 install(FILES tools/uht_schema_exporter/Exporter.cs tools/uht_schema_exporter/CyUEDiff.UhtExporter.csproj
     tools/uht_schema_exporter/NuGet.Config tools/uht_schema_exporter/README.md
     DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/tools/uht_schema_exporter)
+foreach(reference_file IN ITEMS README.md export_reference.py
+        CyUEDiffReference/CyUEDiffReference.uplugin
+        CyUEDiffReference/Source/CyUEDiffReference/CyUEDiffReference.Build.cs
+        CyUEDiffReference/Source/CyUEDiffReference/Public/CyUEDiffReferenceLibrary.h
+        CyUEDiffReference/Source/CyUEDiffReference/Private/CyUEDiffReferenceLibrary.cpp)
+    get_filename_component(reference_dir "${reference_file}" DIRECTORY)
+    install(FILES "tools/unreal_reference/${reference_file}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/CyUEDiff/tools/unreal_reference/${reference_dir}")
+endforeach()
 if(CYUEDIFF_TOP_LEVEL)
     set(CPACK_PACKAGE_NAME "CyUEDiff")
     set(CPACK_PACKAGE_VENDOR "CyUEDiff contributors")

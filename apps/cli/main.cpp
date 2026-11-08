@@ -14,6 +14,7 @@
 #include <cyuediff/zen.hpp>
 #include <cyuediff/cooked_texture.hpp>
 #include <cyuediff/cooked_mesh.hpp>
+#include <cyuediff/cooked_skeletal.hpp>
 #include <cyuediff/cooked_physics.hpp>
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/binary_layout.hpp>
@@ -137,6 +138,10 @@ int run(const std::vector<std::string> &args) {
                "[--after-cooked-profile PROFILE] [--out FILE]\n"
                "  cyuediff zen-catalog CONTAINER --cooked-profile PROFILE [--script-objects GLOBAL.utoc] "
                "[--codec MODULE.dll] [--out FILE]\n"
+               "  cyuediff zen-skeletal CONTAINER ENTRY --skeletal-profile ue5.3-windows --keep-mobile-min-lod 0|1\n"
+               "    [--has-vertex-colors 0|1] [--export-index N] [same cooked schema context]\n"
+               "  cyuediff zen-skeletal-diff BEFORE ENTRY AFTER ENTRY [same skeletal context]\n"
+               "    [--after-has-vertex-colors 0|1] [--lod N] [--after-lod N]\n"
                "  cyuediff zen-mesh CONTAINER ENTRY --mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1\n"
                "  cyuediff zen-geometry CONTAINER ENTRY [--lod N] [--export-index N]\n"
                "  cyuediff zen-export-mesh CONTAINER ENTRY --out MESH.obj [--lod N]\n"
@@ -181,6 +186,10 @@ int run(const std::vector<std::string> &args) {
                                           "--after-mesh-profile",
                                           "--keep-mobile-min-lod",
                                           "--after-keep-mobile-min-lod",
+                                          "--skeletal-profile",
+                                          "--after-skeletal-profile",
+                                          "--has-vertex-colors",
+                                          "--after-has-vertex-colors",
                                           "--after-lod",
                                           "--before-frame",
                                           "--after-frame",
@@ -279,15 +288,17 @@ int run(const std::vector<std::string> &args) {
     const bool cooked_collision =
         command == "zen-collision" || command == "zen-collision-wire" || command == "zen-collision-diff";
     const bool cooked_collision_diff = command == "zen-collision-diff";
+    const bool cooked_skeletal = command == "zen-skeletal" || command == "zen-skeletal-diff";
+    const bool cooked_skeletal_diff = command == "zen-skeletal-diff";
     const bool cooked_mesh = command == "zen-mesh" || command == "zen-geometry" ||
                              command == "zen-export-mesh" || command == "zen-mesh-diff";
     const bool cooked_mesh_diff = command == "zen-mesh-diff";
     const bool cooked_pixels = command == "zen-texture" || command == "zen-preview" || command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_pixel_diff = command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff ||
-                                cooked_collision_diff || cooked_physics_diff;
+                                cooked_collision_diff || cooked_physics_diff || cooked_skeletal_diff;
     const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog" ||
-                             cooked_pixels || cooked_mesh || cooked_collision || cooked_physics;
+                             cooked_pixels || cooked_mesh || cooked_collision || cooked_physics || cooked_skeletal;
     if (zen_command)
         required = cooked_compare ? 4u : (command == "zen-catalog" ? 1u : 2u);
     const bool container_command = command == "container" || command == "container-read" ||
@@ -346,14 +357,18 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Unsupported USMAP option: " + key);
             continue;
         }
+        if ((key == "--skeletal-profile" || key == "--after-skeletal-profile" || key == "--has-vertex-colors" || key == "--after-has-vertex-colors") && !cooked_skeletal)
+            throw Error("arguments", key + " requires a cooked skeletal command");
         if (zen_command) {
             if (key != "--out" && key != "--codec" && key != "--cooked-profile" &&
                 key != "--script-objects" && key != "--schema" &&
                 !(key == "--snapshot" && (command == "zen-inspect" || command == "zen-catalog")) &&
                 !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
-                !((cooked_pixels || cooked_mesh) && key == "--export-index") &&
+                !((cooked_pixels || cooked_mesh || cooked_skeletal) && key == "--export-index") &&
                 !(cooked_physics && key == "--physics-profile") &&
                 !(cooked_physics_diff && key == "--after-physics-profile") &&
+                !(cooked_skeletal && (key == "--skeletal-profile" || key == "--has-vertex-colors" || key == "--keep-mobile-min-lod")) &&
+                !(cooked_skeletal_diff && (key == "--after-skeletal-profile" || key == "--after-has-vertex-colors" || key == "--after-keep-mobile-min-lod" || key == "--after-export-index" || key == "--lod" || key == "--after-lod")) &&
                 !(cooked_mesh && (key == "--mesh-profile" || key == "--keep-mobile-min-lod")) &&
                 !(cooked_mesh && command != "zen-mesh" && key == "--lod") &&
                 !(cooked_mesh_diff &&
@@ -630,6 +645,57 @@ int run(const std::vector<std::string> &args) {
             output = catalog_zen_packages(input, before_options, read_options, catalog_options);
             if (!output.at("complete").get<bool>())
                 exit_code = 2;
+        } else if (cooked_skeletal) {
+            auto native_options = [&](bool after, CookedSkeletalOptions fallback) {
+                const auto prefix = after ? std::string("--after-") : std::string("--");
+                const auto profile_key = prefix + "skeletal-profile",
+                           mobile_key = prefix + "keep-mobile-min-lod",
+                           color_key = prefix + "has-vertex-colors";
+                if (flags.contains(profile_key)) {
+                    if (flags.at(profile_key).get<std::string>() != "ue5.3-windows")
+                        throw Error("arguments", "Supported cooked skeletal profile: ue5.3-windows");
+                    fallback.profile = CookedSkeletalProfile::unreal_5_3_windows;
+                }
+                if (flags.contains(mobile_key))
+                    fallback.keep_mobile_min_lod_setting = integer_option(mobile_key, 1) != 0;
+                if (flags.contains(color_key))
+                    fallback.has_vertex_colors = integer_option(color_key, 1) != 0;
+                return fallback;
+            };
+            auto selected_export = [&](const char *key) -> std::size_t {
+                return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
+            };
+            auto opts = native_options(false, {});
+            auto before = read_zen_skeletal_mesh(input, select(input, positional[1]), before_options,
+                                                 read_options, opts, selected_export("--export-index"));
+            if (!cooked_skeletal_diff)
+                output = before.to_json(true);
+            else {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects"))
+                    after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema"))
+                    after_options.schema_context = schema_context(path_option("--after-schema"));
+                auto other = open(fs::u8path(positional[2]));
+                auto after = read_zen_skeletal_mesh(other, select(other, positional[3]), after_options,
+                                                    read_options, native_options(true, opts),
+                                                    selected_export("--after-export-index"));
+                const auto lod = integer_option("--lod", 1'000'000),
+                           after_lod =
+                               flags.contains("--after-lod") ? integer_option("--after-lod", 1'000'000) : lod;
+                if (lod >= before.lods.size() || after_lod >= after.lods.size() ||
+                    !before.lods[lod].geometry || !after.lods[after_lod].geometry)
+                    throw Error("cooked-skeletal-unavailable",
+                                "Selected skeletal LOD geometry is unavailable");
+                auto result = compare_meshes(*before.lods[lod].geometry, *after.lods[after_lod].geometry);
+                output = result.to_json();
+                exit_code = result.changes.empty() ? 0 : 1;
+                output["beforeMesh"] = before.to_json();
+                output["afterMesh"] = after.to_json();
+                output["beforeLod"] = lod;
+                output["afterLod"] = after_lod;
+            }
         } else if (cooked_mesh) {
             auto mesh_options = [&](const char *profile_key, const char *setting_key,
                                     CookedMeshOptions fallback) {
