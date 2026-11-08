@@ -2,6 +2,7 @@
 #include "container_document.hpp"
 #include <cyuediff/property_view.hpp>
 #include <cyuediff/texture_view.hpp>
+#include <cyuediff/mesh_view.hpp>
 namespace cyuediff::desktop {
 enum class ContainerAction { none, inspect, select_object };
 class ContainerView {
@@ -23,6 +24,13 @@ class ContainerView {
         bool after = false;
         TextureView view;
     };
+    struct MeshRow {
+        std::string key;
+        bool after = false;
+        MeshView view;
+    };
+    std::vector<MeshRow> mesh_rows_;
+    int mesh_ = 0;
     std::vector<PixelRow> pixel_rows_;
     int pixel_ = 0;
     std::vector<MemberRow> member_rows_;
@@ -61,6 +69,7 @@ class ContainerView {
     std::size_t pixel_count() const {
         return pixel_rows_.size();
     }
+    Json mesh_report() const;
     bool select_object(std::size_t);
     void apply_object_selection();
     const ContainerEntry *selected_member() const;

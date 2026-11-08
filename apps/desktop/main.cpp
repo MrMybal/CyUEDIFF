@@ -162,6 +162,8 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "meshes")
+                options.container_tab = 6;
             else if (name == "pixels")
                 options.container_tab = 5;
             else if (name == "schema")
@@ -203,6 +205,26 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.settings.script_objects = text;
             else
                 options.container_filter = text;
+        } else if (argument == "--mesh-profile" || argument == "--after-mesh-profile") {
+            const auto profile = value();
+            if (profile != "ue5.3-windows")
+                throw Error("desktop-option", "Supported cooked mesh profile: ue5.3-windows");
+            options.container_parameters = true;
+            if (argument == "--after-mesh-profile") {
+                options.settings.after_mesh_profile = 1;
+                options.after_container_parameters = true;
+            } else
+                options.settings.mesh_profile = 1;
+        } else if (argument == "--keep-mobile-min-lod" || argument == "--after-keep-mobile-min-lod") {
+            const auto setting = value();
+            if (setting != "0" && setting != "1")
+                throw Error("desktop-option", "Producer mobile min LOD setting must be 0 or 1");
+            options.container_parameters = true;
+            if (argument == "--after-keep-mobile-min-lod") {
+                options.settings.after_mesh_mobile_lod = setting == "0" ? 1 : 2;
+                options.after_container_parameters = true;
+            } else
+                options.settings.mesh_mobile_lod = setting == "0" ? 1 : 2;
         } else if (argument == "--cooked-profile" || argument == "--after-cooked-profile") {
             const auto profile = value();
             options.container_parameters = true;
@@ -993,7 +1015,9 @@ class Shell {
                 {"selectedObject", current().container_view.selected_object()},
                 {"objectProperties", current().container_view.property_report()},
                 {"selectedKey", current().container_view.selected_key()},
-                {"tab", current().container_view.active_tab()}, {"pixelViews",current().container_view.pixel_count()}};
+                {"tab", current().container_view.active_tab()},
+                {"pixelViews", current().container_view.pixel_count()},
+                {"meshViews", current().container_view.mesh_report()}};
     }
     Json history_report() const {
 #ifdef CYUEDIFF_HAS_GIT
@@ -1779,6 +1803,34 @@ class Shell {
                         field("##container-codec", current().settings.codec);
                         cyui::endProperties();
                     }
+                    if (current().layout.section("mesh-native", "Cooked mesh settings",
+                                                 current().settings.mesh_profile ||
+                                                     current().settings.after_mesh_profile)) {
+                        const auto disabled = cyui::tr("Disabled"), unknown = cyui::tr("Unknown"),
+                                   off = cyui::tr("Off"), on = cyui::tr("On");
+                        const char *native_profiles[] = {disabled.c_str(), "UE 5.3 Windows"};
+                        const char *settings[] = {unknown.c_str(), off.c_str(), on.c_str()};
+                        if (cyui::beginProperties("##native-mesh-context", 95)) {
+                            cyui::property(cyui::tr("Before mesh").c_str());
+                            ImGui::Combo("##mesh-native-profile", &current().settings.mesh_profile,
+                                         native_profiles, 2);
+                            cyui::property(cyui::tr("Mobile min LOD").c_str());
+                            ImGui::Combo("##mesh-mobile-lod", &current().settings.mesh_mobile_lod, settings,
+                                         3);
+                            cyui::property(cyui::tr("After mesh").c_str());
+                            ImGui::Combo("##after-mesh-native-profile",
+                                         &current().settings.after_mesh_profile, native_profiles, 2);
+                            cyui::property(cyui::tr("After mobile min LOD").c_str());
+                            ImGui::Combo("##after-mesh-mobile-lod", &current().settings.after_mesh_mobile_lod,
+                                         settings, 3);
+                            cyui::endProperties();
+                        }
+                        ImGui::TextWrapped(
+                            "%s",
+                            cyui::tr("Use the producer r.StaticMesh.KeepMobileMinLODSettingOnDesktop value.")
+                                .c_str());
+                        cyui::endSection();
+                    }
                     if (current().layout.section("schema", "Schema contexts (optional)",
                                                  !current().settings.container_schema.empty() ||
                                                      !current().settings.after_container_schema.empty())) {
@@ -2433,7 +2485,8 @@ int run(Options options) {
                "  [--payload-root DIRECTORY] [--after-payload-root DIRECTORY | --no-after-payload-root]\n"
                "  [--layouts JSON] [--after-layouts JSON | --no-after-layouts] : native wire descriptions\n"
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
-               "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : loose or Git source hierarchy poses\n"
+               "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : loose or Git source hierarchy "
+               "poses\n"
                "  [--pose-frame N | --pose-before-frame N --pose-after-frame N]\n"
                "  [--pose-before-object PATH] [--pose-after-object PATH]\n"
                "  [--pose-before-skeleton-object PATH] [--pose-after-skeleton-object PATH]\n"
@@ -2446,7 +2499,9 @@ int run(Options options) {
                "  --smoke --save-workspace FILE.json : explicit workspace test write\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
-               "  [--container-tab members|inspection|objects|comparison|schema|pixels]\n"
+               "  [--mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1]\n"
+               "  [--after-mesh-profile ue5.3-windows --after-keep-mobile-min-lod 0|1]\n"
+               "  [--container-tab members|inspection|objects|comparison|schema|pixels|meshes]\n"
                "  [--after-container FILE] [--compare-container-bytes] [--container-changes-only]\n"
                "  [--after-cooked-profile ue5.3|ue5.5] [--after-script-objects GLOBAL.utoc]\n"
                "  [--cooked-profile ue5.3|ue5.5] [--script-objects GLOBAL.utoc] : explicit Zen inspection\n"
@@ -2454,12 +2509,16 @@ int run(Options options) {
                "  --history --smoke [--history-before ID --history-after ID --history-compare]\n"
                "  --browse [--include-engine] [--browse-filter TEXT] : browse project or revision content\n"
                "  [--codec DLL] [--no-previews] [--locale en|fr] [--theme KEY]\n"
-               "  [--view properties|blueprint|materials|textures|meshes|comparison|collisions|skeleton|animations|curves]\n"
+               "  [--view "
+               "properties|blueprint|materials|textures|meshes|comparison|collisions|skeleton|animations|"
+               "curves]\n"
                "  [--preferences FILE.json | --no-preferences] : appearance and preview preferences\n"
                "  [--previews] [--exclude-engine] : override saved display options\n"
                "  --smoke --preferences FILE.json --save-preferences : explicit preference test write\n"
-               "  [--restore-session | --no-restore-session] [--session FILE.json] : optional startup session\n"
-               "  --smoke --session FILE.json --restore-session --save-session : explicit session test write\n"
+               "  [--restore-session | --no-restore-session] [--session FILE.json] : optional startup "
+               "session\n"
+               "  --smoke --session FILE.json --restore-session --save-session : explicit session test "
+               "write\n"
                "  --smoke [--capture FILE.png] [--report FILE.json] : hidden DX11/WARP validation\n";
         return 0;
     }

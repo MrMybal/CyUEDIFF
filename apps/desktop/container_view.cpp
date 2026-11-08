@@ -27,7 +27,20 @@ cyui::Tone state_tone(const std::string &state) {
 void ContainerView::register_translations() {
     PropertyView::register_translations();
     cyui::registerTranslations(
-        "fr", {{"Cooked pixels", "Pixels cooked"},
+        "fr", {{"Cooked meshes", "Meshes cooked"},
+               {"Cooked mesh settings", "Réglages des meshes cooked"},
+               {"Before mesh", "Mesh avant"},
+               {"After mesh", "Mesh après"},
+               {"Mobile min LOD", "LOD mobile minimal"},
+               {"After mobile min LOD", "LOD mobile minimal après"},
+               {"Unknown", "Inconnu"},
+               {"Off", "Désactivé"},
+               {"On", "Activé"},
+               {"Use the producer r.StaticMesh.KeepMobileMinLODSettingOnDesktop value.",
+                "Utilisez la valeur r.StaticMesh.KeepMobileMinLODSettingOnDesktop du producteur."},
+               {"Cooked render buffers; later Nanite and collision data remains opaque.",
+                "Buffers de rendu cooked ; les données Nanite et de collision suivantes restent opaques."},
+               {"Cooked pixels", "Pixels cooked"},
                {"Stored channels; no color transform. HDR previews use Reinhard / sRGB at 0 EV.",
                 "Canaux stockés ; aucune transformation de couleur. Aperçus HDR : Reinhard / sRGB à 0 EV."},
                {"Only explicitly supported native profiles are decoded.",
@@ -257,6 +270,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     schema_ = PropertyView{};
     member_rows_.clear();
     object_rows_.clear();
+    mesh_rows_.clear();
+    mesh_ = 0;
     pixel_rows_.clear();
     pixel_ = 0;
     diagnostics_.clear();
@@ -301,6 +316,26 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
             diagnostics_.insert(diagnostics_.end(), side.texture_diagnostics.begin(),
                                 side.texture_diagnostics.end());
         };
+        auto add_meshes = [&](const ContainerDocument &side, bool after) {
+            const auto peer = after ? document_.get() : document_->after.get();
+            for (const auto &preview : side.mesh_previews) {
+                std::shared_ptr<const MeshGeometry> other;
+                if (peer)
+                    for (const auto &p : peer->mesh_previews)
+                        if (p.key == preview.key)
+                            other = p.geometry;
+                MeshRow row;
+                row.key = preview.key;
+                row.after = after;
+                row.view.set_mesh(preview.geometry, other, after, peer != nullptr);
+                mesh_rows_.push_back(std::move(row));
+            }
+            diagnostics_.insert(diagnostics_.end(), side.mesh_diagnostics.begin(),
+                                side.mesh_diagnostics.end());
+        };
+        add_meshes(*document_, false);
+        if (document_->after)
+            add_meshes(*document_->after, true);
         add_pixels(*document_, false);
         if (document_->after)
             add_pixels(*document_->after, true);
@@ -403,6 +438,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                                   : 0);
         if (!pixel_rows_.empty())
             initial_tab_ = 5;
+        if (!mesh_rows_.empty())
+            initial_tab_ = 6;
         select_tab_ = true;
     } else {
         members_.clear();
@@ -411,8 +448,9 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 5 || (tab == 5 && pixel_rows_.empty()) ||
-        (tab == 2 && object_rows_.empty()) || (tab == 3 && !document_->after) ||
+    if (!document_ || tab < 0 || tab > 6 || (tab == 6 && mesh_rows_.empty()) ||
+        (tab == 5 && pixel_rows_.empty()) || (tab == 2 && object_rows_.empty()) ||
+        (tab == 3 && !document_->after) ||
         (tab == 4 && !document_->schema_manifest &&
          (!document_->after || !document_->after->schema_manifest)))
         return false;
@@ -438,6 +476,18 @@ bool ContainerView::set_pixel_difference(const ContainerTextureDifference &diffe
                 row.view.restore_view_state({{"difference", false}});
         }
     return found;
+}
+Json ContainerView::mesh_report() const {
+    Json rows = Json::array();
+    for (const auto &r : mesh_rows_)
+        rows.push_back({{"key", r.key},
+                        {"after", r.after},
+                        {"changes", Json{{"unchanged", r.view.changes().unchanged},
+                                         {"added", r.view.changes().added},
+                                         {"removed", r.view.changes().removed},
+                                         {"modified", r.view.changes().modified}}},
+                        {"edges", r.view.visible_edge_count()}});
+    return rows;
 }
 Json ContainerView::property_report() const {
     auto status = [](const Json &read) -> Json {
@@ -468,6 +518,11 @@ Json ContainerView::view_state() const {
         result["pixel"] = pixel_rows_[pixel_].key;
         result["pixelAfter"] = pixel_rows_[pixel_].after;
         result["pixelView"] = pixel_rows_[pixel_].view.view_state();
+    }
+    if (!mesh_rows_.empty()) {
+        result["mesh"] = mesh_rows_[mesh_].key;
+        result["meshAfter"] = mesh_rows_[mesh_].after;
+        result["meshView"] = mesh_rows_[mesh_].view.view_state();
     }
     if (!layout_.snapshot().empty())
         result["layout"] = layout_.snapshot();
@@ -520,6 +575,15 @@ void ContainerView::restore_view_state(const Json &state) {
     restore("values", values_);
     restore("comparison", comparison_);
     restore("schema", schema_);
+    if (state.contains("mesh"))
+        for (std::size_t i = 0; i < mesh_rows_.size(); ++i)
+            if (mesh_rows_[i].key == state["mesh"] &&
+                mesh_rows_[i].after == state.value("meshAfter", false)) {
+                mesh_ = static_cast<int>(i);
+                if (state.contains("meshView"))
+                    mesh_rows_[i].view.restore_view_state(state["meshView"]);
+                break;
+            }
     if (state.contains("pixel"))
         for (std::size_t i = 0; i < pixel_rows_.size(); ++i)
             if (pixel_rows_[i].key == state["pixel"] &&
@@ -747,6 +811,24 @@ ContainerAction ContainerView::draw(bool busy) {
             "%s", cyui::tr("Stored channels; no color transform. HDR previews use Reinhard / sRGB at 0 EV.")
                       .c_str());
         pixel_rows_[pixel_].view.draw("##cooked-pixels");
+        ImGui::EndTabItem();
+    }
+    if (!mesh_rows_.empty() &&
+        ImGui::BeginTabItem(cyui::trLabel("Cooked meshes").c_str(), nullptr, flags(6))) {
+        active_tab_ = 6;
+        auto label = [&](const MeshRow &r) {
+            return (document_->after ? cyui::tr(r.after ? "After" : "Before") + " | " : std::string{}) +
+                   r.key;
+        };
+        if (ImGui::BeginCombo("##cooked-mesh-selection", label(mesh_rows_[mesh_]).c_str())) {
+            for (std::size_t i = 0; i < mesh_rows_.size(); ++i)
+                if (ImGui::Selectable(label(mesh_rows_[i]).c_str(), mesh_ == static_cast<int>(i)))
+                    mesh_ = static_cast<int>(i);
+            ImGui::EndCombo();
+        }
+        ImGui::TextWrapped(
+            "%s", cyui::tr("Cooked render buffers; later Nanite and collision data remains opaque.").c_str());
+        mesh_rows_[mesh_].view.draw("##cooked-mesh");
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

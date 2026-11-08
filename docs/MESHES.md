@@ -2,6 +2,8 @@
 
 Le core lit les sources `MeshDescription` des meshes statiques éditeur, avec des identifiants d'éléments conservés. Il fournit les positions, triangles, instances de sommets, UV, normales, tangentes, couleurs et noms de groupes de matériaux. Cette géométrie est décodée explicitement ; ouvrir les métadonnées d'un package ne charge pas tous ses sommets.
 
+La lecture des LOD de rendu StaticMesh cooked UE 5.3 Windows est décrite dans [COOKED_MESHES.md](COOKED_MESHES.md). Elle conserve un profil explicite et ne confond pas les identifiants des sommets de rendu avec ceux des sources.
+
 ## Commandes
 
 ```powershell

@@ -13,6 +13,7 @@
 #include <cyuediff/container.hpp>
 #include <cyuediff/zen.hpp>
 #include <cyuediff/cooked_texture.hpp>
+#include <cyuediff/cooked_mesh.hpp>
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/binary_layout.hpp>
 #include <cmath>
@@ -33,12 +34,14 @@ int run(const std::vector<std::string> &args) {
             << "CyUEDiff " CYUEDIFF_VERSION " - standalone Unreal package reader\n"
                "  cyuediff binary-diff BASE TARGET [--block-size BYTES] [--summary] [--out DELTA.json]\n"
                "  cyuediff binary-apply BASE DELTA --out NEW_FILE\n"
-               "  cyuediff binary-compose FIRST_DELTA SECOND_DELTA [--format json|binary] [--summary] [--out NEW_DELTA]\n"
+               "  cyuediff binary-compose FIRST_DELTA SECOND_DELTA [--format json|binary] [--summary] [--out "
+               "NEW_DELTA]\n"
                "  cyuediff binary-info DELTA [--out NEW_REPORT.json]\n"
                "  binary-diff and git-binary-diff accept --format json|binary (binary requires --out).\n"
                "  binary-compose accepts --max-composition-fragments COUNT.\n"
                "  binary-diff and git-binary-diff accept --max-source-read-bytes BYTES.\n"
-               "  cyuediff git-binary-diff REPO BEFORE_REV AFTER_REV PATH [--after-path PATH] [--summary] [--out DELTA.json]\n"
+               "  cyuediff git-binary-diff REPO BEFORE_REV AFTER_REV PATH [--after-path PATH] [--summary] "
+               "[--out DELTA.json]\n"
                "  Binary commands refuse existing outputs; see docs/BINARY_DELTA.md for budgets.\n"
                "  cyuediff layouts DESCRIPTION.json [--out REPORT.json]\n"
                "  inspect/diff/git-inspect/git-diff accept --layouts DESCRIPTION.json.\n"
@@ -58,24 +61,32 @@ int run(const std::vector<std::string> &args) {
                "  image-diff/hdr-diff/mesh-diff accept independent --after-payload-root DIRECTORY.\n"
                "  preview accepts --exposure EV for HDR source display.\n"
                "  cyuediff curves ASSET [--project PROJECT] [--out FILE]\n"
-               "  cyuediff curves-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
+               "  cyuediff curves-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out "
+               "FILE]\n"
                "  cyuediff curve-value-diff BEFORE AFTER --time-start N --time-end N [--samples N]\n"
-               "    [--before-object PATH] [--after-object PATH] [--before-lane KEY] [--after-lane KEY] [--value-tolerance N]\n"
+               "    [--before-object PATH] [--after-object PATH] [--before-lane KEY] [--after-lane KEY] "
+               "[--value-tolerance N]\n"
                "  Curve commands accept --curve-family float|transform (AnimDataModel scope).\n"
-               "  cyuediff curve-components ASSET --time N [--curve-id ID] [--curve-family float|transform] [--object PATH]\n"
+               "  cyuediff curve-components ASSET --time N [--curve-id ID] [--curve-family float|transform] "
+               "[--object PATH]\n"
                "  cyuediff curve-value ASSET --time NUMBER [--object PATH] [--lane KEY] [--out FILE]\n"
                "  cyuediff animation ASSET [--project PROJECT] [--out FILE]\n"
-               "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out FILE]\n"
+               "  cyuediff animation-diff BEFORE AFTER [--before-object PATH] [--after-object PATH] [--out "
+               "FILE]\n"
                "  cyuediff animation-frame-diff BEFORE AFTER --before-frame N --after-frame N\n"
                "    [--before-object PATH] [--after-object PATH] [--position-tolerance N]\n"
                "    [--rotation-tolerance DEGREES] [--scale-tolerance N] [--out FILE]\n"
-               "  cyuediff animation-socket-pose ANIMATION SKELETON --frame N [--object PATH] [--skeleton-object PATH]\n"
-               "  cyuediff animation-socket-pose-diff BEFORE AFTER --before-skeleton FILE --after-skeleton FILE\n"
+               "  cyuediff animation-socket-pose ANIMATION SKELETON --frame N [--object PATH] "
+               "[--skeleton-object PATH]\n"
+               "  cyuediff animation-socket-pose-diff BEFORE AFTER --before-skeleton FILE --after-skeleton "
+               "FILE\n"
                "    --before-frame N --after-frame N [--position-tolerance N] [--out FILE]\n"
-               "  cyuediff animation-pose ANIMATION SKELETON --frame N [--object PATH] [--skeleton-object PATH]\n"
+               "  cyuediff animation-pose ANIMATION SKELETON --frame N [--object PATH] [--skeleton-object "
+               "PATH]\n"
                "  cyuediff animation-pose-diff BEFORE AFTER --before-skeleton FILE --after-skeleton FILE\n"
                "    --before-frame N --after-frame N [--before-object PATH] [--after-object PATH]\n"
-               "    [--before-skeleton-object PATH] [--after-skeleton-object PATH] [--position-tolerance N] [--out FILE]\n"
+               "    [--before-skeleton-object PATH] [--after-skeleton-object PATH] [--position-tolerance N] "
+               "[--out FILE]\n"
                "  cyuediff animation-frame ASSET --frame N [--object PATH] [--out FILE]\n"
                "  cyuediff skeleton ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff attachments ASSET [--project PROJECT] [--out FILE]\n"
@@ -88,7 +99,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff skeleton-diff BEFORE AFTER [--out FILE]\n"
                "  cyuediff skeleton-pose ASSET [--object PATH] [--retarget-source KEY] [--out FILE]\n"
                "  cyuediff skeleton-pose-diff BEFORE AFTER [--before-object PATH] [--after-object PATH]\n"
-               "    [--before-retarget-source KEY] [--after-retarget-source KEY] [--position-tolerance N] [--out FILE]\n"
+               "    [--before-retarget-source KEY] [--after-retarget-source KEY] [--position-tolerance N] "
+               "[--out FILE]\n"
                "  cyuediff collision ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-preview ASSET [--project PROJECT] [--out FILE]\n"
                "  cyuediff collision-diff BEFORE AFTER [--out FILE]\n"
@@ -124,12 +136,21 @@ int run(const std::vector<std::string> &args) {
                "[--after-cooked-profile PROFILE] [--out FILE]\n"
                "  cyuediff zen-catalog CONTAINER --cooked-profile PROFILE [--script-objects GLOBAL.utoc] "
                "[--codec MODULE.dll] [--out FILE]\n"
+               "  cyuediff zen-mesh CONTAINER ENTRY --mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1\n"
+               "  cyuediff zen-geometry CONTAINER ENTRY [--lod N] [--export-index N]\n"
+               "  cyuediff zen-export-mesh CONTAINER ENTRY --out MESH.obj [--lod N]\n"
+               "  cyuediff zen-mesh-diff BEFORE ENTRY AFTER ENTRY [--lod N] [--after-lod N]\n"
+               "  Mesh commands also require --cooked-profile ue5.3 --schema CONTEXT.json.\n"
                "  cyuediff zen-texture CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
-               "  cyuediff zen-preview CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json --out IMAGE.png\n"
-               "  cyuediff zen-image-diff BEFORE ENTRY AFTER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
-               "  cyuediff zen-hdr-diff BEFORE ENTRY AFTER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
+               "  cyuediff zen-preview CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json --out "
+               "IMAGE.png\n"
+               "  cyuediff zen-image-diff BEFORE ENTRY AFTER ENTRY --cooked-profile ue5.3 --schema "
+               "CONTEXT.json\n"
+               "  cyuediff zen-hdr-diff BEFORE ENTRY AFTER ENTRY --cooked-profile ue5.3 --schema "
+               "CONTEXT.json\n"
                "  Cooked pixel commands accept --export-index N, --platform N and --mip N.\n"
-               "  Cooked pixel comparisons accept --after-export-index N, --after-platform N, --threshold and --heatmap.\n"
+               "  Cooked pixel comparisons accept --after-export-index N, --after-platform N, --threshold "
+               "and --heatmap.\n"
                "  zen-preview accepts --exposure EV for floating pixel display.\n"
                "  Cooked commands accept --schema CONTEXT.json; comparisons accept --after-schema.\n"
                "  zen-diff accepts --script-objects, --after-script-objects and --codec.\n"
@@ -147,9 +168,38 @@ int run(const std::vector<std::string> &args) {
         return run_binary_command(args);
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--before-frame","--after-frame","--rotation-tolerance","--scale-tolerance","--curve-family","--curve-id","--time-start","--time-end","--samples","--before-lane","--after-lane","--value-tolerance","--time","--lane","--frame","--retarget-source","--before-retarget-source","--after-retarget-source","--before-object", "--after-object", "--position-tolerance", "--max-packages",
+    const std::set<std::string> valued = {"--mesh-profile",
+                                          "--after-mesh-profile",
+                                          "--keep-mobile-min-lod",
+                                          "--after-keep-mobile-min-lod",
+                                          "--after-lod",
+                                          "--before-frame",
+                                          "--after-frame",
+                                          "--rotation-tolerance",
+                                          "--scale-tolerance",
+                                          "--curve-family",
+                                          "--curve-id",
+                                          "--time-start",
+                                          "--time-end",
+                                          "--samples",
+                                          "--before-lane",
+                                          "--after-lane",
+                                          "--value-tolerance",
+                                          "--time",
+                                          "--lane",
+                                          "--frame",
+                                          "--retarget-source",
+                                          "--before-retarget-source",
+                                          "--after-retarget-source",
+                                          "--before-object",
+                                          "--after-object",
+                                          "--position-tolerance",
+                                          "--max-packages",
                                           "--max-exports",
-                                          "--layouts", "--after-layouts", "--payload-root", "--after-payload-root",
+                                          "--layouts",
+                                          "--after-layouts",
+                                          "--payload-root",
+                                          "--after-payload-root",
                                           "--schema",
                                           "--after-schema",
                                           "--cooked-profile",
@@ -158,7 +208,11 @@ int run(const std::vector<std::string> &args) {
                                           "--after-script-objects",
                                           "--max-assets",
                                           "--max-entries",
-                                          "--exposure", "--export-index", "--after-export-index", "--platform", "--after-platform",
+                                          "--exposure",
+                                          "--export-index",
+                                          "--after-export-index",
+                                          "--platform",
+                                          "--after-platform",
                                           "--project",
                                           "--before-project",
                                           "--after-project",
@@ -176,7 +230,12 @@ int run(const std::vector<std::string> &args) {
                                           "--max-commits",
                                           "--skip",
                                           "--before-engine-root",
-                                          "--after-engine-root", "--before-skeleton", "--after-skeleton", "--skeleton-object", "--before-skeleton-object", "--after-skeleton-object"};
+                                          "--after-engine-root",
+                                          "--before-skeleton",
+                                          "--after-skeleton",
+                                          "--skeleton-object",
+                                          "--before-skeleton-object",
+                                          "--after-skeleton-object"};
     for (std::size_t i = 1; i < args.size(); ++i) {
         const auto &arg = args[i];
         if (valued.count(arg)) {
@@ -205,10 +264,14 @@ int run(const std::vector<std::string> &args) {
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
+    const bool cooked_mesh = command == "zen-mesh" || command == "zen-geometry" ||
+                             command == "zen-export-mesh" || command == "zen-mesh-diff";
+    const bool cooked_mesh_diff = command == "zen-mesh-diff";
     const bool cooked_pixels = command == "zen-texture" || command == "zen-preview" || command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_pixel_diff = command == "zen-image-diff" || command == "zen-hdr-diff";
-    const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff;
-    const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog" || cooked_pixels;
+    const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff;
+    const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog" ||
+                             cooked_pixels || cooked_mesh;
     if (zen_command)
         required = cooked_compare ? 4u : (command == "zen-catalog" ? 1u : 2u);
     const bool container_command = command == "container" || command == "container-read" ||
@@ -272,15 +335,24 @@ int run(const std::vector<std::string> &args) {
                 key != "--script-objects" && key != "--schema" &&
                 !(key == "--snapshot" && (command == "zen-inspect" || command == "zen-catalog")) &&
                 !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
-                !(cooked_pixels && key == "--export-index") &&
+                !((cooked_pixels || cooked_mesh) && key == "--export-index") &&
+                !(cooked_mesh && (key == "--mesh-profile" || key == "--keep-mobile-min-lod")) &&
+                !(cooked_mesh && command != "zen-mesh" && key == "--lod") &&
+                !(cooked_mesh_diff &&
+                  (key == "--after-mesh-profile" || key == "--after-keep-mobile-min-lod" ||
+                   key == "--after-lod" || key == "--after-export-index")) &&
                 !(cooked_pixels && command != "zen-texture" && (key == "--mip" || key == "--platform")) &&
                 !(command == "zen-preview" && key == "--exposure") &&
-                !(cooked_pixel_diff && (key == "--threshold" || key == "--heatmap" || key == "--after-platform" || key == "--after-export-index")) &&
-                !(cooked_compare && (key == "--after-cooked-profile" ||
-                                            key == "--after-script-objects" || key == "--after-schema")))
+                !(cooked_pixel_diff && (key == "--threshold" || key == "--heatmap" ||
+                                        key == "--after-platform" || key == "--after-export-index")) &&
+                !(cooked_compare && (key == "--after-cooked-profile" || key == "--after-script-objects" ||
+                                     key == "--after-schema")))
                 throw Error("arguments", "Unsupported cooked option: " + key);
             continue;
         }
+        if (key == "--mesh-profile" || key == "--after-mesh-profile" || key == "--keep-mobile-min-lod" ||
+            key == "--after-keep-mobile-min-lod" || key == "--after-lod")
+            throw Error("arguments", key + " requires a cooked mesh command");
         if (key == "--export-index" || key == "--after-export-index" || key == "--platform" || key == "--after-platform")
             throw Error("arguments", key + " requires a cooked texture command");
         if (key == "--schema" || key == "--after-schema" || key == "--cooked-profile" ||
@@ -538,6 +610,66 @@ int run(const std::vector<std::string> &args) {
             output = catalog_zen_packages(input, before_options, read_options, catalog_options);
             if (!output.at("complete").get<bool>())
                 exit_code = 2;
+        } else if (cooked_mesh) {
+            auto mesh_options = [&](const char *profile_key, const char *setting_key,
+                                    CookedMeshOptions fallback) {
+                if (flags.contains(profile_key)) {
+                    if (flags.at(profile_key).get<std::string>() != "ue5.3-windows")
+                        throw Error("arguments", "Supported cooked mesh profile: ue5.3-windows");
+                    fallback.profile = CookedMeshProfile::unreal_5_3_windows;
+                }
+                if (flags.contains(setting_key))
+                    fallback.keep_mobile_min_lod_setting = integer_option(setting_key, 1) != 0;
+                return fallback;
+            };
+            auto selected_export = [&](const char *key) -> std::size_t {
+                return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
+            };
+            auto opts = mesh_options("--mesh-profile", "--keep-mobile-min-lod", {});
+            opts.geometry = command != "zen-mesh";
+            auto before = read_zen_static_mesh(input, select(input, positional[1]), before_options,
+                                               read_options, opts, selected_export("--export-index"));
+            auto geometry = [&](const CookedStaticMesh &mesh, std::size_t lod) -> const MeshGeometry & {
+                if (lod >= mesh.lods.size() || !mesh.lods[lod].geometry)
+                    throw Error("cooked-mesh-unavailable",
+                                "Selected cooked mesh LOD geometry is unavailable");
+                return *mesh.lods[lod].geometry;
+            };
+            const auto lod = integer_option("--lod", 1'000'000);
+            if (command == "zen-mesh")
+                output = before.to_json();
+            else if (command == "zen-geometry") {
+                output = geometry(before, lod).to_json();
+                output["cookedMesh"] = before.to_json();
+                output["lod"] = lod;
+            } else if (command == "zen-export-mesh") {
+                obj_destination = path_option("--out");
+                if (obj_destination.empty())
+                    throw Error("arguments", "zen-export-mesh requires --out MESH.obj");
+                obj = geometry(before, lod);
+                output = {{"exported", true}, {"cookedMesh", before.to_json()}, {"lod", lod}};
+            } else {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects"))
+                    after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema"))
+                    after_options.schema_context = schema_context(path_option("--after-schema"));
+                auto other = open(fs::u8path(positional[2]));
+                auto after = read_zen_static_mesh(
+                    other, select(other, positional[3]), after_options, read_options,
+                    mesh_options("--after-mesh-profile", "--after-keep-mobile-min-lod", opts),
+                    selected_export("--after-export-index"));
+                const auto after_lod =
+                    flags.contains("--after-lod") ? integer_option("--after-lod", 1'000'000) : lod;
+                auto result = compare_meshes(geometry(before, lod), geometry(after, after_lod));
+                output = result.to_json();
+                exit_code = result.changes.empty() ? 0 : 1;
+                output["beforeMesh"] = before.to_json();
+                output["afterMesh"] = after.to_json();
+                output["beforeLod"] = lod;
+                output["afterLod"] = after_lod;
+            }
         } else if (cooked_pixels) {
             auto selected_export = [&](const char *key) -> std::size_t {
                 return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
@@ -1095,7 +1227,8 @@ int run(const std::vector<std::string> &args) {
                                         (!before_layouts || !after_layouts || before_layouts->sha256() != after_layouts->sha256())}};
     }
     auto text = output.dump(2, ' ', false, Json::error_handler_t::replace) + "\n";
-    auto destination = (command == "preview" || command == "zen-preview" || command == "export-mesh" || command == "container-read")
+    auto destination = (command == "preview" || command == "zen-preview" || command == "export-mesh" ||
+                        command == "zen-export-mesh" || command == "container-read")
                            ? fs::path{}
                            : path_option("--out");
     auto guarded_path = [](const fs::path &path) {

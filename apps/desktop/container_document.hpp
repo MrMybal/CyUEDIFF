@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/cooked_texture.hpp>
+#include <cyuediff/cooked_mesh.hpp>
 #include <optional>
 namespace cyuediff::desktop {
 struct ContainerSource {
@@ -9,9 +10,17 @@ struct ContainerSource {
     ZenProfile profile = ZenProfile::unspecified;
     fs::path after_path, after_script_objects, after_schema;
     ZenProfile after_profile = ZenProfile::unspecified;
+    CookedMeshProfile mesh_profile = CookedMeshProfile::unspecified,
+                      after_mesh_profile = CookedMeshProfile::unspecified;
+    std::optional<bool> keep_mobile_min_lod_setting, after_keep_mobile_min_lod_setting;
     bool compare_payloads = false;
     std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;
+};
+struct ContainerMeshPreview {
+    std::string key, object_path;
+    std::uint32_t lod = 0;
+    std::shared_ptr<const MeshGeometry> geometry;
 };
 struct ContainerTexturePreview {
     std::string key, object_path, format;
@@ -31,6 +40,9 @@ struct ContainerDocument {
     std::optional<ZenPackage> zen;
     std::optional<ZenSchemaManifest> schema_manifest;
     bool schema_loaded = false;
+    Json meshes = Json::array(), mesh_differences = Json::array();
+    std::vector<ContainerMeshPreview> mesh_previews;
+    std::vector<std::string> mesh_diagnostics;
     Json textures = Json::array();
     std::vector<ContainerTexturePreview> previews;
     std::vector<ContainerTextureDifference> pixel_differences;

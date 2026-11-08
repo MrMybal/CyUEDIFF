@@ -165,22 +165,59 @@ int main() {
         check(stores_copy.request().payload_root == "Before/Payloads" &&
                   stores_copy.request().after_payload_root == "After/Payloads" &&
                   !stores_copy.request().inherit_after_payload_root, "Independent payload stores persist");
+        auto mesh_state = value.to_json();
+        auto &mesh_settings = mesh_state["documents"][2]["settings"];
+        mesh_settings["mesh_profile"] = 1;
+        mesh_settings["after_mesh_profile"] = 1;
+        mesh_settings["mesh_mobile_lod"] = 1;
+        mesh_settings["after_mesh_mobile_lod"] = 2;
+        mesh_state["documents"][2]["containerTab"] = 6;
+        auto mesh_copy = WorkspaceFile::from_json(mesh_state).documents[2].settings.request().container;
+        check(mesh_copy && mesh_copy->keep_mobile_min_lod_setting == false &&
+                  mesh_copy->after_keep_mobile_min_lod_setting == true,
+              "Independent native mesh settings persist");
+        auto broken_mesh = mesh_state;
+        broken_mesh["documents"][2]["settings"]["mesh_mobile_lod"] = 3;
+        rejects([&] { WorkspaceFile::from_json(broken_mesh); });
+        broken_mesh = mesh_state;
+        broken_mesh["documents"][2]["settings"].erase("mesh_profile");
+        broken_mesh["documents"][2]["settings"]["unexpected"] = 0;
+        rejects([&] { WorkspaceFile::from_json(broken_mesh); });
+        auto legacy_six = value.to_json();
+        legacy_six["schema"] = "cyuediff.workspace/6";
+        for (auto &d : legacy_six["documents"])
+            for (const auto *key :
+                 {"mesh_profile", "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod"})
+                d["settings"].erase(key);
+        check(WorkspaceFile::from_json(legacy_six).documents[2].settings.mesh_profile == 0,
+              "Version six does not invent native mesh context");
         auto legacy_five = value.to_json();
         legacy_five["schema"] = "cyuediff.workspace/5";
         for (auto &d : legacy_five["documents"])
-            for (const char *key : {"payload_root", "after_payload_root", "inherit_after_payload_root"}) d["settings"].erase(key);
+            for (const char *key :
+                 {"mesh_profile", "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod",
+                  "payload_root", "after_payload_root", "inherit_after_payload_root"})
+                d["settings"].erase(key);
         check(WorkspaceFile::from_json(legacy_five).documents[0].settings.request().payload_root.empty(),
               "Version five migration does not discover a payload store");
         auto legacy_four = value.to_json();
         legacy_four["schema"] = "cyuediff.workspace/4";
         for (auto &d : legacy_four["documents"])
-            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root", "inherit_after_payload_root"}) d["settings"].erase(key);
+            for (const char *key :
+                 {"mesh_profile", "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod", "layouts",
+                  "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root",
+                  "inherit_after_payload_root"})
+                d["settings"].erase(key);
         const auto old_copy = WorkspaceFile::from_json(legacy_four).documents[0].settings;
         check(old_copy.layouts.empty() && old_copy.after_layouts.empty() && old_copy.inherit_after_layouts,
               "Actual version four workspaces retain default readers");
         auto legacy_three = pose_json;
         for (auto &d : legacy_three["documents"])
-            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root", "inherit_after_payload_root"}) d["settings"].erase(key);
+            for (const char *key :
+                 {"mesh_profile", "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod", "layouts",
+                  "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root",
+                  "inherit_after_payload_root"})
+                d["settings"].erase(key);
         legacy_three["schema"] = "cyuediff.workspace/3";
         for (auto &d : legacy_three["documents"])
             for (const char *key :
@@ -190,7 +227,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/6",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/7",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -203,9 +240,13 @@ int main() {
         pose_settings.pose_enabled = false;
         auto version_two = value.to_json();
         for (auto &d : version_two["documents"])
-            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root", "inherit_after_payload_root"}) d["settings"].erase(key);
+            for (const char *key :
+                 {"mesh_profile", "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod", "layouts",
+                  "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root",
+                  "inherit_after_payload_root"})
+                d["settings"].erase(key);
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/6",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/7",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -217,14 +258,18 @@ int main() {
         rejects([&] { WorkspaceFile::from_json(bad_layout); });
         auto legacy = value.to_json();
         for (auto &d : legacy["documents"])
-            for (const char *key : {"layouts", "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root", "inherit_after_payload_root"}) d["settings"].erase(key);
+            for (const char *key :
+                 {"mesh_profile", "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod", "layouts",
+                  "after_layouts", "inherit_after_layouts", "payload_root", "after_payload_root",
+                  "inherit_after_payload_root"})
+                d["settings"].erase(key);
         legacy["schema"] = "cyuediff.workspace/1";
         for (auto &d : legacy["documents"])
             d.erase("viewState");
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/6",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/7",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

@@ -1,6 +1,6 @@
 # Workspace files
 
-The optional desktop host has a data-only `cyuediff.workspace/3` JSON format. It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
+The optional desktop host has a data-only `cyuediff.workspace/7` JSON format (post-0.181 development). It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
 
 Local filesystem paths are saved as absolute paths. Relative paths in a file being opened resolve against that file's parent directory. Git asset/project paths remain repository-relative, and mounted names such as `/Game/Example` remain mounted when a project context is present. Git revision expressions are retained as entered, so a later opening can resolve a moving branch differently. No checkout, network fetch or source modification is performed.
 
@@ -89,3 +89,9 @@ Workspace format five adds per-document `layouts`, `after_layouts` and `inherit_
 ## Cooked pixel selection — post-0.181 development
 
 Container chapter 5 selects prepared cooked pixels. Container presentation state can retain `pixel` (the exact object/format/mip identity), `pixelAfter` and a checked `pixelView` texture viewport. Restoration resolves that identity against freshly prepared data and ignores stale selections; resource handles and decoded bytes are not persisted. Existing workspace versions and chapters remain readable.
+
+## Cooked mesh context — post-0.181 development
+
+Format seven adds checked per-side native mesh profiles and producer mobile-LOD settings. `mesh_profile` / `after_mesh_profile` select disabled (0) or UE 5.3 Windows (1); `mesh_mobile_lod` / `after_mesh_mobile_lod` select unknown (0), explicitly off (1) or explicitly on (2). Unknown never becomes an inferred setting. Formats one through six remain readable with native mesh decoding disabled; saving upgrades to seven. Unknown or missing version-seven fields remain errors.
+
+Container chapter 6 selects prepared cooked render geometry. The `mesh` identity combines exact object path and LOD; `meshAfter` selects its side and `meshView` retains a validated camera/change filter. The source reader profile and settings are retained independently from this presentation state. Resource handles, decoded geometry and decoder modules are excluded. See [COOKED_MESHES.md](COOKED_MESHES.md).

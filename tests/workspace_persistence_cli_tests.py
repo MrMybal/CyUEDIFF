@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
             '--script-objects',schema/'global.utoc','--schema',schema/'schema.json','--container-tab','schema']
     original=run('--save-workspace',workspace,'--document-index','1',*source)
     saved=json.loads(workspace.read_text(encoding='utf-8'))
-    assert saved['schema']=='cyuediff.workspace/6' and saved['active']==1 and len(saved['documents'])==3
+    assert saved['schema']=='cyuediff.workspace/7' and saved['active']==1 and len(saved['documents'])==3
     assert saved['documents'][0]['view']=='comparison' and saved['documents'][2]['containerTab']==4
     assert not saved['documents'][0]['settings']['previews'] and saved['documents'][1]['settings']['previews']
     assert all('codec' not in d['settings'] for d in saved['documents']) and original['workspaceFile']['saved']
@@ -91,10 +91,10 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
     legacy=json.loads(workspace.read_text(encoding='utf-8'));legacy['schema']='cyuediff.workspace/1'
     for d in legacy['documents']:
         d.pop('viewState')
-        for key in ('layouts','after_layouts','inherit_after_layouts','payload_root','after_payload_root','inherit_after_payload_root'):d['settings'].pop(key)
+        for key in ('mesh_profile','after_mesh_profile','mesh_mobile_lod','after_mesh_mobile_lod','layouts','after_layouts','inherit_after_layouts','payload_root','after_payload_root','inherit_after_payload_root'):d['settings'].pop(key)
     legacy_file=root/'legacy.json';legacy_file.write_text(json.dumps(legacy),encoding='utf-8')
     upgraded=root/'upgraded.json';run('--workspace',legacy_file,'--save-workspace',upgraded)
-    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/6';checks+=1
+    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/7';checks+=1
     version_two=json.loads(workspace.read_text(encoding='utf-8'));version_two['schema']='cyuediff.workspace/2'
     def remove_layout(value):
         if isinstance(value,dict):
@@ -104,10 +104,10 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-persistence-',dir=P
             for child in value:remove_layout(child)
     for d in version_two['documents']:
         remove_layout(d['viewState'])
-        for key in ('layouts','after_layouts','inherit_after_layouts','payload_root','after_payload_root','inherit_after_payload_root'):d['settings'].pop(key)
+        for key in ('mesh_profile','after_mesh_profile','mesh_mobile_lod','after_mesh_mobile_lod','layouts','after_layouts','inherit_after_layouts','payload_root','after_payload_root','inherit_after_payload_root'):d['settings'].pop(key)
     version_two_file=root/'version-two.json';version_two_file.write_text(json.dumps(version_two),encoding='utf-8')
     run('--workspace',version_two_file,'--save-workspace',upgraded)
-    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/6';checks+=1
+    assert json.loads(upgraded.read_text(encoding='utf-8'))['schema']=='cyuediff.workspace/7';checks+=1
     blank_layout={'layout':{'sidebarWidth':500,'project':True}}
     blank_file=root/'blank-layout.json'
     blank=run(*actions('view-state:'+json.dumps(blank_layout),'workspace-save:'+str(blank_file)))

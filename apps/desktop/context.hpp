@@ -14,6 +14,7 @@ struct Settings {
     bool pose_enabled = false, pose_independent_frames = false;
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
     int source = 0, cooked_profile = 0, after_cooked_profile = 0;
+    int mesh_profile = 0, after_mesh_profile = 0, mesh_mobile_lod = 0, after_mesh_mobile_lod = 0;
     std::string container_path, container_entry, script_objects, after_container_path, after_script_objects;
     std::string container_schema, after_container_schema;
     bool compare_container_payloads = false;
@@ -35,8 +36,7 @@ struct Settings {
     }
     LoadRequest request() const {
         if (pose_enabled && source == 2)
-            throw Error("desktop-animation-pose",
-                        "External Skeleton bindings require loose or Git packages");
+            throw Error("desktop-animation-pose", "External Skeleton bindings require loose or Git packages");
         if (source == 2) {
             if (!layouts.empty() || !after_layouts.empty() || !inherit_after_layouts)
                 throw Error("desktop-layouts", "Cooked structures use inline schema context layouts");
@@ -46,11 +46,19 @@ struct Settings {
             input.script_objects = fs::u8path(script_objects);
             input.schema = fs::u8path(container_schema);
             input.entry = container_entry;
+            input.mesh_profile =
+                mesh_profile == 1 ? CookedMeshProfile::unreal_5_3_windows : CookedMeshProfile::unspecified;
+            if (mesh_mobile_lod)
+                input.keep_mobile_min_lod_setting = mesh_mobile_lod == 2;
             input.profile = cooked_profile == 1
                                 ? ZenProfile::unreal_5_3
                                 : (cooked_profile == 2 ? ZenProfile::unreal_5_5 : ZenProfile::unspecified);
             if (!after_container_path.empty()) {
                 input.after_path = fs::u8path(after_container_path);
+                input.after_mesh_profile = after_mesh_profile == 1 ? CookedMeshProfile::unreal_5_3_windows
+                                                                   : CookedMeshProfile::unspecified;
+                if (after_mesh_mobile_lod)
+                    input.after_keep_mobile_min_lod_setting = after_mesh_mobile_lod == 2;
                 input.after_script_objects = fs::u8path(after_script_objects);
                 input.after_schema = fs::u8path(after_container_schema);
                 input.after_profile =

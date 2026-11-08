@@ -70,3 +70,7 @@ Explicit local virtualized bulk resolution is shared by texture/HDR and modern M
 ## Cooked pixel sessions — post-0.181
 
 `gpu_texture.cpp` decodes explicit raw/BC mip bytes through bounded CPU code. `cooked_texture.cpp` maps a supported native Texture2D window from its decoded property boundary, follows bulk-map references and reuses verified package/external chunks in a move-only worker session. The CLI and container desktop expose stored samples and changed pixels independently from package-only body equality. See [COOKED_TEXTURES.md](COOKED_TEXTURES.md).
+
+## Cooked static render buffers — post-0.181
+
+`cooked_mesh.hpp` binds explicit UE 5.3 Windows property/native boundaries and producer settings to bounded render LOD windows. Stored buffers project into the existing reusable MeshGeometry model; material records, bulk provenance and the opaque later native tail remain separate. The worker prepares available LODs before CyUI builds its viewport data. Core-only consumers need no Unreal, Git or graphics runtime. See COOKED_MESHES.md for the supported serializer and evidence boundaries.

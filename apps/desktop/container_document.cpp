@@ -31,6 +31,10 @@ Json ContainerDocument::report() const {
         differences.push_back(
             {{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}});
     return {{"schema", "cyuediff.desktop-container/1"},
+            {"meshes", meshes},
+            {"meshDifferences", mesh_differences},
+            {"meshPreviews", mesh_previews.size()},
+            {"meshDiagnostics", mesh_diagnostics},
             {"textures", textures},
             {"texturePreviews", std::move(pixels)},
             {"textureDifferences", std::move(differences)},
@@ -57,6 +61,17 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
     index.max_entries = 100'000;
     index.max_index_bytes = 64ull * 1024 * 1024;
     auto document = std::make_shared<ContainerDocument>();
+    if (document->after)
+        for (const auto &before : document->mesh_previews) {
+            control.check();
+            auto after =
+                std::find_if(document->after->mesh_previews.begin(), document->after->mesh_previews.end(),
+                             [&](const auto &m) { return m.key == before.key; });
+            if (after != document->after->mesh_previews.end())
+                document->mesh_differences.push_back(
+                    {{"key", before.key},
+                     {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
+        }
     document->source = source;
     document->input = std::make_shared<Container>(Container::open(source.path, index));
     document->metadata = document->input->metadata();
@@ -153,6 +168,47 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
             document->schema_loaded = true;
         }
         document->zen = ZenPackage::parse(bytes, zen);
+        std::uint64_t mesh_output = 0;
+        for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
+            const auto &object = document->zen->exports[i];
+            if (object.class_name != "/Script/Engine.StaticMesh" || (object.flags & 0x30))
+                continue;
+            try {
+                CookedMeshOptions native;
+                native.profile = source.mesh_profile;
+                native.keep_mobile_min_lod_setting = source.keep_mobile_min_lod_setting;
+                native.control = control;
+                native.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
+                native.max_output_bytes = 256ull * 1024 * 1024 - mesh_output;
+                auto mesh = read_zen_static_mesh(*document->input, found, zen, read, native, i);
+                if (mesh.package_sha256 != document->zen->sha256)
+                    throw Error("container-integrity",
+                                "Cooked mesh package changed during document preparation");
+                document->meshes.push_back(mesh.to_json());
+                for (std::size_t l = 0; l < mesh.lods.size(); ++l) {
+                    const auto &lod = mesh.lods[l];
+                    if (!lod.geometry) {
+                        document->mesh_diagnostics.push_back(object.path + " LOD " + std::to_string(l) +
+                                                             ": " + lod.unavailable);
+                        continue;
+                    }
+                    auto size = std::uint64_t(lod.geometry->vertices.size()) * sizeof(MeshVertex) +
+                                std::uint64_t(lod.geometry->instances.size()) * sizeof(MeshInstance) +
+                                std::uint64_t(lod.geometry->triangles.size()) * sizeof(MeshTriangle);
+                    for (const auto &instance : lod.geometry->instances)
+                        size += instance.uvs.size() * sizeof(std::array<float, 2>);
+                    if (size > 256ull * 1024 * 1024 - mesh_output)
+                        throw Error("cooked-mesh-limit", "Cooked mesh previews exceed document byte budget");
+                    mesh_output += size;
+                    document->mesh_previews.push_back({object.path + " LOD " + std::to_string(l), object.path,
+                                                       static_cast<std::uint32_t>(l), lod.geometry});
+                }
+            } catch (const Error &error) {
+                if (error.code == "cancelled" || error.code == "container-integrity")
+                    throw;
+                document->mesh_diagnostics.push_back(object.path + ": " + error.code + ": " + error.what());
+            }
+        }
         std::uint64_t preview_bytes = 0;
         std::optional<CookedTextureReader> native_reader;
         const auto preview_limit = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
@@ -227,7 +283,9 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
                                                                  const OperationControl &control) {
     if (source.after_path.empty()) {
         if (source.compare_payloads || !source.after_script_objects.empty() ||
-            source.after_profile != ZenProfile::unspecified || !source.after_schema.empty())
+            source.after_profile != ZenProfile::unspecified || !source.after_schema.empty() ||
+            source.after_mesh_profile != CookedMeshProfile::unspecified ||
+            source.after_keep_mobile_min_lod_setting.has_value())
             throw Error("desktop-container", "After container options require an after container");
         return load_single(source, codec, control);
     }
@@ -238,6 +296,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     left.after_script_objects.clear();
     left.after_schema.clear();
     left.after_profile = ZenProfile::unspecified;
+    left.after_mesh_profile = CookedMeshProfile::unspecified;
+    left.after_keep_mobile_min_lod_setting.reset();
     left.compare_payloads = false;
     left.entry.clear();
     auto right = left;
@@ -245,6 +305,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     right.script_objects = source.after_script_objects;
     right.schema = source.after_schema;
     right.profile = source.after_profile;
+    right.mesh_profile = source.after_mesh_profile;
+    right.keep_mobile_min_lod_setting = source.after_keep_mobile_min_lod_setting;
     auto document = std::make_shared<ContainerDocument>(*load_single(left, codec, control));
     document->after = load_single(right, codec, control);
     document->members = pair_container_entries(*document->input, *document->after->input, control);
@@ -275,6 +337,9 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             document->inspection = loaded->inspection;
             document->zen = loaded->zen;
             document->schema_loaded = loaded->schema_loaded;
+            document->meshes = loaded->meshes;
+            document->mesh_previews = loaded->mesh_previews;
+            document->mesh_diagnostics = loaded->mesh_diagnostics;
             document->textures = loaded->textures;
             document->previews = loaded->previews;
             document->texture_diagnostics = loaded->texture_diagnostics;
@@ -347,6 +412,17 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             } else
                 difference.comparison = compare_images(before.image, after->image, 0, same, control);
             document->pixel_differences.push_back(std::move(difference));
+        }
+    if (document->after)
+        for (const auto &before : document->mesh_previews) {
+            control.check();
+            auto after =
+                std::find_if(document->after->mesh_previews.begin(), document->after->mesh_previews.end(),
+                             [&](const auto &m) { return m.key == before.key; });
+            if (after != document->after->mesh_previews.end())
+                document->mesh_differences.push_back(
+                    {{"key", before.key},
+                     {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
         }
     document->source = source;
     document->protected_files.insert(document->protected_files.end(),

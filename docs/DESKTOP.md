@@ -372,3 +372,7 @@ The hidden smoke runner grants a separate 30-second loading phase to each explic
 ## Cooked pixels — post-0.181 development
 
 With an explicit UE 5.3 profile, matching texture property schemas and global script objects, inspecting a supported Texture2D member prepares its mip previews off-thread. **Cooked pixels** selects before/after objects, formats and mipmaps and exposes zoom, fitting, sample differences and changed-region fitting. English is the default; **Pixels cooked** supplies the French interface. The selected chapter, mip/side and viewport are retained in workspaces. HDR comparisons use floating samples before display conversion. Unsupported native layouts remain in texture diagnostics. See [COOKED_TEXTURES.md](COOKED_TEXTURES.md).
+
+## Cooked static meshes — post-0.181 development
+
+Choose UE 5.3 Windows and the producer mobile-LOD setting in **Cooked mesh settings**. Inspecting a StaticMesh member with a matching property/schema/global context prepares its available LODs on the worker. **Cooked meshes** selects object/LOD and before/after sides, with orbit navigation and colored changes. The profile, producer setting, tab, selection and camera survive workspace format seven; older workspaces retain their previous readers. Native tails and unavailable channels remain explicit. English/French native captures and Core/CLI/SDK evidence are recorded in [COOKED_MESHES.md](COOKED_MESHES.md) and VALIDATION.md.

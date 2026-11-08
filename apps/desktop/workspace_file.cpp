@@ -134,13 +134,17 @@ Json WorkspaceFile::to_json() const {
         s["source"] = d.settings.source;
         s["cooked_profile"] = d.settings.cooked_profile;
         s["after_cooked_profile"] = d.settings.after_cooked_profile;
+        s["mesh_profile"] = d.settings.mesh_profile;
+        s["after_mesh_profile"] = d.settings.after_mesh_profile;
+        s["mesh_mobile_lod"] = d.settings.mesh_mobile_lod;
+        s["after_mesh_mobile_lod"] = d.settings.after_mesh_mobile_lod;
         docs.push_back({{"settings", s},
                         {"view", d.view},
                         {"containerTab", d.container_tab},
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/6"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/7"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
@@ -148,7 +152,8 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
     require(j.is_object() && j.size() == 3 && j.contains("schema") &&
                 (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
                  j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
-                 (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6")) &&
+                 (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
+                  j["schema"] == "cyuediff.workspace/7")) &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];
@@ -175,13 +180,15 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        saved.container_tab = number(d["containerTab"], -1, 5);
+        saved.container_tab = number(d["containerTab"], -1, 6);
         const auto &s = d["settings"];
-        const bool payload_extension = j["schema"] == "cyuediff.workspace/6";
+        const bool mesh_extension = j["schema"] == "cyuediff.workspace/7";
+        const bool payload_extension = j["schema"] == "cyuediff.workspace/6" || mesh_extension;
         const bool layout_extension = j["schema"] == "cyuediff.workspace/5" || payload_extension;
         const auto old_fields = std::size(strings) + std::size(flags) + 3 +
                                 (layout_extension ? std::size(layout_strings) + 1 : 0) +
-                                (payload_extension ? std::size(payload_strings) + 1 : 0);
+                                (payload_extension ? std::size(payload_strings) + 1 : 0) +
+                                (mesh_extension ? 4 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
         require(s.is_object() &&
@@ -218,6 +225,14 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         saved.settings.source = number(s["source"], 0, 2);
         saved.settings.cooked_profile = number(s["cooked_profile"], 0, 2);
         saved.settings.after_cooked_profile = number(s["after_cooked_profile"], 0, 2);
+        if (mesh_extension)
+            for (const auto *key :
+                 {"mesh_profile", "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod"})
+                require(s.contains(key), "Missing cooked mesh setting");
+        saved.settings.mesh_profile = number(s.value("mesh_profile", Json(0)), 0, 1);
+        saved.settings.after_mesh_profile = number(s.value("after_mesh_profile", Json(0)), 0, 1);
+        saved.settings.mesh_mobile_lod = number(s.value("mesh_mobile_lod", Json(0)), 0, 2);
+        saved.settings.after_mesh_mobile_lod = number(s.value("after_mesh_mobile_lod", Json(0)), 0, 2);
         if (pose_extension) {
             for (const auto &field : pose_strings) {
                 require(s.contains(field.first), "Missing animation pose setting");
