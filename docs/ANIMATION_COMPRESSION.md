@@ -1,6 +1,6 @@
 # Explicit per-track compressed animation
 
-`animation_compression.hpp` supplies an original, bounded **UE 5.3 Windows per-track compression decoder** in `CyUEDiff::Core`. It reads bytes without linking or launching Unreal. This is a compressed-buffer API; complete Zen AnimSequence extraction, verified codec/Skeleton binding, curves, named diffs and a dedicated desktop path remain integration work.
+`animation_compression.hpp` supplies an original, bounded **UE 5.3 Windows per-track compression decoder** in `CyUEDiff::Core`. It reads bytes without linking or launching Unreal. This is the compressed-buffer API. The higher-level [cooked animation reader](COOKED_ANIMATIONS.md) now supplies explicit Zen AnimSequence extraction, verified registered codec/Skeleton binding and named fractional frame diffs. Compressed curves and a dedicated desktop path remain open.
 
 ## Selection and input
 
@@ -46,4 +46,4 @@ The optional original Unreal reference adapter calls `BoneCompressionCodec->Deco
 
 An independent original numerical corpus covers **424** format/mask/timing/channel cases, including 8/16-bit tables, scales and both interpolation modes. Its 59,360 evaluated components match Unreal API output; it contains no Engine asset content. This corpus is committed as a portable regression fixture, with its producer/adapter provenance. Unit checks additionally cover corruption, truncation, exact/shared windows, opaque padding hashes, implicit channels, shortest-arc rotation, output/read/key budgets, cancellation and immutable ownership.
 
-`scripts/validate_per_track_animation.py` repeats private real-corpus correspondence through a separately built installed Core-only example, checks complete buffer identity and protects declared originals by SHA-256. Generated real assets, schemas, buffers, references and private paths stay in ignored build directories. This evidence does not certify other engine versions, compression plugins, whole AnimSequence native layouts or Skeleton/curve binding.
+`scripts/validate_per_track_animation.py` repeats private real-corpus correspondence through a separately built installed Core-only example, checks complete buffer identity and protects declared originals by SHA-256. Generated real assets, schemas, buffers, references and private paths stay in ignored build directories. This primitive evidence does not certify other engine versions, compression plugins or package/Skeleton/curve binding by itself. Additional whole-package and Skeleton evidence is recorded in [COOKED_ANIMATIONS.md](COOKED_ANIMATIONS.md).

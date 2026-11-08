@@ -96,3 +96,7 @@ is available to CLI and installed SDK consumers, with no draw-thread decoding.
 ## Explicit compressed animation buffers — post-0.181
 
 `animation_compression.hpp` adds an immutable Core-only per-track channel decoder and fractional frame sampling for an explicit UE 5.3 Windows wire profile. Complete buffer hashes, numeric compressed track binding, raw decoded keys, timing tables and opaque-byte counts retain coverage. The optional editor adapter supplies independent direct-codec references and original numerical fixtures. Whole Zen AnimSequence extraction, codec/Skeleton identity binding, named diffs, compressed curves and dedicated desktop integration remain separate work. See [ANIMATION_COMPRESSION.md](ANIMATION_COMPRESSION.md).
+
+## Cooked animation dependency binding
+
+`cooked_animation.hpp` binds exact AnimSequence property/native boundaries to immutable compressed channels and optional verified Skeleton identities. Explicit dependency packages must match stored package/public-export references; registered codec order and known lookup behavior determine the supported decoder. Reference bones/poses and GUID are read from the actual referenced Skeleton. Named fractional frame diffs reuse shared transform metrics while retaining incomplete-peer semantics. Curves and later tails keep explicit opaque coverage. The Core-only installed example and private corpus validator supply whole-package correspondence; desktop binding remains open. See [COOKED_ANIMATIONS.md](COOKED_ANIMATIONS.md).

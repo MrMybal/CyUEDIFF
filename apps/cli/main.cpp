@@ -1,6 +1,7 @@
 #include "binary_commands.hpp"
 #include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
+#include <cyuediff/cooked_animation.hpp>
 #include <cyuediff/animation_pose.hpp>
 #include <cyuediff/animation_socket_pose.hpp>
 #include <cyuediff/core.hpp>
@@ -126,6 +127,11 @@ int run(const std::vector<std::string> &args) {
                "--before-engine-root/--after-engine-root.\n"
                "  --no-engine skips engine discovery for Git project contexts.\n"
 #endif
+               "  cyuediff zen-animation INPUT.utoc ID --cooked-profile ue5.3 --animation-profile "
+               "ue5.3-windows [context/dependency options]\n"
+               "  cyuediff zen-animation-frame INPUT.utoc ID [same context] --frame 12.5\n"
+               "  cyuediff zen-animation-frame-diff BEFORE.utoc ID AFTER.utoc ID [independent contexts] "
+               "--before-frame N --after-frame N\n"
                "  cyuediff container INPUT.pak|INPUT.utoc [--out REPORT.json]\n"
                "  cyuediff container-read INPUT ENTRY_PATH_OR_ID --out BYTES.bin [--codec MODULE.dll]\n"
                "  cyuediff container-hash INPUT [--codec MODULE.dll] [--out REPORT.json]\n"
@@ -138,7 +144,8 @@ int run(const std::vector<std::string> &args) {
                "[--after-cooked-profile PROFILE] [--out FILE]\n"
                "  cyuediff zen-catalog CONTAINER --cooked-profile PROFILE [--script-objects GLOBAL.utoc] "
                "[--codec MODULE.dll] [--out FILE]\n"
-               "  cyuediff zen-skeletal CONTAINER ENTRY --skeletal-profile ue5.3-windows --keep-mobile-min-lod 0|1\n"
+               "  cyuediff zen-skeletal CONTAINER ENTRY --skeletal-profile ue5.3-windows "
+               "--keep-mobile-min-lod 0|1\n"
                "    [--has-vertex-colors 0|1] [--export-index N] [same cooked schema context]\n"
                "  cyuediff zen-skeletal-diff BEFORE ENTRY AFTER ENTRY [same skeletal context]\n"
                "    [--after-has-vertex-colors 0|1] [--lod N] [--after-lod N]\n"
@@ -191,6 +198,19 @@ int run(const std::vector<std::string> &args) {
                                           "--has-vertex-colors",
                                           "--after-has-vertex-colors",
                                           "--after-lod",
+                                          "--animation-profile",
+                                          "--after-animation-profile",
+                                          "--interpolation",
+                                          "--after-interpolation",
+                                          "--bone-settings-container",
+                                          "--bone-settings-entry",
+                                          "--after-bone-settings-container",
+                                          "--after-bone-settings-entry",
+                                          "--skeleton-container",
+                                          "--skeleton-entry",
+                                          "--after-skeleton-container",
+                                          "--after-skeleton-entry",
+                                          "--include-keys",
                                           "--before-frame",
                                           "--after-frame",
                                           "--rotation-tolerance",
@@ -288,6 +308,9 @@ int run(const std::vector<std::string> &args) {
     const bool cooked_collision =
         command == "zen-collision" || command == "zen-collision-wire" || command == "zen-collision-diff";
     const bool cooked_collision_diff = command == "zen-collision-diff";
+    const bool cooked_animation = command == "zen-animation" || command == "zen-animation-frame" ||
+                                  command == "zen-animation-frame-diff";
+    const bool cooked_animation_diff = command == "zen-animation-frame-diff";
     const bool cooked_skeletal = command == "zen-skeletal" || command == "zen-skeletal-diff";
     const bool cooked_skeletal_diff = command == "zen-skeletal-diff";
     const bool cooked_mesh = command == "zen-mesh" || command == "zen-geometry" ||
@@ -296,9 +319,11 @@ int run(const std::vector<std::string> &args) {
     const bool cooked_pixels = command == "zen-texture" || command == "zen-preview" || command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_pixel_diff = command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff ||
-                                cooked_collision_diff || cooked_physics_diff || cooked_skeletal_diff;
+                                cooked_collision_diff || cooked_physics_diff || cooked_skeletal_diff ||
+                                cooked_animation_diff;
     const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog" ||
-                             cooked_pixels || cooked_mesh || cooked_collision || cooked_physics || cooked_skeletal;
+                             cooked_pixels || cooked_mesh || cooked_collision || cooked_physics ||
+                             cooked_skeletal || cooked_animation;
     if (zen_command)
         required = cooked_compare ? 4u : (command == "zen-catalog" ? 1u : 2u);
     const bool container_command = command == "container" || command == "container-read" ||
@@ -340,15 +365,23 @@ int run(const std::vector<std::string> &args) {
         if(key=="--curve-id" && command!="curve-components")throw Error("arguments","--curve-id requires curve-components");
         if(key=="--time" && command!="curve-value" && command!="curve-components")throw Error("arguments","--time requires curve-value or curve-components");
         if(key=="--lane" && command!="curve-value")throw Error("arguments","--lane requires curve-value");
-        if(key=="--frame" && command!="animation-frame" && !source_pose_single)throw Error("arguments","--frame requires animation-frame");
-        if((key=="--before-frame" || key=="--after-frame") && command!="animation-frame-diff" && !source_pose_diff)throw Error("arguments",key+" requires animation-frame-diff or animation-pose-diff");
-        if((key=="--rotation-tolerance" || key=="--scale-tolerance") && command!="animation-frame-diff")throw Error("arguments",key+" requires animation-frame-diff");
+        if (key == "--frame" && command != "animation-frame" && command != "zen-animation-frame" &&
+            !source_pose_single)
+            throw Error("arguments", "--frame requires animation-frame");
+        if ((key == "--before-frame" || key == "--after-frame") && command != "animation-frame-diff" &&
+            !cooked_animation_diff && !source_pose_diff)
+            throw Error("arguments", key + " requires animation-frame-diff or animation-pose-diff");
+        if ((key == "--rotation-tolerance" || key == "--scale-tolerance") &&
+            command != "animation-frame-diff" && !cooked_animation_diff)
+            throw Error("arguments", key + " requires animation-frame-diff");
         if(key=="--skeleton-object" && !source_pose_single)throw Error("arguments",key+" requires animation-pose");
         if((key=="--before-skeleton" || key=="--after-skeleton" || key=="--before-skeleton-object" || key=="--after-skeleton-object") && !source_pose_diff)throw Error("arguments",key+" requires animation-pose-diff");
         if ((key == "--before-object" || key == "--after-object") && command != "curve-value-diff" && command != "curves-diff" && command != "animation-diff" && command != "animation-frame-diff" && !source_pose_diff &&
             command != "skeleton-pose-diff" && command != "socket-pose-diff")
             throw Error("arguments", key + " requires a model or pose comparison");
-        if(key=="--position-tolerance" && command!="skeleton-pose-diff" && command!="socket-pose-diff" && command!="animation-frame-diff" && !source_pose_diff)
+        if (key == "--position-tolerance" && command != "skeleton-pose-diff" &&
+            command != "socket-pose-diff" && command != "animation-frame-diff" && !cooked_animation_diff &&
+            !source_pose_diff)
             throw Error("arguments","--position-tolerance requires a pose comparison");
         if (key == "--max-commits" || key == "--skip")
             throw Error("arguments", key + " requires git-history");
@@ -364,11 +397,28 @@ int run(const std::vector<std::string> &args) {
                 key != "--script-objects" && key != "--schema" &&
                 !(key == "--snapshot" && (command == "zen-inspect" || command == "zen-catalog")) &&
                 !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
-                !((cooked_pixels || cooked_mesh || cooked_skeletal) && key == "--export-index") &&
+                !((cooked_pixels || cooked_mesh || cooked_skeletal || cooked_animation) &&
+                  key == "--export-index") &&
+                !(cooked_animation && (key == "--animation-profile" || key == "--interpolation" ||
+                                       key == "--bone-settings-container" || key == "--bone-settings-entry" ||
+                                       key == "--skeleton-container" || key == "--skeleton-entry")) &&
+                !(command == "zen-animation" && key == "--include-keys") &&
+                !(command == "zen-animation-frame" && key == "--frame") &&
+                !(cooked_animation_diff &&
+                  (key == "--before-frame" || key == "--after-frame" || key == "--after-animation-profile" ||
+                   key == "--after-interpolation" || key == "--after-bone-settings-container" ||
+                   key == "--after-bone-settings-entry" || key == "--after-skeleton-container" ||
+                   key == "--after-skeleton-entry" || key == "--after-export-index" ||
+                   key == "--position-tolerance" || key == "--rotation-tolerance" ||
+                   key == "--scale-tolerance")) &&
                 !(cooked_physics && key == "--physics-profile") &&
                 !(cooked_physics_diff && key == "--after-physics-profile") &&
-                !(cooked_skeletal && (key == "--skeletal-profile" || key == "--has-vertex-colors" || key == "--keep-mobile-min-lod")) &&
-                !(cooked_skeletal_diff && (key == "--after-skeletal-profile" || key == "--after-has-vertex-colors" || key == "--after-keep-mobile-min-lod" || key == "--after-export-index" || key == "--lod" || key == "--after-lod")) &&
+                !(cooked_skeletal && (key == "--skeletal-profile" || key == "--has-vertex-colors" ||
+                                      key == "--keep-mobile-min-lod")) &&
+                !(cooked_skeletal_diff &&
+                  (key == "--after-skeletal-profile" || key == "--after-has-vertex-colors" ||
+                   key == "--after-keep-mobile-min-lod" || key == "--after-export-index" || key == "--lod" ||
+                   key == "--after-lod")) &&
                 !(cooked_mesh && (key == "--mesh-profile" || key == "--keep-mobile-min-lod")) &&
                 !(cooked_mesh && command != "zen-mesh" && key == "--lod") &&
                 !(cooked_mesh_diff &&
@@ -383,6 +433,13 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Unsupported cooked option: " + key);
             continue;
         }
+        if (key == "--animation-profile" || key == "--after-animation-profile" || key == "--interpolation" ||
+            key == "--after-interpolation" || key == "--include-keys" || key == "--bone-settings-container" ||
+            key == "--bone-settings-entry" || key == "--after-bone-settings-container" ||
+            key == "--after-bone-settings-entry" || key == "--skeleton-container" ||
+            key == "--skeleton-entry" || key == "--after-skeleton-container" ||
+            key == "--after-skeleton-entry")
+            throw Error("arguments", key + " requires a cooked animation command");
         if (key == "--physics-profile" || key == "--after-physics-profile")
             throw Error("arguments", key + " requires a cooked physics command");
         if (key == "--mesh-profile" || key == "--after-mesh-profile" || key == "--keep-mobile-min-lod" ||
@@ -645,6 +702,76 @@ int run(const std::vector<std::string> &args) {
             output = catalog_zen_packages(input, before_options, read_options, catalog_options);
             if (!output.at("complete").get<bool>())
                 exit_code = 2;
+        } else if (cooked_animation) {
+            auto native_options = [&](bool after, const Container &source, const ZenReadOptions &z,
+                                      CookedAnimationOptions fallback) {
+                const auto prefix = after ? std::string("--after-") : std::string("--");
+                auto value = [&](const std::string &suffix) {
+                    return flags.value(prefix + suffix, flags.value("--" + suffix, std::string{}));
+                };
+                if (!value("animation-profile").empty()) {
+                    if (value("animation-profile") != "ue5.3-windows")
+                        throw Error("arguments", "Supported cooked animation profile: ue5.3-windows");
+                    fallback.profile = CookedAnimationProfile::unreal_5_3_windows;
+                }
+                if (!value("interpolation").empty()) {
+                    const auto mode = value("interpolation");
+                    if (mode != "linear" && mode != "step")
+                        throw Error("arguments", "Animation interpolation must be linear or step");
+                    fallback.interpolation = mode == "linear" ? CompressedAnimationInterpolation::linear
+                                                              : CompressedAnimationInterpolation::step;
+                }
+                auto dependency = [&](const std::string &kind) -> std::optional<CookedAnimationDependency> {
+                    const auto entry = value(kind + "-entry");
+                    const auto path = flags.value(prefix + kind + "-container", std::string{});
+                    if (!path.empty() && entry.empty())
+                        throw Error("arguments", "A dependency container requires its explicit entry");
+                    if (entry.empty())
+                        return std::nullopt;
+                    auto dependency_container = path.empty() ? source : open(fs::u8path(path));
+                    return CookedAnimationDependency{dependency_container,
+                                                     select(dependency_container, entry), z, read_options};
+                };
+                fallback.bone_settings = dependency("bone-settings");
+                fallback.skeleton = dependency("skeleton");
+                return fallback;
+            };
+            auto selected_export = [&](const char *key) -> std::size_t {
+                return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
+            };
+            auto opts = native_options(false, input, before_options, {});
+            const auto before = read_zen_animation(input, select(input, positional[1]), before_options,
+                                                   read_options, opts, selected_export("--export-index"));
+            if (command == "zen-animation")
+                output = before.to_json(flags.contains("--include-keys") &&
+                                        integer_option("--include-keys", 1) != 0);
+            else if (command == "zen-animation-frame") {
+                output = before.sample(real_option("--frame", 0, 0, 2147483646.));
+                if (!output.value("ready", false))
+                    exit_code = 2;
+            } else {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects"))
+                    after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema"))
+                    after_options.schema_context = schema_context(path_option("--after-schema"));
+                auto other = open(fs::u8path(positional[2]));
+                const auto after =
+                    read_zen_animation(other, select(other, positional[3]), after_options, read_options,
+                                       native_options(true, other, after_options, opts),
+                                       selected_export("--after-export-index"));
+                AnimationFrameDiffOptions comparison;
+                comparison.position_tolerance = real_option("--position-tolerance", 0, 0, 1e300);
+                comparison.rotation_tolerance_degrees = real_option("--rotation-tolerance", 0, 0, 180);
+                comparison.scale_tolerance = real_option("--scale-tolerance", 0, 0, 1e300);
+                output = compare_cooked_animation_frames(
+                    before, after, real_option("--before-frame", 0, 0, 2147483646.),
+                    real_option("--after-frame", 0, 0, 2147483646.), comparison);
+                output["beforeAnimation"] = before.to_json();
+                output["afterAnimation"] = after.to_json();
+                exit_code = !output.value("complete", false) ? 2 : output.at("status") == "identical" ? 0 : 1;
+            }
         } else if (cooked_skeletal) {
             auto native_options = [&](bool after, CookedSkeletalOptions fallback) {
                 const auto prefix = after ? std::string("--after-") : std::string("--");

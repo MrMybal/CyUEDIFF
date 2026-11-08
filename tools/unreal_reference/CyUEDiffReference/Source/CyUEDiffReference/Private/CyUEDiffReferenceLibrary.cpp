@@ -295,7 +295,11 @@ FString UCyUEDiffReferenceLibrary::ExportReference(UObject *Asset) {
         Data = Skeletal(Mesh);
     else if (auto *Anim = Cast<UAnimSequence>(Asset))
         Data = Animation(Anim);
-    else if (auto *StaticMesh = Cast<UStaticMesh>(Asset))
+    else if (auto *Skeleton = Cast<USkeleton>(Asset)) {
+        Data = MakeShared<FJsonObject>();
+        Data->SetArrayField(TEXT("bones"), Bones(Skeleton->GetReferenceSkeleton()));
+        Data->SetStringField(TEXT("skeletonGuid"), Skeleton->GetGuid().ToString(EGuidFormats::Digits));
+    } else if (auto *StaticMesh = Cast<UStaticMesh>(Asset))
         Data = Static(StaticMesh);
     else
         Data = MakeShared<FJsonObject>();
