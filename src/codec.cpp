@@ -12,11 +12,28 @@ BlockDecoder load_block_decoder(const fs::path &module) {
     if (error)
         throw Error("codec-load", "Cannot resolve codec module path (filesystem error " +
                                       std::to_string(error.value()) + ")");
-    auto handle = LoadLibraryExW(path.c_str(), nullptr,
-                                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+    HMODULE handle = nullptr;
+    DWORD load_error = ERROR_SUCCESS;
+    {
+        // An invalid explicit module must return an error without a system dialog
+        // blocking a worker/CLI. Keep the host process and other threads unchanged.
+        struct LoaderErrorMode {
+            DWORD previous = GetThreadErrorMode();
+            LoaderErrorMode() {
+                if (!SetThreadErrorMode(previous | SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX, nullptr))
+                    throw Error("codec-load", "Cannot configure codec loader error handling");
+            }
+            ~LoaderErrorMode() {
+                SetThreadErrorMode(previous, nullptr);
+            }
+        } mode;
+        handle = LoadLibraryExW(path.c_str(), nullptr,
+                                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+        load_error = GetLastError();
+    }
     if (!handle)
         throw Error("codec-load",
-                    "Cannot load codec module (Windows error " + std::to_string(GetLastError()) + ")");
+                    "Cannot load codec module (Windows error " + std::to_string(load_error) + ")");
     auto owned = std::shared_ptr<void>(handle, [](void *p) { FreeLibrary(static_cast<HMODULE>(p)); });
     using Decode =
         std::size_t (*)(std::uint32_t, const std::uint8_t *, std::size_t, std::uint8_t *, std::size_t);

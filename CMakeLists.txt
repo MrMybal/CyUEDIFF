@@ -830,6 +830,7 @@ install(DIRECTORY examples/mesh_morph_consumer DESTINATION ${CMAKE_INSTALL_DATAD
 install(DIRECTORY examples/mesh_skin_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/virtualized_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/binary_layout_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(DIRECTORY examples/mesh_source_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/reflection_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(FILES scripts/export_uht_metadata.py scripts/build_uht_mappings.py scripts/uht_mappings.py
     DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)

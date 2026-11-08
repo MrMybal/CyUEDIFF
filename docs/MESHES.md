@@ -85,3 +85,11 @@ Version 0.180 adds fixture-validated modern skeletal source geometry, stored sou
 ## Modern source morph targets — 0.181
 
 `MeshGeometry::morphs` retains named MeshDescription position deltas by live vertex ID and optional split-normal deltas by live vertex-instance ID. Geometry JSON and mesh-diff include semantic values, while raw attribute fingerprints remain independent. CyUI provides bilingual persistent typed inspection and affected-edge colors. OBJ exports base geometry only. See [MORPHS.md](MORPHS.md) for the API, wire restrictions, fixtures and missing real/cooked/legacy coverage.
+
+## Stored transient editor flags — post-0.181 development
+
+Editor bulk registration, copy-ownership and detachment bits are retained in native provenance and ignored when selecting stored payloads, matching the target loader. They no longer misclassify an otherwise valid local compressed buffer as legacy storage. Actual legacy, workspace-domain, virtualized and cooked flags keep their separate existing contracts. Header/CRC, offset/range, stored fingerprint and optional full raw BLAKE3 validation still apply.
+
+The Core-only example in `examples/mesh_source_consumer` opens a source asset, selects its first MeshDescription source and requires `verify_raw_hash=true` before returning geometry. Build it against an installed SDK and pass an explicitly selected host codec when needed. It handles native Windows Unicode paths and has no Git, UI or Unreal dependency. `scripts/validate_mesh_sources.py` compares that installed consumer's geometry with the public CLI and fingerprints explicit source/companion/codec inputs before and after.
+
+All 84 selected real source meshes now decode, totaling 106,627 triangles; their complete raw BLAKE3s verify through the installed Core consumer. A separate Python reader of one cooked render LOD matches every unique source position and all 172 material-grouped oriented triangles despite render-vertex splitting. The cooked reader remains separate active work. Private EN/FR captures show the recovered source geometry in the existing CyUI 3D viewport.

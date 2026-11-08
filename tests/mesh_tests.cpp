@@ -7,6 +7,10 @@ using namespace cyuediff::test::mesh_fixture;
 #include <fstream>
 #include <iostream>
 #include <limits>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 using namespace cyuediff;
 namespace {
 int checks = 0;
@@ -157,6 +161,52 @@ int main() {
             for (unsigned i = 0; i < 4; ++i)
                 encoded.data[4 + i] = std::uint8_t(crc >> (24 - i * 8));
             encoded.data.insert(encoded.data.end(), data.bytes.data.begin(), data.bytes.data.end());
+            const auto editor_file = root / "editor-bulk.bin";
+            auto editor_record = [&](std::uint32_t flags) {
+                Bytes record;
+                record.put(flags);
+                record.zeros(16);
+                for (std::size_t i = 0; i < 20; ++i)
+                    record.data.push_back(std::uint8_t(std::stoul(hash.substr(i * 2, 2), nullptr, 16)));
+                record.put<std::int64_t>(data.bytes.data.size());
+                if (!(flags & (1u | 512u | 1024u)))
+                    record.put<std::int64_t>(64);
+                record.zeros(64 - record.data.size());
+                record.data.insert(record.data.end(), encoded.data.begin(), encoded.data.end());
+                record.save(editor_file);
+            };
+            Package editor_package;
+            editor_package.source = editor_file;
+            editor_package.summary.custom_versions["697dd581e64f41abaa4a51ecbeb7b628"] = 59;
+            for (std::uint32_t flags : {0u, 64u, 128u, 2048u, 64u | 128u | 2048u}) {
+                editor_record(flags);
+                ReadOptions read;
+                detail::Archive archive(editor_file, read);
+                auto result = detail::read_editor_bulk(archive, editor_package, read);
+                check(result.flags == flags && result.payload.storage == "local" &&
+                          result.payload.offset == 64,
+                      "Transient editor flags retain provenance without changing storage selection");
+                BulkDecodeOptions verified;
+                verified.verify_raw_hash = true;
+                check(decode_bulk_payload(result.payload, verified) == data.bytes.data,
+                      "Transient editor state still requires the exact CRC/header and raw hash");
+            }
+            for (std::uint32_t flags : {4u | 64u, 8u | 128u, 256u | 2048u}) {
+                editor_record(flags);
+                ReadOptions read;
+                detail::Archive archive(editor_file, read);
+                check(detail::read_editor_bulk(archive, editor_package, read).payload.storage ==
+                          "legacy-unsupported",
+                      "Actual legacy/workspace flags remain unsupported");
+            }
+            editor_record(1u | 64u);
+            {
+                ReadOptions read;
+                detail::Archive archive(editor_file, read);
+                check(detail::read_editor_bulk(archive, editor_package, read).payload.storage ==
+                          "virtualized",
+                      "Transient registration does not override virtualized storage");
+            }
             const auto store = root / "payloads";
             const auto file = store / virtualized_payload_relative_path(hash.substr(0, 40));
             fs::create_directories(file.parent_path());
@@ -267,7 +317,9 @@ int main() {
         after.exports.back().properties["LightMapResolution"] = {{"value", 128}};
         check(!compare(package, after).mesh_changes.empty(), "Build setting has specialized mesh diff");
 #ifdef _WIN32
+        const auto error_mode = GetThreadErrorMode();
         error([&] { load_block_decoder(path); }, "codec-load");
+        check(GetThreadErrorMode() == error_mode, "Failed codec load restores the caller thread error mode");
 #endif
         if (root.parent_path() != fs::current_path())
             throw std::runtime_error("Invalid fixture cleanup root");

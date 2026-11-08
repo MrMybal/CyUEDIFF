@@ -46,3 +46,7 @@ Le module et l'hôte doivent avoir la même architecture. Le callback ne doit ni
 Le CRC couvre l'en-tête et la table de blocs ; le SHA-256 optionnel compare le payload aux octets inspectés. Le BLAKE3 contenu dans Unreal sert ici à vérifier la cohérence d'identité entre les descripteurs et le buffer ; il n'est pas recalculé sur la sortie.
 
 Validation locale : SDK 2.9.12, trois meshes UE 5.3.2, ainsi que la texture PNG Oodle `T_Noise` 2048 × 2048. Le core installé a consommé cet adaptateur depuis une application cliente indépendante de CyUI. Sans adaptateur, les mêmes métadonnées restent inspectables et la demande de géométrie/image comprimée produit une erreur explicite.
+
+## Nonblocking Windows load failures — post-0.181 development
+
+Loading an explicitly selected codec temporarily enables critical/file error handling on the calling thread and restores its previous error mode immediately afterward. A malformed module returns `codec-load` without waiting for a system loader dialog; host process and other thread settings are retained. Windows error codes are captured before restoration. The invalid-module test also checks that the original calling-thread error mode is unchanged. See Microsoft's [thread error-mode contract](https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setthreaderrormode).

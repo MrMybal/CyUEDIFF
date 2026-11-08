@@ -201,7 +201,9 @@ EditorBulkResult read_editor_bulk(Archive &a, const Package &package, const Read
         payload.storage = "cooked-unsupported";
     else if (!size)
         payload.storage = "empty";
-    else if (result.flags & (4u | 8u | 64u | 128u | 256u | 2048u))
+    // The matching loader clears transient registration/ownership/detachment bits.
+    // Retain their stored values for inspection without treating them as storage modes.
+    else if (result.flags & (4u | 8u | 256u))
         payload.storage = "legacy-unsupported";
     else if (result.flags & 512u)
         payload = locate_texture_payload(package.source, id, size, options);
