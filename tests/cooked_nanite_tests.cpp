@@ -205,6 +205,17 @@ int main(int argc, char **argv) {
                   compare_nanite_surfaces(*known.nanite, *zero_model.nanite).summary["surfaceStatus"] ==
                       "identical",
               "Producer zero-bit normal channel does not invalidate position/topology coverage");
+        auto attribute_options = options;
+        attribute_options.nanite.attributes = true;
+        auto shaded = read(cooked_nanite_fixture(true, true), attribute_options);
+        check(shaded.nanite->information()["storedAttributesDecoded"] == true &&
+                  shaded.nanite->geometry()->attributes(1, 0, 0).normal.has_value(),
+              "Whole bulk-bound attributes include parent vertex references");
+        auto zero_shaded = read(zero_normal, attribute_options);
+        check(!zero_shaded.nanite->geometry()->attributes(0, 0, 0).normal &&
+                  zero_shaded.nanite->geometry()->attributes(0, 0, 0).to_json()["normalStatus"] ==
+                      "zero-bit-unavailable",
+              "Zero-bit stored normals remain unavailable while other channels decode");
         auto changed_surface = resident;
         changed_surface.mesh.storage.package.data[changed_surface.root + 24 + 272] = 1;
         auto changed_model = read(changed_surface, options);

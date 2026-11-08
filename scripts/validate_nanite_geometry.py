@@ -31,6 +31,52 @@ def oriented(points):
     return min(tuple(points[i:]+points[:i]) for i in range(3))
 
 
+def validate_attributes(actual, catalog, row):
+    if not row.get('attributeReference'):
+        return 0, 0, 0.0
+    reference = load(absolute(row['attributeReference']))
+    if reference['schema'] != 'cyuediff.nanite-shader-attributes-reference/1' or reference['profile'] != 'ue5.3-windows':
+        raise ValueError('Require an explicit matching native shader attribute reference')
+    if not catalog['storedAttributesDecoded'] or len(reference['pages']) != len(actual['pages']):
+        raise ValueError('Attribute coverage/page cardinality differs')
+    if reference['pageHashes'] != [p['sha256'] for p in catalog['pages']]:
+        raise ValueError('Shader reference is bound to different stored pages')
+    vertices = uv_pairs = 0
+    maximum_delta = 0.0
+    def values(left, right, tolerance):
+        nonlocal maximum_delta
+        if right is None:
+            if left is not None:
+                raise ValueError('Absent/zero-bit shader channel was invented')
+            return
+        if not isinstance(left, list) or len(left) != len(right):
+            raise ValueError('Shader channel cardinality differs')
+        for a, b in zip(left, right):
+            if isinstance(b, list):
+                values(a, b, tolerance)
+            else:
+                if not math.isfinite(a) or not math.isfinite(b) or abs(a-b) > tolerance:
+                    raise ValueError('Decoded attribute differs from actual shader reference')
+                maximum_delta = max(maximum_delta, abs(a-b))
+    for page, expected_page in zip(actual['pages'], reference['pages']):
+        if len(page) != len(expected_page):
+            raise ValueError('Shader cluster cardinality differs')
+        for cluster, expected in zip(page, expected_page):
+            attributes = cluster.get('attributes', [])
+            if not cluster['metadata']['storedAttributesDecoded'] or len(attributes) != cluster['metadata']['vertices'] or len(attributes) != len(expected):
+                raise ValueError('Shader vertex cardinality/coverage differs')
+            for actual_vertex, expected_vertex in zip(attributes, expected):
+                for field in ('packedNormal', 'packedTangent', 'normalPrecision', 'tangentPrecision', 'color', 'packedUVs'):
+                    if actual_vertex[field] != expected_vertex[field]:
+                        raise ValueError('Packed attribute differs from actual shader transcode')
+                values(actual_vertex['normal'], expected_vertex['normal'], 3e-6)
+                values(actual_vertex['tangent'], expected_vertex['tangent'], 3e-6)
+                values(actual_vertex['uvs'], expected_vertex['uvs'], 0.0)
+                vertices += 1
+                uv_pairs += len(actual_vertex['uvs'])
+    return vertices, uv_pairs, maximum_delta
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--consumer', type=Path, required=True)
@@ -52,6 +98,8 @@ def main():
         fields = ('pages', 'triangleReference', 'sourceReference') + (('container', 'global', 'context', 'packageReference') if cooked else ())
         if row.get('codec'):
             fields += ('codec',)
+        if row.get('attributeReference'):
+            fields += ('attributeReference',)
         for field in fields:
             p = absolute(row[field])
             protected[p] = digest(p)
@@ -119,15 +167,21 @@ def main():
                         leaves[oriented([tuple(cluster['quantizedPositions'][v]) for v in triangle['vertices']])] += 1
         if leaves != source_triangles:
             raise ValueError('Full-leaf quantized oriented triangle positions differ from actual source API')
+        shader_vertices, shader_uvs, shader_delta = validate_attributes(actual, catalog, row)
         results.append({'object': source['object'], 'pages': len(expected), 'clusters': catalog['clusters'],
                         'vertices': catalog['vertices'], 'positionCoordinates': coordinates,
-                        'actualEngineTriangles': triangles, 'sourceOrientedTriangles': sum(leaves.values())})
+                        'actualEngineTriangles': triangles, 'sourceOrientedTriangles': sum(leaves.values()),
+                        'shaderAttributeVertices': shader_vertices, 'shaderUVPairs': shader_uvs,
+                        'maximumShaderChannelDelta': shader_delta})
     if any(digest(p) != h for p, h in protected.items()):
         raise ValueError('Protected validation input changed')
     summary = {'schema': 'cyuediff.cooked-nanite-validation-result/1' if cooked else 'cyuediff.nanite-geometry-validation-result/1', 'cases': results,
                'actualEngineTriangles': sum(r['actualEngineTriangles'] for r in results),
                'sourceOrientedTriangles': sum(r['sourceOrientedTriangles'] for r in results),
                'positionCoordinates': sum(r['positionCoordinates'] for r in results),
+               'shaderAttributeVertices': sum(r['shaderAttributeVertices'] for r in results),
+               'shaderUVPairs': sum(r['shaderUVPairs'] for r in results),
+               'maximumShaderChannelDelta': max(r['maximumShaderChannelDelta'] for r in results),
                'protectedInputs': len(protected), 'inputsUnchanged': True}
     (args.output/'summary.json').write_text(json.dumps(summary, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(summary, indent=2))

@@ -398,6 +398,9 @@ struct NaniteResourceReader {
                         for (std::size_t ci = 0; ci < decoded->cluster_count(pi); ++ci) {
                             o.control.check();
                             const auto meta = decoded->cluster_metadata(pi, ci, o.control);
+                            if (o.attributes)
+                                need(meta.at("normalPrecision") == normal,
+                                     "Nanite cluster normal precision contradicts native resource");
                             need(meta.at("positionPrecision") == precision &&
                                      meta.at("uvChannels") == input_uvs,
                                  "Nanite packed cluster precision/UV count contradicts resource");
@@ -422,9 +425,9 @@ struct NaniteResourceReader {
                             need(start <= decoded->cluster_count(page) &&
                                      size <= decoded->cluster_count(page) - start,
                                  "Nanite hierarchy leaf group exceeds target page clusters");
-                            for (std::uint32_t ci = 0; ci < size; ++ci) {
-                                auto &seen =
-                                    cluster_seen[static_cast<std::size_t>(cluster_bases[page] + start + ci)];
+                            for (std::uint32_t offset = 0; offset < size; ++offset) {
+                                auto &seen = cluster_seen[static_cast<std::size_t>(cluster_bases[page] +
+                                                                                   start + offset)];
                                 need(!seen, "Nanite hierarchy groups overlap stored clusters");
                                 seen = 1;
                                 ++covered_clusters;
@@ -440,6 +443,7 @@ struct NaniteResourceReader {
                 out->info["streaming"]["needed"] = false;
             }
         }
+        out->info["storedAttributesDecoded"] = out->geometry && out->geometry->attributes_decoded();
         out->info["nativeBytes"] = r.pos - begin;
         out->info["nativeSha256"] = hash_range(bytes, begin, r.pos - begin, o.control);
         if (out->info.at("status") == "decoded" || out->info.at("status") == "empty") {

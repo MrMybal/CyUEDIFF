@@ -63,6 +63,7 @@ int main(int argc, char **argv) {
                     throw std::runtime_error("Output cannot replace an input");
         NaniteGeometryOptions options;
         options.profile = NaniteProfile::unreal_5_3_windows;
+        options.attributes = true;
         options.max_vertices = 200000;
         options.max_triangles = 200000;
         const auto model = decode_nanite_geometry(source, options);
@@ -75,9 +76,11 @@ int main(int argc, char **argv) {
                 Json c = {{"metadata", meta},
                           {"positions", Json::array()},
                           {"quantizedPositions", Json::array()},
+                          {"attributes", Json::array()},
                           {"triangles", Json::array()}};
                 for (std::size_t vi = 0; vi < meta.at("vertices").get<std::size_t>(); ++vi) {
                     c["positions"].push_back(model.position(pi, ci, vi));
+                    c["attributes"].push_back(model.attributes(pi, ci, vi).to_json());
                     c["quantizedPositions"].push_back(model.quantized_position(pi, ci, vi));
                 }
                 for (std::size_t ti = 0; ti < meta.at("triangles").get<std::size_t>(); ++ti) {

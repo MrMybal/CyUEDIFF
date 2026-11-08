@@ -160,6 +160,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff zen-nanite CONTAINER ENTRY --nanite-profile ue5.3-windows [mesh/context flags]\n"
                "  cyuediff zen-nanite-cluster CONTAINER ENTRY --page N --cluster N [same flags]\n"
                "  cyuediff zen-nanite-diff BEFORE ENTRY AFTER ENTRY [independent mesh/Nanite/context flags]\n"
+               "  Nanite inspection accepts --nanite-attributes 0|1; comparisons also accept "
+               "--after-nanite-attributes.\n"
                "  cyuediff zen-mesh CONTAINER ENTRY --mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1\n"
                "  cyuediff zen-geometry CONTAINER ENTRY [--lod N] [--export-index N]\n"
                "  cyuediff zen-export-mesh CONTAINER ENTRY --out MESH.obj [--lod N]\n"
@@ -198,7 +200,9 @@ int run(const std::vector<std::string> &args) {
         return run_binary_command(args);
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--physics-profile",
+    const std::set<std::string> valued = {"--nanite-attributes",
+                                          "--after-nanite-attributes",
+                                          "--physics-profile",
                                           "--after-physics-profile",
                                           "--after-nanite-profile",
                                           "--nanite-profile",
@@ -460,8 +464,10 @@ int run(const std::vector<std::string> &args) {
                    key == "--after-keep-mobile-min-lod" || key == "--after-export-index" || key == "--lod" ||
                    key == "--after-lod")) &&
                 !(cooked_mesh && (key == "--mesh-profile" || key == "--keep-mobile-min-lod")) &&
-                !((cooked_nanite || command == "zen-mesh") && key == "--nanite-profile") &&
-                !(command == "zen-nanite-diff" && key == "--after-nanite-profile") &&
+                !((cooked_nanite || command == "zen-mesh") &&
+                  (key == "--nanite-profile" || key == "--nanite-attributes")) &&
+                !(command == "zen-nanite-diff" &&
+                  (key == "--after-nanite-profile" || key == "--after-nanite-attributes")) &&
                 !(command == "zen-nanite-cluster" && (key == "--page" || key == "--cluster")) &&
                 !(cooked_mesh && !cooked_nanite && command != "zen-mesh" && key == "--lod") &&
                 !(cooked_mesh_diff &&
@@ -487,8 +493,8 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments", key + " requires a cooked animation command");
         if (key == "--physics-profile" || key == "--after-physics-profile")
             throw Error("arguments", key + " requires a cooked physics command");
-        if ((key == "--nanite-profile" || key == "--after-nanite-profile" || key == "--page" ||
-             key == "--cluster") &&
+        if ((key == "--nanite-profile" || key == "--after-nanite-profile" || key == "--nanite-attributes" ||
+             key == "--after-nanite-attributes" || key == "--page" || key == "--cluster") &&
             !cooked_mesh)
             throw Error("arguments", key + " requires a Nanite inspection command");
         if (key == "--mesh-profile" || key == "--after-mesh-profile" || key == "--keep-mobile-min-lod" ||
@@ -924,6 +930,11 @@ int run(const std::vector<std::string> &args) {
                     throw Error("arguments", "Supported Nanite profile: ue5.3-windows");
                 opts.nanite.profile = NaniteProfile::unreal_5_3_windows;
             }
+            if (flags.contains("--nanite-attributes")) {
+                if (opts.nanite.profile == NaniteProfile::unspecified)
+                    throw Error("arguments", "Attribute decoding requires an explicit Nanite profile");
+                opts.nanite.attributes = integer_option("--nanite-attributes", 1) != 0;
+            }
             if (cooked_nanite && opts.nanite.profile == NaniteProfile::unspecified)
                 throw Error("arguments", "Nanite commands require --nanite-profile ue5.3-windows");
             auto before = read_zen_static_mesh(input, select(input, positional[1]), before_options,
@@ -952,6 +963,8 @@ int run(const std::vector<std::string> &args) {
                           {"naniteContext", before.nanite->information()}};
                 for (std::size_t i = 0; i < metadata.at("vertices").get<std::size_t>(); ++i) {
                     output["positions"].push_back(model->position(page, cluster, i));
+                    if (model->attributes_decoded())
+                        output["attributes"].push_back(model->attributes(page, cluster, i).to_json());
                     output["quantizedPositions"].push_back(model->quantized_position(page, cluster, i));
                 }
                 for (std::size_t i = 0; i < metadata.at("triangles").get<std::size_t>(); ++i) {
@@ -971,6 +984,9 @@ int run(const std::vector<std::string> &args) {
                 if (flags.contains("--after-nanite-profile") &&
                     flags.at("--after-nanite-profile") != "ue5.3-windows")
                     throw Error("arguments", "Unsupported after Nanite profile");
+                if (flags.contains("--after-nanite-attributes"))
+                    after_mesh_options.nanite.attributes =
+                        integer_option("--after-nanite-attributes", 1) != 0;
                 auto other = open(fs::u8path(positional[2]));
                 const auto after =
                     read_zen_static_mesh(other, select(other, positional[3]), after_options, read_options,

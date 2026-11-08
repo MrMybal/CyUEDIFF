@@ -56,6 +56,7 @@ int run(const std::vector<std::string> &args) {
         o.keep_mobile_min_lod_setting = args[4] == "1";
         o.geometry = false;
         o.nanite.profile = NaniteProfile::unreal_5_3_windows;
+        o.nanite.attributes = true;
         o.nanite.max_vertices = 200000;
         o.nanite.max_triangles = 200000;
         const auto result = read_zen_static_mesh(input, entry, z, read, o);
@@ -72,9 +73,11 @@ int run(const std::vector<std::string> &args) {
                     Json cluster = {{"metadata", metadata},
                                     {"positions", Json::array()},
                                     {"quantizedPositions", Json::array()},
+                                    {"attributes", Json::array()},
                                     {"triangles", Json::array()}};
                     for (std::size_t vi = 0; vi < metadata.at("vertices").get<std::size_t>(); ++vi) {
                         cluster["positions"].push_back(model->position(pi, ci, vi));
+                        cluster["attributes"].push_back(model->attributes(pi, ci, vi).to_json());
                         cluster["quantizedPositions"].push_back(model->quantized_position(pi, ci, vi));
                     }
                     for (std::size_t ti = 0; ti < metadata.at("triangles").get<std::size_t>(); ++ti) {

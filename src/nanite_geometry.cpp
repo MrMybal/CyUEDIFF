@@ -1,5 +1,6 @@
 #include <cyuediff/nanite_geometry.hpp>
 #include "archive.hpp"
+#include "nanite_attributes_internal.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -67,6 +68,9 @@ struct Cluster {
     std::array<std::uint32_t, 8> mask{};
     std::vector<std::array<std::int32_t, 3>> positions, coded;
     std::vector<NaniteTriangle> triangles;
+    detail::NaniteAttributeLayout attribute_layout;
+    std::vector<detail::NaniteAttributeCode> attributes, coded_attributes;
+    bool attributes_decoded = false;
     std::uint32_t vertices = 0, flags = 0;
     int precision = 0;
 };
@@ -103,7 +107,7 @@ Json metadata(const Cluster &c, std::size_t i) {
             {"flags", c.flags},
             {"fullLeaf", bool(c.flags & 4)},
             {"referencedVertices", c.disk[5]},
-            {"storedAttributesDecoded", false},
+            {"storedAttributesDecoded", c.attributes_decoded},
             {"attributeBits", c.words[20] >> 22},
             {"uvChannels", (c.words[21] >> 23) & 7},
             {"hasTangents", bool(c.words[21] & (1u << 22))}};
@@ -207,6 +211,7 @@ void topology(const Bytes &b, const Page &p, Cluster &c, std::size_t ci, const O
 }
 } // namespace
 struct NaniteGeometry::Impl {
+    bool attributes = false;
     std::vector<Page> pages;
     std::uint64_t vertices = 0, triangles = 0, clusters = 0, accounted = 0, leaf_triangles = 0;
 };
@@ -220,6 +225,7 @@ NaniteGeometry decode_nanite_geometry(const NaniteGeometrySource &s, const Nanit
     Budget budget{o};
     budget.reserve(s.pages.size() * sizeof(Page));
     auto out = std::make_shared<NaniteGeometry::Impl>();
+    out->attributes = o.attributes;
     out->pages.reserve(s.pages.size());
     for (std::size_t pi = 0; pi < s.pages.size(); ++pi) {
         o.control.checkpoint("decode-nanite-page", pi, s.pages.size());
@@ -339,6 +345,17 @@ NaniteGeometry decode_nanite_geometry(const NaniteGeometrySource &s, const Nanit
                            std::uint64_t(triangles) * sizeof(NaniteTriangle));
             c.positions.resize(c.vertices);
             c.coded.reserve(c.vertices - actual_refs);
+            if (o.attributes) {
+                std::array<std::array<std::uint32_t, 8>, 4> ranges{};
+                for (unsigned u = 0; u < h[3]; ++u)
+                    for (unsigned k = 0; k < 8; ++k)
+                        ranges[u][k] = b.u32(h[5] + 32ull * (ci * h[3] + u) + 4 * k);
+                c.attribute_layout = detail::nanite_attribute_layout(c.words, ranges, h[3]);
+                budget.reserve(std::uint64_t(c.vertices) * 2 * sizeof(detail::NaniteAttributeCode));
+                c.attributes.resize(c.vertices);
+                c.coded_attributes.reserve(c.vertices - actual_refs);
+                c.attributes_decoded = true;
+            }
             if (c.flags & 4)
                 out->leaf_triangles += triangles;
         }
@@ -405,6 +422,31 @@ NaniteGeometry decode_nanite_geometry(const NaniteGeometrySource &s, const Nanit
                 }
                 c.positions[vi] = q;
                 c.coded.push_back(q);
+                if (o.attributes) {
+                    detail::NaniteAttributeCode code;
+                    const auto &layout = c.attribute_layout;
+                    auto attribute_bit = std::uint64_t(c.coded_attributes.size()) * attribute_bytes * 8;
+                    auto read_bits = [&](unsigned n) {
+                        const auto value = b.bits(d[4], attribute_bit, n, attr_end);
+                        attribute_bit += n;
+                        return value;
+                    };
+                    code.normal = read_bits(2 * layout.normal);
+                    code.tangent = read_bits(layout.has_tangent ? layout.tangent + 1 : 0);
+                    std::uint32_t color_delta = 0;
+                    for (unsigned k = 0; k < 4; ++k) {
+                        const auto delta = read_bits(layout.color_bits[k]);
+                        need(((layout.color_min >> (8 * k)) & 255) + delta <= 255,
+                             "Nanite coded color overflows byte component");
+                        color_delta |= delta << (8 * k);
+                    }
+                    code.color = layout.color_min + color_delta;
+                    for (unsigned u = 0; u < layout.uv_count; ++u)
+                        for (unsigned k = 0; k < 2; ++k)
+                            code.uv[u][k] = read_bits(layout.uv_bits[u][k]);
+                    c.coded_attributes.push_back(code);
+                    c.attributes[vi] = detail::transcode_nanite_attribute(code, layout, layout);
+                }
             }
             topology(b, page, c, ci, o.control);
         }
@@ -474,6 +516,12 @@ NaniteGeometry decode_nanite_geometry(const NaniteGeometrySource &s, const Nanit
                          "Nanite referenced position exceeds destination precision");
                 }
                 c.positions[vi] = q;
+                if (o.attributes) {
+                    const auto &codes = parent ? source.attributes : source.coded_attributes;
+                    need(source_vertex < codes.size(), "Nanite attribute reference exceeds source vertices");
+                    c.attributes[vi] = detail::transcode_nanite_attribute(
+                        codes[source_vertex], source.attribute_layout, c.attribute_layout);
+                }
                 ++ri;
             }
         }
@@ -485,6 +533,7 @@ NaniteGeometry decode_nanite_geometry(const NaniteGeometrySource &s, const Nanit
     for (auto &p : out->pages)
         for (auto &c : p.clusters) {
             std::vector<std::array<std::int32_t, 3>>().swap(c.coded);
+            std::vector<detail::NaniteAttributeCode>().swap(c.coded_attributes);
         }
     out->vertices = budget.vertices;
     out->triangles = budget.triangles;
@@ -500,6 +549,18 @@ const Cluster &selected(const NaniteGeometry::Impl &i, std::size_t page, std::si
     return i.pages[page].clusters[cluster];
 }
 } // namespace
+bool NaniteGeometry::attributes_decoded() const {
+    return impl_->attributes;
+}
+NaniteVertexAttributes NaniteGeometry::attributes(std::size_t p, std::size_t c, std::size_t v,
+                                                  const OperationControl &control) const {
+    control.check();
+    const auto &cluster = selected(*impl_, p, c);
+    need(v < cluster.vertices, "Nanite attribute vertex selection exceeds cluster");
+    if (!cluster.attributes_decoded)
+        throw Error("nanite-attributes-unavailable", "Nanite attributes were not requested");
+    return detail::decode_nanite_attribute(cluster.attributes[v], cluster.attribute_layout);
+}
 std::uint64_t NaniteGeometry::accounted_output_bytes() const {
     return impl_->accounted;
 }
@@ -546,7 +607,7 @@ Json NaniteGeometry::catalog(const OperationControl &control) const {
                 {"clusters", impl_->clusters},
                 {"fullLeafTriangles", impl_->leaf_triangles},
                 {"accountedOutputBytes", impl_->accounted},
-                {"storedAttributesDecoded", false},
+                {"storedAttributesDecoded", impl_->attributes},
                 {"pages", Json::array()}};
     for (std::size_t pi = 0; pi < impl_->pages.size(); ++pi) {
         control.check();

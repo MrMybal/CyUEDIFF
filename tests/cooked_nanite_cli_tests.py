@@ -33,6 +33,12 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-whole-nanite-',dir=Path.cwd()
     selected=run('zen-nanite-cluster',root/'external.utoc',entry,'--page','1','--cluster','0')
     assert selected['positions']==[[-2,-2,0],[0,-2,0],[-2,0,0]] and selected['triangles'][0]['material']==5
     checks+=1
+    shading=run('zen-nanite-cluster',root/'external.utoc',entry,'--page','1','--cluster','0','--nanite-attributes','1')
+    assert shading['naniteContext']['storedAttributesDecoded'] and len(shading['attributes'])==3
+    assert all(a['packedNormal']==0 and a['normal']==[0,0,-1] and a['tangent'] is None for a in shading['attributes'])
+    checks+=2
+    run('zen-nanite',root/'resident.utoc',entry,'--nanite-attributes','2',code=2)
+    run('zen-nanite-diff',root/'resident.utoc',entry,root/'resident.utoc',entry,'--nanite-attributes','1','--after-nanite-attributes','0')
     same=run('zen-nanite-diff',root/'resident.utoc',entry,root/'resident.utoc',entry)
     assert same['surfaceStatus']==same['encodingStatus']=='identical' and same['matchedTriangles']==1
     checks+=1
