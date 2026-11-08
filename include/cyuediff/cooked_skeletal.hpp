@@ -16,6 +16,20 @@ struct CookedSkeletalOptions {
     std::uint32_t max_vertices = 1'000'000, max_indices = 12'000'000, max_triangles = 4'000'000;
     std::uint32_t max_uv_channels = 8, max_influences = 256;
     OperationControl control;
+    // Aggregate loaded profiles/overridden vertices across LODs.
+    std::uint32_t max_weight_profiles = 64, max_profile_overrides = 1'000'000;
+    std::uint32_t max_profile_name_bytes = 4096;
+    NarrowStringEncoding narrow_string_encoding = NarrowStringEncoding::unspecified;
+};
+struct CookedSkeletalWeightProfile {
+    std::string name, skin_profile_key;
+    std::uint32_t influences_per_vertex = 0;
+    std::map<std::uint32_t, std::uint32_t> vertex_to_record;
+    // Stored replacement slots, including zero padding; section-local IDs are
+    // resolved to reference bones, uint8 weights expand losslessly by 257.
+    std::map<std::uint32_t, std::vector<MeshInfluence>> overrides;
+    Json buffers = Json::object();
+    Json to_json(bool include_weights = false) const;
 };
 struct CookedSkeletalSection {
     std::uint32_t material = 0, first_index = 0, triangles = 0, first_vertex = 0, vertices = 0;
@@ -29,6 +43,7 @@ struct CookedSkeletalLod {
     std::uint8_t strip_flags = 0;
     std::vector<std::uint16_t> required_bones, active_bones;
     std::vector<CookedSkeletalSection> sections;
+    std::vector<CookedSkeletalWeightProfile> weight_profiles;
     Json buffers = nullptr, bulk = nullptr;
     std::string unavailable;
     std::shared_ptr<const MeshGeometry> geometry;
@@ -47,7 +62,9 @@ struct CookedSkeletalMesh {
 // Explicit UE 5.3 Windows editor-stripped render LODs, including reference
 // skeleton, section-local skin indices and raw weights mapped to reference bones.
 // Inline and streamed Zen bulk windows use mandatory whole used-chunk integrity.
-// Cloth, duplicate-vertex tables, alternate weights, compressed
+// Named alternate profiles preserve sparse stored replacements and expose complete
+// stored-slot profiles under distinct "profile:" keys beside the base "default".
+// Cloth, duplicate-vertex tables, compressed
 // morph buffers and custom vertex attributes currently require another decoder.
 // Later object-native data remains an identified opaque tail. No Unreal execution.
 CookedSkeletalMesh read_zen_skeletal_mesh(const Container &, std::size_t package_entry,

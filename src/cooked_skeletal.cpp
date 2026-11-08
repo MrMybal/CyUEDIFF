@@ -1,4 +1,5 @@
 #include <cyuediff/cooked_skeletal.hpp>
+#include <cyuediff/string_encoding.hpp>
 #include "archive.hpp"
 #include "zen_bulk.hpp"
 #include <algorithm>
@@ -93,6 +94,67 @@ struct Cursor {
             result += "_" + std::to_string(suffix - 1);
         return result;
     }
+    std::string string(const CookedSkeletalOptions &o) {
+        const auto n = i32();
+        if (!n)
+            return {};
+        const auto chars = n < 0 ? std::uint64_t(-std::int64_t(n)) : std::uint64_t(n);
+        limit(chars * (n < 0 ? 2 : 1) <= o.max_profile_name_bytes, "Profile FString exceeds byte budget");
+        range(chars * (n < 0 ? 2 : 1));
+        std::string s;
+        if (n > 0) {
+            for (std::uint64_t i = 0; i < chars; ++i) {
+                auto v = number(1);
+                if (i + 1 == chars)
+                    need(v == 0, "Unterminated profile FString", pos - 1);
+                else {
+                    need(v != 0, "Embedded null in profile FString", pos - 1);
+                    s += char(v);
+                }
+            }
+            auto encoding = o.narrow_string_encoding;
+            if (encoding == NarrowStringEncoding::unspecified)
+                encoding = NarrowStringEncoding::ascii;
+            return decode_narrow_string(s, encoding, o.max_profile_name_bytes, o.control);
+        }
+        auto append = [&](std::uint32_t cp) {
+            if (cp < 128)
+                s += char(cp);
+            else if (cp < 2048) {
+                s += char(192 | (cp >> 6));
+                s += char(128 | (cp & 63));
+            } else if (cp < 65536) {
+                s += char(224 | (cp >> 12));
+                s += char(128 | ((cp >> 6) & 63));
+                s += char(128 | (cp & 63));
+            } else {
+                s += char(240 | (cp >> 18));
+                s += char(128 | ((cp >> 12) & 63));
+                s += char(128 | ((cp >> 6) & 63));
+                s += char(128 | (cp & 63));
+            }
+        };
+        for (std::uint64_t i = 0; i < chars; ++i) {
+            o.control.check();
+            auto cp = std::uint32_t(number(2));
+            if (i + 1 == chars) {
+                need(cp == 0, "Unterminated profile UTF16 FString", pos - 2);
+                break;
+            }
+            need(cp != 0, "Embedded null in profile UTF16 FString", pos - 2);
+            if (cp >= 0xd800 && cp <= 0xdbff) {
+                need(i + 2 < chars, "Truncated profile UTF16 surrogate", pos - 2);
+                auto low = number(2);
+                ++i;
+                need(low >= 0xdc00 && low <= 0xdfff, "Invalid profile UTF16 surrogate", pos - 2);
+                cp = 65536 + ((cp - 0xd800) << 10) + std::uint32_t(low - 0xdc00);
+            } else
+                need(cp < 0xdc00 || cp > 0xdfff, "Invalid profile UTF16 surrogate", pos - 2);
+            append(cp);
+            limit(s.size() <= o.max_profile_name_bytes, "Decoded profile FString exceeds string budget");
+        }
+        return s;
+    }
     std::string guid() {
         std::string out;
         const char *hex = "0123456789abcdef";
@@ -107,6 +169,7 @@ struct Cursor {
 struct Budget {
     const CookedSkeletalOptions &o;
     std::uint64_t vertices = 0, indices = 0, triangles = 0, sections = 0, influences = 0, output = 0;
+    std::uint64_t profiles = 0, overrides = 0;
     void add(std::uint64_t &counter, std::uint64_t n, std::uint64_t max, const char *s) {
         limit(counter <= max && n <= max - counter, s);
         counter += n;
@@ -186,7 +249,14 @@ void section(Cursor &r, CookedSkeletalLod &lod, const std::vector<std::string> &
     b.add(b.triangles, s.triangles, b.o.max_triangles, "Skeletal LODs exceed triangle budget");
     lod.sections.push_back(std::move(s));
 }
-Json availability(Cursor &r, const CookedSkeletalOptions &o, bool colors) {
+std::string folded(std::string name) {
+    for (auto &c : name)
+        if (c >= 'A' && c <= 'Z')
+            c += 'a' - 'A';
+    return name;
+}
+Json availability(Cursor &r, Budget &b, bool colors, const std::vector<std::string> &names) {
+    const auto &o = b.o;
     const auto index_bytes = r.number(1);
     need(index_bytes == 2 || index_bytes == 4, "Invalid cached skeletal index width");
     const auto indices = r.i32();
@@ -213,9 +283,18 @@ Json availability(Cursor &r, const CookedSkeletalOptions &o, bool colors) {
     need(lookup_vertices == (variable ? vertices : 0) &&
              (variable || std::uint64_t(vertices) * maxinf == weights),
          "Cached skeletal skin dimensions disagree");
-    supported(r.count(o.max_sections) == 0,
-              "Alternate cached skeletal weight profiles require another decoder");
-    return {{"vertices", vertices},
+    const auto count = r.count(o.max_weight_profiles);
+    Json profiles = Json::array();
+    std::set<std::string> keys;
+    for (unsigned i = 0; i < count; ++i) {
+        o.control.check();
+        auto name = r.name(names);
+        need(!name.empty() && keys.insert(folded(name)).second, "Empty or duplicate cached weight profile");
+        b.reserve(128 + name.size());
+        profiles.push_back(std::move(name));
+    }
+    return {{"weightProfiles", profiles},
+            {"vertices", vertices},
             {"indices", indices},
             {"indexBytes", index_bytes},
             {"uvChannels", uvs},
@@ -233,6 +312,11 @@ Json availability(Cursor &r, const CookedSkeletalOptions &o, bool colors) {
             {"colorVertices", color_vertices}};
 }
 void match_availability(const Json &actual, const Json &expected) {
+    auto loaded_names = actual.at("weightProfiles").get<std::vector<std::string>>();
+    auto cached_names = expected.at("weightProfiles").get<std::vector<std::string>>();
+    std::sort(loaded_names.begin(), loaded_names.end());
+    std::sort(cached_names.begin(), cached_names.end());
+    need(loaded_names == cached_names, "Skeletal cached profile names disagree with loaded buffers");
     for (const char *key : {"vertices", "indices", "indexBytes", "uvChannels", "fullPrecisionUV",
                             "highPrecisionTangents", "colorsStored", "variableInfluences", "maxInfluences",
                             "influences", "boneIndexBytes", "boneWeightBytes", "lookupVertices"})
@@ -240,7 +324,7 @@ void match_availability(const Json &actual, const Json &expected) {
              "Skeletal availability disagrees with loaded render buffers");
 }
 void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalMesh &mesh, bool colors,
-             std::uint32_t stored_size) {
+             std::uint32_t stored_size, const std::vector<std::string> &names) {
     const auto begin = r.pos;
     need(r.strip() == lod.strip_flags, "Skeletal streamed strip flags disagree with LOD");
     auto index_bytes = static_cast<unsigned>(r.number(1));
@@ -419,7 +503,119 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
                 g->instances[i].color = {v[2], v[1], v[0], v[3]};
         }
     }
-    supported(r.count(b.o.max_sections) == 0, "Alternate cooked skin weights require another decoder");
+    const auto profile_count = r.count(b.o.max_weight_profiles);
+    b.add(b.profiles, profile_count, b.o.max_weight_profiles, "Skeletal LODs exceed profile budget");
+    b.reserve(std::uint64_t(profile_count) * 1024);
+    std::set<std::string> profile_names;
+    Json profile_list = Json::array();
+    std::uint64_t profile_name_bytes = 0;
+    for (unsigned pi = 0; pi < profile_count; ++pi) {
+        b.o.control.checkpoint("cooked-skeletal-profiles", pi, profile_count);
+        const auto start = r.pos;
+        CookedSkeletalWeightProfile profile;
+        profile.name = lod.inlined ? r.name(names) : r.string(b.o);
+        profile_name_bytes += r.pos - start;
+        limit(profile.name.size() <= b.o.max_profile_name_bytes, "Profile name exceeds byte budget");
+        need(!profile.name.empty() && profile_names.insert(folded(profile.name)).second,
+             "Empty or duplicate cooked weight profile");
+        // Reserve the base stream identity even when an authored profile is named default.
+        profile.skin_profile_key = "profile:" + profile.name;
+        b.reserve(256 + 4 * profile.name.size());
+        const auto ids_size = r.count(std::numeric_limits<std::int32_t>::max());
+        r.range(ids_size);
+        const auto ids = r.pos;
+        r.pos += ids_size;
+        const auto weights_size = r.count(std::numeric_limits<std::int32_t>::max());
+        r.range(weights_size);
+        const auto weights_start = r.pos;
+        r.pos += weights_size;
+        const auto k = profile.influences_per_vertex = static_cast<std::uint32_t>(r.number(1));
+        limit(k <= b.o.max_influences, "Profile influence count exceeds budget");
+        need(k <= maxinf, "Profile influence count exceeds base stream maximum");
+        const std::uint64_t id_stride = std::uint64_t(k) * bone_bytes,
+                            weight_stride = std::uint64_t(k) * weight_bytes;
+        need(k ? ids_size % id_stride == 0 && weights_size % weight_stride == 0 &&
+                     ids_size / id_stride == weights_size / weight_stride
+               : ids_size == 0 && weights_size == 0,
+             "Profile record byte counts disagree");
+        const auto records = k ? ids_size / id_stride : 0;
+        std::map<std::uint32_t, std::vector<MeshInfluence>> *resolved_profile = nullptr;
+        if (skin) {
+            auto &destination = skin->profiles[profile.skin_profile_key];
+            const auto &base = skin->profiles["default"];
+            for (const auto &v : base) {
+                b.o.control.check();
+                b.reserve(128 + v.second.size() * sizeof(MeshInfluence));
+                destination.emplace(v.first, v.second);
+            }
+            resolved_profile = &destination;
+        }
+        const auto entries = r.count(b.o.max_profile_overrides);
+        b.add(b.overrides, entries, b.o.max_profile_overrides,
+              "Skeletal LODs exceed profile override budget");
+        limit(records <= b.o.max_profile_overrides, "Skeletal profile records exceed budget");
+        for (unsigned vi = 0; vi < entries; ++vi) {
+            b.o.control.checkpoint("cooked-skeletal-profile-weights", vi, entries);
+            const auto vertex = r.u32(), record = r.u32();
+            b.reserve(128);
+            need(vertex < n && record < records && profile.vertex_to_record.emplace(vertex, record).second,
+                 "Profile has an absent or duplicate vertex/record");
+            need(owners[vertex] >= 0, "Profile vertex has no owning section");
+            const auto &section = lod.sections[owners[vertex]];
+            auto count = maxinf;
+            std::uint64_t offset = std::uint64_t(vertex) * maxinf * (bone_bytes + weight_bytes);
+            if (variable) {
+                Cursor v{r.bytes, lookup + std::uint64_t(vertex) * 4, lookup + std::uint64_t(vertex + 1) * 4};
+                const auto packed = v.u32();
+                offset = packed >> 8;
+                count = packed & 255;
+            }
+            need(k <= count && offset <= raw_bytes &&
+                     std::uint64_t(count) * (bone_bytes + weight_bytes) <= raw_bytes - offset,
+                 "Profile replacement exceeds stored vertex influence slots");
+            b.reserve(128 + std::uint64_t(k) * sizeof(MeshInfluence) + std::uint64_t(count) * 64);
+            Cursor bi{r.bytes, raw + offset, raw + raw_bytes},
+                wi{r.bytes, raw + offset + std::uint64_t(count) * bone_bytes, raw + raw_bytes},
+                oi{r.bytes, ids + record * id_stride, ids + ids_size},
+                ow{r.bytes, weights_start + record * weight_stride, weights_start + weights_size};
+            auto &replacement = profile.overrides[vertex];
+            replacement.reserve(k);
+            std::vector<MeshInfluence> resolved;
+            std::set<std::uint32_t> positive;
+            for (unsigned j = 0; j < count; ++j) {
+                const auto base_bone = static_cast<std::uint32_t>(bi.number(bone_bytes));
+                const auto base_weight = static_cast<std::uint16_t>(wi.number(weight_bytes));
+                const auto local = j < k ? static_cast<std::uint32_t>(oi.number(bone_bytes)) : base_bone;
+                auto weight = j < k ? static_cast<std::uint16_t>(ow.number(weight_bytes)) : base_weight;
+                need(local < section.bone_map.size(), "Profile references an absent section bone");
+                if (!wide_weight)
+                    weight = static_cast<std::uint16_t>(weight * 257u);
+                const MeshInfluence value{section.bone_map[local], weight};
+                if (j < k)
+                    replacement.push_back(value);
+                if (weight) {
+                    need(positive.insert(value.bone).second, "Duplicate nonzero profile influence bone");
+                    resolved.push_back(value);
+                }
+            }
+            need(positive.size() <= section.max_influences, "Profile exceeds section influence maximum");
+            if (resolved_profile)
+                (*resolved_profile)[vertex] = std::move(resolved);
+        }
+        profile.buffers = {
+            {"records", records},
+            {"overriddenVertices", entries},
+            {"boneIndexBytes", bone_bytes},
+            {"boneWeightBytes", weight_bytes},
+            {"boneIDsBytes", ids_size},
+            {"boneWeightsBytes", weights_size},
+            {"boneIDsSha256", detail::hash_range(r.bytes, ids, ids_size, b.o.control)},
+            {"boneWeightsSha256", detail::hash_range(r.bytes, weights_start, weights_size, b.o.control)},
+            {"serializedBytes", r.pos - start},
+            {"serializedSha256", detail::hash_range(r.bytes, start, r.pos - start, b.o.control)}};
+        profile_list.push_back(profile.name);
+        lod.weight_profiles.push_back(std::move(profile));
+    }
     auto ray_bytes = r.count(std::numeric_limits<std::int32_t>::max());
     r.range(ray_bytes);
     Json ray = {{"bytes", ray_bytes},
@@ -428,7 +624,11 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
     r.pos += ray_bytes;
     supported(!r.boolean(), "Compressed cooked morph buffers require another decoder");
     supported(r.count(b.o.max_sections) == 0, "Cooked skeletal vertex attributes require another decoder");
-    need(r.pos - begin == stored_size, "Skeletal serialized buffer size disagrees with payload");
+    // The native counting archive inherits FArchive's no-op FName operator.
+    // Physical inline FNames and streamed FMemoryArchive FStrings are excluded
+    // from BuffersSize, even though both are present in the actual payload.
+    need(r.pos - begin >= profile_name_bytes && r.pos - begin - profile_name_bytes == stored_size,
+         "Skeletal counted buffer size disagrees with payload");
     std::uint64_t covered_indices = 0;
     for (const auto &s : lod.sections) {
         const auto count = std::uint64_t(s.triangles) * 3;
@@ -464,7 +664,8 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
                          {"zeroWeightPaddingInSemanticSkin", false}};
         lod.geometry = g;
     }
-    lod.buffers = {{"vertices", n},
+    lod.buffers = {{"weightProfiles", profile_list},
+                   {"vertices", n},
                    {"indices", ni},
                    {"indexBytes", index_bytes},
                    {"uvChannels", uvs},
@@ -479,9 +680,29 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
                    {"lookupVertices", look_vertices},
                    {"skinBufferSha256", detail::hash_range(r.bytes, raw, raw_bytes, b.o.control)},
                    {"rayTracing", ray},
-                   {"serializedBytes", stored_size}};
+                   {"serializedBytes", r.pos - begin},
+                   {"declaredBuffersSize", stored_size},
+                   {"profileNameBytes", profile_name_bytes}};
 }
 } // namespace
+Json CookedSkeletalWeightProfile::to_json(bool include) const {
+    Json out = {{"name", name},
+                {"skinProfileKey", skin_profile_key},
+                {"influencesPerVertex", influences_per_vertex},
+                {"buffers", buffers}};
+    if (include) {
+        out["vertexToRecord"] = Json::object();
+        out["overrides"] = Json::object();
+        for (const auto &v : vertex_to_record)
+            out["vertexToRecord"][std::to_string(v.first)] = v.second;
+        for (const auto &v : overrides) {
+            auto &weights = out["overrides"][std::to_string(v.first)] = Json::array();
+            for (const auto &w : v.second)
+                weights.push_back({{"bone", w.bone}, {"rawWeight", w.raw_weight}});
+        }
+    }
+    return out;
+}
 Json CookedSkeletalSection::to_json() const {
     return {{"material", material},        {"firstIndex", first_index}, {"triangles", triangles},
             {"firstVertex", first_vertex}, {"vertices", vertices},      {"maxInfluences", max_influences},
@@ -496,6 +717,9 @@ Json CookedSkeletalLod::to_json(bool include) const {
               {"activeBones", active_bones}, {"sections", s},
               {"buffers", buffers},          {"bulk", bulk},
               {"unavailable", unavailable}};
+    j["weightProfiles"] = Json::array();
+    for (const auto &profile : weight_profiles)
+        j["weightProfiles"].push_back(profile.to_json(include));
     if (include && geometry)
         j["geometry"] = geometry->to_json();
     return j;
@@ -527,6 +751,8 @@ CookedSkeletalMesh read_zen_skeletal_mesh(const Container &container, std::size_
                                           const ZenReadOptions &zen, const ContainerReadOptions &read,
                                           const CookedSkeletalOptions &input, std::size_t selected) {
     auto o = input;
+    if (o.narrow_string_encoding == NarrowStringEncoding::unspecified && zen.schema_context)
+        o.narrow_string_encoding = zen.schema_context->narrow_string_encoding;
     OperationControl control;
     control.cancelled = [a = input.control, b = zen.control, c = read.control] {
         a.check();
@@ -707,20 +933,18 @@ CookedSkeletalMesh read_zen_skeletal_mesh(const Container &container, std::size_
             lod.active_bones = bone_array(r, budget, nb);
             const auto size = r.u32();
             if (lod.inlined)
-                buffers(r, lod, budget, out, colors, size);
+                buffers(r, lod, budget, out, colors, size, package.names);
             else {
                 const auto index = r.u32();
                 auto window = bulk_reader.describe(index, r.pos, r.end);
                 Json cached = nullptr;
                 if (window.bytes)
-                    cached = availability(r, o, colors);
+                    cached = availability(r, budget, colors, package.names);
                 lod.unavailable = window.unavailable;
                 bulk_reader.load(window);
                 if (lod.unavailable.empty()) {
-                    need(window.bytes == size,
-                         "Skeletal bulk byte count disagrees with serialized buffers size");
                     Cursor payload{*window.data, window.offset, window.offset + window.bytes};
-                    buffers(payload, lod, budget, out, colors, size);
+                    buffers(payload, lod, budget, out, colors, size, package.names);
                     need(payload.pos == payload.end, "Trailing bytes in skeletal streamed LOD payload");
                     match_availability(lod.buffers, cached);
                 }

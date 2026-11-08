@@ -304,6 +304,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_cooked_skeletal_tests tests/cooked_skeletal_tests.cpp)
     target_link_libraries(cyuediff_cooked_skeletal_tests PRIVATE CyUEDiff::Core)
     add_test(NAME cooked_skeletal_payloads COMMAND cyuediff_cooked_skeletal_tests)
+    add_executable(cyuediff_cooked_skeletal_profile_tests tests/cooked_skeletal_profile_tests.cpp)
+    target_link_libraries(cyuediff_cooked_skeletal_profile_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME cooked_skeletal_profiles COMMAND cyuediff_cooked_skeletal_profile_tests)
     add_executable(cyuediff_cooked_mesh_tests tests/cooked_mesh_tests.cpp)
     target_link_libraries(cyuediff_cooked_mesh_tests PRIVATE CyUEDiff::Core)
     add_test(NAME cooked_mesh_payloads COMMAND cyuediff_cooked_mesh_tests)
@@ -496,6 +499,9 @@ if(BUILD_TESTING)
             add_test(NAME cooked_animation_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_animation_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_animation_tests>")
+            add_test(NAME cooked_skeletal_profiles_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_skeletal_profile_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>" "$<TARGET_FILE:cyuediff_cooked_skeletal_profile_tests>")
             add_test(NAME cooked_skeletal_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_skeletal_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>")
@@ -746,6 +752,11 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_collision_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_collision_tests>" "$<TARGET_FILE:cyuediff_desktop>")
             set_tests_properties(desktop_cooked_collision_cli PROPERTIES TIMEOUT 120)
+            add_test(NAME desktop_cooked_skeletal_profiles_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_skeletal_profile_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>" "$<TARGET_FILE:cyuediff_cooked_skeletal_profile_tests>"
+                "$<TARGET_FILE:cyuediff_desktop>")
+            set_tests_properties(desktop_cooked_skeletal_profiles_cli PROPERTIES TIMEOUT 120)
             add_test(NAME desktop_cooked_skeletal_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_skeletal_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>" "$<TARGET_FILE:cyuediff_desktop>")

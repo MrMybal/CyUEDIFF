@@ -275,17 +275,105 @@ inline void skeletal_export_size(SkeletalFixture &f) {
     const std::uint64_t size = b.data.size() - f.storage.body;
     std::memcpy(b.data.data() + exp + 8, &size, 8);
 }
+struct SkeletalWeightProfileSpec {
+    std::uint32_t name = 2, number = 1;
+    std::vector<std::vector<std::array<std::uint32_t, 2>>> records;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> vertices;
+    int slots = -1;
+};
+inline Bytes skeletal_profile_bytes(bool wide_bone, bool wide_weight,
+                                    const std::vector<SkeletalWeightProfileSpec> &profiles,
+                                    bool strings = false, bool utf16 = false) {
+    Bytes encoded;
+    encoded.i(static_cast<int>(profiles.size()));
+    for (const auto &profile : profiles) {
+        if (strings) {
+            std::string name =
+                std::vector<std::string>{"None", "/Game/Texture", "Texture", "PF_DXT1"}.at(profile.name);
+            if (profile.number)
+                name += "_" + std::to_string(profile.number - 1);
+            encoded.i(static_cast<int>(name.size() + 1) * (utf16 ? -1 : 1));
+            for (const auto c : name) {
+                if (utf16)
+                    encoded.put<std::uint16_t>(static_cast<unsigned char>(c));
+                else
+                    encoded.put(c);
+            }
+            if (utf16)
+                encoded.put<std::uint16_t>(0);
+            else
+                encoded.put<std::uint8_t>(0);
+        } else {
+            encoded.put(profile.name);
+            encoded.put(profile.number);
+        }
+        Bytes ids, weights;
+        for (const auto &record : profile.records)
+            for (const auto &v : record) {
+                if (wide_bone)
+                    ids.put<std::uint16_t>(static_cast<std::uint16_t>(v[0]));
+                else
+                    ids.put<std::uint8_t>(static_cast<std::uint8_t>(v[0]));
+                if (wide_weight)
+                    weights.put<std::uint16_t>(static_cast<std::uint16_t>(v[1]));
+                else
+                    weights.put<std::uint8_t>(static_cast<std::uint8_t>(v[1]));
+            }
+        encoded.i(static_cast<int>(ids.data.size()));
+        encoded.append(ids);
+        encoded.i(static_cast<int>(weights.data.size()));
+        encoded.append(weights);
+        encoded.put<std::uint8_t>(static_cast<std::uint8_t>(profile.slots >= 0 ? profile.slots
+                                                            : profile.records.empty()
+                                                                ? 0
+                                                                : profile.records[0].size()));
+        encoded.i(static_cast<int>(profile.vertices.size()));
+        for (const auto &v : profile.vertices) {
+            encoded.put(v.first);
+            encoded.put(v.second);
+        }
+    }
+    return encoded;
+}
+inline SkeletalFixture skeletal_profiles(SkeletalFixture f, bool wide_bone, bool wide_weight,
+                                         const std::vector<SkeletalWeightProfileSpec> &profiles) {
+    if (profiles.empty())
+        return f;
+    const auto encoded = skeletal_profile_bytes(wide_bone, wide_weight, profiles);
+    auto &b = f.storage.package;
+    b.data.erase(b.data.begin() + f.profile, b.data.begin() + f.profile + 4);
+    b.data.insert(b.data.begin() + f.profile, encoded.data.begin(), encoded.data.end());
+    const auto delta = encoded.data.size() - 4;
+    f.morph += delta;
+    f.attributes += delta;
+    f.inline_count += delta;
+    b.patch(static_cast<int>(f.size),
+            static_cast<int>(f.inline_count - f.buffer_start - profiles.size() * 8));
+    skeletal_export_size(f);
+    return f;
+}
 // Two LODs: streamed LOD 0 and a separate inline LOD 1, built from original data.
-inline SkeletalFixture cooked_skeletal_streaming_fixture(bool external = true, bool variable = false,
-                                                         bool wide_bone = false, bool wide_weight = false,
-                                                         bool wide_indices = false, bool high = false,
-                                                         bool full = false, bool colors = false) {
-    auto f = cooked_skeletal_fixture(variable, wide_bone, wide_weight, wide_indices, high, full, colors);
+inline SkeletalFixture cooked_skeletal_streaming_fixture(
+    bool external = true, bool variable = false, bool wide_bone = false, bool wide_weight = false,
+    bool wide_indices = false, bool high = false, bool full = false, bool colors = false,
+    const std::vector<SkeletalWeightProfileSpec> &profiles = {}, bool utf16_profiles = false) {
+    auto f = skeletal_profiles(
+        cooked_skeletal_fixture(variable, wide_bone, wide_weight, wide_indices, high, full, colors),
+        wide_bone, wide_weight, profiles);
     auto &b = f.storage.package;
     const auto old_start = f.buffer_start;
     const auto lod_start = f.streaming - 6;
     Bytes payload;
     payload.data.assign(b.data.begin() + old_start, b.data.begin() + f.inline_count);
+    std::ptrdiff_t streamed_name_delta = 0;
+    if (!profiles.empty()) {
+        const auto encoded = skeletal_profile_bytes(wide_bone, wide_weight, profiles, true, utf16_profiles);
+        streamed_name_delta = std::ptrdiff_t(encoded.data.size()) - std::ptrdiff_t(f.morph - 7 - f.profile);
+        payload.data.erase(payload.data.begin() + f.profile - old_start,
+                           payload.data.begin() + f.morph - old_start - 7);
+        payload.data.insert(payload.data.begin() + f.profile - old_start, encoded.data.begin(),
+                            encoded.data.end());
+    }
     Bytes inline_lod;
     inline_lod.data.assign(b.data.begin() + lod_start, b.data.begin() + f.inline_count);
     b.data.resize(old_start);
@@ -305,6 +393,8 @@ inline SkeletalFixture cooked_skeletal_streaming_fixture(bool external = true, b
     for (auto *field : {&f.positions, &f.indices, &f.weights, &f.lookup, &f.profile, &f.morph, &f.attributes,
                         &f.colors, &f.weight_meta})
         *field = start + (*field - old_start);
+    f.morph += streamed_name_delta;
+    f.attributes += streamed_name_delta;
     f.buffer_start = start;
     f.availability = b.data.size();
     b.put<std::uint8_t>(wide_indices ? 4 : 2);
@@ -324,7 +414,11 @@ inline SkeletalFixture cooked_skeletal_streaming_fixture(bool external = true, b
     b.i(wide_bone);
     b.i(wide_weight);
     b.i(variable ? 3 : 0);
-    b.i(0);
+    b.i(static_cast<int>(profiles.size()));
+    for (const auto &profile : profiles) {
+        b.put(profile.name);
+        b.put(profile.number);
+    }
     f.second_lod = b.data.size();
     b.append(inline_lod);
     f.inline_count = b.data.size();

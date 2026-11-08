@@ -16,6 +16,7 @@
 #include "Animation/AnimData/IAnimationDataModel.h"
 #include "AssetCompilingManager.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/SkinnedAssetCommon.h"
 #include "Engine/StaticMesh.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "Rendering/SkeletalMeshRenderData.h"
@@ -25,6 +26,9 @@
 #include "Rendering/NaniteResources.h"
 #include "MeshDescription.h"
 #include "StaticMeshAttributes.h"
+#include "Rendering/SkeletalMeshLODImporterData.h"
+#include "LODUtilities.h"
+#include "Animation/SkinWeightProfile.h"
 #include "Materials/Material.h"
 #include "MaterialDomain.h"
 #include "Serialization/JsonSerializer.h"
@@ -80,6 +84,9 @@ Values Bones(const FReferenceSkeleton &S) {
     }
     return Out;
 }
+struct ProfileReference : FSkinWeightProfilesData {
+    using FSkinWeightProfilesData::ApplyOverrideProfile;
+};
 Object Skeletal(USkeletalMesh *Mesh) {
     auto O = MakeShared<FJsonObject>();
     O->SetArrayField(TEXT("bones"), Bones(Mesh->GetRefSkeleton()));
@@ -124,6 +131,46 @@ Object Skeletal(USkeletalMesh *Mesh) {
             Vertices.Add(Obj(V));
         }
         L->SetArrayField(TEXT("vertices"), Vertices);
+        Values Profiles;
+        for (const auto &Info : Mesh->GetSkinWeightProfiles()) {
+            const auto *Profile = LOD.SkinWeightProfilesData.GetOverrideData(Info.Name);
+            auto P = MakeShared<FJsonObject>();
+            P->SetStringField(TEXT("name"), Info.Name.ToString());
+            P->SetBoolField(TEXT("available"), Profile != nullptr);
+            if (Profile) {
+                P->SetNumberField(TEXT("influencesPerVertex"), Profile->NumWeightsPerVertex);
+                Values IDs, RawWeights, Entries;
+                for (const auto V : Profile->BoneIDs)
+                    IDs.Add(Number(V));
+                for (const auto V : Profile->BoneWeights)
+                    RawWeights.Add(Number(V));
+                for (const auto &V : Profile->VertexIndexToInfluenceOffset)
+                    Entries.Add(Array({Number(V.Key), Number(V.Value)}));
+                P->SetArrayField(TEXT("boneIDs"), IDs);
+                P->SetArrayField(TEXT("boneWeights"), RawWeights);
+                P->SetArrayField(TEXT("vertexToRecord"), Entries);
+                if (!Weights.GetVariableBonesPerVertex() && Weights.GetDataVertexBuffer()->GetWeightData()) {
+                    FSkinWeightVertexBuffer Resolved;
+                    ProfileReference Reference;
+                    Reference.Init(const_cast<FSkinWeightVertexBuffer *>(&Weights));
+                    Reference.AddOverrideData(Info.Name) = *Profile;
+                    Reference.ApplyOverrideProfile(&Resolved, Info.Name);
+                    Values Applied;
+                    for (uint32 I = 0; I < Weights.GetNumVertices(); ++I) {
+                        Values Influences;
+                        uint32 Offset = 0, Count = 0;
+                        Resolved.GetVertexInfluenceOffsetCount(I, Offset, Count);
+                        for (uint32 J = 0; J < Count; ++J)
+                            Influences.Add(Array(
+                                {Number(Resolved.GetBoneIndex(I, J)), Number(Resolved.GetBoneWeight(I, J))}));
+                        Applied.Add(MakeShared<FJsonValueArray>(Influences));
+                    }
+                    P->SetArrayField(TEXT("resolvedInfluences"), Applied);
+                }
+            }
+            Profiles.Add(Obj(P));
+        }
+        L->SetArrayField(TEXT("weightProfiles"), Profiles);
         Values Indices;
         const auto *IB = LOD.MultiSizeIndexContainer.GetIndexBuffer();
         for (int32 I = 0; I < IB->Num(); ++I)
@@ -290,6 +337,68 @@ bool UCyUEDiffReferenceLibrary::BindPrivateSkeleton(UObject *Asset, USkeleton *S
         return false;
     Asset->MarkPackageDirty();
     Asset->PostEditChange();
+    return true;
+}
+bool UCyUEDiffReferenceLibrary::PreparePrivateSkinWeightProfiles(UObject *Asset, int32 Variant) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh || Variant < 0 || Variant > 3 ||
+        !Mesh->GetOutermost()->GetName().StartsWith(TEXT("/Game/Corpus/Weight")) ||
+        Mesh->GetSkinWeightProfiles().Num() || Mesh->GetRefSkeleton().GetNum() < 2)
+        return false;
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    FSkeletalMeshImportData Source;
+    Mesh->LoadLODImportedData(0, Source);
+    if (!Source.Points.Num() || Source.RefBonesBinary.Num() < 2 || !Source.Influences.Num()) {
+        FMeshDescription Description;
+        Mesh->GetMeshDescription(0, Description);
+        Source = FSkeletalMeshImportData::CreateFromMeshDescription(Description);
+    }
+    if (!Source.Points.Num() || Source.RefBonesBinary.Num() < 2 || !Source.Influences.Num()) {
+        UE_LOG(LogTemp, Warning, TEXT("Private profile source: points=%d bones=%d influences=%d"),
+               Source.Points.Num(), Source.RefBonesBinary.Num(), Source.Influences.Num());
+        return false;
+    }
+    for (const FName Name : {FName(TEXT("CyWeights")), FName(TEXT("CyOriginal"))}) {
+        FSkeletalMeshImportData Alternate = Source;
+        Alternate.AlternateInfluences.Empty();
+        Alternate.AlternateInfluenceProfileNames.Empty();
+        if (Name == FName(TEXT("CyWeights"))) {
+            Alternate.Influences.RemoveAll(
+                [](const SkeletalMeshImportData::FRawBoneInfluence &V) { return V.VertexIndex % 3 == 0; });
+            for (int32 Vertex = 0; Vertex < Source.Points.Num(); Vertex += 3) {
+                SkeletalMeshImportData::FRawBoneInfluence First, Second;
+                First.VertexIndex = Second.VertexIndex = Vertex;
+                First.BoneIndex = 0;
+                Second.BoneIndex = 1;
+                First.Weight = (Variant & 1) ? .5f : .75f;
+                Second.Weight = (Variant & 1) ? .5f : .25f;
+                Alternate.Influences.Add(First);
+                Alternate.Influences.Add(Second);
+            }
+        }
+        Source.AlternateInfluenceProfileNames.Add(Name.ToString());
+        Source.AlternateInfluences.Add(MoveTemp(Alternate));
+        FSkinWeightProfileInfo Info;
+        Info.Name = Name;
+        Info.DefaultProfile.Default = false;
+        Info.DefaultProfileFromLODIndex.Default = 0;
+        Mesh->AddSkinWeightProfile(Info);
+    }
+    Mesh->GetLODInfo(0)->BuildSettings.bUseHighPrecisionSkinWeights = (Variant & 2) != 0;
+    Mesh->SaveLODImportedData(0, Source);
+    Mesh->SetLODImportedDataVersions(0, ESkeletalMeshGeoImportVersions::LatestVersion,
+                                     ESkeletalMeshSkinningImportVersions::LatestVersion);
+    Mesh->SetUseLegacyMeshDerivedDataKey(false);
+    IMeshUtilities::MeshBuildOptions Options;
+    Options.bComputeNormals = false;
+    Options.bComputeTangents = false;
+    for (const auto &Info : Mesh->GetSkinWeightProfiles())
+        if (!FLODUtilities::UpdateAlternateSkinWeights(Mesh, Info.Name, 0, Options))
+            return false;
+    Mesh->InvalidateDeriveDataCacheGUID();
+    Mesh->Build();
+    Mesh->PostEditChange();
+    FAssetCompilingManager::Get().FinishAllCompilation();
     return true;
 }
 FString UCyUEDiffReferenceLibrary::ExportReference(UObject *Asset) {

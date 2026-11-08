@@ -26,6 +26,10 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     // Adds original curves and an explicit codec to an unsaved private copy; never saves a file.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateAnimationCurves(UObject *Asset, int32 Codec);
+    // Adds original skin-weight profiles only to an unsaved /Game/Corpus/Weight* copy.
+    // No file is saved and no existing source asset is changed.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static bool PreparePrivateSkinWeightProfiles(UObject *Asset, int32 Variant);
     // Direct actual curve codec measurements, with complete compressed-buffer identity.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportCompressedCurvesReference(UObject *Asset);

@@ -309,7 +309,7 @@ int main(int argc, char **argv) {
         refused([&] { read(bad, o); }, "cooked-skeletal-layout");
         bad = f;
         bad.storage.package.patch(static_cast<int>(bad.profile), 1);
-        refused([&] { read(bad, o); }, "cooked-skeletal-feature");
+        refused([&] { read(bad, o); }, "cooked-skeletal-layout");
         bad = f;
         bad.storage.package.patch(static_cast<int>(bad.morph), 1);
         refused([&] { read(bad, o); }, "cooked-skeletal-feature");

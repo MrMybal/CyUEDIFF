@@ -94,6 +94,10 @@ struct ContainerDocument {
     std::vector<fs::path> protected_files;
     Json report() const;
 };
+// Exact object/LOD identity first. Explicit independently selected package members
+// can also pair the same LOD when each package contains exactly one mesh export.
+const ContainerMeshPreview *paired_mesh_preview(const ContainerDocument &, const ContainerMeshPreview &,
+                                                bool after);
 // Every request indexes current files again. No virtual member path becomes a disk destination.
 std::shared_ptr<const ContainerDocument>
 load_container_document(const ContainerSource &, const fs::path &codec, const OperationControl & = {});

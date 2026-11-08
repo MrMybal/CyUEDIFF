@@ -399,10 +399,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
             const auto peer = after ? document_.get() : document_->after.get();
             for (const auto &preview : side.mesh_previews) {
                 std::shared_ptr<const MeshGeometry> other;
-                if (peer)
-                    for (const auto &p : peer->mesh_previews)
-                        if (p.key == preview.key)
-                            other = p.geometry;
+                if (const auto *paired = paired_mesh_preview(*document_, preview, after))
+                    other = paired->geometry;
                 MeshRow row;
                 row.key = preview.key;
                 row.after = after;

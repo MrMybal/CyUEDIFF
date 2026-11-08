@@ -78,12 +78,14 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
     if (document->after)
         for (const auto &before : document->mesh_previews) {
             control.check();
-            auto after =
-                std::find_if(document->after->mesh_previews.begin(), document->after->mesh_previews.end(),
-                             [&](const auto &m) { return m.key == before.key; });
-            if (after != document->after->mesh_previews.end())
+            const auto *after = paired_mesh_preview(*document, before, false);
+            if (after)
                 document->mesh_differences.push_back(
                     {{"key", before.key},
+                     {"beforeKey", before.key},
+                     {"afterKey", after->key},
+                     {"pairing",
+                      before.key == after->key ? "object-path-and-lod" : "explicit-members-single-mesh-lod"},
                      {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
         }
     if (!document->physics.is_null() && document->after && !document->after->physics.is_null()) {
@@ -448,6 +450,38 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
     return document;
 }
 } // namespace
+const ContainerMeshPreview *paired_mesh_preview(const ContainerDocument &root,
+                                                const ContainerMeshPreview &preview, bool after) {
+    const auto *side = after ? root.after.get() : &root;
+    const auto *peer = after ? &root : root.after.get();
+    if (!side || !peer)
+        return nullptr;
+    for (const auto &candidate : peer->mesh_previews)
+        if (candidate.key == preview.key)
+            return &candidate;
+    if (!root.selected_comparison.is_object() || !root.selected_comparison.value("explicitPair", false))
+        return nullptr;
+    auto one_mesh = [](const ContainerDocument &document) {
+        if (!document.zen)
+            return false;
+        unsigned count = 0;
+        for (const auto &object : document.zen->exports)
+            if (!(object.flags & 0x30) && (object.class_name == "/Script/Engine.SkeletalMesh" ||
+                                           object.class_name == "/Script/Engine.StaticMesh"))
+                ++count;
+        return count == 1;
+    };
+    if (!one_mesh(*side) || !one_mesh(*peer))
+        return nullptr;
+    const ContainerMeshPreview *found = nullptr;
+    for (const auto &candidate : peer->mesh_previews)
+        if (candidate.lod == preview.lod) {
+            if (found)
+                return nullptr;
+            found = &candidate;
+        }
+    return found;
+}
 std::shared_ptr<const ContainerDocument> load_container_document(const ContainerSource &source,
                                                                  const fs::path &codec,
                                                                  const OperationControl &control) {
@@ -648,12 +682,14 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     if (document->after)
         for (const auto &before : document->mesh_previews) {
             control.check();
-            auto after =
-                std::find_if(document->after->mesh_previews.begin(), document->after->mesh_previews.end(),
-                             [&](const auto &m) { return m.key == before.key; });
-            if (after != document->after->mesh_previews.end())
+            const auto *after = paired_mesh_preview(*document, before, false);
+            if (after)
                 document->mesh_differences.push_back(
                     {{"key", before.key},
+                     {"beforeKey", before.key},
+                     {"afterKey", after->key},
+                     {"pairing",
+                      before.key == after->key ? "object-path-and-lod" : "explicit-members-single-mesh-lod"},
                      {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
         }
     if (!document->physics.is_null() && document->after && !document->after->physics.is_null()) {

@@ -68,6 +68,40 @@ def compare(actual, reference):
         for field in ('indexBytes', 'boneIndexBytes', 'boneWeightBytes', 'variableInfluences', 'maxInfluences'):
             c.equal(lod['buffers'][field], ref[field], tag + '/' + field)
         g = lod['geometry']
+        if 'weightProfiles' in ref:
+            expected_profiles = {p['name']: p for p in ref['weightProfiles']}
+            actual_profiles = {p['name']: p for p in lod['weightProfiles']}
+            c.equal(sorted(actual_profiles), sorted(expected_profiles), tag + '/weightProfiles/names')
+            for name, profile in expected_profiles.items():
+                if not profile.get('available') or 'resolvedInfluences' not in profile:
+                    raise ValueError(tag + '/weightProfiles/' + name + ': actual Engine API values unavailable')
+                stored = actual_profiles[name]
+                where = tag + '/weightProfiles/' + name
+                c.equal(stored['skinProfileKey'], 'profile:' + name, where + '/identity')
+                c.equal(stored['influencesPerVertex'], profile['influencesPerVertex'], where + '/slots')
+                ids, weights = bytes(profile['boneIDs']), bytes(profile['boneWeights'])
+                c.equal(stored['buffers']['boneIDsSha256'], hashlib.sha256(ids).hexdigest(), where + '/IDs')
+                c.equal(stored['buffers']['boneWeightsSha256'], hashlib.sha256(weights).hexdigest(), where + '/weights')
+                entries = {str(vertex): record for vertex, record in profile['vertexToRecord']}
+                c.equal(stored['vertexToRecord'], entries, where + '/vertexToRecord')
+                c.equal(sorted(stored['overrides']), sorted(entries), where + '/overrideVertices')
+                count = profile['influencesPerVertex']
+                ib, wb = lod['buffers']['boneIndexBytes'], lod['buffers']['boneWeightBytes']
+                for vertex, record in entries.items():
+                    vi = int(vertex)
+                    section = next(v for v in ref['sections'] if v['firstVertex'] <= vi < v['firstVertex'] + v['vertices'])
+                    decoded = []
+                    for slot in range(count):
+                        offset = (record * count + slot)
+                        bone = int.from_bytes(ids[offset * ib:(offset + 1) * ib], 'little')
+                        weight = int.from_bytes(weights[offset * wb:(offset + 1) * wb], 'little')
+                        decoded.append({'bone': section['boneMap'][bone], 'rawWeight': weight * (257 if wb == 1 else 1)})
+                    c.equal(stored['overrides'][vertex], decoded, where + '/stored/' + vertex)
+                c.equal(len(profile['resolvedInfluences']), len(ref['vertices']), where + '/resolvedVertices')
+                for vi, row in enumerate(profile['resolvedInfluences']):
+                    section = next(v for v in ref['sections'] if v['firstVertex'] <= vi < v['firstVertex'] + v['vertices'])
+                    expected = {actual['bones'][section['boneMap'][bone]]['name']: weight for bone, weight in row if weight}
+                    c.equal(g['skin']['vertices'][str(vi)][stored['skinProfileKey']], expected, where + '/actualRuntime/' + str(vi))
         c.equal(len(g['vertices']), len(ref['vertices']), tag + '/vertices')
         vertices += len(ref['vertices'])
         triangles += len(g['triangles'])
