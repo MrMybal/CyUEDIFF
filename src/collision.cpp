@@ -52,8 +52,9 @@ struct Projection {
             return v;
         if (v.is_object()) {
             Json out = Json::array();
-            const std::array<const char *, 3> keys = rotation ? std::array<const char *, 3>{"Pitch", "Yaw", "Roll"}
-                                                               : std::array<const char *, 3>{"X", "Y", "Z"};
+            const std::array<const char *, 3> keys = rotation
+                                                         ? std::array<const char *, 3>{"Pitch", "Yaw", "Roll"}
+                                                         : std::array<const char *, 3>{"X", "Y", "Z"};
             for (const auto *key : keys) {
                 const auto *component = value(v, key);
                 if (!component || !number(*component))
@@ -63,6 +64,29 @@ struct Projection {
             return out;
         }
         return nullptr;
+    }
+    static Json transform_value(const Json *stored) {
+        if (!stored || !stored->is_object())
+            return nullptr;
+        Json result = Json::object();
+        const bool canonical_form =
+            stored->contains("rotation") || stored->contains("translation") || stored->contains("scale");
+        for (const auto &component : {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
+                                      std::make_pair("scale", 3u)}) {
+            const auto canonical = stored->find(component.first);
+            const Json *value_ptr = canonical == stored->end() ? nullptr : &*canonical;
+            if (!canonical_form) {
+                const char *field = std::string(component.first) == "rotation"      ? "Rotation"
+                                    : std::string(component.first) == "translation" ? "Translation"
+                                                                                    : "Scale3D";
+                value_ptr = value(*stored, field);
+            }
+            if (!value_ptr || !value_ptr->is_array() || value_ptr->size() != component.second ||
+                !std::all_of(value_ptr->begin(), value_ptr->end(), [](const auto &v) { return number(v); }))
+                return nullptr;
+            result[component.first] = *value_ptr;
+        }
+        return result;
     }
     Json shape(const Json &properties, const std::string &kind, std::size_t source_index, bool named) {
         if (shapes++ >= options.max_shapes)
@@ -165,19 +189,9 @@ struct Projection {
                 out["geometry"]["indices"] = copy(*faces);
             else
                 unresolved("IndexData");
-            bool valid_transform = transform && transform->is_object();
-            if (valid_transform)
-                for (const auto &component :
-                     {std::make_pair("rotation", 4u), std::make_pair("translation", 3u),
-                      std::make_pair("scale", 3u)}) {
-                    auto v = transform->find(component.first);
-                    valid_transform =
-                        valid_transform && v != transform->end() && v->is_array() &&
-                        v->size() == component.second &&
-                        std::all_of(v->begin(), v->end(), [](const auto &x) { return number(x); });
-                }
-            if (valid_transform)
-                out["geometry"]["transform"] = copy(*transform);
+            auto decoded_transform = transform_value(transform);
+            if (!decoded_transform.is_null())
+                out["geometry"]["transform"] = copy(decoded_transform);
             else
                 unresolved("Transform");
         } else {

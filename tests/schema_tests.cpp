@@ -75,6 +75,24 @@ int main(int argc, char **argv) {
         check(props["DemoAsset.Mode"]["value"] == 0 && props["DemoAsset.Mode"]["typeName"] == "ModeEnum",
               "Enum underlying type");
         check(props["Base.Enabled"]["value"] == true, "Derived slots precede base slots");
+        auto failed_zen = schema_zen_fixture();
+        std::uint32_t body_offset;
+        std::memcpy(&body_offset, failed_zen.data.data() + 4, 4);
+        failed_zen.data[body_offset + body.data.size() - 1] = 2;
+        ZenReadOptions zen_options;
+        zen_options.profile = ZenProfile::unreal_5_3;
+        zen_options.script_objects =
+            std::make_shared<ScriptObjects>(ScriptObjects::parse(script_fixture().data, zen_options));
+        auto failure_context = std::make_shared<ZenSchemaContext>();
+        failure_context->profile = zen_options.profile;
+        failure_context->schemas = std::make_shared<UnversionedSchemas>(mappings);
+        failure_context->bindings["/Script/Test.DemoAsset"] = {"DemoAsset", 0};
+        zen_options.schema_context = failure_context;
+        auto failed = ZenPackage::parse(failed_zen.data, zen_options).exports[0].property_read;
+        check(failed["status"] == "opaque" && failed["errorOffset"] == body_offset + body.data.size() &&
+                  !failed.contains("properties") &&
+                  failed["message"].get<std::string>().find("Base.Enabled") != std::string::npos,
+              "Zen failure preserves offset and field without publishing partial properties");
         Bytes sparse;
         sparse.put<std::uint16_t>((1u << 9) | 256u | 8u);
         sparse.put<std::uint8_t>(1);
@@ -111,6 +129,66 @@ int main(int argc, char **argv) {
             "schema-context");
         for (std::size_t end = 0; end < body.data.size(); ++end)
             error([&] { decode_unversioned(body.data, 0, end, mappings, "DemoAsset", options); }, "bounds");
+        auto bad_bool = body;
+        bad_bool.data.back() = 2;
+        try {
+            decode_unversioned(bad_bool.data, 0, bad_bool.data.size(), mappings, "DemoAsset", options);
+            throw std::runtime_error("Invalid bool accepted");
+        } catch (const Error &e) {
+            check(e.code == "schema-value" && e.offset == bad_bool.data.size() &&
+                      std::string(e.what()).find("Base.Enabled") != std::string::npos,
+                  "Invalid scalar retains exact field and wire offset");
+        }
+        try {
+            decode_unversioned(nested.data, 0, 4, mappings, "Record", options);
+            throw std::runtime_error("Truncated nested field accepted");
+        } catch (const Error &e) {
+            auto message = std::string(e.what());
+            check(e.code == "bounds" && e.offset == 4 && message.find("Record.Inner") != std::string::npos &&
+                      message.find("Nested.Inner") != std::string::npos,
+                  "Nested failure retains cause, inner/outer fields and absolute offset");
+        }
+        auto verbose = schema_fixture();
+        const std::string old_name = "Enabled";
+        std::string long_name(12000, 'n');
+        auto found = std::search(verbose.data.begin(), verbose.data.end(), old_name.begin(), old_name.end());
+        check(found != verbose.data.end(), "Long-name fixture location");
+        auto name_at = static_cast<std::size_t>(found - verbose.data.begin());
+        const auto name_size = static_cast<std::uint16_t>(long_name.size());
+        std::memcpy(verbose.data.data() + name_at - 2, &name_size, 2);
+        verbose.data.erase(verbose.data.begin() + static_cast<std::ptrdiff_t>(name_at),
+                           verbose.data.begin() + static_cast<std::ptrdiff_t>(name_at + old_name.size()));
+        verbose.data.insert(verbose.data.begin() + static_cast<std::ptrdiff_t>(name_at), long_name.begin(),
+                            long_name.end());
+        verbose.patch(8, static_cast<int>(verbose.data.size() - 16));
+        verbose.patch(12, static_cast<int>(verbose.data.size() - 16));
+        auto long_schema = UnversionedSchemas::parse(verbose.data);
+        Bytes bad_value;
+        bad_value.put<std::uint16_t>(0x0300);
+        bad_value.put<std::uint8_t>(2);
+        try {
+            decode_unversioned(bad_value.data, 0, bad_value.data.size(), long_schema, "Base", options);
+            throw std::runtime_error("Invalid verbose field accepted");
+        } catch (const Error &e) {
+            check(e.code == "schema-value" && std::string(e.what()).size() <= 4096 &&
+                      !Json(std::string(e.what())).dump().empty(),
+                  "Failure diagnostics stay bounded and valid UTF-8");
+        }
+        auto unicode_failure = options;
+        unicode_failure.reference = [](std::int32_t) -> Json {
+            std::string message;
+            for (unsigned i = 0; i < 2000; ++i)
+                message += "é💙";
+            throw Error("host-reference", message, 17);
+        };
+        try {
+            decode_unversioned(body.data, 0, body.data.size(), mappings, "DemoAsset", unicode_failure);
+            throw std::runtime_error("Host failure swallowed");
+        } catch (const Error &e) {
+            check(e.code == "host-reference" && e.offset == 17 && std::string(e.what()).size() <= 4096 &&
+                      !Json(std::string(e.what())).dump().empty(),
+                  "Host Unicode error remains bounded on code-point boundaries");
+        }
         auto wrong = body;
         wrong.data[0] = 127;
         error([&] { decode_unversioned(wrong.data, 0, wrong.data.size(), mappings, "DemoAsset", options); },

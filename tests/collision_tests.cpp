@@ -163,6 +163,21 @@ int main(int argc, char **argv) {
         check(extra["tapered-capsule:name:Taper"]["geometry"]["radius1"] == 4., "Unequal radii preserved");
         check(extra["convex:name:Hull"]["geometry"]["indices"] == Json::array({0, 1, 2}),
               "Stored topology preserved");
+        auto reflected_transform = extended;
+        auto &transform =
+            reflected_transform.exports[0]
+                .properties["AggGeom"]["value"]["ConvexElems"]["value"][0]["Transform"]["value"];
+        transform = {{"Rotation", collision_property({0., 0., 0., 1.}, "StructProperty")},
+                     {"Translation", collision_property({2., 3., 4.}, "StructProperty")},
+                     {"Scale3D", collision_property({1., 2., 3.}, "StructProperty")}};
+        check(reflected_transform.collision_snapshot()["bodies"]["SM.Body"]["shapes"]["convex:name:Hull"]
+                                                      ["geometry"]["transform"] ==
+                  extra["convex:name:Hull"]["geometry"]["transform"],
+              "Reflected transform channels project the same stored convex transform");
+        transform.erase("Scale3D");
+        check(!reflected_transform
+                   .collision_snapshot()["bodies"]["SM.Body"]["shapes"]["convex:name:Hull"]["complete"],
+              "Missing reflected transform channel is not defaulted");
         for (const auto &invalid : {Json::array({0, 1}), Json::array({0, -1, 2}), Json::array({0, 1, 3}),
                                     Json::array({0, 1, 1.5}), Json::array({0, 1, std::uint64_t(-1)})}) {
             auto wrong = extended;

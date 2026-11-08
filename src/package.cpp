@@ -418,12 +418,22 @@ class PropertyReader {
                     return {{"min", std::move(minimum)}, {"max", std::move(maximum)}, {"isValid", validity}};
                 }
             }
-            if (s == "Transform") {
+            if (s == "Transform3f" || s == "Transform3d" ||
+                (s == "Transform" && p.summary.ue5_version < 1004)) {
+                const bool wide = s == "Transform3d" || (s != "Transform3f" && p.summary.ue5_version >= 1004);
+                if ((s == "Transform3f" || s == "Transform3d") && p.summary.ue5_version < 1004)
+                    throw Error("native-layout", "Explicit transform variants require an LWC profile",
+                                a.tell());
+                if (exact_size && (a.tell() > end || end - a.tell() != (wide ? 80u : 40u)))
+                    throw Error("native-layout", "Immutable transform byte size disagrees with profile",
+                                a.tell());
+                if (native_nodes_ > options.max_properties || options.max_properties - native_nodes_ < 10)
+                    throw Error("limit", "Native transform work budget exceeded", a.tell());
+                native_nodes_ += 10;
                 auto vector = [&](unsigned count) {
                     Json values = Json::array();
                     for (unsigned i = 0; i < count; ++i)
-                        values.push_back(
-                            number(p.summary.ue5_version >= 1004 ? a.get<double>() : a.get<float>()));
+                        values.push_back(number(wide ? a.get<double>() : a.get<float>()));
                     return values;
                 };
                 Json result;

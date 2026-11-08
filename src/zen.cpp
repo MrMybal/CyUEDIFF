@@ -621,6 +621,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     e.property_read = {{"status", "opaque"},
                                        {"schema", b.schema},
                                        {"error", error.code},
+                                       {"errorOffset", error.offset},
                                        {"message", error.what()}};
                     ++p.property_exports_failed;
                 }

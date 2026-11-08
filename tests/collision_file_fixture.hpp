@@ -14,10 +14,10 @@ inline Fixture collision_file_fixture(const Package &model, int version = 1013) 
                                                            {"Transform", "Transform"},
                                                            {"VertexData", "Vector"}};
     std::vector<std::string> names = {
-        "BodySetup", "/Script/Engine", "NameProperty", "FloatProperty", "Vector", "Rotator",
-        "Transform", "BoneName",       "AggGeom",      "Name",          "Center", "Rotation",
-        "Radius",    "Radius0",        "Radius1",      "Length",        "X",      "Y",
-        "Z",         "RestOffset",     "VertexData",   "IndexData"};
+        "BodySetup",   "/Script/Engine", "NameProperty", "FloatProperty", "Vector",  "Rotator", "Quat",
+        "Translation", "Scale3D",        "Transform",    "BoneName",      "AggGeom", "Name",    "Center",
+        "Rotation",    "Radius",         "Radius0",      "Radius1",       "Length",  "X",       "Y",
+        "Z",           "RestOffset",     "VertexData",   "IndexData"};
     for (const auto &entry : structures) {
         names.push_back(entry.first);
         names.push_back(entry.second);
@@ -95,9 +95,16 @@ inline Fixture collision_file_fixture(const Package &model, int version = 1013) 
                     if (field == "Center" || field == "Rotation")
                         native_vector(v);
                     else if (field == "Transform") {
-                        native_vector(v.at("rotation"));
-                        native_vector(v.at("translation"));
-                        native_vector(v.at("scale"));
+                        for (const auto &part : {std::make_pair("rotation", "Rotation"),
+                                                 std::make_pair("translation", "Translation"),
+                                                 std::make_pair("scale", "Scale3D")}) {
+                            Bytes component;
+                            for (const auto &number : v.at(part.first))
+                                component.put<double>(number.get<double>());
+                            tag(payload, part.second, "StructProperty", "",
+                                std::string(part.first) == "rotation" ? "Quat" : "Vector", component);
+                        }
+                        name(payload, "None");
                     } else
                         payload = fields(v);
                 } else if (type == "ArrayProperty") {

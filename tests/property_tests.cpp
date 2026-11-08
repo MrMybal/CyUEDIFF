@@ -40,10 +40,12 @@ void field(Bytes &out, const NameWriter &name, int version, const char *key, con
     out.append(payload);
 }
 const std::vector<std::string> names = {
-    "Map",       "MapProperty", "Set",         "SetProperty",      "NameProperty",
-    "Alpha",     "Beta",        "Localized",   "TextProperty",     "Invariant",
-    "Table",     "Empty",       "Unsupported", "AfterUnsupported", "ST_Demo",
-    "Placement", "Transform",   "When",        "DateTime",         "Duplicate"};
+    "Map",         "MapProperty", "Set",         "SetProperty",      "NameProperty",
+    "Alpha",       "Beta",        "Localized",   "TextProperty",     "Invariant",
+    "Table",       "Empty",       "Unsupported", "AfterUnsupported", "ST_Demo",
+    "Rotation",    "Translation", "Scale3D",     "Vector",           "Quat",
+    "Transform3f", "Transform3d", "Placement",   "Transform",        "When",
+    "DateTime",    "Duplicate"};
 Fixture example(int version, bool reverse = false) {
     return fixture(
         version, 1, false, 0, names,
@@ -98,9 +100,20 @@ Fixture example(int version, bool reverse = false) {
             Bytes after;
             after.i(88);
             field(s, name, version, "AfterUnsupported", type("IntProperty"), after);
-            Bytes placement;
-            for (double number : {0., 0., 0., 1., 1., 2., 3., 1., 1., 1.})
-                placement.put(number);
+            Bytes placement, rotation, translation, scale;
+            for (double v : {0., 0., 0., 1.})
+                rotation.put(v);
+            for (double v : {1., 2., 3.})
+                translation.put(v);
+            for (double v : {1., 1., 1.})
+                scale.put(v);
+            field(placement, name, version, "Rotation", type("StructProperty", Json::array({type("Quat")})),
+                  rotation);
+            field(placement, name, version, "Translation",
+                  type("StructProperty", Json::array({type("Vector")})), translation);
+            field(placement, name, version, "Scale3D", type("StructProperty", Json::array({type("Vector")})),
+                  scale);
+            name(placement, "None");
             field(s, name, version, "Placement", type("StructProperty", Json::array({type("Transform")})),
                   placement);
             Bytes date;
@@ -139,10 +152,45 @@ int main() {
             check(p.at("Unsupported").at("opaque").at("reason") == "text-history" &&
                       p.at("AfterUnsupported").at("value") == 88,
                   "Unknown history stays bounded and preserves following property");
-            check(p.at("Placement").at("value").at("translation") == Json::array({1., 2., 3.}),
+            check(p.at("Placement").at("value").at("Translation").at("value") == Json::array({1., 2., 3.}),
                   "Native LWC transform decoded");
             check(p.at("When").at("value").at("ticks") == 123456789, "Native date ticks preserved");
         }
+        for (const auto *structure : {"Transform3f", "Transform3d"}) {
+            const bool wide = std::string(structure) == "Transform3d";
+            auto immutable = fixture(1013, 1, false, 0, names, [&](Bytes &s, const NameWriter &name) {
+                Bytes placement;
+                for (double v : {0., 0., 0., 1., 1., 2., 3., 1., 1., 1.}) {
+                    if (wide)
+                        placement.put(v);
+                    else
+                        placement.put(static_cast<float>(v));
+                }
+                field(s, name, 1013, "Placement", type("StructProperty", Json::array({type(structure)})),
+                      placement);
+            });
+            auto native = Package::open(save(root, structure, immutable));
+            check(native.exports[0].properties["Placement"]["value"]["translation"][2] == 3,
+                  "Immutable transform variants retain explicit precision and component order");
+        }
+        auto partial_transform = fixture(1013, 1, false, 0, names, [&](Bytes &s, const NameWriter &name) {
+            Bytes placement, rotation;
+            for (double v : {0., 0., 0., 1.})
+                rotation.put(v);
+            field(placement, name, 1013, "Rotation", type("StructProperty", Json::array({type("Quat")})),
+                  rotation);
+            name(placement, "None");
+            field(s, name, 1013, "Placement", type("StructProperty", Json::array({type("Transform")})),
+                  placement);
+            Bytes after;
+            after.put<std::int64_t>(77);
+            field(s, name, 1013, "When", type("StructProperty", Json::array({type("DateTime")})), after);
+        });
+        auto partial = Package::open(save(root, "partial-transform", partial_transform));
+        check(partial.exports[0].properties["Placement"]["value"].size() == 1 &&
+                  !partial.exports[0].properties["Placement"]["value"].contains("Translation") &&
+                  partial.exports[0].properties["When"]["value"]["ticks"] == 77,
+              "Omitted transform channels stay absent and adjacent values remain readable");
         auto duplicates = fixture(1012, 1, false, 0, names, [](Bytes &s, const NameWriter &name) {
             Bytes map;
             map.i(0);

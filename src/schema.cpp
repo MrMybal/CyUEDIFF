@@ -638,10 +638,27 @@ struct PropertyReader {
         if (p.array_size > 1)
             key += "[" + std::to_string(local - p.index) + "]";
         text(key.size());
+        Json decoded;
+        try {
+            decoded = read_value(p.type, zero, nesting + 1);
+        } catch (const Error &error) {
+            // Keep the specific cause and nearest fields first. Bound diagnostic
+            // expansion across nested supplied mappings without splitting UTF-8.
+            if (error.code == "cancelled" || error.code == "schema-limit")
+                throw;
+            auto message = std::string(error.what()) + " [field " + key + "]";
+            if (message.size() > 4096) {
+                std::size_t end = 4096;
+                while (end && (static_cast<unsigned char>(message[end]) & 0xc0) == 0x80)
+                    --end;
+                message.resize(end);
+            }
+            throw Error(error.code, std::move(message), error.offset);
+        }
         Json value = {{"type", type_name(p.type.kind)},
                       {"serializedZero", zero},
                       {"schemaIndex", index},
-                      {"value", read_value(p.type, zero, nesting + 1)}};
+                      {"value", std::move(decoded)}};
         if (!p.type.name.empty()) {
             auto name =
                 p.type.kind == 26 ? schemas.enumeration(p.type.name).path : schemas.schema(p.type.name).path;
