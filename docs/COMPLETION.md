@@ -21,6 +21,7 @@ Version 0.181.0 already supplies the foundational Core, optional Git adapter, so
 
 1. Completed locally: required IoStore BLAKE3-160 source integrity, with original/corrupt fixtures, 4,696 verified real chunks, CLI/desktop propagation, Core-only SDK validation and unchanged original inputs. See the post-0.181 validation record.
 2. Serialized struct/class declaration prefixes are implemented locally: reusable Core projection, named inspection/diffs, exact profile gates and independent validation of 123 declarations in 33 real editor assets. Broader schema derivation, inherited defaults and arbitrary plugin-native serializers remain open. See REFLECTION.md.
-3. Continue cooked native visual readers and their explicit property/bulk contexts, then independent skeletal/morph/Nanite validation and delivery closure.
+3. Recent non-on-demand IoStore TOCs 6/7/8 are implemented locally with explicit modern metadata layout and required source integrity; original fixtures and converted real inputs pass, while independent real producer coverage remains open.
+4. Continue cooked native visual readers and their explicit property/bulk contexts, then independent skeletal/morph/Nanite validation and delivery closure.
 
 Do not mark the overall goal complete while any required workstream remains open. Generated reports, host-owned samples and private paths stay under ignored build directories; commits contain only original code/fixtures and public documentation. Development commits remain local until another push is authorized.

@@ -84,10 +84,10 @@ def command(*command_args, code=0):
     return json.loads(result.stdout if code != 2 else result.stderr)
 
 
-def io_hashes(path):
+def io_hashes(path, inventory):
     b = path.read_bytes()
     header, count, blocks, entry_size, names, width, block_size, directory_size, partitions = struct.unpack_from('<9I', b, 20)
-    assert header == 144 and entry_size == 12 and not b[80] & (2 | 4)
+    assert header == 144 and entry_size == 12 and 3 <= b[16] <= 8 and not b[80] & (2 | 4 | 16)
     seeds = struct.unpack_from('<I', b, 84)[0]
     partition_size = struct.unpack_from('<Q', b, 88)[0]
     overflow = struct.unpack_from('<I', b, 96)[0]
@@ -98,6 +98,16 @@ def io_hashes(path):
     r = Reader(b, blocks_at)
     table = [(r.num(5), r.num(3), r.num(3), r.num(1)) for _ in range(blocks)]
     methods = ['None'] + [r.take(width).split(b'\0', 1)[0].decode('ascii') for _ in range(names)]
+    r.take(directory_size)
+    for chunk_id, row in zip(ids, inventory['entries']):
+        expected = r.take(20).hex()
+        if b[16] < 8: r.take(12)
+        flags = r.num(1)
+        if b[16] >= 8: r.take(3)
+        assert row['id'] == chunk_id and row['sourceHash'] == {'algorithm':'blake3-160','expected':expected}
+        assert row['storageFlags'] == flags
+    assert r.pos == len(b), 'Independent metadata boundary differs'
+
     paths = [path.with_name(path.stem+('' if j == 0 else f'_s{j}')+'.ucas') for j in range(partitions)]
     result = {}
     streams = [p.open('rb') for p in paths]
@@ -194,7 +204,7 @@ for number, path in enumerate(inputs):
     sources = [Path(p) for p in inventory['files']]
     fingerprints = {str(p): digest(p) for p in sources}
     manifest = command('container-hash', path, *codec_flags)
-    expected = io_hashes(path) if path.suffix.lower() == '.utoc' else pak_hashes(path)
+    expected = io_hashes(path, inventory) if path.suffix.lower() == '.utoc' else pak_hashes(path)
     measured = {e['id']: e['sha256'] for e in manifest['decodedSha256']}
     assert expected == measured, 'Independent decoded member hashes differ'
     (out/f'{number}-manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')

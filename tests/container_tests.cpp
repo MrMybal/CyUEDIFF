@@ -87,8 +87,8 @@ Bytes toc(const std::string &name = "A.bin", bool compressed = false, unsigned v
         std::reverse(source.begin(), source.begin() + 4);
         std::reverse(source.begin() + 4, source.end());
     }
-    io_chunk_meta(b, {source.begin() + 1, source.begin() + 6}, compressed ? 1 : 0);
-    io_chunk_meta(b, {source.begin() + 2, source.begin() + 4}, compressed ? 1 : 0);
+    io_chunk_meta(b, {source.begin() + 1, source.begin() + 6}, compressed ? 1 : 0, version);
+    io_chunk_meta(b, {source.begin() + 2, source.begin() + 4}, compressed ? 1 : 0, version);
     return b;
 }
 } // namespace
@@ -103,6 +103,12 @@ int main(int argc, char **argv) {
         toc("A.bin", false, 5, 'X').save(directory / "changed.utoc");
         save(directory / "changed.ucas", {'a', 'b', 'X', 'd'});
         save(directory / "changed_s1.ucas", {'e', 'f', 'g', 'h'});
+        for (unsigned version : {6u, 7u, 8u}) {
+            auto stem = "toc" + std::to_string(version);
+            toc("A.bin", false, version).save(directory / (stem + ".utoc"));
+            save(directory / (stem + ".ucas"), {'a', 'b', 'c', 'd'});
+            save(directory / (stem + "_s1.ucas"), {'e', 'f', 'g', 'h'});
+        }
         return 0;
     }
     auto root =
@@ -211,10 +217,40 @@ int main(int argc, char **argv) {
               "Aggregate byte budget includes both sides at the exact boundary");
         bounded.control.cancelled = [] { return true; };
         error([&] { pair_container_entries(container, container, bounded.control); }, "cancelled");
-        for (unsigned version : {3u, 4u}) {
+        const auto reference_bytes = container.read(0);
+        for (unsigned version : {3u, 4u, 6u, 7u, 8u}) {
             toc("A.bin", false, version).save(io);
-            check(Container::open(io).read(0) == container.read(0), "Older supported TOC layout");
+            check(Container::open(io).read(0) == reference_bytes,
+                  "Supported TOC layout retains decoded chunk identity");
         }
+        for (unsigned version : {6u, 7u, 8u}) {
+            auto external = toc("A.bin", false, version);
+            external.data[80] |= 16;
+            external.save(io);
+            error([&] { Container::open(io); }, "container-ondemand");
+        }
+        auto modern = toc("A.bin", false, 8);
+        check(modern.data.size() + 18 == toc().data.size(), "Two modern metadata records use 24 bytes each");
+        for (std::size_t cut = 1; cut <= 48; ++cut) {
+            auto truncated = modern;
+            truncated.data.resize(truncated.data.size() - cut);
+            truncated.save(io);
+            error([&] { Container::open(io); }, "bounds");
+        }
+        modern.data[modern.data.size() - 28] = 4;
+        modern.save(io);
+        error([&] { Container::open(io); }, "container-format");
+        modern = toc("A.bin", false, 8);
+        modern.data[modern.data.size() - 48] ^= 1;
+        modern.save(io);
+        error([&] { Container::open(io).read(0); }, "container-integrity");
+        modern = toc("A.bin", false, 8);
+        modern.data.back() = 0x42;
+        modern.save(io);
+        check(Container::open(io).read(0) == reference_bytes, "Modern alignment padding is not hashed");
+        modern.data.push_back(0);
+        modern.save(io);
+        error([&] { Container::open(io); }, "container-format");
         toc().save(io);
         error([&] { container.read(2); }, "container-entry");
         ContainerOptions limits;
@@ -279,7 +315,7 @@ int main(int argc, char **argv) {
                   std::string::npos,
               "Explicit unauthenticated signature diagnostic");
         auto bad = toc();
-        bad.data[16] = 8;
+        bad.data[16] = 9;
         bad.save(io);
         error([&] { Container::open(io); }, "container-version");
         bad = toc();
@@ -324,6 +360,14 @@ int main(int argc, char **argv) {
         error([&] { compressed.read(0); }, "container-codec");
         check(compressed.read(0, reverse) == std::vector<std::uint8_t>({'c', 'b', 'a', 'h', 'g'}),
               "Compressed IoStore block decoding");
+        const auto compressed_bytes = compressed.read(0, reverse);
+        for (unsigned version : {6u, 7u, 8u}) {
+            toc("A.bin", true, version).save(io);
+            auto modern_compressed = Container::open(io);
+            check(modern_compressed.read(0, reverse) == compressed_bytes,
+                  "Recent TOCs retain named compressed-block decoding and source integrity");
+        }
+        toc("A.bin", true).save(io);
         auto wrong = reverse;
         wrong.decoder = [](auto &&...) { return std::size_t(0); };
         error([&] { compressed.read(0, wrong); }, "container-codec");

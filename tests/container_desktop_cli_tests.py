@@ -50,6 +50,11 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-desktop-',dir=Path.
     report=run('--container',pak_dir/'test.utoc','--container-entry','Content/A.bin')
     assert report['document']['container']['inspection']['decodedSha256']==hashlib.sha256(b'bcdef').hexdigest()
     checks+=1
+    for version in (6,7,8):
+        report=run('--container',pak_dir/f'toc{version}.utoc','--container-entry','Content/A.bin')
+        assert report['document']['container']['metadata']['version']==version
+        assert report['document']['container']['inspection']['decodedSha256']==hashlib.sha256(b'bcdef').hexdigest()
+        checks+=1
     entry='000000000000000000000001'
     base=['--container',zen_dir/'test.utoc','--container-entry',entry]
     report=run(*base)

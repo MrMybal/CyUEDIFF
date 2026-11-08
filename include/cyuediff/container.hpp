@@ -39,7 +39,7 @@ class Container {
     explicit Container(std::shared_ptr<const Impl> impl);
 
   public:
-    // Unencrypted Pak 10/11 (full directory index) and IoStore TOC 3/4/5.
+    // Unencrypted Pak 10/11 (full directory index) and IoStore TOC 3 through 8.
     // UCAS partitions are resolved beside the TOC; no engine executable is used.
     static Container open(const fs::path &, const ContainerOptions & = {});
     const std::vector<ContainerEntry> &entries() const;

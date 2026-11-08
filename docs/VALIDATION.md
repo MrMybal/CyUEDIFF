@@ -844,3 +844,14 @@ Independent Python parsing of 33 authorized UE 5.3 editor assets matches 123 dec
 The complete Windows Release Desktop/Git build passes all 176 suites in 342.67 seconds, including the previous IoStore integrity changes. The targeted Core-only reflection/cache/CLI suites and installed SDK consumer also pass. Hosted cross-platform execution of this new development commit remains pending. Full evidence is in build-goal/tests-native-reflection.log.
 
 English and French native WARP captures show the metadata before/after values and localized inspector controls without clipped content. Evidence remains under build-goal/reflection-ui, reflection-real, reflection-independent-fixtures and sdk-reflection*. Gitleaks 8.30.1 reports zero findings in 578 publishable files and all local refs; UTF-8/NUL checks and git diff --check pass. No host-owned source, assets or private reports are included in commits.
+
+
+## IoStore TOC 6 through 8 — post-0.181 development
+
+The container reader now accepts non-on-demand TOC versions 6, 7 and 8 with the required source-hash check. Version 8 explicitly reads its 24-byte FIoHash/flag/alignment metadata rather than the legacy 33-byte records. On-demand external storage is refused with a dedicated error. No encryption or signature authentication is added.
+
+The container suite passes 221 native checks and 44 public CLI checks. Recent-profile compressed and uncompressed reads preserve exact chunk identity across shared/partitioned ranges; all 48 truncated modern metadata suffixes, unknown storage flags, corrupted hashes and trailing data are rejected. Native desktop container CLI validation includes ordinary member inspection of all three recent profiles. All 20 affected native, CLI, Zen/schema, desktop/workspace and renderer suites pass in 36.92 seconds; five targeted Core-only suites pass as well. The complete 176-suite run immediately preceding this container-only milestone remains recorded above, rather than being described as a new full rerun.
+
+Independent Python parsing checks expected hash/flag metadata and decoded SHA-256 values for three converted real global-container copies, each with 2,049,547 decoded bytes. These are explicitly converted TOC profiles, not independent Unreal 5.4/5.5 producer evidence. The untouched shipping corpus again passes all 1,518 Pak members, 4,695 project IoStore chunks and one global chunk, with unchanged originals, exact independent byte hashes, self-diffs and extraction/output-protection checks. The separately installed Core-only container consumer reads all three converted profiles and matches CLI hashes. Evidence remains under build-goal/toc8-*, sdk-toc8* and tests-toc8.log.
+
+Gitleaks 8.30.1 reports zero findings across 578 publishable files and all local refs. Changes remain local. Real producer coverage for newer TOCs, on-demand external storage, additional compression methods and cooked native visuals remain open.

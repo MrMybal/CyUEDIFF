@@ -300,8 +300,8 @@ void Container::Impl::io_open(const Bytes &bytes, const ContainerOptions &option
             "Invalid IoStore magic");
     c.pos = 16;
     version = static_cast<unsigned>(c.number(1));
-    if (version < 3 || version > 5)
-        throw Error("container-version", "Supported IoStore TOC versions are 3, 4 and 5");
+    if (version < 3 || version > 8)
+        throw Error("container-version", "Supported IoStore TOC versions are 3 through 8");
     c.skip(3);
     require(c.u32() == 144, "Unexpected IoStore header size");
     auto n = c.count(options.max_entries), nb = c.count(options.max_blocks);
@@ -318,6 +318,8 @@ void Container::Impl::io_open(const Bytes &bytes, const ContainerOptions &option
     c.skip(44);
     if (flags & 2)
         throw Error("container-encrypted", "Encrypted IoStore containers are not supported");
+    if (flags & 16)
+        throw Error("container-ondemand", "On-demand IoStore storage is not supported");
     require((flags & ~15ull) == 0 && block_size && partitions && partition_size,
             "Invalid IoStore header fields");
     require(version >= 4 || seeds == 0, "Unexpected perfect hash seeds");
@@ -359,13 +361,16 @@ void Container::Impl::io_open(const Bytes &bytes, const ContainerOptions &option
     }
     auto directory_start = c.pos;
     c.skip(directory_size);
-    c.range(std::uint64_t(n) * 33);
+    c.range(std::uint64_t(n) * (version >= 8 ? 24 : 33));
     for (auto &entry : entries) {
         options.control.check();
         entry.source_hash = c.hash(20);
-        // Legacy FIoChunkHash stores 20 meaningful bytes in a 32-byte record.
-        c.skip(12);
+        // Version 8 replaces the legacy 32-byte record with FIoHash + flags + pad.
+        if (version < 8)
+            c.skip(12);
         entry.storage_flags = static_cast<std::uint8_t>(c.number(1));
+        if (version >= 8)
+            c.skip(3);
         require((entry.storage_flags & ~3u) == 0, "Unsupported IoStore chunk storage flags");
     }
     require(c.pos == bytes.size(), "Unexpected trailing IoStore TOC data");

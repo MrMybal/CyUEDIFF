@@ -48,6 +48,13 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-cli-', dir=Path.cwd
                 run('container-read', path, key, '--out', hardlink, error='output-path', code=2)
             finally:
                 hardlink.unlink()
+    for version in (6, 7, 8):
+        modern = root/f'toc{version}.utoc'
+        assert run('container', modern)['version'] == version
+        assert run('container-diff', toc, modern)['status'] == 'identical'
+        destination = root/f'modern{version}.bin'
+        run('container-read', modern, 'Content/A.bin', '--out', destination)
+        assert destination.read_bytes() == b'bcdef'
     # Same index and sizes with corrupted source bytes must fail integrity checks.
     other = root/'other.utoc'
     other.write_bytes(toc.read_bytes())
