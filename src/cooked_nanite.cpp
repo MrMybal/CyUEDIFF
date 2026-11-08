@@ -259,7 +259,7 @@ struct NaniteResourceReader {
                 out->info["status"] = "empty";
             } else {
                 need(out->root_pages > 0 && clusters >= pages && precision >= -8 && precision <= 23 &&
-                         normal > 0 && normal <= 15 && input_meshes > 0 &&
+                         normal >= 0 && normal <= 15 && input_meshes > 0 &&
                          out->roots.size() == input_meshes && nodes > 0,
                      "Invalid nonempty Nanite resource declarations");
                 need(out->roots.front() == 0, "Nanite hierarchy root offsets do not start at zero");

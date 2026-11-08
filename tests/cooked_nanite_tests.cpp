@@ -187,6 +187,24 @@ int main(int argc, char **argv) {
               "Server stripping remains unknown and consumes only native strip flags");
         check(!compare_nanite_surfaces(*known.nanite, *stripped.nanite).summary["complete"].get<bool>(),
               "Stripped peer cannot prove surface removal");
+        auto zero_normal = resident;
+        auto &zero_bytes = zero_normal.mesh.storage.package;
+        zero_bytes.patch(int(zero_normal.root - 4), 300);
+        zero_bytes.patch(int(zero_normal.root + 24), 136);
+        zero_bytes.patch(int(zero_normal.root + 24 + 108), 2 | (8u << 4) | (2u << 9) | (2u << 14));
+        zero_bytes.patch(int(zero_normal.root + 24 + 160), 136);
+        zero_bytes.patch(int(zero_normal.states + 4), 300);
+        zero_bytes.patch(int(zero_normal.states + 8), 276);
+        zero_bytes.patch(int(zero_normal.facts + 8), 0);
+        zero_bytes.data.erase(zero_bytes.data.begin() + static_cast<std::ptrdiff_t>(zero_normal.root + 300),
+                              zero_bytes.data.begin() + static_cast<std::ptrdiff_t>(zero_normal.root + 304));
+        nanite_export_size(zero_normal);
+        const auto zero_model = read(zero_normal, options);
+        check(zero_model.nanite->geometry_known() &&
+                  zero_model.nanite->geometry()->cluster_metadata(0, 0)["normalPrecision"] == 0 &&
+                  compare_nanite_surfaces(*known.nanite, *zero_model.nanite).summary["surfaceStatus"] ==
+                      "identical",
+              "Producer zero-bit normal channel does not invalidate position/topology coverage");
         auto changed_surface = resident;
         changed_surface.mesh.storage.package.data[changed_surface.root + 24 + 272] = 1;
         auto changed_model = read(changed_surface, options);
