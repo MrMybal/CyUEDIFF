@@ -49,6 +49,18 @@ int main(int argc, char **argv) {
             skin_changed.storage.package.data[skin_changed.weights + 6] = 129;
             skin_changed.storage.package.data[skin_changed.weights + 7] = 126;
             texture_container(target / "skin-changed", skin_changed.storage);
+            auto stream = cooked_skeletal_streaming_fixture();
+            texture_container(target / "streamed", stream.storage);
+            texture_container(target / "stream-inline", cooked_skeletal_streaming_fixture(false).storage);
+            auto external_changed = stream;
+            std::memcpy(external_changed.storage.bulk.data.data() + external_changed.positions + 12, &x, 4);
+            texture_container(target / "external-changed", external_changed.storage);
+            auto missing = stream;
+            missing.storage.bulk.data.clear();
+            texture_container(target / "missing", missing.storage);
+            auto padded = stream;
+            padded.storage.bulk.zeros(4);
+            texture_container(target / "outside-corrupt", padded.storage, 2, true);
             auto scripts = skeletal_scripts();
             scripts.save(target / "global.ucas");
             zen_toc(scripts, 5).save(target / "global.utoc");
@@ -65,8 +77,9 @@ int main(int argc, char **argv) {
             fs::remove_all(root);
             return 0;
         }
-        auto read = [&](const SkeletalFixture &f, const CookedSkeletalOptions &opts, bool corrupt = false) {
-            texture_container(stem, f.storage, 2, corrupt);
+        auto read = [&](const SkeletalFixture &f, const CookedSkeletalOptions &opts, bool corrupt = false,
+                        unsigned bulk_type = 2) {
+            texture_container(stem, f.storage, bulk_type, corrupt);
             return read_zen_skeletal_mesh(Container::open(fs::path(stem.string() + ".utoc")), 0, context, {},
                                           opts);
         };
@@ -106,6 +119,145 @@ int main(int argc, char **argv) {
             opts.geometry = false;
             check(!read(f, opts).lods[0].geometry, "Metadata mode still validates buffers");
         }
+        for (bool external : {false, true})
+            for (unsigned flags = 0; flags < 128; ++flags) {
+                const bool variable = flags & 1, wide_bone = flags & 2, wide_weight = flags & 4,
+                           wide_indices = flags & 8, high = flags & 16, full = flags & 32,
+                           colors = flags & 64;
+                auto streamed = cooked_skeletal_streaming_fixture(external, variable, wide_bone, wide_weight,
+                                                                  wide_indices, high, full, colors);
+                auto opts = o;
+                opts.has_vertex_colors = colors;
+                auto out = read(streamed, opts);
+                check(out.lods.size() == 2 && !out.lods[0].inlined && out.lods[1].inlined &&
+                          out.lods[0].geometry,
+                      "Mixed streamed/inline skeletal LODs");
+                check(out.lods[0].geometry->to_json() == out.lods[1].geometry->to_json(),
+                      "Storage-independent geometry and raw skin projection");
+                check(out.lods[0].bulk["storage"] == (external ? "external" : "inline") &&
+                          out.lods[0].bulk["availability"]["vertices"] == 3 &&
+                          out.lods[0].bulk.contains("sha256"),
+                      "Streamed LOD availability and verified payload provenance");
+            }
+        auto stream = cooked_skeletal_streaming_fixture();
+        // Prefixes ending inside either the availability record or streamed/inline
+        // native windows cannot publish a partially decoded mesh.
+        for (std::size_t end = stream.native; end < stream.inline_count + 2; ++end) {
+            auto partial = stream;
+            std::uint32_t exp;
+            std::memcpy(&exp, partial.storage.package.data.data() + 32, 4);
+            const std::uint64_t shortened = end - partial.storage.body;
+            std::memcpy(partial.storage.package.data.data() + exp + 8, &shortened, 8);
+            bool rejected = false;
+            try {
+                read(partial, o);
+            } catch (const Error &) {
+                rejected = true;
+            }
+            check(rejected, "Truncated mixed skeletal native window rejected");
+        }
+
+        auto stream_bad = stream;
+        stream_bad.storage.package.patch(static_cast<int>(stream_bad.availability + 1), 6);
+        refused([&] { read(stream_bad, o); }, "cooked-skeletal-layout");
+        stream_bad = stream;
+        stream_bad.storage.package.patch(static_cast<int>(stream_bad.bulk_index), 1);
+        refused([&] { read(stream_bad, o); }, "cooked-skeletal-layout");
+        stream_bad = stream;
+        stream_bad.storage.bulk.data[stream_bad.weights] = 2;
+        refused([&] { read(stream_bad, o); }, "cooked-skeletal-layout");
+        auto range_bad = stream;
+        const std::int64_t huge_offset = INT64_MAX;
+        std::memcpy(range_bad.storage.package.data.data() + range_bad.storage.bulk_row, &huge_offset, 8);
+        refused([&] { read(range_bad, o); }, "cooked-skeletal-layout");
+        range_bad = stream;
+        range_bad.storage.package.patch(static_cast<int>(range_bad.flags), 72);
+        refused([&] { read(range_bad, o); }, "cooked-skeletal-layout");
+        range_bad = stream;
+        range_bad.storage.package.patch(static_cast<int>(range_bad.flags), 0x10501 | (1u << 1));
+        refused([&] { read(range_bad, o); }, "cooked-skeletal-profile");
+        auto working = stream;
+        auto cancelled = o;
+        bool stop = false;
+        cancelled.control.cancelled = [&] { return stop; };
+        cancelled.control.progress = [&](const auto &p) {
+            if (p.phase == "cooked-skeletal-weights")
+                stop = true;
+        };
+        refused([&] { read(working, cancelled); }, "cancelled");
+        auto opts_stream = o;
+        opts_stream.max_read_bytes = stream.storage.package.data.size() + stream.storage.bulk.data.size() - 1;
+        refused([&] { read(stream, opts_stream); }, "cooked-skeletal-limit");
+        opts_stream = o;
+        opts_stream.max_read_bytes = stream.storage.package.data.size() + stream.storage.bulk.data.size();
+        check(read(stream, opts_stream).lods[0].geometry != nullptr,
+              "Exact aggregate verified chunk read budget");
+        // Both streamed LODs refer to the same bulk chunk; it is loaded once.
+        auto shared = stream;
+        auto &shared_bytes = shared.storage.package;
+        Bytes header;
+        header.data.assign(shared_bytes.data.begin() + shared.streaming - 6,
+                           shared_bytes.data.begin() + shared.second_lod);
+        shared_bytes.data.insert(shared_bytes.data.begin() + shared.second_lod, header.data.begin(),
+                                 header.data.end());
+        shared_bytes.patch(static_cast<int>(shared.streaming - 10), 3);
+        shared_bytes.data[shared.inline_count + header.data.size() + 1] = 3;
+        skeletal_export_size(shared);
+        opts_stream.max_read_bytes = shared.storage.package.data.size() + shared.storage.bulk.data.size();
+        check(read(shared, opts_stream).lods.size() == 3,
+              "Shared external chunk is not charged or loaded twice");
+        auto padded = stream;
+        padded.storage.bulk.zeros(4);
+        refused([&] { read(padded, o, true); }, "container-integrity");
+        for (unsigned type : {2u, 3u, 4u}) {
+            auto variant = stream;
+            if (type == 3)
+                variant.storage.package.patch(static_cast<int>(variant.flags), 0x10501 | (1u << 11));
+            if (type == 4)
+                variant.storage.package.patch(static_cast<int>(variant.flags), 0x10501 | (1u << 12));
+            check(read(variant, o, false, type).lods[0].geometry != nullptr,
+                  "Ordinary, optional and memory-mapped streamed chunks");
+        }
+        auto duplicate = stream;
+        duplicate.storage.package.patch(static_cast<int>(duplicate.flags), 0x10501 | (1u << 14));
+        const std::int64_t duplicate_offset = 3;
+        std::memcpy(duplicate.storage.package.data.data() + duplicate.storage.bulk_row + 8, &duplicate_offset,
+                    8);
+        check(read(duplicate, o, false, 3).lods[0].bulk["chunkId"].get<std::string>().substr(22) == "03",
+              "Duplicate optional chunk selected");
+        check(read(duplicate, o).lods[0].bulk["chunkId"].get<std::string>().substr(22) == "02",
+              "Duplicate optional chunk falls back to ordinary payload");
+        auto missing = stream;
+        missing.storage.bulk.data.clear();
+        auto unavailable = read(missing, o);
+        check(!unavailable.lods[0].geometry && unavailable.lods[0].unavailable == "missing-chunk" &&
+                  unavailable.lods[1].geometry,
+              "Missing streamed payload remains unavailable beside valid inline LOD");
+        auto unused = cooked_skeletal_streaming_fixture(false);
+        unused.storage.package.data.erase(unused.storage.package.data.begin() + unused.buffer_start,
+                                          unused.storage.package.data.begin() + unused.availability);
+        unused.storage.package.patch(static_cast<int>(unused.flags), 72 | 32);
+        skeletal_export_size(unused);
+        check(read(unused, o).lods[0].unavailable == "unused",
+              "Unused nonzero bulk declaration consumes no inline bytes");
+        auto empty = cooked_skeletal_streaming_fixture(false);
+        empty.storage.package.data.erase(empty.storage.package.data.begin() + empty.buffer_start,
+                                         empty.storage.package.data.begin() + empty.second_lod);
+        const std::int64_t zero = 0;
+        std::memcpy(empty.storage.package.data.data() + empty.storage.bulk_row + 16, &zero, 8);
+        skeletal_export_size(empty);
+        check(read(empty, o).lods[0].unavailable == "empty-payload",
+              "Discarded streamed bulk has no availability block");
+        auto empty_external = empty;
+        const std::int64_t unknown_offset = -1;
+        std::memcpy(empty_external.storage.package.data.data() + empty_external.storage.bulk_row,
+                    &unknown_offset, 8);
+        empty_external.storage.package.patch(static_cast<int>(empty_external.flags), 0x10501);
+        const auto empty_result = read(empty_external, o);
+        check(empty_result.lods[0].unavailable == "empty-payload" &&
+                  empty_result.lods[0].bulk["offset"].is_null() && empty_result.lods[1].geometry,
+              "Empty external declaration retains unknown offset without fabricating a range");
+
         const auto original_context = context;
         auto color_context = std::make_shared<ZenSchemaContext>(*context.schema_context);
         color_context->schemas =
@@ -166,7 +318,7 @@ int main(int argc, char **argv) {
         refused([&] { read(bad, o); }, "cooked-skeletal-feature");
         bad = f;
         bad.storage.package.patch(static_cast<int>(bad.streaming), 0);
-        refused([&] { read(bad, o); }, "cooked-skeletal-feature");
+        refused([&] { read(bad, o); }, "cooked-skeletal-layout");
         bad = f;
         bad.storage.package.data[bad.section + 1] = 0;
         refused([&] { read(bad, o); }, "cooked-skeletal-feature");

@@ -1,6 +1,6 @@
 # Cooked skeletal render geometry
 
-CyUEDiff Core reads explicit **UE 5.3 Windows editor-stripped inline SkeletalMesh render LODs** without launching or linking Unreal. This reader is separate from modern source MeshDescription skinning, source skeleton/animation inspection and native Chaos physics.
+CyUEDiff Core reads explicit **UE 5.3 Windows editor-stripped inline and streamed SkeletalMesh render LODs** without launching or linking Unreal. This reader is separate from modern source MeshDescription skinning, source skeleton/animation inspection and native Chaos physics.
 
 ## Contract and explicit producer facts
 
@@ -48,7 +48,7 @@ Original fixtures cover 128 combinations of fixed/variable skinning, bone/weight
 
 An independently produced private UE 5.3.2 Windows IoStore corpus contains three selected skeletal meshes: 3,970 render vertices, 6,142 triangles and 71 reference bones in total. An independent Python wire reader matches 118,533 values against Unreal API exports. A separately installed Core-only consumer matches 91,299 projected values against the same independent exports. Counts differ because the common geometry model excludes zero influence padding and the unused tangent-X W component. All original sources, container partitions, mappings and reference inputs retain their hashes. These real files have fixed 8-bit skin streams and inline LODs; other width/mode combinations are fixture evidence.
 
-Streaming LOD payloads, nonempty cloth mappings/bindings, unstripped duplicate-vertex tables, alternate cooked weight profiles, compressed morph buffers and custom skeletal vertex attributes currently fail with `cooked-skeletal-feature`. Cooked-out LODs remain explicit unavailable states. Offline ray-tracing bytes are fingerprinted without interpreting BLAS contents. Later object-native bytes retain offset/size/hash as an opaque tail. Compressed animation, full Nanite decoding and other engine/platform profiles remain open. The desktop integration described below is available for this same explicit profile.
+Nonempty cloth mappings/bindings, unstripped duplicate-vertex tables, alternate cooked weight profiles, compressed morph buffers and custom skeletal vertex attributes currently fail with `cooked-skeletal-feature`. Cooked-out LODs remain explicit unavailable states. Offline ray-tracing bytes are fingerprinted without interpreting BLAS contents. Later object-native bytes retain offset/size/hash as an opaque tail. Compressed animation, full Nanite decoding and other engine/platform profiles remain open. The desktop integration described below is available for this same explicit profile.
 
 The optional [Unreal reference adapter](../tools/unreal_reference/README.md) is original preparation/measurement tooling, separate from the runtime reader. Engine-owned samples, generated schemas/containers, host codecs and private reports are never committed or bundled.
 
@@ -62,3 +62,16 @@ In the container source panel, enable **Cooked skeletal settings** for each side
 An inspected peer with no available geometry projection produces an explicit comparison-unavailable notice. Its current geometry and skin remain inspectable, without false removed/modified colors. A known absent container member retains actual removal semantics.
 
 Workspace format 9 retains independent native profiles/producer facts, selected mesh/LOD/side, orbit camera, skin mode, selected bone/vertex, filters and typed inspector state. Formats 1–8 remain readable with the new skeletal reader disabled and producer facts unknown. EN/FR labels and all five themes cover this path.
+
+
+## Streamed LOD storage
+
+A streamed LOD reads its Zen bulk-map entry and cached availability record, then validates the complete render/skin window with the same buffer decoder used for inline LODs. Cached index/vertex/UV/color/influence dimensions must agree with loaded buffers. A cached record is availability information, never replacement geometry.
+
+Bulk payloads can be embedded in the package or stored in ordinary, optional, duplicate-optional or memory-mapped chunks. Used external chunks receive mandatory whole-chunk IoStore integrity verification, including bytes outside the selected LOD window. Shared chunks are decoded once and charged once against the aggregate read budget within a mesh read. Every LOD retains its own offset, byte count, SHA-256 and chunk-source hash under `bulk`; inline LODs have `bulk: null`.
+
+Missing, unused and empty bulk payloads remain explicit unavailable LODs beside any valid loaded LODs. Unused nonzero declarations consume no inline bytes. Discarded zero-byte streamed payloads have no availability record. Geometry diffs compare decoded data rather than storage: identical inline/streamed geometry stays identical, while an external-only vertex/weight change is visible even when export-bundle bytes match. A missing selected LOD cannot be silently substituted by another one.
+
+Additional real UE 5.3.2 Windows evidence comes from a private three-LOD copy generated through Unreal's public editor API with explicit streaming overrides, two allowed streamed LODs and producer `r.MeshStreaming=1`. LODs contain 3,922/1,300/752 vertices and 6,118/1,528/764 triangles. The first two occupy disjoint 178,043-byte and 56,111-byte windows in the same 234,154-byte external chunk; the third is inline. A separately installed Core-only consumer matches 134,930 projected values against independent Unreal API exports. An independent Python wire reader matches 175,902 values. All three LOD geometry comparisons against the separately cooked all-inline version are identical.
+
+Original fixtures additionally cover width/mode/precision/color combinations in mixed streamed/inline LODs, storage variants, duplicate fallback, shared-chunk caching, whole-chunk corruption outside the selected range, missing/unused/empty data, availability mismatches, budgets, cancellation and every truncated mixed native window. The same desktop path presents all loaded LODs and preserves unknown-peer semantics when a streamed payload is missing.

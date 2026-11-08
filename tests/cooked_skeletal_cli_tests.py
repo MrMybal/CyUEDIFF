@@ -46,6 +46,19 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-cooked-skeletal-', dir=Path.c
     run('zen-skeletal', inline, entry, '--out', inline.with_suffix('.ucas'), code=2)
     run('zen-skeletal', inline, entry, '--out', root/'native.usmap', code=2)
     run('zen-skeletal', inline, entry, '--out', root/'global.ucas', code=2)
+    streamed = root/'streamed.utoc'
+    decoded_stream = run('zen-skeletal', streamed, entry)
+    assert len(decoded_stream['lods']) == 2 and decoded_stream['lods'][0]['bulk']['storage'] == 'external'
+    assert decoded_stream['lods'][0]['geometry'] == decoded_stream['lods'][1]['geometry']
+    assert run('zen-skeletal-diff', root/'stream-inline.utoc', entry, streamed, entry)['status'] == 'identical'
+    external_diff = run('zen-skeletal-diff', streamed, entry, root/'external-changed.utoc', entry, code=1)
+    assert external_diff['beforeMesh']['packageSha256'] == external_diff['afterMesh']['packageSha256']
+    assert external_diff['beforeMesh']['lods'][0]['bulk']['sha256'] != external_diff['afterMesh']['lods'][0]['bulk']['sha256']
+    missing = run('zen-skeletal', root/'missing.utoc', entry)
+    assert missing['lods'][0]['unavailable'] == 'missing-chunk' and 'geometry' not in missing['lods'][0]
+    assert 'cooked-skeletal-unavailable' in run('zen-skeletal-diff', streamed, entry, root/'missing.utoc', entry, code=2)
+    assert 'container-integrity' in run('zen-skeletal', root/'outside-corrupt.utoc', entry, code=2)
+    checks += 7
     if desktop:
         before_native = ['--skeletal-profile', 'ue5.3-windows', '--skeletal-keep-mobile-min-lod', '0', '--has-vertex-colors', '0']
         after_native = ['--after-skeletal-profile', 'ue5.3-windows', '--after-skeletal-keep-mobile-min-lod', '0', '--after-has-vertex-colors', '0']
@@ -91,6 +104,21 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-cooked-skeletal-', dir=Path.c
         assert len(views) == 1 and not views[0]['comparisonKnown'] and not views[0]['skin']['comparing']
         assert views[0]['changes']['removed'] == views[0]['changes']['modified'] == 0
         checks += 2
+        external_report = root/'external-ui.json'
+        render('--container', streamed, '--container-entry', entry, '--after-container', root/'external-changed.utoc',
+               '--container-tab', 'meshes', '--report', external_report, *common, *before_native, *after_native, *after_context)
+        doc = json.loads(external_report.read_text(encoding='utf-8'))['document']['container']
+        assert doc['meshPreviews'] == doc['after']['meshPreviews'] == 2
+        assert doc['meshDifferences'][0]['comparison']['status'] == 'changed'
+        assert doc['meshDifferences'][1]['comparison']['status'] == 'identical'
+        missing_report = root/'missing-ui.json'
+        render('--container', streamed, '--container-entry', entry, '--after-container', root/'missing.utoc',
+               '--container-tab', 'meshes', '--report', missing_report, *common, *before_native, *after_native, *after_context)
+        views = json.loads(missing_report.read_text(encoding='utf-8'))['containerView']['meshViews']
+        unknown_lod = next(v for v in views if v['key'].endswith('LOD 0'))
+        assert not unknown_lod['comparisonKnown'] and unknown_lod['changes']['removed'] == unknown_lod['changes']['modified'] == 0
+        assert not unknown_lod['skin']['comparing']
+        checks += 5
     assert all(hashlib.sha256(p.read_bytes()).hexdigest() == h for p, h in originals.items())
     checks += 1
 print(f'{checks} cooked skeletal CLI checks passed')

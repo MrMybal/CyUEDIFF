@@ -29,7 +29,7 @@ struct CookedSkeletalLod {
     std::uint8_t strip_flags = 0;
     std::vector<std::uint16_t> required_bones, active_bones;
     std::vector<CookedSkeletalSection> sections;
-    Json buffers = nullptr;
+    Json buffers = nullptr, bulk = nullptr;
     std::string unavailable;
     std::shared_ptr<const MeshGeometry> geometry;
     Json to_json(bool include_geometry = false) const;
@@ -44,9 +44,10 @@ struct CookedSkeletalMesh {
     Json native_prefix = Json::object(), materials = Json::array();
     Json to_json(bool include_geometry = false) const;
 };
-// Explicit UE 5.3 Windows editor-stripped inline render LODs, including reference
+// Explicit UE 5.3 Windows editor-stripped render LODs, including reference
 // skeleton, section-local skin indices and raw weights mapped to reference bones.
-// Streaming LODs, cloth, duplicate-vertex tables, alternate weights, compressed
+// Inline and streamed Zen bulk windows use mandatory whole used-chunk integrity.
+// Cloth, duplicate-vertex tables, alternate weights, compressed
 // morph buffers and custom vertex attributes currently require another decoder.
 // Later object-native data remains an identified opaque tail. No Unreal execution.
 CookedSkeletalMesh read_zen_skeletal_mesh(const Container &, std::size_t package_entry,

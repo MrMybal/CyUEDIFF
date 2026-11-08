@@ -65,6 +65,7 @@ inline Bytes skeletal_color_schema() {
 }
 struct SkeletalFixture {
     TextureFixture storage;
+    std::size_t availability = 0, bulk_index = 0, flags = 0, second_lod = 0;
     std::size_t native = 0, bone_parent = 0, pose = 0, map = 0, section = 0, section_bones = 0, positions = 0,
                 indices = 0, weights = 0, lookup = 0;
     std::size_t profile = 0, morph = 0, attributes = 0, size = 0, colors = 0, streaming = 0, inline_count = 0,
@@ -265,6 +266,77 @@ inline SkeletalFixture cooked_skeletal_fixture(bool variable = false, bool wide_
     std::memcpy(&exp, b.data.data() + 32, 4);
     const std::uint64_t export_size = b.data.size() - f.storage.body;
     std::memcpy(b.data.data() + exp + 8, &export_size, 8);
+    return f;
+}
+inline void skeletal_export_size(SkeletalFixture &f) {
+    std::uint32_t exp;
+    auto &b = f.storage.package;
+    std::memcpy(&exp, b.data.data() + 32, 4);
+    const std::uint64_t size = b.data.size() - f.storage.body;
+    std::memcpy(b.data.data() + exp + 8, &size, 8);
+}
+// Two LODs: streamed LOD 0 and a separate inline LOD 1, built from original data.
+inline SkeletalFixture cooked_skeletal_streaming_fixture(bool external = true, bool variable = false,
+                                                         bool wide_bone = false, bool wide_weight = false,
+                                                         bool wide_indices = false, bool high = false,
+                                                         bool full = false, bool colors = false) {
+    auto f = cooked_skeletal_fixture(variable, wide_bone, wide_weight, wide_indices, high, full, colors);
+    auto &b = f.storage.package;
+    const auto old_start = f.buffer_start;
+    const auto lod_start = f.streaming - 6;
+    Bytes payload;
+    payload.data.assign(b.data.begin() + old_start, b.data.begin() + f.inline_count);
+    Bytes inline_lod;
+    inline_lod.data.assign(b.data.begin() + lod_start, b.data.begin() + f.inline_count);
+    b.data.resize(old_start);
+    b.patch(static_cast<int>(f.streaming), 0);
+    b.patch(static_cast<int>(f.streaming - 10), 2);
+    f.bulk_index = b.data.size();
+    b.i(0);
+    std::size_t start = 0;
+    if (external) {
+        f.storage.bulk.zeros(3);
+        start = 3;
+        f.storage.bulk.append(payload);
+    } else {
+        start = b.data.size();
+        b.append(payload);
+    }
+    for (auto *field : {&f.positions, &f.indices, &f.weights, &f.lookup, &f.profile, &f.morph, &f.attributes,
+                        &f.colors, &f.weight_meta})
+        *field = start + (*field - old_start);
+    f.buffer_start = start;
+    f.availability = b.data.size();
+    b.put<std::uint8_t>(wide_indices ? 4 : 2);
+    b.i(3);
+    b.i(1);
+    b.i(3);
+    b.i(full);
+    b.i(high);
+    b.i(12);
+    b.i(3);
+    b.i(colors ? 4 : 0);
+    b.i(colors ? 3 : 0);
+    b.i(variable);
+    b.i(2);
+    b.i(variable ? 4 : 6);
+    b.i(3);
+    b.i(wide_bone);
+    b.i(wide_weight);
+    b.i(variable ? 3 : 0);
+    b.i(0);
+    f.second_lod = b.data.size();
+    b.append(inline_lod);
+    f.inline_count = b.data.size();
+    b.put<std::uint8_t>(1);
+    b.put<std::uint8_t>(2);
+    b.put<std::uint8_t>(0xa5);
+    const std::int64_t offset = external ? 3 : 0, size = payload.data.size();
+    std::memcpy(b.data.data() + f.storage.bulk_row, &offset, 8);
+    std::memcpy(b.data.data() + f.storage.bulk_row + 16, &size, 8);
+    f.flags = f.storage.bulk_row + 24;
+    b.patch(static_cast<int>(f.flags), external ? 0x10501 : 72);
+    skeletal_export_size(f);
     return f;
 }
 } // namespace cyuediff::test

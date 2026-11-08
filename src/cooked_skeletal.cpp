@@ -1,5 +1,6 @@
 #include <cyuediff/cooked_skeletal.hpp>
 #include "archive.hpp"
+#include "zen_bulk.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -184,6 +185,59 @@ void section(Cursor &r, CookedSkeletalLod &lod, const std::vector<std::string> &
                 {"clothMappingLODs", cloth_lods}};
     b.add(b.triangles, s.triangles, b.o.max_triangles, "Skeletal LODs exceed triangle budget");
     lod.sections.push_back(std::move(s));
+}
+Json availability(Cursor &r, const CookedSkeletalOptions &o, bool colors) {
+    const auto index_bytes = r.number(1);
+    need(index_bytes == 2 || index_bytes == 4, "Invalid cached skeletal index width");
+    const auto indices = r.i32();
+    need(indices >= 0, "Negative cached skeletal index count");
+    limit(static_cast<std::uint32_t>(indices) <= o.max_indices, "Cached skeletal index count exceeds budget");
+    const auto uvs = r.u32(), vertices = r.u32();
+    const auto full = r.boolean(), high = r.boolean();
+    const auto position_stride = r.u32(), position_vertices = r.u32();
+    const auto color_stride = r.u32(), color_vertices = r.u32();
+    const auto variable = r.boolean();
+    const auto maxinf = r.u32(), weights = r.u32(), weight_vertices = r.u32();
+    const auto wide_bone = r.boolean(), wide_weight = r.boolean();
+    const auto lookup_vertices = r.u32();
+    limit(uvs <= o.max_uv_channels && vertices <= o.max_vertices && position_vertices <= o.max_vertices &&
+              color_vertices <= o.max_vertices && weight_vertices <= o.max_vertices &&
+              lookup_vertices <= o.max_vertices && maxinf <= o.max_influences &&
+              weights <= std::uint64_t(o.max_vertices) * o.max_influences,
+          "Cached skeletal vertex/skin dimensions exceed budget");
+    need(position_stride == 12 && position_vertices == vertices && weight_vertices == vertices,
+         "Cached skeletal vertex dimensions disagree");
+    need((!color_vertices || (color_stride == 4 && color_vertices == vertices)) &&
+             (!colors || color_vertices == vertices),
+         "Cached skeletal color dimensions disagree");
+    need(lookup_vertices == (variable ? vertices : 0) &&
+             (variable || std::uint64_t(vertices) * maxinf == weights),
+         "Cached skeletal skin dimensions disagree");
+    supported(r.count(o.max_sections) == 0,
+              "Alternate cached skeletal weight profiles require another decoder");
+    return {{"vertices", vertices},
+            {"indices", indices},
+            {"indexBytes", index_bytes},
+            {"uvChannels", uvs},
+            {"fullPrecisionUV", full},
+            {"highPrecisionTangents", high},
+            {"colorsStored", colors},
+            {"variableInfluences", variable},
+            {"maxInfluences", maxinf},
+            {"influences", weights},
+            {"boneIndexBytes", wide_bone ? 2 : 1},
+            {"boneWeightBytes", wide_weight ? 2 : 1},
+            {"lookupVertices", lookup_vertices},
+            {"positionStride", position_stride},
+            {"colorStride", color_stride},
+            {"colorVertices", color_vertices}};
+}
+void match_availability(const Json &actual, const Json &expected) {
+    for (const char *key : {"vertices", "indices", "indexBytes", "uvChannels", "fullPrecisionUV",
+                            "highPrecisionTangents", "colorsStored", "variableInfluences", "maxInfluences",
+                            "influences", "boneIndexBytes", "boneWeightBytes", "lookupVertices"})
+        need(actual.at(key) == expected.at(key),
+             "Skeletal availability disagrees with loaded render buffers");
 }
 void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalMesh &mesh, bool colors,
              std::uint32_t stored_size) {
@@ -440,7 +494,8 @@ Json CookedSkeletalLod::to_json(bool include) const {
     Json j = {{"cookedOut", cooked_out},     {"inlined", inlined},
               {"stripFlags", strip_flags},   {"requiredBones", required_bones},
               {"activeBones", active_bones}, {"sections", s},
-              {"buffers", buffers},          {"unavailable", unavailable}};
+              {"buffers", buffers},          {"bulk", bulk},
+              {"unavailable", unavailable}};
     if (include && geometry)
         j["geometry"] = geometry->to_json();
     return j;
@@ -627,6 +682,8 @@ CookedSkeletalMesh read_zen_skeletal_mesh(const Container &container, std::size_
     const auto nl = r.count(o.max_lods);
     budget.reserve(std::uint64_t(nl) * 4096);
     out.lods.reserve(nl);
+    detail::ZenBulkReader bulk_reader(container, package, member, bytes, reads, o.max_read_bytes,
+                                      "cooked-skeletal");
     for (unsigned l = 0; l < nl; ++l) {
         control.checkpoint("cooked-skeletal-lod", l, nl);
         CookedSkeletalLod lod;
@@ -649,8 +706,27 @@ CookedSkeletalMesh read_zen_skeletal_mesh(const Container &container, std::size_
             }
             lod.active_bones = bone_array(r, budget, nb);
             const auto size = r.u32();
-            supported(lod.inlined, "Streaming skeletal LOD payloads require another decoder");
-            buffers(r, lod, budget, out, colors, size);
+            if (lod.inlined)
+                buffers(r, lod, budget, out, colors, size);
+            else {
+                const auto index = r.u32();
+                auto window = bulk_reader.describe(index, r.pos, r.end);
+                Json cached = nullptr;
+                if (window.bytes)
+                    cached = availability(r, o, colors);
+                lod.unavailable = window.unavailable;
+                bulk_reader.load(window);
+                if (lod.unavailable.empty()) {
+                    need(window.bytes == size,
+                         "Skeletal bulk byte count disagrees with serialized buffers size");
+                    Cursor payload{*window.data, window.offset, window.offset + window.bytes};
+                    buffers(payload, lod, budget, out, colors, size);
+                    need(payload.pos == payload.end, "Trailing bytes in skeletal streamed LOD payload");
+                    match_availability(lod.buffers, cached);
+                }
+                lod.bulk = std::move(window.metadata);
+                lod.bulk["availability"] = std::move(cached);
+            }
         }
         out.lods.push_back(std::move(lod));
     }
