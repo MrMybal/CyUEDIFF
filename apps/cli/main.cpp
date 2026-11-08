@@ -141,6 +141,9 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff zen-export-mesh CONTAINER ENTRY --out MESH.obj [--lod N]\n"
                "  cyuediff zen-mesh-diff BEFORE ENTRY AFTER ENTRY [--lod N] [--after-lod N]\n"
                "  Mesh commands also require --cooked-profile ue5.3 --schema CONTEXT.json.\n"
+               "  cyuediff zen-collision CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
+               "  cyuediff zen-collision-wire CONTAINER ENTRY [same cooked context]\n"
+               "  cyuediff zen-collision-diff BEFORE ENTRY AFTER ENTRY [same cooked context]\n"
                "  cyuediff zen-texture CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
                "  cyuediff zen-preview CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json --out "
                "IMAGE.png\n"
@@ -264,14 +267,18 @@ int run(const std::vector<std::string> &args) {
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
+    const bool cooked_collision =
+        command == "zen-collision" || command == "zen-collision-wire" || command == "zen-collision-diff";
+    const bool cooked_collision_diff = command == "zen-collision-diff";
     const bool cooked_mesh = command == "zen-mesh" || command == "zen-geometry" ||
                              command == "zen-export-mesh" || command == "zen-mesh-diff";
     const bool cooked_mesh_diff = command == "zen-mesh-diff";
     const bool cooked_pixels = command == "zen-texture" || command == "zen-preview" || command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_pixel_diff = command == "zen-image-diff" || command == "zen-hdr-diff";
-    const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff;
+    const bool cooked_compare =
+        command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff || cooked_collision_diff;
     const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog" ||
-                             cooked_pixels || cooked_mesh;
+                             cooked_pixels || cooked_mesh || cooked_collision;
     if (zen_command)
         required = cooked_compare ? 4u : (command == "zen-catalog" ? 1u : 2u);
     const bool container_command = command == "container" || command == "container-read" ||
@@ -669,6 +676,29 @@ int run(const std::vector<std::string> &args) {
                 output["afterMesh"] = after.to_json();
                 output["beforeLod"] = lod;
                 output["afterLod"] = after_lod;
+            }
+        } else if (cooked_collision) {
+            auto before = read_zen_package(input, select(input, positional[1]), before_options, read_options);
+            if (command == "zen-collision")
+                output = collision_snapshot(before);
+            else if (command == "zen-collision-wire") {
+                output = collision_wireframe(before).to_json();
+                output["provenance"] = collision_snapshot(before).at("provenance");
+            } else {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects"))
+                    after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema"))
+                    after_options.schema_context = schema_context(path_option("--after-schema"));
+                auto other = open(fs::u8path(positional[2]));
+                auto after =
+                    read_zen_package(other, select(other, positional[3]), after_options, read_options);
+                auto comparison = compare_collisions(before, after);
+                output = comparison.to_json();
+                output["beforeContext"] = collision_snapshot(before).at("provenance");
+                output["afterContext"] = collision_snapshot(after).at("provenance");
+                exit_code = !comparison.complete ? 2 : comparison.changes.empty() ? 0 : 1;
             }
         } else if (cooked_pixels) {
             auto selected_export = [&](const char *key) -> std::size_t {

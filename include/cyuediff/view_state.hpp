@@ -233,6 +233,7 @@ inline void validate(const Json &v, std::string_view kind) {
             string({"filter", "objectFilter", "pixel"});
             child("pixelView", "texture");
             child("meshView", "mesh");
+            child("collisions", "collision");
             string({"mesh"});
             flag({"meshAfter"});
             flag({"pixelAfter"});

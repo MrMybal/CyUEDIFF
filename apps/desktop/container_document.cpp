@@ -31,6 +31,10 @@ Json ContainerDocument::report() const {
         differences.push_back(
             {{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}});
     return {{"schema", "cyuediff.desktop-container/1"},
+            {"collisions", collisions},
+            {"collisionDifference", collision_difference},
+            {"collisionEdges", collision_wire.edge_count()},
+            {"collisionDiagnostics", collision_diagnostics},
             {"meshes", meshes},
             {"meshDifferences", mesh_differences},
             {"meshPreviews", mesh_previews.size()},
@@ -72,6 +76,13 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                     {{"key", before.key},
                      {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
         }
+    if (document->zen && document->after && document->after->zen &&
+        (!document->collisions.is_null() || !document->after->collisions.is_null())) {
+        CollisionOptions projection;
+        projection.control = control;
+        document->collision_difference =
+            compare_collisions(*document->zen, *document->after->zen, projection).to_json();
+    }
     document->source = source;
     document->input = std::make_shared<Container>(Container::open(source.path, index));
     document->metadata = document->input->metadata();
@@ -168,6 +179,24 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
             document->schema_loaded = true;
         }
         document->zen = ZenPackage::parse(bytes, zen);
+        if (std::any_of(document->zen->exports.begin(), document->zen->exports.end(), [](const auto &e) {
+                return (e.class_name == "/Script/Engine.BodySetup" ||
+                        e.class_name == "/Script/Engine.SkeletalBodySetup") &&
+                       !(e.flags & 0x30);
+            })) {
+            try {
+                CollisionOptions projection;
+                projection.control = control;
+                document->collisions = collision_snapshot(*document->zen, projection);
+                CollisionWireframeOptions wire;
+                wire.collision = projection;
+                document->collision_wire = collision_wireframe(*document->zen, wire);
+            } catch (const Error &error) {
+                if (error.code == "cancelled" || error.code == "container-integrity")
+                    throw;
+                document->collision_diagnostics.push_back(error.code + ": " + error.what());
+            }
+        }
         std::uint64_t mesh_output = 0;
         for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
             const auto &object = document->zen->exports[i];
@@ -337,6 +366,9 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             document->inspection = loaded->inspection;
             document->zen = loaded->zen;
             document->schema_loaded = loaded->schema_loaded;
+            document->collisions = loaded->collisions;
+            document->collision_wire = loaded->collision_wire;
+            document->collision_diagnostics = loaded->collision_diagnostics;
             document->meshes = loaded->meshes;
             document->mesh_previews = loaded->mesh_previews;
             document->mesh_diagnostics = loaded->mesh_diagnostics;
@@ -424,6 +456,13 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
                     {{"key", before.key},
                      {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
         }
+    if (document->zen && document->after && document->after->zen &&
+        (!document->collisions.is_null() || !document->after->collisions.is_null())) {
+        CollisionOptions projection;
+        projection.control = control;
+        document->collision_difference =
+            compare_collisions(*document->zen, *document->after->zen, projection).to_json();
+    }
     document->source = source;
     document->protected_files.insert(document->protected_files.end(),
                                      document->after->protected_files.begin(),

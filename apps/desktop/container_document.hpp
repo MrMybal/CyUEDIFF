@@ -2,6 +2,7 @@
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/cooked_texture.hpp>
 #include <cyuediff/cooked_mesh.hpp>
+#include <cyuediff/collision_wireframe.hpp>
 #include <optional>
 namespace cyuediff::desktop {
 struct ContainerSource {
@@ -40,6 +41,9 @@ struct ContainerDocument {
     std::optional<ZenPackage> zen;
     std::optional<ZenSchemaManifest> schema_manifest;
     bool schema_loaded = false;
+    Json collisions = nullptr, collision_difference = nullptr;
+    CollisionWireframe collision_wire;
+    std::vector<std::string> collision_diagnostics;
     Json meshes = Json::array(), mesh_differences = Json::array();
     std::vector<ContainerMeshPreview> mesh_previews;
     std::vector<std::string> mesh_diagnostics;

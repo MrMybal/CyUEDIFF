@@ -162,6 +162,8 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "collisions")
+                options.container_tab = 7;
             else if (name == "meshes")
                 options.container_tab = 6;
             else if (name == "pixels")
@@ -1017,7 +1019,8 @@ class Shell {
                 {"selectedKey", current().container_view.selected_key()},
                 {"tab", current().container_view.active_tab()},
                 {"pixelViews", current().container_view.pixel_count()},
-                {"meshViews", current().container_view.mesh_report()}};
+                {"meshViews", current().container_view.mesh_report()},
+                {"collisionView", current().container_view.collision_report()}};
     }
     Json history_report() const {
 #ifdef CYUEDIFF_HAS_GIT
@@ -2501,7 +2504,7 @@ int run(Options options) {
                "  [--cooked-view properties|object] : select cooked object inspector\n"
                "  [--mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1]\n"
                "  [--after-mesh-profile ue5.3-windows --after-keep-mobile-min-lod 0|1]\n"
-               "  [--container-tab members|inspection|objects|comparison|schema|pixels|meshes]\n"
+               "  [--container-tab members|inspection|objects|comparison|schema|pixels|meshes|collisions]\n"
                "  [--after-container FILE] [--compare-container-bytes] [--container-changes-only]\n"
                "  [--after-cooked-profile ue5.3|ue5.5] [--after-script-objects GLOBAL.utoc]\n"
                "  [--cooked-profile ue5.3|ue5.5] [--script-objects GLOBAL.utoc] : explicit Zen inspection\n"

@@ -376,3 +376,7 @@ With an explicit UE 5.3 profile, matching texture property schemas and global sc
 ## Cooked static meshes — post-0.181 development
 
 Choose UE 5.3 Windows and the producer mobile-LOD setting in **Cooked mesh settings**. Inspecting a StaticMesh member with a matching property/schema/global context prepares its available LODs on the worker. **Cooked meshes** selects object/LOD and before/after sides, with orbit navigation and colored changes. The profile, producer setting, tab, selection and camera survive workspace format seven; older workspaces retain their previous readers. Native tails and unavailable channels remain explicit. English/French native captures and Core/CLI/SDK evidence are recorded in [COOKED_MESHES.md](COOKED_MESHES.md) and VALIDATION.md.
+
+## Mapped cooked collision review — post-0.181 development
+
+With matching BodySetup property bindings, **Cooked collisions** displays worker-prepared stored shapes and body-local wires. Select bodies/shapes, inspect values and compare known before/after geometry with a retained camera. The EN/FR interface preserves chapter 7 and the collision state in workspaces. Missing peer geometry stays unavailable rather than being painted as deleted. Native physics remains explicitly opaque. See COOKED_COLLISIONS.md.

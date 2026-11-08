@@ -28,6 +28,12 @@ void ContainerView::register_translations() {
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Cooked meshes", "Meshes cooked"},
+               {"Cooked collisions", "Collisions cooked"},
+               {"Stored collision shapes; native physics data is not decoded.",
+                "Formes de collision enregistrées ; les données physiques natives ne sont pas décodées."},
+               {"Projecting cooked collision shapes", "Projection des formes de collision cooked"},
+               {"Projecting stored collision shapes", "Projection des formes de collision enregistrées"},
+               {"collision-wireframe", "Préparation des contours de collision"},
                {"Cooked mesh settings", "Réglages des meshes cooked"},
                {"Before mesh", "Mesh avant"},
                {"After mesh", "Mesh après"},
@@ -270,6 +276,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     schema_ = PropertyView{};
     member_rows_.clear();
     object_rows_.clear();
+    collisions_present_ = false;
+    collisions_.set_models(nullptr, nullptr, {}, {});
     mesh_rows_.clear();
     mesh_ = 0;
     pixel_rows_.clear();
@@ -333,6 +341,23 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
             diagnostics_.insert(diagnostics_.end(), side.mesh_diagnostics.begin(),
                                 side.mesh_diagnostics.end());
         };
+        collisions_present_ =
+            !document_->collisions.is_null() || (document_->after && !document_->after->collisions.is_null());
+        if (collisions_present_) {
+            auto known = [](const ContainerDocument &side) {
+                return side.inspection.is_null() || (side.zen && !side.zen->script_objects_sha256.empty());
+            };
+            const bool comparing = document_->after && known(*document_) && known(*document_->after);
+            collisions_.set_models(
+                document_->collisions, document_->after ? document_->after->collisions : Json(nullptr),
+                document_->collision_wire,
+                document_->after ? document_->after->collision_wire : CollisionWireframe{}, comparing);
+        }
+        diagnostics_.insert(diagnostics_.end(), document_->collision_diagnostics.begin(),
+                            document_->collision_diagnostics.end());
+        if (document_->after)
+            diagnostics_.insert(diagnostics_.end(), document_->after->collision_diagnostics.begin(),
+                                document_->after->collision_diagnostics.end());
         add_meshes(*document_, false);
         if (document_->after)
             add_meshes(*document_->after, true);
@@ -448,9 +473,9 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 6 || (tab == 6 && mesh_rows_.empty()) ||
-        (tab == 5 && pixel_rows_.empty()) || (tab == 2 && object_rows_.empty()) ||
-        (tab == 3 && !document_->after) ||
+    if (!document_ || tab < 0 || tab > 7 || (tab == 7 && !collisions_present_) ||
+        (tab == 6 && mesh_rows_.empty()) || (tab == 5 && pixel_rows_.empty()) ||
+        (tab == 2 && object_rows_.empty()) || (tab == 3 && !document_->after) ||
         (tab == 4 && !document_->schema_manifest &&
          (!document_->after || !document_->after->schema_manifest)))
         return false;
@@ -524,6 +549,8 @@ Json ContainerView::view_state() const {
         result["meshAfter"] = mesh_rows_[mesh_].after;
         result["meshView"] = mesh_rows_[mesh_].view.view_state();
     }
+    if (collisions_present_)
+        result["collisions"] = collisions_.view_state();
     if (!layout_.snapshot().empty())
         result["layout"] = layout_.snapshot();
     return result;
@@ -575,6 +602,8 @@ void ContainerView::restore_view_state(const Json &state) {
     restore("values", values_);
     restore("comparison", comparison_);
     restore("schema", schema_);
+    if (collisions_present_ && state.contains("collisions"))
+        collisions_.restore_view_state(state["collisions"]);
     if (state.contains("mesh"))
         for (std::size_t i = 0; i < mesh_rows_.size(); ++i)
             if (mesh_rows_[i].key == state["mesh"] &&
@@ -829,6 +858,12 @@ ContainerAction ContainerView::draw(bool busy) {
         ImGui::TextWrapped(
             "%s", cyui::tr("Cooked render buffers; later Nanite and collision data remains opaque.").c_str());
         mesh_rows_[mesh_].view.draw("##cooked-mesh");
+        ImGui::EndTabItem();
+    }
+    if (collisions_present_ &&
+        ImGui::BeginTabItem(cyui::trLabel("Cooked collisions").c_str(), nullptr, flags(7))) {
+        active_tab_ = 7;
+        collisions_.draw("##cooked-collision-review");
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

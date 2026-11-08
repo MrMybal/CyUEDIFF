@@ -42,6 +42,31 @@ int main() {
         check(added_viewport.changes().added == 6 && added_viewport.visible_edge_count() == 0 &&
                   added_viewport.visible_edge_count(true) > 0,
               "Added package has an explicit empty before pane");
+        auto unknown_after = after;
+        unknown_after.exports[0].properties.erase("AggGeom");
+        auto unknown_snapshot = collision_snapshot(unknown_after, snapshot_options);
+        CollisionViewport unknown_view;
+        unknown_view.set_models(collision_wireframe(before), collision_wireframe(unknown_after), &a,
+                                &unknown_snapshot, true);
+        unknown_view.select("SM.Body");
+        check(!unknown_view.changes().changed(), "Unavailable collection is not painted as deleted geometry");
+        auto unknown_transform = before;
+        unknown_transform.exports[0].properties["AggGeom"]["value"]["ConvexElems"]["value"][0].erase(
+            "Transform");
+        auto unknown_geometry = collision_snapshot(unknown_transform, snapshot_options);
+        unknown_view.set_models(collision_wireframe(before), collision_wireframe(unknown_transform), &a,
+                                &unknown_geometry, true);
+        unknown_view.select("SM.Body");
+        check(!unknown_view.changes().changed(), "Unavailable peer geometry is not painted as modified");
+        auto removed_body = before;
+        removed_body.exports.erase(removed_body.exports.begin());
+        auto removed_snapshot = collision_snapshot(removed_body, snapshot_options);
+        CollisionViewport removed_view;
+        removed_view.set_models(collision_wireframe(before), collision_wireframe(removed_body), &a,
+                                &removed_snapshot, true);
+        removed_view.select("SM.Body");
+        check(removed_view.changes().removed > 0,
+              "Known body-table removal remains visible despite unresolved owner references");
         auto reordered_package = before;
         auto &spheres = reordered_package.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"];
         std::swap(spheres[0], spheres[1]);

@@ -12,9 +12,14 @@ class CollisionView {
     bool comparing_ = false, complete_ = false;
     const Json *selected(const Json &, bool shape = true) const;
     void bind(bool retain = true);
+    void bind_models(CollisionWireframe before, CollisionWireframe after);
 
   public:
     void set_packages(const Package *before, const Package *after = nullptr, bool comparing = false);
+    // Prepared Core models; no decoding or file I/O on the draw thread.
+    void set_models(Json before, Json after, CollisionWireframe before_preview,
+                    CollisionWireframe after_preview, bool comparing = false);
+    Json report() const;
     bool empty() const;
     bool select_body(const std::string &path);
     bool select_shape(const std::string &identity);

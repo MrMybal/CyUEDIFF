@@ -1,4 +1,5 @@
 #include <cyuediff/collision.hpp>
+#include "collision_internal.hpp"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -223,58 +224,52 @@ struct Projection {
         return out;
     }
 };
-bool body_type(const ObjectExport &entry) {
-    return entry.class_name == "/Script/Engine.BodySetup" ||
-           entry.class_name == "/Script/Engine.SkeletalBodySetup";
+bool body_type(const std::string &name) {
+    return name == "/Script/Engine.BodySetup" || name == "/Script/Engine.SkeletalBodySetup";
 }
 } // namespace
-Json collision_snapshot(const Package &package, const CollisionOptions &options) {
+Json detail::project_collision_inputs(const std::vector<CollisionInput> &inputs, bool complete,
+                                      const CollisionOptions &options) {
     options.control.checkpoint("Projecting stored collision shapes");
     Projection projection{options};
+    const bool body_table_known = complete;
     Json bodies = Json::object();
-    bool complete = package.complete_input;
-    for (const auto &entry : package.exports) {
+    for (const auto &entry : inputs) {
+        const auto &properties = *entry.properties;
         options.control.check();
-        if (!body_type(entry))
+        if (!body_type(entry.class_name))
             continue;
         if (bodies.size() >= options.max_bodies)
             throw Error("limit", "Collision projection exceeds body budget");
         if (bodies.contains(entry.path))
             throw Error("collision-identity", "Duplicate collision body path");
         projection.text(entry.path.size() + entry.class_name.size());
-        Json body = {
-            {"class", entry.class_name},
-            {"properties", Json::object()},
-            {"shapes", Json::object()},
-            {"collections", Json::object()},
-            {"unresolvedCollections", Json::object()},
-            {"native",
-             {{"coverage", entry.native_coverage},
-              {"bytes", entry.native_end >= entry.native_start ? entry.native_end - entry.native_start : 0},
-              {"opaque", projection.copy(entry.opaque)}}},
-            {"complete", entry.coverage == "properties"},
-            {"diagnostics", Json::array()}};
-        if (entry.properties.is_object())
-            for (auto it = entry.properties.begin(); it != entry.properties.end(); ++it)
+        Json body = {{"class", entry.class_name},
+                     {"properties", Json::object()},
+                     {"shapes", Json::object()},
+                     {"collections", Json::object()},
+                     {"unresolvedCollections", Json::object()},
+                     {"native", projection.copy(entry.native)},
+                     {"complete", entry.properties_complete},
+                     {"diagnostics", Json::array()}};
+        if (properties.is_object())
+            for (auto it = properties.begin(); it != properties.end(); ++it)
                 if (it.key() != "AggGeom")
                     body["properties"][it.key()] = projection.copy(*it);
-        if (entry.outer_index) {
-            try {
-                body["outer"] = projection.copy(package.reference(entry.outer_index));
-            } catch (const Error &) {
-                body["outerIndex"] = entry.outer_index;
-                body["complete"] = false;
-                body["diagnostics"].push_back("Collision body has an unresolved outer reference");
-            }
-        } else
-            body["outer"] = nullptr;
-        const auto *aggregate = value(entry.properties, "AggGeom");
+        if (entry.outer_resolved)
+            body["outer"] = projection.copy(entry.outer);
+        else {
+            body["outerIndex"] = projection.copy(entry.outer_index);
+            body["complete"] = false;
+            body["diagnostics"].push_back("Collision body has an unresolved outer reference");
+        }
+        const auto *aggregate = value(properties, "AggGeom");
         if (!aggregate || !aggregate->is_object()) {
             body["complete"] = false;
             body["diagnostics"].push_back(
                 "Stored aggregate geometry is unavailable; omitted fields are not defaulted");
-            if (entry.properties.contains("AggGeom"))
-                body["unresolvedCollections"]["AggGeom"] = projection.copy(entry.properties.at("AggGeom"));
+            if (properties.contains("AggGeom"))
+                body["unresolvedCollections"]["AggGeom"] = projection.copy(properties.at("AggGeom"));
         } else {
             const std::map<std::string, std::string> supported = {{"SphereElems", "sphere"},
                                                                   {"BoxElems", "box"},
@@ -307,14 +302,14 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
                         ++names[name->get<std::string>()];
                 }
                 for (std::size_t i = 0; i < array->size(); ++i) {
-                    const auto &properties = array->at(i);
-                    const auto *name = value(properties, "Name");
+                    const auto &shape_properties = array->at(i);
+                    const auto *name = value(shape_properties, "Name");
                     const auto label = name && name->is_string() ? name->get<std::string>() : std::string{};
                     const bool named = !label.empty() && label != "None" && names.at(label) == 1;
                     const auto key =
                         kind->second + ":" + (named ? "name:" + label : "index:" + std::to_string(i));
                     projection.text(key.size());
-                    auto shape = projection.shape(properties, kind->second, i, named);
+                    auto shape = projection.shape(shape_properties, kind->second, i, named);
                     if (!named) {
                         shape["diagnostics"].push_back(
                             "No unique stored shape name; identity uses collection index");
@@ -332,7 +327,8 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
         bodies[entry.path] = std::move(body);
     }
     Json owners = Json::object();
-    for (const auto &entry : package.exports) {
+    for (const auto &entry : inputs) {
+        const auto &properties = *entry.properties;
         options.control.check();
         const char *field = entry.class_name == "/Script/Engine.StaticMesh"     ? "BodySetup"
                             : entry.class_name == "/Script/Engine.PhysicsAsset" ? "SkeletalBodySetups"
@@ -344,7 +340,7 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
         if (owners.contains(entry.path))
             throw Error("collision-identity", "Duplicate collision owner path");
         projection.text(entry.path.size() + entry.class_name.size());
-        const auto *references = value(entry.properties, field);
+        const auto *references = value(properties, field);
         if (references && references->is_array() && references->size() > options.max_bodies)
             throw Error("limit", "Collision owner exceeds reference budget");
         Json owner = {{"class", entry.class_name},
@@ -355,8 +351,8 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
         for (auto it = bodies.begin(); it != bodies.end(); ++it)
             if (it->contains("outer") && it->at("outer") == entry.path)
                 owner["containedBodies"].push_back(projection.copy(it.key()));
-        if (entry.properties.contains(field))
-            owner["property"] = projection.copy(entry.properties.at(field));
+        if (properties.contains(field))
+            owner["property"] = projection.copy(properties.at(field));
         auto reference = [&](const Json &ref) {
             options.control.check();
             const bool resolved = ref.is_string() && bodies.contains(ref.get<std::string>());
@@ -385,8 +381,39 @@ Json collision_snapshot(const Package &package, const CollisionOptions &options)
     return {{"schema", "cyuediff.collision/1"},
             {"scope", "stored reflected collision properties; no physics cooking or default reconstruction"},
             {"complete", complete},
+            {"bodyTableKnown", body_table_known},
             {"bodies", std::move(bodies)},
             {"owners", std::move(owners)}};
+}
+Json collision_snapshot(const Package &package, const CollisionOptions &options) {
+    std::vector<detail::CollisionInput> inputs;
+    for (const auto &entry : package.exports) {
+        options.control.check();
+        if (!body_type(entry.class_name) && entry.class_name != "/Script/Engine.StaticMesh" &&
+            entry.class_name != "/Script/Engine.PhysicsAsset")
+            continue;
+        if (inputs.size() >= options.max_bodies && inputs.size() - options.max_bodies >= options.max_bodies)
+            throw Error("limit", "Collision input exceeds body/owner budget");
+        detail::CollisionInput input;
+        input.path = entry.path;
+        input.class_name = entry.class_name;
+        input.properties = &entry.properties;
+        input.native = {
+            {"coverage", entry.native_coverage},
+            {"bytes", entry.native_end >= entry.native_start ? entry.native_end - entry.native_start : 0},
+            {"opaque", entry.opaque}};
+        input.properties_complete = entry.coverage == "properties";
+        if (entry.outer_index) {
+            try {
+                input.outer = package.reference(entry.outer_index);
+            } catch (const Error &) {
+                input.outer_resolved = false;
+                input.outer_index = entry.outer_index;
+            }
+        }
+        inputs.push_back(std::move(input));
+    }
+    return detail::project_collision_inputs(inputs, package.complete_input, options);
 }
 Json Package::collision_snapshot() const {
     return cyuediff::collision_snapshot(*this);

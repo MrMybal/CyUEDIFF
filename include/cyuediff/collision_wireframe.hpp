@@ -32,4 +32,5 @@ struct CollisionWireframe {
 // Body-local stored geometry only. Does not apply bone, component or world transforms.
 // Missing geometry stays unavailable; budget exhaustion and cancellation throw atomically.
 CollisionWireframe collision_wireframe(const Package &, const CollisionWireframeOptions & = {});
+CollisionWireframe collision_wireframe(const ZenPackage &, const CollisionWireframeOptions & = {});
 } // namespace cyuediff

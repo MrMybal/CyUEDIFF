@@ -95,3 +95,7 @@ Container chapter 5 selects prepared cooked pixels. Container presentation state
 Format seven adds checked per-side native mesh profiles and producer mobile-LOD settings. `mesh_profile` / `after_mesh_profile` select disabled (0) or UE 5.3 Windows (1); `mesh_mobile_lod` / `after_mesh_mobile_lod` select unknown (0), explicitly off (1) or explicitly on (2). Unknown never becomes an inferred setting. Formats one through six remain readable with native mesh decoding disabled; saving upgrades to seven. Unknown or missing version-seven fields remain errors.
 
 Container chapter 6 selects prepared cooked render geometry. The `mesh` identity combines exact object path and LOD; `meshAfter` selects its side and `meshView` retains a validated camera/change filter. The source reader profile and settings are retained independently from this presentation state. Resource handles, decoded geometry and decoder modules are excluded. See [COOKED_MESHES.md](COOKED_MESHES.md).
+
+## Cooked collision review — post-0.181 development
+
+Container chapter 7 selects mapped cooked collisions. The `container.collisions` state reuses the checked collision body/shape, viewport and property-inspector contract. Restoration resolves stored identities against freshly prepared models; no decoded vertices or runtime handles are persisted. Context paths retain the existing per-side schema/global/profile controls. See COOKED_COLLISIONS.md.

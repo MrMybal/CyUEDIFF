@@ -180,7 +180,7 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        saved.container_tab = number(d["containerTab"], -1, 6);
+        saved.container_tab = number(d["containerTab"], -1, 7);
         const auto &s = d["settings"];
         const bool mesh_extension = j["schema"] == "cyuediff.workspace/7";
         const bool payload_extension = j["schema"] == "cyuediff.workspace/6" || mesh_extension;

@@ -37,9 +37,6 @@ void CollisionView::set_packages(const Package *before, const Package *after, bo
     before_ = before ? collision_snapshot(*before, options) : Json(nullptr);
     after_ = after ? collision_snapshot(*after, options) : Json(nullptr);
     comparing_ = comparing || (before && after);
-    complete_ = (!before || before_.at("complete").get<bool>()) &&
-                (!after || after_.at("complete").get<bool>()) &&
-                (comparing_ ? before && after : before || after);
     preview_errors_.clear();
     auto preview = [&](const Package *package, const char *side) {
         try {
@@ -52,6 +49,21 @@ void CollisionView::set_packages(const Package *before, const Package *after, bo
         }
     };
     auto before_preview = preview(before, "Before"), after_preview = preview(after, "After");
+    bind_models(std::move(before_preview), std::move(after_preview));
+}
+void CollisionView::set_models(Json before, Json after, CollisionWireframe before_preview,
+                               CollisionWireframe after_preview, bool comparing) {
+    before_ = std::move(before);
+    after_ = std::move(after);
+    comparing_ = comparing || (!before_.is_null() && !after_.is_null());
+    preview_errors_.clear();
+    bind_models(std::move(before_preview), std::move(after_preview));
+}
+void CollisionView::bind_models(CollisionWireframe before_preview, CollisionWireframe after_preview) {
+    const bool before = !before_.is_null(), after = !after_.is_null();
+    complete_ = (!before || before_.at("complete").get<bool>()) &&
+                (!after || after_.at("complete").get<bool>()) &&
+                (comparing_ ? before && after : before || after);
     viewport_.set_models(std::move(before_preview), std::move(after_preview), &before_, &after_, comparing_);
     std::set<std::string> keys;
     for (const auto *model : {&before_, &after_})
@@ -62,6 +74,20 @@ void CollisionView::set_packages(const Package *before, const Package *after, bo
     body_ = bodies_.empty() ? std::string{} : bodies_.front();
     shape_.clear();
     bind(false);
+}
+Json CollisionView::report() const {
+    auto changes = viewport_.changes();
+    return {{"bodies", bodies_.size()},
+            {"body", body_},
+            {"shape", shape_},
+            {"complete", complete_},
+            {"beforeEdges", viewport_.visible_edge_count()},
+            {"afterEdges", viewport_.visible_edge_count(true)},
+            {"changes",
+             {{"unchanged", changes.unchanged},
+              {"added", changes.added},
+              {"removed", changes.removed},
+              {"modified", changes.modified}}}};
 }
 bool CollisionView::empty() const {
     if (!bodies_.empty())
@@ -146,7 +172,11 @@ void CollisionView::draw(const char *id) {
                          cyui::icon::document);
         return;
     }
-    cyui::textDim("%s", cyui::tr("Stored collision properties; physics data is not evaluated.").c_str());
+    const bool cooked = (!before_.is_null() && before_.contains("provenance")) ||
+                        (!after_.is_null() && after_.contains("provenance"));
+    cyui::textDim("%s", cyui::tr(cooked ? "Stored collision shapes; native physics data is not decoded."
+                                        : "Stored collision properties; physics data is not evaluated.")
+                            .c_str());
     if (!preview_errors_.empty()) {
         cyui::callout(
             cyui::Tone::warning,

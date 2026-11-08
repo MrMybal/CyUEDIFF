@@ -71,3 +71,5 @@ Convex vertices apply scale, quaternion rotation and translation. Signed/zero sc
 ## Reflected Transform channels — post-0.181
 
 Convex projection accepts complete stored Rotation/Translation/Scale3D tagged channels as well as the existing canonical binary-transform projection. Missing channels do not become an identity transform. Modern aliased Transform fields are read as reflected properties; explicit immutable float/double variants remain binary. This recovers the actual transform on the selected real source convex shapes, without reconstructing missing vertices or physics blobs.
+
+The same Core collision/wire models now also accept explicitly mapped Zen packages. See [COOKED_COLLISIONS.md](COOKED_COLLISIONS.md) for native-physics boundaries, field normalization, comparison provenance and real evidence.

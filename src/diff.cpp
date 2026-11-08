@@ -186,6 +186,18 @@ CollisionComparison compare_collisions(const Package &before, const Package &aft
     walk(a, b, "", result.changes, options.control);
     return result;
 }
+CollisionComparison compare_collisions(const ZenPackage &before, const ZenPackage &after,
+                                       const CollisionOptions &options) {
+    auto normalized = options;
+    normalized.source_indices = false;
+    auto a = collision_snapshot(before, normalized), b = collision_snapshot(after, normalized);
+    a.erase("provenance");
+    b.erase("provenance");
+    CollisionComparison result;
+    result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>();
+    walk(a, b, "", result.changes, options.control);
+    return result;
+}
 std::string AttachmentComparison::status() const {
     return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
 }

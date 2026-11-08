@@ -3,6 +3,7 @@
 #include <cyuediff/property_view.hpp>
 #include <cyuediff/texture_view.hpp>
 #include <cyuediff/mesh_view.hpp>
+#include <cyuediff/collision_view.hpp>
 namespace cyuediff::desktop {
 enum class ContainerAction { none, inspect, select_object };
 class ContainerView {
@@ -29,6 +30,8 @@ class ContainerView {
         bool after = false;
         MeshView view;
     };
+    CollisionView collisions_;
+    bool collisions_present_ = false;
     std::vector<MeshRow> mesh_rows_;
     int mesh_ = 0;
     std::vector<PixelRow> pixel_rows_;
@@ -70,6 +73,9 @@ class ContainerView {
         return pixel_rows_.size();
     }
     Json mesh_report() const;
+    Json collision_report() const {
+        return collisions_present_ ? collisions_.report() : Json(nullptr);
+    }
     bool select_object(std::size_t);
     void apply_object_selection();
     const ContainerEntry *selected_member() const;

@@ -235,10 +235,9 @@ Json CollisionWireframe::to_json() const {
             {"shapes", std::move(entries)},
             {"bounds", bounds.valid ? Json{{"low", bounds.low}, {"high", bounds.high}} : Json(nullptr)}};
 }
-CollisionWireframe collision_wireframe(const Package &package, const CollisionWireframeOptions &options) {
+static CollisionWireframe build_wireframe(const Json &snapshot, const CollisionWireframeOptions &options) {
     if (options.circle_segments < 8 || options.circle_segments > 256 || options.circle_segments % 4)
         throw Error("collision-preview-options", "Circle segments must be a multiple of four from 8 to 256");
-    auto snapshot = collision_snapshot(package, options.collision);
     CollisionWireframe result;
     result.source_complete = snapshot.at("complete").get<bool>();
     Builder builder{options};
@@ -261,4 +260,11 @@ CollisionWireframe collision_wireframe(const Package &package, const CollisionWi
         }
     return result;
 }
+CollisionWireframe collision_wireframe(const Package &package, const CollisionWireframeOptions &options) {
+    return build_wireframe(collision_snapshot(package, options.collision), options);
+}
+CollisionWireframe collision_wireframe(const ZenPackage &package, const CollisionWireframeOptions &options) {
+    return build_wireframe(collision_snapshot(package, options.collision), options);
+}
+
 } // namespace cyuediff

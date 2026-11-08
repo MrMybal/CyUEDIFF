@@ -14,6 +14,20 @@ const Json *shape_value(const Json *snapshot, const std::string &body, const std
     auto s = b->at("shapes").find(key);
     return s == b->at("shapes").end() ? nullptr : &*s;
 }
+bool collection_known(const Json *snapshot, const CollisionWireShape &shape) {
+    if (!snapshot || snapshot->is_null())
+        return true; // An absent document is an actual missing side.
+    auto body = snapshot->at("bodies").find(shape.body);
+    if (body == snapshot->at("bodies").end())
+        return snapshot->value("bodyTableKnown", false);
+    const char *collection = shape.kind == "sphere"            ? "SphereElems"
+                             : shape.kind == "box"             ? "BoxElems"
+                             : shape.kind == "capsule"         ? "SphylElems"
+                             : shape.kind == "tapered-capsule" ? "TaperedCapsuleElems"
+                             : shape.kind == "convex"          ? "ConvexElems"
+                                                               : "";
+    return body->at("collections").contains(collection);
+}
 void include(CollisionBounds &out, const CollisionBounds &other) {
     if (!other.valid)
         return;
@@ -31,11 +45,21 @@ void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe
                                    const Json *b, bool comparing) {
     changes_.clear();
     comparing_ = comparing;
+    std::set<std::pair<std::string, std::string>> ready_before, ready_after;
+    for (const auto &s : before.shapes)
+        if (s.ready())
+            ready_before.emplace(s.body, s.identity);
+    for (const auto &s : after.shapes)
+        if (s.ready())
+            ready_after.emplace(s.body, s.identity);
     for (const auto *model : {&before, &after})
-        for (const auto &s : model->shapes)
-            changes_[{s.body, s.identity}] = comparing ? classify_change(shape_value(a, s.body, s.identity),
-                                                                         shape_value(b, s.body, s.identity))
-                                                       : ChangeKind::unchanged;
+        for (const auto &s : model->shapes) {
+            const auto key = std::make_pair(s.body, s.identity);
+            const auto *x = shape_value(a, s.body, s.identity), *y = shape_value(b, s.body, s.identity);
+            const bool known = (!x || ready_before.count(key)) && (!y || ready_after.count(key)) &&
+                               (x || collection_known(a, s)) && (y || collection_known(b, s));
+            changes_[key] = comparing && known ? classify_change(x, y) : ChangeKind::unchanged;
+        }
     before_ = std::move(before);
     after_ = std::move(after);
     picked_.clear();
@@ -89,7 +113,9 @@ void CollisionViewport::fit(float aspect) {
     }
     fit_pending_ = fit_changes_ = false;
 }
-void CollisionViewport::set_changed_only(bool value) { changed_only_ = comparing_ && value; }
+void CollisionViewport::set_changed_only(bool value) {
+    changed_only_ = comparing_ && value;
+}
 bool CollisionViewport::focus_changes() {
     if (!comparing_ || !bounds(true).valid)
         return false;

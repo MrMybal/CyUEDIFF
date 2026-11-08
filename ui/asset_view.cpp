@@ -43,6 +43,8 @@ void AssetView::register_translations() {
                {"No stored collision bodies", "Aucun corps de collision enregistr\u00e9"},
                {"This package has no supported BodySetup projection.",
                 "Ce package ne contient aucun BodySetup pris en charge."},
+               {"Stored collision shapes; native physics data is not decoded.",
+                "Formes de collision enregistrées ; les données physiques natives ne sont pas décodées."},
                {"Stored collision properties; physics data is not evaluated.",
                 "Propri\u00e9t\u00e9s de collision enregistr\u00e9es ; les donn\u00e9es physiques ne sont "
                 "pas \u00e9valu\u00e9es."},

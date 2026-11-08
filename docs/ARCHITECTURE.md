@@ -74,3 +74,7 @@ Explicit local virtualized bulk resolution is shared by texture/HDR and modern M
 ## Cooked static render buffers — post-0.181
 
 `cooked_mesh.hpp` binds explicit UE 5.3 Windows property/native boundaries and producer settings to bounded render LOD windows. Stored buffers project into the existing reusable MeshGeometry model; material records, bulk provenance and the opaque later native tail remain separate. The worker prepares available LODs before CyUI builds its viewport data. Core-only consumers need no Unreal, Git or graphics runtime. See COOKED_MESHES.md for the supported serializer and evidence boundaries.
+
+## Mapped collision models — post-0.181
+
+Classic and Zen collision inputs share a bounded reflected-property projector. The cooked adapter retains provenance and unknown native coverage while normalizing qualified typed fields with collision rejection. Prepared snapshots and body-local wireframes move from the worker into the existing bilingual view; rendering does not open or decode files. See COOKED_COLLISIONS.md for class/serializer boundaries and real evidence.
