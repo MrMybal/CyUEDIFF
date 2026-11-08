@@ -20,6 +20,8 @@ def main():
     files = set()
     for row in rows:
         name = row['file']
+        if row.get('mode', 'source') not in ('source', 'compressed-animation', 'per-track-synthetic'):
+            raise ValueError('Unknown reference export mode')
         if not row['object'].startswith('/Game/Corpus/'):
             raise ValueError('Export only explicit /Game/Corpus/ copies')
         if Path(name).name != name or not name.endswith('.json') or name.casefold() in files or name.casefold() == 'export-manifest.json' or ':' in name:
@@ -31,13 +33,20 @@ def main():
         asset = unreal.load_asset(row['object'])
         if asset is None:
             raise ValueError('Cannot load ' + row['object'])
-        text = unreal.CyUEDiffReferenceLibrary.export_reference(asset)
+        mode = row.get('mode', 'source')
+        methods = {
+            'source': (unreal.CyUEDiffReferenceLibrary.export_reference, 'cyuediff.unreal-reference/1'),
+            'compressed-animation': (unreal.CyUEDiffReferenceLibrary.export_compressed_animation_reference, 'cyuediff.unreal-compressed-animation-reference/1'),
+            'per-track-synthetic': (unreal.CyUEDiffReferenceLibrary.export_per_track_synthetic_reference, 'cyuediff.unreal-per-track-synthetic-reference/1'),
+        }
+        method, schema = methods[mode]
+        text = method(asset)
         data = json.loads(text)
-        if data['schema'] != 'cyuediff.unreal-reference/1':
+        if data['schema'] != schema:
             raise ValueError('Unexpected adapter schema')
         target = output / row['file']
         target.write_text(json.dumps(data, indent=2), encoding='utf-8')
-        evidence.append({'object': data['object'], 'file': row['file'],
+        evidence.append({'object': data.get('object', row['object']), 'mode': mode, 'file': row['file'],
                          'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
     (output / 'export-manifest.json').write_text(json.dumps({'references': evidence}, indent=2), encoding='utf-8')
 

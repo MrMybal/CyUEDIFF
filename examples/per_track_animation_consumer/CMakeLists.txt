@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(CyUEDiffPerTrackAnimationConsumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(per_track_animation_consumer main.cpp)
+target_link_libraries(per_track_animation_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(per_track_animation_consumer PRIVATE /EHsc /utf-8)
+endif()

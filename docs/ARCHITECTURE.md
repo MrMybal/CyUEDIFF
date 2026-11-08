@@ -92,3 +92,7 @@ owner defaults are generated. Worker-owned results enter the shared collision
 view with exact native collection availability. Missing peer readers/formats stay
 unknown, independently from actual known format removal. The same Core preparation
 is available to CLI and installed SDK consumers, with no draw-thread decoding.
+
+## Explicit compressed animation buffers — post-0.181
+
+`animation_compression.hpp` adds an immutable Core-only per-track channel decoder and fractional frame sampling for an explicit UE 5.3 Windows wire profile. Complete buffer hashes, numeric compressed track binding, raw decoded keys, timing tables and opaque-byte counts retain coverage. The optional editor adapter supplies independent direct-codec references and original numerical fixtures. Whole Zen AnimSequence extraction, codec/Skeleton identity binding, named diffs, compressed curves and dedicated desktop integration remain separate work. See [ANIMATION_COMPRESSION.md](ANIMATION_COMPRESSION.md).

@@ -1,5 +1,11 @@
 #include "CyUEDiffReferenceLibrary.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimBoneCompressionCodec.h"
+#include "Animation/AnimSequenceDecompressionContext.h"
+#include "IO/IoHash.h"
+#include "AnimationCompression.h"
+#include "Serialization/MemoryWriter.h"
+#include "Containers/UnrealString.h"
 #include "Animation/Skeleton.h"
 #include "Animation/AnimData/IAnimationDataModel.h"
 #include "AssetCompilingManager.h"
@@ -301,5 +307,232 @@ FString UCyUEDiffReferenceLibrary::ExportReference(UObject *Asset) {
     FString Output;
     auto Writer = TJsonWriterFactory<>::Create(&Output);
     FJsonSerializer::Serialize(Data.ToSharedRef(), Writer);
+    return Output;
+}
+
+FString UCyUEDiffReferenceLibrary::ExportCompressedAnimationReference(UObject *Asset) {
+    auto *Anim = Cast<UAnimSequence>(Asset);
+    if (!Anim || !Anim->GetSkeleton())
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    const auto &D = Anim->CompressedData;
+    if (!D.BoneCompressionCodec || !D.CompressedDataStructure)
+        return FString();
+    const int32 Keys = D.CompressedDataStructure->CompressedNumberOfKeys;
+    const int32 Count = D.CompressedTrackToSkeletonMapTable.Num();
+    if (Keys < 1 || Keys > 10000 || Count < 1 || int64(Count) * (2 * Keys - 1) > 500000)
+        return FString();
+    auto O = MakeShared<FJsonObject>();
+    O->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-compressed-animation-reference/1"));
+    O->SetStringField(TEXT("object"), Anim->GetPathName());
+    O->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    O->SetStringField(TEXT("boneCodecClass"), D.BoneCompressionCodec->GetClass()->GetPathName());
+    O->SetStringField(TEXT("boneCodecHandle"), D.BoneCompressionCodec->GetCodecDDCHandle());
+    O->SetStringField(
+        TEXT("compressedBufferIoHash"),
+        LexToString(FIoHash::HashBuffer(D.CompressedByteStream.GetData(), D.CompressedByteStream.Num())));
+    O->SetNumberField(TEXT("compressedBytes"), D.CompressedByteStream.Num());
+    O->SetNumberField(TEXT("keys"), Keys);
+    O->SetNumberField(TEXT("interpolation"), static_cast<int32>(Anim->Interpolation));
+    const auto Rate = Anim->GetSamplingFrameRate();
+    O->SetNumberField(TEXT("samplingRateNumerator"), Rate.Numerator);
+    O->SetNumberField(TEXT("samplingRateDenominator"), Rate.Denominator);
+    const auto &Ref = Anim->GetSkeleton()->GetReferenceSkeleton();
+    Values Frames;
+    for (int32 I = 0; I < 2 * Keys - 1; ++I)
+        Frames.Add(Number(I * .5));
+    O->SetArrayField(TEXT("sampleFrames"), Frames);
+    Values Tracks;
+    for (int32 Track = 0; Track < Count; ++Track) {
+        const auto Bone = D.CompressedTrackToSkeletonMapTable[Track].BoneTreeIndex;
+        if (Bone < 0 || Bone >= Ref.GetNum())
+            return FString();
+        auto T = MakeShared<FJsonObject>();
+        T->SetNumberField(TEXT("skeletonIndex"), Bone);
+        T->SetStringField(TEXT("bone"), Ref.GetBoneName(Bone).ToString());
+        FAnimSequenceDecompressionContext Context(Rate, Keys - 1, Anim->Interpolation, Anim->GetFName(),
+                                                  *D.CompressedDataStructure, Ref.GetRefBonePose(),
+                                                  D.CompressedTrackToSkeletonMapTable, Anim->GetSkeleton(),
+                                                  Anim->IsValidAdditive());
+        Values Translations, Rotations, Scales;
+        for (int32 I = 0; I < 2 * Keys - 1; ++I) {
+            Context.Seek(Rate.AsSeconds(FFrameTime::FromDecimal(I * .5)));
+            FTransform Pose;
+            D.BoneCompressionCodec->DecompressBone(Context, Track, Pose);
+            Translations.Add(Vec3(Pose.GetTranslation()));
+            Rotations.Add(Vec4(Pose.GetRotation()));
+            Scales.Add(Vec3(Pose.GetScale3D()));
+        }
+        T->SetArrayField(TEXT("translations"), Translations);
+        T->SetArrayField(TEXT("rotations"), Rotations);
+        T->SetArrayField(TEXT("scales"), Scales);
+        Tracks.Add(Obj(T));
+    }
+    O->SetArrayField(TEXT("tracks"), Tracks);
+    FString Output;
+    auto Writer = TJsonWriterFactory<>::Create(&Output);
+    FJsonSerializer::Serialize(O, Writer);
+    return Output;
+}
+
+FString UCyUEDiffReferenceLibrary::ExportPerTrackSyntheticReference(UObject *CodecOwner) {
+    auto *Anim = Cast<UAnimSequence>(CodecOwner);
+    if (!Anim || !Anim->GetSkeleton())
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    const auto &Owner = Anim->CompressedData;
+    if (!Owner.BoneCompressionCodec || !Owner.CompressedDataStructure ||
+        Owner.BoneCompressionCodec->GetClass()->GetPathName() !=
+            TEXT("/Script/Engine.AnimCompress_PerTrackCompression"))
+        return FString();
+    const auto &OwnerData = static_cast<const FUECompressedAnimData &>(*Owner.CompressedDataStructure);
+    auto Root = MakeShared<FJsonObject>();
+    Root->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-per-track-synthetic-reference/1"));
+    Root->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Root->SetStringField(TEXT("boneCodecClass"), Owner.BoneCompressionCodec->GetClass()->GetPathName());
+    Values Cases;
+    for (int32 Kind = 0; Kind < 3; ++Kind)
+        for (int32 Format = 1; Format <= 6; ++Format)
+            for (int32 Mask = 0; Mask < 8; ++Mask)
+                for (int32 Timed = 0; Timed < 2; ++Timed)
+                    for (int32 Width = 0; Width < 2; ++Width) {
+                        if ((Kind != 1 && (Format == 4 || Format == 5)) ||
+                            (Kind == 1 && Format == 1 && Mask != 0 && Mask != 7))
+                            continue;
+                        const int32 Frames = Width ? 256 : 5;
+                        TArray<uint8> Keys;
+                        FMemoryWriter Writer(Keys);
+                        uint32 Header = (uint32(Format) << 28) | (uint32(Mask | (Timed ? 8 : 0)) << 24) | 3u;
+                        Writer << Header;
+                        if (Format == 3) {
+                            for (int32 Axis = 0; Axis < 3; ++Axis)
+                                if (!Mask || (Mask & (1 << Axis))) {
+                                    float Min = .1f * Axis, Range = .5f / (Axis + 1);
+                                    Writer << Min << Range;
+                                }
+                        }
+                        for (int32 Key = 0; Key < 3; ++Key) {
+                            if (Format == 1) {
+                                for (int32 Axis = 0; Axis < 3; ++Axis)
+                                    if (!Mask || (Mask & (1 << Axis))) {
+                                        float V =
+                                            (Kind == 1 ? .05f : 1.f) * (Key + 1) * (Axis % 2 ? -1.f : 1.f);
+                                        Writer << V;
+                                    }
+                            } else if (Format == 2) {
+                                for (int32 Axis = 0; Axis < 3; ++Axis)
+                                    if (!Mask || (Mask & (1 << Axis))) {
+                                        uint16 V = Kind == 1 ? uint16(32767 + (Key + 1) * (Axis + 1) *
+                                                                                  (Axis % 2 ? -1000 : 1000))
+                                                             : uint16(255 + Key + Axis + 1);
+                                        Writer << V;
+                                    }
+                            } else if (Format == 3 || Format == 4) {
+                                uint32 V = Kind == 1
+                                               ? ((uint32(1033 + Key * 45) << 21) |
+                                                  (uint32(900 + Key * 12) << 10) | uint32(500 + Key * 10))
+                                               : ((uint32(1060 + Key * 15) << 21) |
+                                                  (uint32(900 + Key * 12) << 10) | uint32(520 + Key * 10));
+                                Writer << V;
+                            } else if (Format == 5) {
+                                FQuat4f Q(.1f * (Key + 1), -.05f * (Key + 1), .125f * (Key + 1), 1.f);
+                                Q.Normalize();
+                                FQuatFloat32NoW Packed(Q);
+                                Writer << Packed;
+                            }
+                        }
+                        if (Timed) {
+                            while (Writer.Tell() % 4) {
+                                uint8 Pad = 0x55;
+                                Writer << Pad;
+                            }
+                            for (int32 F : {0, Frames / 2, Frames - 1}) {
+                                if (Width) {
+                                    uint16 V = uint16(F);
+                                    Writer << V;
+                                } else {
+                                    uint8 V = uint8(F);
+                                    Writer << V;
+                                }
+                            }
+                        }
+                        Writer.Close();
+                        TArray<int32> Offsets{Kind == 0 ? 0 : -1, Kind == 1 ? 0 : -1}, Scale;
+                        if (Kind == 2)
+                            Scale.Add(0);
+                        FUECompressedAnimData Data;
+                        Data.CompressedNumberOfKeys = Frames;
+                        Data.KeyEncodingFormat = AKF_PerTrackCompression;
+                        Data.TranslationCompressionFormat = Data.RotationCompressionFormat =
+                            Data.ScaleCompressionFormat = ACF_Identity;
+                        Data.TranslationCodec = OwnerData.TranslationCodec;
+                        Data.RotationCodec = OwnerData.RotationCodec;
+                        Data.ScaleCodec = OwnerData.ScaleCodec;
+                        Data.CompressedTrackOffsets = MakeArrayView(Offsets);
+                        Data.CompressedScaleOffsets.OffsetData = MakeArrayView(Scale);
+                        Data.CompressedScaleOffsets.StripSize = Kind == 2 ? 1 : 2;
+                        Data.CompressedByteStream = MakeArrayView(Keys);
+                        TArray<uint8> Buffer;
+                        FMemoryWriter BufferWriter(Buffer);
+                        for (auto V : Offsets)
+                            BufferWriter << V;
+                        for (auto V : Scale)
+                            BufferWriter << V;
+                        BufferWriter.Serialize(Keys.GetData(), Keys.Num());
+                        BufferWriter.Close();
+                        auto Case = MakeShared<FJsonObject>();
+                        Case->SetStringField(
+                            TEXT("name"), FString::Printf(TEXT("channel%d-format%d-mask%d-time%d-frames%d"),
+                                                          Kind, Format, Mask, Timed, Frames));
+                        Case->SetStringField(TEXT("bufferHex"), BytesToHex(Buffer.GetData(), Buffer.Num()));
+                        Case->SetStringField(TEXT("bufferIoHash"), LexToString(FIoHash::HashBuffer(
+                                                                       Buffer.GetData(), Buffer.Num())));
+                        auto Input = MakeShared<FJsonObject>();
+                        Input->SetNumberField(TEXT("frames"), Frames);
+                        Input->SetNumberField(TEXT("trackOffsetCount"), 2);
+                        Input->SetNumberField(TEXT("scaleOffsetCount"), Scale.Num());
+                        Input->SetNumberField(TEXT("scaleStripSize"), Kind == 2 ? 1 : 2);
+                        Input->SetNumberField(TEXT("keyBytes"), Keys.Num());
+                        Input->SetArrayField(TEXT("trackToSkeleton"), {Number(0)});
+                        Values SampleFrames;
+                        const TArray<double> Times{0.,
+                                                   .5,
+                                                   (Frames - 1) * .25,
+                                                   Frames / 2.,
+                                                   double(Frames / 2),
+                                                   Frames - 1.5,
+                                                   double(Frames - 1)};
+                        for (auto T : Times)
+                            SampleFrames.Add(Number(T));
+                        Input->SetArrayField(TEXT("sampleFrames"), SampleFrames);
+                        Case->SetObjectField(TEXT("input"), Input);
+                        TArray<FTrackToSkeletonMap> Map;
+                        Map.AddDefaulted();
+                        Map[0].BoneTreeIndex = 0;
+                        const auto &Ref = Anim->GetSkeleton()->GetReferenceSkeleton();
+                        const FFrameRate Rate(30, 1);
+                        for (int32 Step = 0; Step < 2; ++Step) {
+                            const auto Mode =
+                                Step ? EAnimInterpolationType::Step : EAnimInterpolationType::Linear;
+                            FAnimSequenceDecompressionContext Context(
+                                Rate, Frames - 1, Mode, Anim->GetFName(), Data, Ref.GetRefBonePose(), Map,
+                                Anim->GetSkeleton(), false);
+                            Values Samples;
+                            for (auto T : Times) {
+                                Context.Seek(Rate.AsSeconds(FFrameTime::FromDecimal(T)));
+                                FTransform Pose;
+                                Owner.BoneCompressionCodec->DecompressBone(Context, 0, Pose);
+                                auto Sample = Transform(Pose);
+                                Sample->SetNumberField(TEXT("frame"), T);
+                                Samples.Add(Obj(Sample));
+                            }
+                            Case->SetArrayField(Step ? TEXT("step") : TEXT("linear"), Samples);
+                        }
+                        Cases.Add(Obj(Case));
+                    }
+    Root->SetArrayField(TEXT("cases"), Cases);
+    FString Output;
+    auto Writer = TJsonWriterFactory<>::Create(&Output);
+    FJsonSerializer::Serialize(Root, Writer);
     return Output;
 }
