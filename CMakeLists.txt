@@ -264,6 +264,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_reflection_tests tests/reflection_tests.cpp)
     target_link_libraries(cyuediff_reflection_tests PRIVATE CyUEDiff::Core)
     add_test(NAME reflection_definitions COMMAND cyuediff_reflection_tests)
+    add_executable(cyuediff_per_platform_tests tests/per_platform_tests.cpp)
+    target_link_libraries(cyuediff_per_platform_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME native_per_platform_values COMMAND cyuediff_per_platform_tests)
     add_executable(cyuediff_skeleton_tests tests/skeleton_tests.cpp)
     target_link_libraries(cyuediff_skeleton_tests PRIVATE CyUEDiff::Core)
     add_test(NAME skeleton_projection COMMAND cyuediff_skeleton_tests)
@@ -427,6 +430,9 @@ if(BUILD_TESTING)
             add_test(NAME zen_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/zen_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_zen_tests>")
+            add_test(NAME per_platform_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/per_platform_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_per_platform_tests>")
             add_test(NAME uht_mappings_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/uht_mapping_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_schema_tests>")

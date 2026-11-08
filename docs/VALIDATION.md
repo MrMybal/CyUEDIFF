@@ -870,3 +870,18 @@ Real validation explicitly pairs 21 cooked textures with loose sources. Twenty s
 Evidence remains under build-goal/uht-public-export, uht-mappings-public, uht-real-validation, uht-cooked-ui, sdk-uht*, tests-uht-sdk.log and the original prototype reference reports under uht53. This adds selected real mapped-value evidence and reproducible source metadata preparation. Broader native serializers, Blueprint schema composition, newer host APIs, compressed animation, cooked geometry/physics and Nanite remain active work.
 
 Gitleaks 8.30.1 reports zero findings in all 588 publishable files and local refs for this milestone. Final Core-only/native metadata-conversion checks and installed-tool parity pass after hard-link and inheritance guards; strict UTF-8/NUL and git diff --check checks pass. These are local development changes, with hosted cross-platform execution pending a later authorized push.
+
+
+## Cooked per-platform values — post-0.181 development
+
+Three explicit native layouts now read cooked per-platform float32, signed int32 and bool32 values. The true bool32 cooked marker is validated before reading a value, editor/invalid markers and noncanonical boolean values are rejected, floating values must be finite, and zero-masked structs return a known zero platform value without reporting an absent serialized marker. These bindings expose selected cooked values; editor override maps and platform-name/default reconstruction remain outside their contract.
+
+The native suite passes 78 checks across all three layouts, exact/truncated input windows, trailing bytes, signed/zero values, invalid markers/booleans/floats, budgets, cancellation and named cooked differences under both supported Zen header profiles. The public CLI suite passes 28 checks, including invalid native markers inside otherwise valid hash-checked containers. An external installed-SDK consumer uses all three public enum bindings through Core alone and verifies their typed values.
+
+All 116 Core-only suites pass in 34.07 seconds. The complete native Desktop/Git build passes all 179 suites in 345.32 seconds, including the earlier integrity, declaration and metadata-preparation milestones. Logs remain under build-goal/tests-core-per-platform.log and tests-native-per-platform.log.
+
+The real CloudWeatherTexture property stream now exposes its stored Downscale platform value. An independent Python fragment/value reader confirms all four present properties, the true marker/value bytes and the exact 39-byte consumed boundary. The supplied float value is 0.0 and is explicitly serialized rather than zero-masked. The full selected corpus now reads all 21 texture property streams, exposing 72 present properties and matching all 39 comparable imported-size/lighting-GUID values to loose sources. Original assets, containers, contexts, mappings and codec fingerprints remain unchanged. Float producer evidence covers this real UE 5.3 input; integer/bool and UE 5.5 evidence remain original fixture checks.
+
+English/French native captures show the selected platform value and native coverage. SDK, raw-reference and corpus evidence remain under build-goal/sdk-per-platform*, per-platform-ui, per-platform-real-validation and uht53/per-platform-reference.json. These results concern stored properties, while cooked texture pixels and other native asset bodies remain separate work.
+
+Gitleaks 8.30.1 reports zero findings in 590 publishable files and local refs. git diff --check passes. This milestone remains local and does not publish a binary or release.

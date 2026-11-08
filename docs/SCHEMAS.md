@@ -358,4 +358,19 @@ Version-three contexts also accept explicit narrow string encodings for mapped F
 
 ## Optional matching-source preparation
 
-The standalone runtime accepts explicit cached mappings. Separate optional host tools can now export complete native UHT field descriptions from a selected UE 5.3 engine/project build and convert them to qualified, sparse cooked mappings. Twenty real texture property streams are validated against selected loose-source values; broader schemas and native serializers retain their explicit limits. See [metadata preparation and evidence](UHT_SCHEMAS.md).
+The standalone runtime accepts explicit cached mappings. Separate optional host tools can now export complete native UHT field descriptions from a selected UE 5.3 engine/project build and convert them to qualified, sparse cooked mappings. Twenty-one real texture property streams are validated against selected loose-source values; broader schemas and native serializers retain their explicit limits. See [metadata preparation and evidence](UHT_SCHEMAS.md).
+
+
+## Cooked per-platform native values
+
+Post-0.181 development adds three explicit `nativeStructs` wire bindings:
+
+| Layout | Stored value |
+| --- | --- |
+| `per-platform-float-cooked` | true bool32 cooked marker, then finite float32 |
+| `per-platform-int-cooked` | true bool32 cooked marker, then signed int32 |
+| `per-platform-bool-cooked` | true bool32 cooked marker, then a 0/1 bool32 value |
+
+The returned struct value is `{ "platformValue": ... }`. It represents the value selected during cooking; a platform name or original editor default/override table is not recovered. An editor marker, noncanonical boolean, truncated payload or invalid float fails the whole bound property read. Remaining export bytes stay opaque. Zero-masked structs consume no payload and return the known zero platform value with `serializedZero:true`; no serialized marker is reported for absent bytes. Budgets, depth checks and cancellation apply.
+
+For the UE 5.3 Texture2D context in [matching-source preparation](UHT_SCHEMAS.md), explicitly add `/Script/Engine.PerPlatformFloat: per-platform-float-cooked`. The template serializers were checked in local UE 5.3 source and the relocated UE 5.5 implementation. Native/context fixtures cover both supported Zen header profiles; real producer evidence currently covers the float layout in the supplied UE 5.3 build. Integer/bool layouts remain fixture-validated. These layouts do not enable editor override-map serialization or general native payload decoding.

@@ -25,7 +25,7 @@ The converter does not infer native serializers, instance values, inherited defa
 
 ## Use in Core, CLI and desktop
 
-For example, the context below explicitly binds Texture2D properties at offset zero for the selected UE 5.3 layout and supplies two checked native struct layouts. Replace the fingerprint with the generated file's actual SHA-256.
+For example, the context below explicitly binds Texture2D properties at offset zero for the selected UE 5.3 layout and supplies three checked native struct layouts. Replace the fingerprint with the generated file's actual SHA-256.
 
 ```json
 {
@@ -39,7 +39,8 @@ For example, the context below explicitly binds Texture2D properties at offset z
   "reflectedStructs": [],
   "nativeStructs": {
     "/Script/CoreUObject.Guid": "guid",
-    "/Script/CoreUObject.IntPoint": "int-point"
+    "/Script/CoreUObject.IntPoint": "int-point",
+    "/Script/Engine.PerPlatformFloat": "per-platform-float-cooked"
   }
 }
 ```
@@ -52,7 +53,7 @@ The original fixture test converts metadata and reads an independently encoded c
 
 On the authorized UE 5.3.2 build, the tool exports 401 engine/project modules plus its empty output module, reading 5,718 unchanged headers. The generated mapping has 10,445 schemas and 1,934 enums. Thirty-one types are excluded because static dimensions are unresolved; thirty-five field descriptors remain unavailable. These counts describe metadata coverage, not fully decoded asset coverage.
 
-For 21 explicitly paired real Texture2D packages, 20 cooked property streams decode, yielding 68 present properties. All 37 comparable stored imported-size/lighting-GUID values match their loose sources exactly. The remaining texture requires an additional PerPlatformFloat serializer description and stays opaque. All checked original source/container/context/codec fingerprints remain unchanged. English/French native desktop captures show the same decoded values.
+For 21 explicitly paired real Texture2D packages, all 21 cooked property streams now decode, yielding 72 present properties. All 39 comparable stored imported-size/lighting-GUID values match their loose sources exactly. The additional cooked PerPlatformFloat binding exposes the remaining stored platform value, independently checked against its raw marker/value bytes and the 39-byte property-stream boundary. All checked original source/container/context/codec fingerprints remain unchanged. English/French native desktop captures show the same decoded values.
 
 The reproducible local validator accepts an explicit JSON list of pairs with `source`, cooked `id`, optional package `name` and optional chunk `sha256`:
 

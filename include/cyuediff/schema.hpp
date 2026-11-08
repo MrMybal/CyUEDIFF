@@ -83,7 +83,10 @@ enum class NativeStructLayout {
     matrix4_f32,
     matrix4_f64,
     plane_f32,
-    plane_f64
+    plane_f64,
+    per_platform_float_cooked,
+    per_platform_int_cooked,
+    per_platform_bool_cooked
 };
 const char *native_struct_layout_name(NativeStructLayout);
 NativeStructLayout parse_native_struct_layout(const std::string &);
