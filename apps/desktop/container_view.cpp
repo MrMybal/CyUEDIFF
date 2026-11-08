@@ -30,7 +30,11 @@ void ContainerView::register_translations() {
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"Cooked animation settings", "Réglages des animations cooked"},
+        {{"Curve settings TOC before", "TOC des réglages de courbes avant"},
+         {"Curve settings TOC after", "TOC des réglages de courbes après"},
+         {"Curve settings member before", "Membre des réglages de courbes avant"},
+         {"Curve settings member after", "Membre des réglages de courbes après"},
+         {"Cooked animation settings", "Réglages des animations cooked"},
          {"Before animation", "Animation avant"},
          {"After animation", "Animation après"},
          {"Before interpolation", "Interpolation avant"},

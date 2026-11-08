@@ -343,6 +343,7 @@ void CookedAnimationView::set_animations(std::shared_ptr<const CookedAnimation> 
     before_ = std::move(a);
     after_ = std::move(b);
     comparing_ = comparing || bool(after_);
+    curves_.set_animations(before_, after_, comparing_);
     review_.reset();
     selected_.clear();
     frame_ = after_frame_ = 0;
@@ -350,11 +351,12 @@ void CookedAnimationView::set_animations(std::shared_ptr<const CookedAnimation> 
     request();
 }
 bool CookedAnimationView::poll() {
+    const bool curves_changed = curves_.poll();
     if (!worker_)
-        return false;
+        return curves_changed;
     auto output = worker_->take();
     if (!output || output->id != generation_)
-        return false;
+        return curves_changed;
     busy_ = false;
     error_ = output->error;
     if (output->value) {
@@ -458,7 +460,9 @@ bool CookedAnimationView::next_change(bool previous) {
     return false;
 }
 Json CookedAnimationView::view_state() const {
-    return {{"selected", selected_},
+    return {{"curves", curves_.view_state()},
+            {"scalarMode", scalar_mode_},
+            {"selected", selected_},
             {"frame", frame_},
             {"afterFrame", after_frame_},
             {"independentFrames", independent_},
@@ -474,6 +478,9 @@ Json CookedAnimationView::view_state() const {
 }
 void CookedAnimationView::restore_view_state(const Json &j) {
     view_state::validate(j, "cooked-animation");
+    scalar_mode_ = j.value("scalarMode", scalar_mode_);
+    if (j.contains("curves"))
+        curves_.restore_view_state(j.at("curves"));
     selected_ = j.value("selected", selected_);
     if (j.contains("selected"))
         scroll_selection_ = true;
@@ -494,9 +501,11 @@ void CookedAnimationView::restore_view_state(const Json &j) {
     request();
 }
 Json CookedAnimationView::report() const {
-    Json j = {{"busy", busy_},
+    Json j = {{"scalarMode", scalar_mode_},
+              {"curves", curves_.report()},
+              {"busy", busy()},
               {"error", error_},
-              {"current", !busy_ && error_.empty() && bool(review_)},
+              {"current", !busy() && error_.empty() && bool(review_)},
               {"selected", selected_},
               {"visible", visible_.size()},
               {"renderedRows", rendered_rows_},
@@ -526,6 +535,8 @@ Json CookedAnimationView::report() const {
 
 void CookedAnimationView::register_translations() {
     PropertyView::register_translations();
+    CookedCurveView::register_translations();
+    cyui::registerTranslations("fr", {{"Scalar curves", "Courbes scalaires"}});
     cyui::registerTranslations("en", {{"decode-compressed-animation", "Decoding compressed bone tracks"},
                                       {"sample-compressed-animation", "Sampling compressed bone tracks"},
                                       {"compare-cooked-animation", "Comparing compressed bone tracks"}});
@@ -676,6 +687,11 @@ void CookedAnimationView::chart() {
 void CookedAnimationView::draw(const char *id) {
     poll();
     cyui::ScopedID scope(id);
+    ImGui::Checkbox(cyui::trLabel("Scalar curves").c_str(), &scalar_mode_);
+    if (scalar_mode_) {
+        curves_.draw();
+        return;
+    }
     rendered_rows_ = 0;
     selected_visible_ = false;
     ImGui::TextWrapped(

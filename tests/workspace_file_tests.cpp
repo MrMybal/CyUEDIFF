@@ -25,10 +25,12 @@ std::string bytes(const fs::path &p) {
 void strip_animation(Json &j) {
     for (auto &d : j["documents"])
         for (const char *key :
-             {"after_container_entry", "bone_settings_container", "skeleton_container",
-              "after_bone_settings_container", "after_skeleton_container", "bone_settings_entry",
-              "skeleton_entry", "after_bone_settings_entry", "after_skeleton_entry", "animation_profile",
-              "after_animation_profile", "animation_interpolation", "after_animation_interpolation"})
+             {"curve_settings_container", "after_curve_settings_container", "curve_settings_entry",
+              "after_curve_settings_entry", "after_container_entry", "bone_settings_container",
+              "skeleton_container", "after_bone_settings_container", "after_skeleton_container",
+              "bone_settings_entry", "skeleton_entry", "after_bone_settings_entry", "after_skeleton_entry",
+              "animation_profile", "after_animation_profile", "animation_interpolation",
+              "after_animation_interpolation"})
             d["settings"].erase(key);
 }
 template <class F> void rejects(F f) {
@@ -274,14 +276,46 @@ int main() {
             rejects([&] { WorkspaceFile::from_json(broken); });
         }
         for (const auto *key :
-             {"after_container_entry", "bone_settings_container", "skeleton_container",
-              "after_bone_settings_container", "after_skeleton_container", "bone_settings_entry",
-              "skeleton_entry", "after_bone_settings_entry", "after_skeleton_entry", "animation_profile",
-              "after_animation_profile", "animation_interpolation", "after_animation_interpolation"}) {
+             {"curve_settings_container", "after_curve_settings_container", "curve_settings_entry",
+              "after_curve_settings_entry", "after_container_entry", "bone_settings_container",
+              "skeleton_container", "after_bone_settings_container", "after_skeleton_container",
+              "bone_settings_entry", "skeleton_entry", "after_bone_settings_entry", "after_skeleton_entry",
+              "animation_profile", "after_animation_profile", "animation_interpolation",
+              "after_animation_interpolation"}) {
             auto broken = animation_state;
             broken["documents"][2]["settings"].erase(key);
             rejects([&] { WorkspaceFile::from_json(broken); });
         }
+        auto curve_state = animation_state;
+        auto &curve_settings = curve_state["documents"][2]["settings"];
+        curve_settings["curve_settings_container"] = "Curves/Before.utoc";
+        curve_settings["after_curve_settings_container"] = "Curves/After.utoc";
+        curve_settings["curve_settings_entry"] = "before-curve-settings";
+        curve_settings["after_curve_settings_entry"] = "after-curve-settings";
+        curve_state["documents"][2]["viewState"]["container"]["animation"]["scalarMode"] = true;
+        curve_state["documents"][2]["viewState"]["container"]["animation"]["curves"] = {
+            {"time", .25},      {"afterTime", .75}, {"independentTimes", true}, {"valueTolerance", .01},
+            {"rangeStart", -1}, {"rangeEnd", 2},    {"selected", "name:Speed"}};
+        const auto curve_roundtrip = WorkspaceFile::from_json(curve_state);
+        const auto curve_request = curve_roundtrip.documents[2].settings.request().container;
+        check(curve_roundtrip.to_json() == curve_state &&
+                  curve_request->curve_settings_entry == "before-curve-settings" &&
+                  curve_request->after_curve_settings_container == "Curves/After.utoc",
+              "Curve dependency contexts and scalar state persist independently");
+        auto legacy_ten = animation_state;
+        legacy_ten["schema"] = "cyuediff.workspace/10";
+        for (auto &d : legacy_ten["documents"])
+            for (const auto *key : {"curve_settings_container", "after_curve_settings_container",
+                                    "curve_settings_entry", "after_curve_settings_entry"})
+                d["settings"].erase(key);
+        const auto ten = WorkspaceFile::from_json(legacy_ten);
+        check(ten.documents[2].settings.curve_settings_entry.empty() &&
+                  ten.documents[2].settings.after_curve_settings_container.empty() &&
+                  ten.documents[2].settings.animation_profile == 1,
+              "Version ten migration preserves bone context and leaves curve settings unknown");
+        auto broken_curve = curve_state;
+        broken_curve["documents"][2]["viewState"]["container"]["animation"]["curves"]["rangeEnd"] = -2;
+        rejects([&] { WorkspaceFile::from_json(broken_curve); });
         auto legacy_nine = animation_state;
         strip_animation(legacy_nine);
         legacy_nine["schema"] = "cyuediff.workspace/9";
@@ -380,7 +414,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/10",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/11",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -402,7 +436,7 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(version_two);
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/10",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/11",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -428,7 +462,7 @@ int main() {
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/10",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/11",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

@@ -273,6 +273,8 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                     options.bone_settings =
                         dependency(source.bone_settings_container, source.bone_settings_entry);
                     options.skeleton = dependency(source.skeleton_container, source.skeleton_entry);
+                    options.curve_settings =
+                        dependency(source.curve_settings_container, source.curve_settings_entry);
                     auto animation = std::make_shared<CookedAnimation>(
                         read_zen_animation(*document->input, found, zen, read, options, i));
                     auto catalog = animation->catalog(control);
@@ -446,6 +448,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             source.after_animation_interpolation.has_value() ||
             !source.after_bone_settings_container.empty() || !source.after_skeleton_container.empty() ||
             !source.after_bone_settings_entry.empty() || !source.after_skeleton_entry.empty() ||
+            !source.after_curve_settings_container.empty() || !source.after_curve_settings_entry.empty() ||
             !source.after_script_objects.empty() || source.after_profile != ZenProfile::unspecified ||
             !source.after_schema.empty() ||
             source.after_physics_profile != CookedPhysicsProfile::unspecified ||
@@ -468,6 +471,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     left.after_skeleton_container.clear();
     left.after_bone_settings_entry.clear();
     left.after_skeleton_entry.clear();
+    left.after_curve_settings_container.clear();
+    left.after_curve_settings_entry.clear();
     left.after_path.clear();
     left.after_script_objects.clear();
     left.after_schema.clear();
@@ -487,6 +492,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     right.skeleton_container = source.after_skeleton_container;
     right.bone_settings_entry = source.after_bone_settings_entry;
     right.skeleton_entry = source.after_skeleton_entry;
+    right.curve_settings_container = source.after_curve_settings_container;
+    right.curve_settings_entry = source.after_curve_settings_entry;
     right.path = source.after_path;
     right.script_objects = source.after_script_objects;
     right.schema = source.after_schema;

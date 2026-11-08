@@ -52,4 +52,6 @@ The installed [whole-package consumer](../examples/cooked_curve_consumer/README.
 
 ## Remaining integration
 
-Dedicated desktop scalar projection, further codec/plugin/build profiles and broader runtime correspondence remain open. No new release, public push or complete-product claim is implied.
+The source-built `CookedCurveView` now provides worker-prepared EN/FR scalar inspection and comparisons, integrated into **Cooked animations → Scalar curves**. Before/after curve-settings TOCs/IDs are independent, and workspace format 11 preserves scalar mode, names, independent seconds, tolerance, empty default, plot range, exact key indices, filters and property selection. It plots at most 257 samples and 2,048 stored markers per selected curve/side, clips lists and caps a review at 10,000 pairs. Unknown peers remain unavailable; superseded generations cannot publish as current.
+
+Original UI tests cover five themes, EN/FR, wide/narrow frames, 5,000-row clipping/selection, cancellation and atomic state restoration. Six native real-package reviews match 3,084 plotted scalar values and 72 encoding/value decisions against actual Unreal codec references (maximum delta 4.7684e-7), with protected inputs unchanged. Further codec/plugin/build profiles and broader runtime correspondence remain open. No new release, public push or complete-product claim is implied.

@@ -34,6 +34,10 @@ inline void map(const Json &v, std::string_view kind) {
 }
 inline void validate(const Json &v, std::string_view kind) {
     require(v.is_object());
+    if (kind == "cooked-curves" && v.contains("rangeStart") && v.contains("rangeEnd")) {
+        require(v.at("rangeStart").is_number() && v.at("rangeEnd").is_number());
+        require(v.at("rangeStart").get<double>() < v.at("rangeEnd").get<double>());
+    }
     for (auto it = v.begin(); it != v.end(); ++it) {
         const auto &key = it.key();
         const auto &x = it.value();
@@ -210,7 +214,28 @@ inline void validate(const Json &v, std::string_view kind) {
             child("viewport", "mesh");
             string({"body", "shape"}, true);
             child("properties", "property");
+        } else if (kind == "cooked-curves") {
+            string({"selected", "filter"});
+            flag({"independentTimes", "changedOnly"});
+            child("properties", "property");
+            if (key == "time" || key == "afterTime" || key == "emptyDefault" || key == "rangeStart" ||
+                key == "rangeEnd") {
+                scalar(x, -double(std::numeric_limits<float>::max()),
+                       double(std::numeric_limits<float>::max()));
+                known = true;
+            }
+            if (key == "valueTolerance") {
+                scalar(x, 0, std::numeric_limits<double>::max());
+                known = true;
+            }
+            if (key == "beforeKey" || key == "afterKey") {
+                require(x.is_number_integer());
+                scalar(x, 0, 2147483647.);
+                known = true;
+            }
         } else if (kind == "cooked-animation") {
+            flag({"scalarMode"});
+            child("curves", "cooked-curves");
             string({"selected", "filter"});
             flag({"independentFrames", "changedOnly"});
             child("properties", "property");

@@ -23,6 +23,8 @@ struct Settings {
     std::string container_schema, after_container_schema;
     int animation_profile = 0, after_animation_profile = 0, animation_interpolation = 0,
         after_animation_interpolation = 0;
+    std::string curve_settings_container, after_curve_settings_container, curve_settings_entry,
+        after_curve_settings_entry;
     std::string after_container_entry, bone_settings_container, skeleton_container,
         after_bone_settings_container, after_skeleton_container, bone_settings_entry, skeleton_entry,
         after_bone_settings_entry, after_skeleton_entry;
@@ -65,6 +67,8 @@ struct Settings {
             input.skeleton_container = fs::u8path(skeleton_container);
             input.bone_settings_entry = bone_settings_entry;
             input.skeleton_entry = skeleton_entry;
+            input.curve_settings_container = fs::u8path(curve_settings_container);
+            input.curve_settings_entry = curve_settings_entry;
             input.physics_profile = physics_profile == 1 ? CookedPhysicsProfile::unreal_5_3_windows
                                                          : CookedPhysicsProfile::unspecified;
             input.mesh_profile =
@@ -94,6 +98,8 @@ struct Settings {
                 input.after_skeleton_container = fs::u8path(after_skeleton_container);
                 input.after_bone_settings_entry = after_bone_settings_entry;
                 input.after_skeleton_entry = after_skeleton_entry;
+                input.after_curve_settings_container = fs::u8path(after_curve_settings_container);
+                input.after_curve_settings_entry = after_curve_settings_entry;
                 input.after_physics_profile = after_physics_profile == 1
                                                   ? CookedPhysicsProfile::unreal_5_3_windows
                                                   : CookedPhysicsProfile::unspecified;

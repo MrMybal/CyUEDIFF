@@ -64,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-animation-desktop-', dir=Path
     assert report['document']['container']['selectedComparison']['afterEntry'] == after_entry
     assert view['before']['selectedStoredKey']['value']['value'][0] == 10.
     saved = json.loads(workspace.read_text(encoding='utf-8'))
-    assert saved['schema'] == 'cyuediff.workspace/10' and saved['documents'][0]['settings']['after_container_entry'] == after_entry
+    assert saved['schema'] == 'cyuediff.workspace/11' and saved['documents'][0]['settings']['after_container_entry'] == after_entry
     assert saved['documents'][0]['viewState']['container']['animation']['properties']['filter'] == 'positions'
     checks += 8
     restored = run('--workspace', workspace, context=[])

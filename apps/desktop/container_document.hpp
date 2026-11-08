@@ -30,6 +30,8 @@ struct ContainerSource {
     fs::path bone_settings_container, skeleton_container, after_bone_settings_container,
         after_skeleton_container;
     std::string bone_settings_entry, skeleton_entry, after_bone_settings_entry, after_skeleton_entry;
+    fs::path curve_settings_container, after_curve_settings_container;
+    std::string curve_settings_entry, after_curve_settings_entry;
     bool compare_payloads = false;
     std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;

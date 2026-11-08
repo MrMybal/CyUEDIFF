@@ -215,7 +215,9 @@ Options parse_one(const std::vector<std::string> &args) {
                    argument == "--skeleton-container" || argument == "--after-bone-settings-container" ||
                    argument == "--after-skeleton-container" || argument == "--bone-settings-entry" ||
                    argument == "--skeleton-entry" || argument == "--after-bone-settings-entry" ||
-                   argument == "--after-skeleton-entry") {
+                   argument == "--after-skeleton-entry" || argument == "--curve-settings-container" ||
+                   argument == "--after-curve-settings-container" || argument == "--curve-settings-entry" ||
+                   argument == "--after-curve-settings-entry") {
             const auto text = value();
             options.container_parameters = true;
             if (argument.rfind("--after-", 0) == 0)
@@ -238,6 +240,14 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.settings.after_bone_settings_entry = text;
             else if (argument == "--after-skeleton-entry")
                 options.settings.after_skeleton_entry = text;
+            else if (argument == "--curve-settings-container")
+                options.settings.curve_settings_container = text;
+            else if (argument == "--after-curve-settings-container")
+                options.settings.after_curve_settings_container = text;
+            else if (argument == "--curve-settings-entry")
+                options.settings.curve_settings_entry = text;
+            else if (argument == "--after-curve-settings-entry")
+                options.settings.after_curve_settings_entry = text;
         } else if (argument == "--animation-profile" || argument == "--after-animation-profile") {
             if (value() != "ue5.3-windows")
                 throw Error("desktop-option", "Supported cooked animation profile: ue5.3-windows");
@@ -792,7 +802,8 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
              {options.settings.container_path, options.settings.script_objects,
               options.settings.after_container_path, options.settings.after_script_objects,
               options.settings.bone_settings_container, options.settings.skeleton_container,
-              options.settings.after_bone_settings_container, options.settings.after_skeleton_container}) {
+              options.settings.after_bone_settings_container, options.settings.after_skeleton_container,
+              options.settings.curve_settings_container, options.settings.after_curve_settings_container}) {
             if (path.empty())
                 continue;
             ContainerOptions limits;
@@ -1929,6 +1940,10 @@ class Shell {
                             field("##skeleton_container", current().settings.skeleton_container);
                             cyui::property(cyui::tr("Before Skeleton member").c_str());
                             field("##skeleton_entry", current().settings.skeleton_entry);
+                            ImGui::TextUnformatted(cyui::tr("Curve settings TOC before").c_str());
+                            field("##curve_settings_container", current().settings.curve_settings_container);
+                            ImGui::TextUnformatted(cyui::tr("Curve settings member before").c_str());
+                            field("##curve_settings_entry", current().settings.curve_settings_entry);
                             cyui::property(cyui::tr("After animation").c_str());
                             ImGui::Combo("##after-animation-profile",
                                          &current().settings.after_animation_profile, profiles, 2);
@@ -1945,6 +1960,12 @@ class Shell {
                             field("##after_skeleton_container", current().settings.after_skeleton_container);
                             cyui::property(cyui::tr("After Skeleton member").c_str());
                             field("##after_skeleton_entry", current().settings.after_skeleton_entry);
+                            ImGui::TextUnformatted(cyui::tr("Curve settings TOC after").c_str());
+                            field("##after_curve_settings_container",
+                                  current().settings.after_curve_settings_container);
+                            ImGui::TextUnformatted(cyui::tr("Curve settings member after").c_str());
+                            field("##after_curve_settings_entry",
+                                  current().settings.after_curve_settings_entry);
                             cyui::endProperties();
                         }
                         ImGui::TextWrapped("%s",
@@ -2700,7 +2721,9 @@ int run(Options options) {
                "[--skeleton-container TOC]\n"
                "  --after-animation-profile/--after-animation-interpolation and --after- dependency options "
                "are independent.\n"
-               "  --container-tab animations opens compressed bone-local tracks.\n"
+               "  --curve-settings-entry ID [--curve-settings-container TOC] (independent --after- "
+               "variants).\n"
+               "  --container-tab animations opens bone-local tracks and scalar curves.\n"
                "  [--document-action select:N|close|duplicate|reopen|close-others|next|previous|reload] : "
                "smoke only\n"
                "  [--new-document SOURCE_OPTIONS ...] [--document-index 0..7]\n"

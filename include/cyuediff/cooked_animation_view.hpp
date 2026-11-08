@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/cooked_animation.hpp>
+#include <cyuediff/cooked_curve_view.hpp>
 #include <cyuediff/property_view.hpp>
 namespace cyuediff {
 // Immutable Core inputs; all sampling/catalogue/key preparation runs on a cancellable
@@ -12,6 +13,8 @@ class CookedAnimationView {
     std::shared_ptr<const CookedAnimation> before_, after_;
     cyui::TextFilter filter_;
     PropertyView details_;
+    CookedCurveView curves_;
+    bool scalar_mode_ = false;
     Json details_state_ = nullptr;
     std::vector<std::size_t> visible_;
     std::string selected_, error_;
@@ -40,7 +43,13 @@ class CookedAnimationView {
                         std::shared_ptr<const CookedAnimation> after = {}, bool comparing = false);
     bool poll();
     bool busy() const {
-        return busy_;
+        return busy_ || curves_.busy();
+    }
+    CookedCurveView &curves() {
+        return curves_;
+    }
+    void set_scalar_mode(bool b) {
+        scalar_mode_ = b;
     }
     bool select_track(const std::string &);
     void set_frames(double before, double after, bool independent);

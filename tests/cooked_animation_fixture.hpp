@@ -326,7 +326,8 @@ struct AnimationCurveFixture {
     AnimationPackage curve_settings;
     std::size_t curve_start = 0, curve_count_at = 0, curve_ref = 0;
 };
-inline AnimationCurveFixture cooked_animation_curve_fixture(unsigned codec = 0, bool curve_only = false) {
+inline AnimationCurveFixture cooked_animation_curve_fixture(unsigned codec = 0, bool curve_only = false,
+                                                            unsigned curve_count = 1) {
     AnimationCurveFixture out;
     out.animation = cooked_animation_fixture(false, false, true, false, true, !curve_only);
     auto &f = out.animation;
@@ -339,13 +340,22 @@ inline AnimationCurveFixture cooked_animation_curve_fixture(unsigned codec = 0, 
     body.i(-3);
     body.data.insert(body.data.end(), raw.begin() + f.native - 4, raw.begin() + f.native);
     const auto curve_count_at = f.metadata - 7;
-    body.data.insert(body.data.end(), raw.begin() + f.native, raw.begin() + curve_count_at);
+    const auto names_at = f.track_map + (curve_only ? 0 : 4);
+    body.data.insert(body.data.end(), raw.begin() + f.native, raw.begin() + names_at);
+    body.i(int(curve_count));
+    for (unsigned i = 0; i < curve_count; ++i) {
+        body.i(int(3 + i));
+        body.i(0);
+    }
+    body.data.insert(body.data.end(), raw.begin() + names_at + 12, raw.begin() + curve_count_at);
     Bytes curves;
     if (codec == 0) {
-        for (unsigned v : {2u, 1u, 4u, 4u})
-            curves.put<std::uint8_t>(std::uint8_t(v));
-        curves.i(2);
-        curves.i(12);
+        for (unsigned i = 0; i < curve_count; ++i) {
+            for (unsigned v : {2u, 1u, 4u, 4u})
+                curves.put<std::uint8_t>(std::uint8_t(v));
+            curves.i(2);
+            curves.i(int(curve_count * 12));
+        }
         curves.put<float>(0);
         curves.put<float>(1);
         curves.put<float>(1);
@@ -355,18 +365,28 @@ inline AnimationCurveFixture cooked_animation_curve_fixture(unsigned codec = 0, 
             curves.i(0);
         curves.i(2);
         curves.put<float>(1);
-        if (codec == 2)
-            curves.i(0);
-        curves.put<float>(1);
-        curves.put<float>(5);
+        if (codec == 2) {
+            for (unsigned i = 0; i < (curve_count + 31) / 32; ++i)
+                curves.i(0);
+            for (float value : {1.f, 5.f})
+                for (unsigned i = 0; i < curve_count; ++i)
+                    curves.put(value);
+        } else
+            for (unsigned i = 0; i < curve_count; ++i) {
+                curves.put<float>(1);
+                curves.put<float>(5);
+            }
     }
     const auto count_position = body.data.size();
     body.i(int(curves.data.size()));
     const auto data_position = body.data.size();
     body.append(curves);
     body.data.insert(body.data.end(), raw.begin() + f.metadata, raw.end());
+    std::vector<std::string> names = {"None", "/Game/Animation", "Animation"};
+    for (unsigned i = 0; i < curve_count; ++i)
+        names.push_back(curve_count == 1 ? "CurveOne" : "Curve" + std::to_string(i));
     f.animation =
-        animation_package({"None", "/Game/Animation", "Animation", "CurveOne"}, {{2, 1, 3, ~0ull, 1, body}},
+        animation_package(names, {{2, 1, 3, ~0ull, 1, body}},
                           {0x8000000000000000ull, 0x8000000100000001ull, 0x8000000200000002ull},
                           {0xabc, 0xdef, 0xaaa}, {"/Game/Settings", "/Game/Skeleton", "/Game/CurveSettings"});
     f.native = f.animation.storage.body + native + 4;
