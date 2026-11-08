@@ -1,5 +1,7 @@
 #include <cyuediff/cooked_mesh.hpp>
 #include "archive.hpp"
+#include "zen_bulk.hpp"
+#include "cooked_nanite_internal.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -449,24 +451,34 @@ Json CookedStaticMesh::to_json(bool include) const {
             {"nativePrefix", native_prefix},
             {"lods", l},
             {"materials", materials},
+            {"nanite", nanite ? nanite->catalog() : Json(nullptr)},
             {"tail",
              {{"offset", tail_offset},
               {"bytes", tail_bytes},
               {"sha256", tail_sha256},
               {"decoded", false},
-              {"includes", "Nanite, distance-field, render-data and later object fields"}}}};
+              {"includes", nanite ? "distance-field, render-data and later object fields"
+                                  : "Nanite, distance-field, render-data and later object fields"}}}};
 }
 CookedStaticMesh read_zen_static_mesh(const Container &container, std::size_t entry,
                                       const ZenReadOptions &zen, const ContainerReadOptions &read,
                                       const CookedMeshOptions &supplied, std::size_t selected) {
     auto options = supplied;
     OperationControl control;
-    control.cancelled = [a = options.control.cancelled, b = zen.control.cancelled,
-                         c = read.control.cancelled] { return (a && a()) || (b && b()) || (c && c()); };
-    control.progress = options.control.progress
-                           ? options.control.progress
-                           : (zen.control.progress ? zen.control.progress : read.control.progress);
+    control.cancelled = [a = options.control.cancelled, b = zen.control.cancelled, c = read.control.cancelled,
+                         d = options.nanite.control.cancelled] {
+        return (a && a()) || (b && b()) || (c && c()) || (d && d());
+    };
+    control.progress =
+        options.control.progress
+            ? options.control.progress
+            : (zen.control.progress
+                   ? zen.control.progress
+                   : (read.control.progress ? read.control.progress : options.nanite.control.progress));
     options.control = control;
+    if (options.nanite.profile != NaniteProfile::unspecified &&
+        options.nanite.profile != NaniteProfile::unreal_5_3_windows)
+        throw Error("cooked-nanite-profile", "Unsupported Nanite resource profile");
     control.check();
     if (options.profile != CookedMeshProfile::unreal_5_3_windows || zen.profile != ZenProfile::unreal_5_3 ||
         !options.keep_mobile_min_lod_setting.has_value())
@@ -551,17 +563,8 @@ CookedStaticMesh read_zen_static_mesh(const Container &container, std::size_t en
                          {"mobileMinLOD", mobile}};
     const auto lods = r.count(options.max_lods);
     budget.reserve(std::uint64_t(lods) * 4096);
-    std::uint64_t total_read = bytes.size();
-    std::map<std::string, std::vector<std::uint8_t>> chunks;
-    auto find_chunk = [&](const std::string &id) {
-        std::size_t found = SIZE_MAX;
-        for (std::size_t i = 0; i < container.entries().size(); ++i)
-            if (container.entries()[i].id == id && !container.entries()[i].deleted) {
-                need(found == SIZE_MAX, "Ambiguous cooked mesh bulk chunk");
-                found = i;
-            }
-        return found;
-    };
+    detail::ZenBulkReader bulk_reader(container, package, member, bytes, reads, options.max_read_bytes,
+                                      "cooked-mesh");
     for (unsigned l = 0; l < lods; ++l) {
         control.checkpoint("cooked-mesh-lod", l, lods);
         CookedMeshLod lod;
@@ -602,87 +605,19 @@ CookedStaticMesh read_zen_static_mesh(const Container &container, std::size_t en
             match_sizes(sizes, stored_sizes(r));
         } else {
             auto bulk_index = r.u32();
-            need(bulk_index < package.bulk_data.size(), "Cooked mesh bulk-map index exceeds table");
-            const auto &bulk = package.bulk_data[bulk_index];
-            const auto flags = bulk.at("flags").get<std::uint32_t>();
-            const auto size = bulk.at("size").get<std::uint64_t>();
-            if (flags & ~0x1ffffu || (flags & ((1u << 1) | (1u << 9) | (1u << 15))))
-                throw Error("cooked-mesh-profile",
-                            "Unsupported cooked mesh bulk flags or legacy compression");
-            auto chunk_id = member.id;
-            std::uint64_t bulk_offset = 0;
-            bool external = flags & 1;
-            const bool unused = (flags & (1u << 5)) != 0;
-            if (unused) {
-                // BULKDATA_Unused serializes no inline payload, even with a nonzero declared size.
-                lod.unavailable = "unused";
-            } else if (!external) {
-                need(!(flags & ((1u << 8) | (1u << 10) | (1u << 11) | (1u << 12) | (1u << 14))),
-                     "Conflicting inline cooked mesh bulk flags");
-                bulk_offset = r.pos;
-                r.range(size);
-                r.pos += size;
-            } else {
-                auto off = bulk.at("offset").get<std::int64_t>();
-                need(off >= 0, "Negative external cooked mesh offset");
-                bulk_offset = static_cast<std::uint64_t>(off);
-                unsigned type = flags & (1u << 11) ? 3 : 2;
-                if (flags & (1u << 14)) {
-                    auto optional = member.id;
-                    optional.replace(22, 2, "03");
-                    if (find_chunk(optional) != SIZE_MAX) {
-                        type = 3;
-                        off = bulk.at("duplicateOffset").get<std::int64_t>();
-                        need(off >= 0, "Negative duplicate cooked mesh offset");
-                        bulk_offset = static_cast<std::uint64_t>(off);
-                    }
-                } else if (flags & (1u << 12))
-                    type = 4;
-                chunk_id.replace(22, 2, type == 2 ? "02" : type == 3 ? "03" : "04");
-            }
+            auto window = bulk_reader.describe(bulk_index, r.pos, r.end);
             const auto available = availability(r, options);
             const auto sizes = stored_sizes(r);
-            lod.bulk = {{"bulkIndex", bulk_index},
-                        {"flags", flags},
-                        {"offset", unused ? Json(nullptr) : Json(bulk_offset)},
-                        {"declaredOffset", bulk.at("offset")},
-                        {"bytes", size},
-                        {"chunkId", chunk_id},
-                        {"storage", unused ? "unused" : (external ? "external" : "inline")},
-                        {"availability", available.json()}};
-            const std::vector<std::uint8_t> *data = &bytes;
-            std::string source_hash = member.source_hash;
-            if (flags & (1u << 5))
-                lod.unavailable = "unused";
-            else if (!size)
-                lod.unavailable = "empty-payload";
-            else if (external) {
-                const auto index = find_chunk(chunk_id);
-                if (index == SIZE_MAX)
-                    lod.unavailable = "missing-chunk";
-                else {
-                    const auto &chunk = container.entries()[index];
-                    source_hash = chunk.source_hash;
-                    need(bulk_offset <= chunk.size && size <= chunk.size - bulk_offset,
-                         "Cooked mesh bulk range exceeds external chunk");
-                    auto it = chunks.find(chunk_id);
-                    if (it == chunks.end()) {
-                        limit(chunk.size <= options.max_read_bytes - total_read,
-                              "Verified cooked mesh chunks exceed aggregate read budget");
-                        total_read += chunk.size;
-                        it = chunks.emplace(chunk_id, container.read(index, reads)).first;
-                    }
-                    data = &it->second;
-                }
-            }
+            bulk_reader.load(window);
+            lod.bulk = window.metadata;
+            lod.bulk["availability"] = available.json();
+            lod.unavailable = window.unavailable;
             if (lod.unavailable.empty()) {
-                Cursor payload{*data, bulk_offset, bulk_offset + size};
-                payload.range(size);
+                Cursor payload{*window.data, window.offset, window.offset + window.bytes};
+                payload.range(window.bytes);
                 auto actual = buffers(payload, lod, budget, &available, out.materials);
                 match_sizes(actual, sizes);
                 need(payload.pos == payload.end, "Trailing bytes in cooked mesh LOD bulk payload");
-                lod.bulk["sha256"] = detail::hash_range(*data, bulk_offset, size, control);
-                lod.bulk["chunkSourceHash"] = source_hash;
             }
         }
         out.lods.push_back(std::move(lod));
@@ -690,6 +625,21 @@ CookedStaticMesh read_zen_static_mesh(const Container &container, std::size_t en
     const auto inlined = r.number(1);
     need(inlined <= lods, "Cooked mesh inline LOD count exceeds LOD array");
     out.native_prefix["numInlinedLODs"] = inlined;
+    if (options.nanite.profile != NaniteProfile::unspecified) {
+        auto nanite_options = options.nanite;
+        nanite_options.control = control;
+        nanite_options.max_output_bytes =
+            std::min(nanite_options.max_output_bytes, options.max_output_bytes - budget.output);
+        auto resource = detail::read_nanite_resource(bytes, r.pos, r.end, bulk_reader, nanite_options,
+                                                     {{"object", out.object_path},
+                                                      {"packageSha256", out.package_sha256},
+                                                      {"schemaContextSha256", out.schema_context_sha256},
+                                                      {"scriptObjectsSha256", out.script_objects_sha256},
+                                                      {"exportIndex", out.export_index}});
+        budget.reserve(resource.accounted_output_bytes());
+        out.nanite = std::make_shared<CookedNaniteResource>(std::move(resource));
+    }
+
     out.tail_offset = r.pos;
     out.tail_bytes = r.end - r.pos;
     out.tail_sha256 = detail::hash_range(bytes, r.pos, out.tail_bytes, control);

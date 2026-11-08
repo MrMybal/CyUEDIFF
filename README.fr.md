@@ -148,5 +148,6 @@ Ce tableau est un index. Conservez [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.
 - [Manuel français](https://mrmybal.github.io/CyUEDIFF/guide.html?lang=fr#start) · [Vitrine](https://mrmybal.github.io/CyUEDIFF/?lang=fr).
 - [Notes de version et limites](VERSION.fr.md) · [Couverture détaillée des formats et feuille de route](docs/ROADMAP.md).
 - [Guide desktop](docs/DESKTOP.md) · [Inspection visuelle](docs/VISUAL_REVIEW.md) · [Intégration Git](docs/GIT.md).
+- [Géométrie Nanite cooked et différences de surface ciblées](docs/NANITE_GEOMETRY.md) · [Exemple Core installé](examples/cooked_nanite_consumer/README.md).
 - [Morphs sources](docs/MORPHS.md) · [Descriptions binaires](docs/BINARY_LAYOUTS.md) · [Deltas de blocs](docs/BINARY_DELTA.md).
 - [Dépôt des sources](https://github.com/MrMybal/CyUEDIFF) · [Releases](https://github.com/MrMybal/CyUEDIFF/releases) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues).

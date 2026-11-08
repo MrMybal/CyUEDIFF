@@ -1,6 +1,6 @@
 # Cooked static render geometry
 
-The Core reads an explicit **UE 5.3 Windows** StaticMesh render-buffer profile without Unreal libraries, a graphics device, Git or the Editor. This is the render-LOD prefix of native serialization. Nanite, distance-field and later object data remains an identified opaque tail; a successful render read does not claim those formats are decoded.
+The Core reads an explicit **UE 5.3 Windows** StaticMesh render-buffer profile without Unreal libraries, a graphics device, Git or the Editor. This is the render-LOD prefix of native serialization. The default leaves Nanite, distance-field and later object data as an identified opaque tail. An explicit optional Nanite profile now binds supported stored position/topology resources through the same bulk cache; see [Nanite geometry](NANITE_GEOMETRY.md). A successful render-prefix read alone does not claim that coverage.
 
 ## Explicit context
 
@@ -57,6 +57,6 @@ Original fixtures exercise inline/streamed storage, ordinary/optional/mapped chu
 
 The selected real UE 5.3 corpus contains 84 static meshes and 141 inline LODs. All LOD 0 oriented material triangles match their loose sources: 106,627 triangles. Every render position belongs to the source; one source has an additional unused position. This is real inline/static evidence. Streamed/optional/mapped storage is fixture evidence; it is not a claim of independent real streamed or skeletal coverage.
 
-This reader does not decode cooked skeletal buffers, cooked morphs, compressed animation, physics blobs, Nanite clusters or other Unreal/platform versions. Those workstreams remain open in [completion criteria](COMPLETION.md).
+This render reader does not decode cooked skeletal buffers, cooked morphs, compressed animation or physics blobs. Dedicated readers cover selected skeletal/animation/physics profiles; optional Nanite binding covers the channels documented above. Other Unreal/platform versions remain unsupported. Those workstreams remain open in [completion criteria](COMPLETION.md).
 
 The separate [cooked skeletal reader](COOKED_SKELETAL.md) now covers the explicit inline skeletal profile in Core/CLI/SDK. It does not extend this StaticMesh serializer to arbitrary other asset classes.

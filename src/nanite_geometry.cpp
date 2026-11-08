@@ -95,6 +95,9 @@ Json metadata(const Cluster &c, std::size_t i) {
             {"vertices", c.vertices},
             {"triangles", c.triangles.size()},
             {"positionPrecision", c.precision},
+            {"normalPrecision", (c.words[7] >> 24) & 15},
+            {"tangentPrecision", (c.words[7] >> 28) & 15},
+            {"colorMode", (c.words[21] >> 26) & 3},
             {"positionStart", c.start},
             {"positionBits", c.position_bits},
             {"flags", c.flags},
@@ -497,6 +500,9 @@ const Cluster &selected(const NaniteGeometry::Impl &i, std::size_t page, std::si
     return i.pages[page].clusters[cluster];
 }
 } // namespace
+std::uint64_t NaniteGeometry::accounted_output_bytes() const {
+    return impl_->accounted;
+}
 std::size_t NaniteGeometry::page_count() const {
     return impl_->pages.size();
 }

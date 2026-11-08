@@ -157,6 +157,9 @@ int run(const std::vector<std::string> &args) {
                "    [--has-vertex-colors 0|1] [--export-index N] [same cooked schema context]\n"
                "  cyuediff zen-skeletal-diff BEFORE ENTRY AFTER ENTRY [same skeletal context]\n"
                "    [--after-has-vertex-colors 0|1] [--lod N] [--after-lod N]\n"
+               "  cyuediff zen-nanite CONTAINER ENTRY --nanite-profile ue5.3-windows [mesh/context flags]\n"
+               "  cyuediff zen-nanite-cluster CONTAINER ENTRY --page N --cluster N [same flags]\n"
+               "  cyuediff zen-nanite-diff BEFORE ENTRY AFTER ENTRY [independent mesh/Nanite/context flags]\n"
                "  cyuediff zen-mesh CONTAINER ENTRY --mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1\n"
                "  cyuediff zen-geometry CONTAINER ENTRY [--lod N] [--export-index N]\n"
                "  cyuediff zen-export-mesh CONTAINER ENTRY --out MESH.obj [--lod N]\n"
@@ -197,6 +200,10 @@ int run(const std::vector<std::string> &args) {
     Json flags = Json::object();
     const std::set<std::string> valued = {"--physics-profile",
                                           "--after-physics-profile",
+                                          "--after-nanite-profile",
+                                          "--nanite-profile",
+                                          "--page",
+                                          "--cluster",
                                           "--mesh-profile",
                                           "--after-mesh-profile",
                                           "--keep-mobile-min-lod",
@@ -332,9 +339,11 @@ int run(const std::vector<std::string> &args) {
     const bool cooked_animation_diff = cooked_animation_frame_diff || cooked_animation_curve_diff;
     const bool cooked_skeletal = command == "zen-skeletal" || command == "zen-skeletal-diff";
     const bool cooked_skeletal_diff = command == "zen-skeletal-diff";
-    const bool cooked_mesh = command == "zen-mesh" || command == "zen-geometry" ||
+    const bool cooked_nanite =
+        command == "zen-nanite" || command == "zen-nanite-cluster" || command == "zen-nanite-diff";
+    const bool cooked_mesh = cooked_nanite || command == "zen-mesh" || command == "zen-geometry" ||
                              command == "zen-export-mesh" || command == "zen-mesh-diff";
-    const bool cooked_mesh_diff = command == "zen-mesh-diff";
+    const bool cooked_mesh_diff = command == "zen-mesh-diff" || command == "zen-nanite-diff";
     const bool cooked_pixels = command == "zen-texture" || command == "zen-preview" || command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_pixel_diff = command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff ||
@@ -451,10 +460,13 @@ int run(const std::vector<std::string> &args) {
                    key == "--after-keep-mobile-min-lod" || key == "--after-export-index" || key == "--lod" ||
                    key == "--after-lod")) &&
                 !(cooked_mesh && (key == "--mesh-profile" || key == "--keep-mobile-min-lod")) &&
-                !(cooked_mesh && command != "zen-mesh" && key == "--lod") &&
+                !((cooked_nanite || command == "zen-mesh") && key == "--nanite-profile") &&
+                !(command == "zen-nanite-diff" && key == "--after-nanite-profile") &&
+                !(command == "zen-nanite-cluster" && (key == "--page" || key == "--cluster")) &&
+                !(cooked_mesh && !cooked_nanite && command != "zen-mesh" && key == "--lod") &&
                 !(cooked_mesh_diff &&
                   (key == "--after-mesh-profile" || key == "--after-keep-mobile-min-lod" ||
-                   key == "--after-lod" || key == "--after-export-index")) &&
+                   (key == "--after-lod" && !cooked_nanite) || key == "--after-export-index")) &&
                 !(cooked_pixels && command != "zen-texture" && (key == "--mip" || key == "--platform")) &&
                 !(command == "zen-preview" && key == "--exposure") &&
                 !(cooked_pixel_diff && (key == "--threshold" || key == "--heatmap" ||
@@ -475,6 +487,10 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments", key + " requires a cooked animation command");
         if (key == "--physics-profile" || key == "--after-physics-profile")
             throw Error("arguments", key + " requires a cooked physics command");
+        if ((key == "--nanite-profile" || key == "--after-nanite-profile" || key == "--page" ||
+             key == "--cluster") &&
+            !cooked_mesh)
+            throw Error("arguments", key + " requires a Nanite inspection command");
         if (key == "--mesh-profile" || key == "--after-mesh-profile" || key == "--keep-mobile-min-lod" ||
             key == "--after-keep-mobile-min-lod" || key == "--after-lod")
             throw Error("arguments", key + " requires a cooked mesh command");
@@ -902,7 +918,14 @@ int run(const std::vector<std::string> &args) {
                 return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
             };
             auto opts = mesh_options("--mesh-profile", "--keep-mobile-min-lod", {});
-            opts.geometry = command != "zen-mesh";
+            opts.geometry = command != "zen-mesh" && !cooked_nanite;
+            if (flags.contains("--nanite-profile")) {
+                if (flags.at("--nanite-profile") != "ue5.3-windows")
+                    throw Error("arguments", "Supported Nanite profile: ue5.3-windows");
+                opts.nanite.profile = NaniteProfile::unreal_5_3_windows;
+            }
+            if (cooked_nanite && opts.nanite.profile == NaniteProfile::unspecified)
+                throw Error("arguments", "Nanite commands require --nanite-profile ue5.3-windows");
             auto before = read_zen_static_mesh(input, select(input, positional[1]), before_options,
                                                read_options, opts, selected_export("--export-index"));
             auto geometry = [&](const CookedStaticMesh &mesh, std::size_t lod) -> const MeshGeometry & {
@@ -912,7 +935,54 @@ int run(const std::vector<std::string> &args) {
                 return *mesh.lods[lod].geometry;
             };
             const auto lod = integer_option("--lod", 1'000'000);
-            if (command == "zen-mesh")
+            if (command == "zen-nanite")
+                output = before.nanite->catalog();
+            else if (command == "zen-nanite-cluster") {
+                const auto model = before.nanite->geometry();
+                if (!model)
+                    throw Error(before.nanite->geometry_known() ? "cooked-nanite-empty"
+                                                                : "cooked-nanite-unavailable",
+                                "Nanite cluster geometry is unavailable or empty");
+                const auto page = integer_option("--page", 16383), cluster = integer_option("--cluster", 255);
+                const auto metadata = model->cluster_metadata(page, cluster);
+                output = {{"metadata", metadata},
+                          {"positions", Json::array()},
+                          {"quantizedPositions", Json::array()},
+                          {"triangles", Json::array()},
+                          {"naniteContext", before.nanite->information()}};
+                for (std::size_t i = 0; i < metadata.at("vertices").get<std::size_t>(); ++i) {
+                    output["positions"].push_back(model->position(page, cluster, i));
+                    output["quantizedPositions"].push_back(model->quantized_position(page, cluster, i));
+                }
+                for (std::size_t i = 0; i < metadata.at("triangles").get<std::size_t>(); ++i) {
+                    const auto triangle = model->triangle(page, cluster, i);
+                    output["triangles"].push_back(
+                        {{"vertices", triangle.vertices}, {"material", triangle.material}});
+                }
+            } else if (command == "zen-nanite-diff") {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects"))
+                    after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema"))
+                    after_options.schema_context = schema_context(path_option("--after-schema"));
+                auto after_mesh_options =
+                    mesh_options("--after-mesh-profile", "--after-keep-mobile-min-lod", opts);
+                if (flags.contains("--after-nanite-profile") &&
+                    flags.at("--after-nanite-profile") != "ue5.3-windows")
+                    throw Error("arguments", "Unsupported after Nanite profile");
+                auto other = open(fs::u8path(positional[2]));
+                const auto after =
+                    read_zen_static_mesh(other, select(other, positional[3]), after_options, read_options,
+                                         after_mesh_options, selected_export("--after-export-index"));
+                const auto result = compare_nanite_surfaces(*before.nanite, *after.nanite);
+                output = result.to_json();
+                output["beforeContext"] = before.nanite->information();
+                output["afterContext"] = after.nanite->information();
+                exit_code = !output.at("complete").get<bool>()   ? 2
+                            : output.at("status") == "identical" ? 0
+                                                                 : 1;
+            } else if (command == "zen-mesh")
                 output = before.to_json();
             else if (command == "zen-geometry") {
                 output = geometry(before, lod).to_json();

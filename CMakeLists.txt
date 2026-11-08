@@ -34,7 +34,7 @@ add_library(cyuediff_core STATIC
     src/compressed_curves.cpp src/cooked_animation.cpp src/animation_compression.cpp src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
-target_sources(cyuediff_core PRIVATE src/nanite_geometry.cpp $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
+target_sources(cyuediff_core PRIVATE src/nanite_surface_diff.cpp src/cooked_nanite.cpp src/nanite_geometry.cpp $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
 target_compile_features(cyuediff_core PUBLIC cxx_std_17)
 target_include_directories(cyuediff_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -122,6 +122,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_cooked_nanite_tests tests/cooked_nanite_tests.cpp)
+    target_link_libraries(cyuediff_cooked_nanite_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME cooked_nanite COMMAND cyuediff_cooked_nanite_tests)
     add_executable(cyuediff_nanite_geometry_tests tests/nanite_geometry_tests.cpp)
     target_link_libraries(cyuediff_nanite_geometry_tests PRIVATE CyUEDiff::Core)
     target_compile_definitions(cyuediff_nanite_geometry_tests PRIVATE CYUEDIFF_NANITE_REFERENCE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/nanite_strips_ue53_reference.json")
@@ -488,6 +491,9 @@ if(BUILD_TESTING)
             add_test(NAME cooked_skeletal_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_skeletal_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>")
+            add_test(NAME cooked_nanite_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_nanite_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_nanite_tests>")
             add_test(NAME cooked_mesh_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_mesh_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_mesh_tests>")
@@ -968,3 +974,5 @@ install(FILES scripts/validate_cooked_curves.py DESTINATION ${CMAKE_INSTALL_DATA
 
 install(DIRECTORY examples/nanite_geometry_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(FILES scripts/validate_nanite_geometry.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
+
+install(DIRECTORY examples/cooked_nanite_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)

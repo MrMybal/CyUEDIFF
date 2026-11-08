@@ -28,6 +28,7 @@ class NaniteGeometry {
   public:
     struct Impl;
     std::size_t page_count() const;
+    std::uint64_t accounted_output_bytes() const;
     std::size_t cluster_count(std::size_t page) const;
     Json catalog(const OperationControl & = {}) const;
     Json cluster_metadata(std::size_t page, std::size_t cluster, const OperationControl & = {}) const;

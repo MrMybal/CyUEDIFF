@@ -39,7 +39,8 @@ def main():
     args = parser.parse_args()
     manifest_path = absolute(str(args.manifest.resolve()))
     manifest = load(manifest_path)
-    if manifest['schema'] != 'cyuediff.nanite-geometry-validation/1' or not 1 <= len(manifest['cases']) <= 100:
+    cooked = manifest['schema'] == 'cyuediff.cooked-nanite-validation/1'
+    if manifest['schema'] not in ('cyuediff.nanite-geometry-validation/1', 'cyuediff.cooked-nanite-validation/1') or not 1 <= len(manifest['cases']) <= 100:
         raise ValueError('Select 1..100 explicit page-set validation cases')
     protected = {manifest_path: digest(manifest_path)}
     for row in manifest.get('protectedSources', []):
@@ -48,7 +49,10 @@ def main():
             raise ValueError('Protected source changed before validation')
         protected[p] = row['sha256']
     for row in manifest['cases']:
-        for field in ('pages', 'triangleReference', 'sourceReference'):
+        fields = ('pages', 'triangleReference', 'sourceReference') + (('container', 'global', 'context', 'packageReference') if cooked else ())
+        if row.get('codec'):
+            fields += ('codec',)
+        for field in fields:
             p = absolute(row[field])
             protected[p] = digest(p)
         for page in load(absolute(row['pages']))['pages']:
@@ -62,11 +66,31 @@ def main():
             raise ValueError('Require matching actual source MeshDescription API reference')
         expected = load(absolute(row['triangleReference']))
         target = args.output/f'{index}-actual.json'
-        process = subprocess.run([str(args.consumer.resolve()), row['pages'], str(target)], capture_output=True, timeout=60)
+        if cooked:
+            if type(row['mobileMinLod']) is not bool:
+                raise ValueError('Explicit producer mobile LOD boolean required')
+            command = [str(args.consumer.resolve()), row['container'], row['entry'], row['global'], row['context'], '1' if row['mobileMinLod'] else '0', str(target)]
+            if row.get('codec'):
+                command.append(row['codec'])
+        else:
+            command = [str(args.consumer.resolve()), row['pages'], str(target)]
+        process = subprocess.run(command, capture_output=True, timeout=60)
         if process.returncode:
             raise ValueError(process.stderr.decode('utf-8', 'replace'))
         actual = load(target)
-        catalog = actual['catalog']
+        if cooked:
+            info = actual['nanite']
+            page_manifest = load(absolute(row['pages']))
+            if info['status'] != 'decoded' or not info['geometryKnown'] or info['source']['object'] != source['object'] or info['source']['packageSha256'] != digest(absolute(row['packageReference'])):
+                raise ValueError('Whole-package identity or native coverage differs')
+            if info['rootPages'] != page_manifest['rootPages'] or len(info['pages']) != len(page_manifest['pages']):
+                raise ValueError('Whole-package root/page declarations differ')
+            for native, expected_page in zip(info['pages'], page_manifest['pages']):
+                if native['sha256'] != digest(absolute(expected_page['file'])) or native['flags'] != expected_page['flags'] or native['dependencies'] != expected_page['dependencies']:
+                    raise ValueError('Whole cooked page bytes/identities/dependencies differ')
+            catalog = info['geometry']
+        else:
+            catalog = actual['catalog']
         if len(actual['pages']) != len(expected) or catalog['clusters'] != source['naniteClusters'] or len(actual['pages']) != source['nanitePages']:
             raise ValueError('Actual source resource/page cardinality differs')
         source_vertices = {v['id']: tuple(v['quantizedPosition']) for v in source['vertices']}
@@ -100,7 +124,7 @@ def main():
                         'actualEngineTriangles': triangles, 'sourceOrientedTriangles': sum(leaves.values())})
     if any(digest(p) != h for p, h in protected.items()):
         raise ValueError('Protected validation input changed')
-    summary = {'schema': 'cyuediff.nanite-geometry-validation-result/1', 'cases': results,
+    summary = {'schema': 'cyuediff.cooked-nanite-validation-result/1' if cooked else 'cyuediff.nanite-geometry-validation-result/1', 'cases': results,
                'actualEngineTriangles': sum(r['actualEngineTriangles'] for r in results),
                'sourceOrientedTriangles': sum(r['sourceOrientedTriangles'] for r in results),
                'positionCoordinates': sum(r['positionCoordinates'] for r in results),

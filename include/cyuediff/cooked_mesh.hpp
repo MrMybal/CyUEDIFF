@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/zen.hpp>
+#include <cyuediff/cooked_nanite.hpp>
 #include <optional>
 namespace cyuediff {
 enum class CookedMeshProfile { unspecified, unreal_5_3_windows };
@@ -12,6 +13,7 @@ struct CookedMeshOptions {
     std::uint32_t max_lods = 8, max_sections = 4096, max_vertices = 1'000'000;
     std::uint32_t max_indices = 12'000'000, max_triangles = 4'000'000, max_uv_channels = 8;
     OperationControl control;
+    CookedNaniteOptions nanite;
 };
 struct CookedMeshSection {
     std::uint32_t material = 0, first_index = 0, triangles = 0, min_vertex = 0, max_vertex = 0;
@@ -34,11 +36,13 @@ struct CookedStaticMesh {
     std::string tail_sha256;
     std::size_t export_index = 0;
     std::vector<CookedMeshLod> lods;
+    std::shared_ptr<const CookedNaniteResource> nanite;
     Json native_prefix = Json::object(), materials = Json::array();
     Json to_json(bool include_geometry = false) const;
 };
 // Reads the supported render-LOD windows from an explicit decoded property boundary.
-// Later Nanite/distance-field/object native data remains an identified opaque tail.
+// Explicit options.nanite additionally reads the native Nanite resource and supported page geometry.
+// Later distance-field/object native data remains an identified opaque tail.
 // Whole used external chunks are integrity-verified; missing LOD payloads are explicit.
 CookedStaticMesh read_zen_static_mesh(const Container &, std::size_t package_entry, const ZenReadOptions &,
                                       const ContainerReadOptions &, const CookedMeshOptions &,
