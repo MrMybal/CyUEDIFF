@@ -72,3 +72,7 @@ La commande `hdr-diff` compare les échantillons flottants avant la conversion d
 ## Explicit local virtualized payloads
 
 Version 0.179 adds a local filesystem store for virtualized editor source payloads, including mandatory full raw BLAKE3 verification and independent before/after roots in CLI/Desktop. See [the backend contract and limits](VIRTUALIZED.md). Local embedded reads can opt into BLAKE3 verification; virtualized reads always require it.
+
+## Explicit GPU pixel API
+
+The reusable Core can also decode explicitly identified raw/BC1–BC7 platform mip bytes, including unsigned BC6H and floating RGBA. See [GPU_TEXTURES.md](GPU_TEXTURES.md) for exact footprints, stored-channel semantics and independent platform validation. Native cooked payload resolution remains a separate reader.

@@ -885,3 +885,9 @@ The real CloudWeatherTexture property stream now exposes its stored Downscale pl
 English/French native captures show the selected platform value and native coverage. SDK, raw-reference and corpus evidence remain under build-goal/sdk-per-platform*, per-platform-ui, per-platform-real-validation and uht53/per-platform-reference.json. These results concern stored properties, while cooked texture pixels and other native asset bodies remain separate work.
 
 Gitleaks 8.30.1 reports zero findings in 590 publishable files and local refs. git diff --check passes. This milestone remains local and does not publish a binary or release.
+
+## Explicit GPU pixel decoder — post-0.181 development
+
+The Core-only pixel API covers 15 explicit raw/BC formats with exact mip footprints, bounded allocation, finite HDR samples and inner-row cancellation. Its original suite passes 2,078 checks, including independently specified endpoints/selectors, a BC2 alpha ramp, a complete BC7 mode-6 block, partial edge blocks and every truncated input window. A separate Windows-only test renders 512 deterministic random blocks per BC format through D3D11 WARP and compares 229,376 channels. The maximum observed UNORM difference is 2/255; BC6H samples match exactly in this selected run. The declared interpolation tolerances and channel semantics are recorded in GPU_TEXTURES.md.
+
+An installed Core-only consumer compiles and decodes an independent BC1 block with no UI, Git, Unreal or graphics dependency. The WARP dependency is test-only. Pinned, unmodified bcdec 0.985 is distributed under its MIT option, with upstream commit, blob/file hashes and license installed alongside existing notices. No host SDK or Unreal source is copied. Evidence is under ignored build-goal/gpu-* and sdk-gpu. Cooked native payload resolution remains separate work.

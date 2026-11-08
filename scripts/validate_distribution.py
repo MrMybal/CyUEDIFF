@@ -34,7 +34,7 @@ with ZipFile(archive) as package:
  if len(parents)!=1:raise RuntimeError('Expected one package root')
  package.extractall(target)
 prefix=target/next(iter(parents))
-for name in ('LICENSE','THIRD_PARTY_NOTICES.md','licenses/nlohmann/LICENSE.MIT','licenses/stb/LICENSE','licenses/blake3/LICENSE_CC0','licenses/blake3/LICENSE_A2','licenses/blake3/UPSTREAM.json'):
+for name in ('LICENSE','THIRD_PARTY_NOTICES.md','licenses/nlohmann/LICENSE.MIT','licenses/stb/LICENSE','licenses/bcdec/LICENSE','licenses/bcdec/UPSTREAM.json','licenses/blake3/LICENSE_CC0','licenses/blake3/LICENSE_A2','licenses/blake3/UPSTREAM.json'):
  if not (prefix/'share/CyUEDiff'/name).is_file():raise RuntimeError('Missing notice: '+name)
 for file in prefix.rglob('*.cmake'):
  if str(root).replace('\\','/') in file.read_text(encoding='utf-8').replace('\\','/'):raise RuntimeError('SDK exports a source checkout path')

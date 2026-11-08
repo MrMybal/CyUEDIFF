@@ -31,7 +31,7 @@ else()
     target_compile_options(cyuediff_blake3 PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3_prefix.h)
 endif()
 add_library(cyuediff_core STATIC
-    src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
+    src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
 target_sources(cyuediff_core PRIVATE $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
@@ -264,6 +264,14 @@ if(BUILD_TESTING)
     add_executable(cyuediff_reflection_tests tests/reflection_tests.cpp)
     target_link_libraries(cyuediff_reflection_tests PRIVATE CyUEDiff::Core)
     add_test(NAME reflection_definitions COMMAND cyuediff_reflection_tests)
+    add_executable(cyuediff_gpu_texture_tests tests/gpu_texture_tests.cpp)
+    target_link_libraries(cyuediff_gpu_texture_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME gpu_texture_pixels COMMAND cyuediff_gpu_texture_tests)
+    if(WIN32)
+        add_executable(cyuediff_gpu_reference_tests tests/gpu_reference_tests.cpp)
+        target_link_libraries(cyuediff_gpu_reference_tests PRIVATE CyUEDiff::Core d3d11 d3dcompiler)
+        add_test(NAME gpu_windows_reference COMMAND cyuediff_gpu_reference_tests)
+    endif()
     add_executable(cyuediff_per_platform_tests tests/per_platform_tests.cpp)
     target_link_libraries(cyuediff_per_platform_tests PRIVATE CyUEDiff::Core)
     add_test(NAME native_per_platform_values COMMAND cyuediff_per_platform_tests)
@@ -759,6 +767,7 @@ install(FILES third_party/nlohmann/LICENSE.MIT DESTINATION ${CMAKE_INSTALL_DATAD
 install(FILES third_party/blake3/LICENSE_CC0 third_party/blake3/LICENSE_A2 third_party/blake3/UPSTREAM.json DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/licenses/blake3)
 
 install(FILES third_party/stb/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/licenses/stb)
+install(FILES third_party/bcdec/LICENSE third_party/bcdec/UPSTREAM.json DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/licenses/bcdec)
 
 # Optional locally built codec; never part of the installed Core SDK.
 set(CYUEDIFF_OODLE_SDK_DIR "" CACHE PATH "Host-owned Oodle Data SDK (optional, Windows x64)")
