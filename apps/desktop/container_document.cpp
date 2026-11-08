@@ -229,37 +229,73 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
         std::uint64_t mesh_output = 0;
         for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
             const auto &object = document->zen->exports[i];
-            if (object.class_name != "/Script/Engine.StaticMesh" || (object.flags & 0x30))
+            const bool skeletal = object.class_name == "/Script/Engine.SkeletalMesh";
+            if ((!skeletal && object.class_name != "/Script/Engine.StaticMesh") || (object.flags & 0x30))
                 continue;
             try {
-                CookedMeshOptions native;
-                native.profile = source.mesh_profile;
-                native.keep_mobile_min_lod_setting = source.keep_mobile_min_lod_setting;
-                native.control = control;
-                native.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
-                native.max_output_bytes = 256ull * 1024 * 1024 - mesh_output;
-                auto mesh = read_zen_static_mesh(*document->input, found, zen, read, native, i);
-                if (mesh.package_sha256 != document->zen->sha256)
-                    throw Error("container-integrity",
-                                "Cooked mesh package changed during document preparation");
-                document->meshes.push_back(mesh.to_json());
-                for (std::size_t l = 0; l < mesh.lods.size(); ++l) {
-                    const auto &lod = mesh.lods[l];
-                    if (!lod.geometry) {
-                        document->mesh_diagnostics.push_back(object.path + " LOD " + std::to_string(l) +
-                                                             ": " + lod.unavailable);
-                        continue;
+                auto append = [&](const auto &mesh) {
+                    if (mesh.package_sha256 != document->zen->sha256)
+                        throw Error("container-integrity",
+                                    "Cooked mesh package changed during document preparation");
+                    auto metadata = mesh.to_json();
+                    std::uint64_t bytes = metadata.dump().size() * 6;
+                    std::vector<ContainerMeshPreview> previews;
+                    std::vector<std::string> diagnostics;
+                    for (std::size_t l = 0; l < mesh.lods.size(); ++l) {
+                        control.check();
+                        const auto &lod = mesh.lods[l];
+                        if (!lod.geometry) {
+                            diagnostics.push_back(object.path + " LOD " + std::to_string(l) + ": " +
+                                                  lod.unavailable);
+                            continue;
+                        }
+                        const auto &g = *lod.geometry;
+                        bytes += std::uint64_t(g.vertices.size()) * sizeof(MeshVertex) +
+                                 std::uint64_t(g.instances.size()) * sizeof(MeshInstance) +
+                                 std::uint64_t(g.triangles.size()) * sizeof(MeshTriangle);
+                        for (const auto &v : g.instances)
+                            bytes += v.uvs.size() * sizeof(std::array<float, 2>);
+                        if (g.skin) {
+                            for (const auto &bone : g.skin->bones)
+                                bytes += sizeof(MeshBone) + bone.name.size();
+                            for (const auto &profile : g.skin->profiles) {
+                                bytes += 128 + profile.first.size();
+                                for (const auto &v : profile.second)
+                                    bytes += 128 + v.second.size() * sizeof(MeshInfluence);
+                            }
+                        }
+                        if (bytes > 256ull * 1024 * 1024 - mesh_output)
+                            throw Error("cooked-mesh-limit",
+                                        "Cooked mesh previews exceed document byte budget");
+                        previews.push_back({object.path + " LOD " + std::to_string(l), object.path,
+                                            static_cast<std::uint32_t>(l), lod.geometry});
                     }
-                    auto size = std::uint64_t(lod.geometry->vertices.size()) * sizeof(MeshVertex) +
-                                std::uint64_t(lod.geometry->instances.size()) * sizeof(MeshInstance) +
-                                std::uint64_t(lod.geometry->triangles.size()) * sizeof(MeshTriangle);
-                    for (const auto &instance : lod.geometry->instances)
-                        size += instance.uvs.size() * sizeof(std::array<float, 2>);
-                    if (size > 256ull * 1024 * 1024 - mesh_output)
-                        throw Error("cooked-mesh-limit", "Cooked mesh previews exceed document byte budget");
-                    mesh_output += size;
-                    document->mesh_previews.push_back({object.path + " LOD " + std::to_string(l), object.path,
-                                                       static_cast<std::uint32_t>(l), lod.geometry});
+                    if (bytes > 256ull * 1024 * 1024 - mesh_output)
+                        throw Error("cooked-mesh-limit", "Cooked mesh metadata exceeds document byte budget");
+                    mesh_output += bytes;
+                    document->meshes.push_back(std::move(metadata));
+                    document->mesh_previews.insert(document->mesh_previews.end(), previews.begin(),
+                                                   previews.end());
+                    document->mesh_diagnostics.insert(document->mesh_diagnostics.end(), diagnostics.begin(),
+                                                      diagnostics.end());
+                };
+                if (skeletal) {
+                    CookedSkeletalOptions native;
+                    native.profile = source.skeletal_profile;
+                    native.keep_mobile_min_lod_setting = source.skeletal_mobile_lod;
+                    native.has_vertex_colors = source.skeletal_colors;
+                    native.control = control;
+                    native.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
+                    native.max_output_bytes = 256ull * 1024 * 1024 - mesh_output;
+                    append(read_zen_skeletal_mesh(*document->input, found, zen, read, native, i));
+                } else {
+                    CookedMeshOptions native;
+                    native.profile = source.mesh_profile;
+                    native.keep_mobile_min_lod_setting = source.keep_mobile_min_lod_setting;
+                    native.control = control;
+                    native.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
+                    native.max_output_bytes = 256ull * 1024 * 1024 - mesh_output;
+                    append(read_zen_static_mesh(*document->input, found, zen, read, native, i));
                 }
             } catch (const Error &error) {
                 if (error.code == "cancelled" || error.code == "container-integrity")
@@ -343,6 +379,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
         if (source.compare_payloads || !source.after_script_objects.empty() ||
             source.after_profile != ZenProfile::unspecified || !source.after_schema.empty() ||
             source.after_physics_profile != CookedPhysicsProfile::unspecified ||
+            source.after_skeletal_profile != CookedSkeletalProfile::unspecified ||
+            source.after_skeletal_mobile_lod.has_value() || source.after_skeletal_colors.has_value() ||
             source.after_mesh_profile != CookedMeshProfile::unspecified ||
             source.after_keep_mobile_min_lod_setting.has_value())
             throw Error("desktop-container", "After container options require an after container");
@@ -356,6 +394,9 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     left.after_schema.clear();
     left.after_profile = ZenProfile::unspecified;
     left.after_physics_profile = CookedPhysicsProfile::unspecified;
+    left.after_skeletal_profile = CookedSkeletalProfile::unspecified;
+    left.after_skeletal_mobile_lod.reset();
+    left.after_skeletal_colors.reset();
     left.after_mesh_profile = CookedMeshProfile::unspecified;
     left.after_keep_mobile_min_lod_setting.reset();
     left.compare_payloads = false;
@@ -366,6 +407,9 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     right.schema = source.after_schema;
     right.profile = source.after_profile;
     right.physics_profile = source.after_physics_profile;
+    right.skeletal_profile = source.after_skeletal_profile;
+    right.skeletal_mobile_lod = source.after_skeletal_mobile_lod;
+    right.skeletal_colors = source.after_skeletal_colors;
     right.mesh_profile = source.after_mesh_profile;
     right.keep_mobile_min_lod_setting = source.after_keep_mobile_min_lod_setting;
     auto document = std::make_shared<ContainerDocument>(*load_single(left, codec, control));

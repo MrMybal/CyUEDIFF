@@ -140,8 +140,9 @@ int main() {
         git_pose_settings["pose_after_skeleton"] = "/RigPack/Rig";
         auto git_pose_copy = WorkspaceFile::from_json(git_pose).documents[0].settings;
         check(git_pose_copy.request().git && git_pose_copy.request().animation_pose &&
-              git_pose_copy.pose_before_skeleton == "Content/Rig.uasset" &&
-              git_pose_copy.pose_after_skeleton == "/RigPack/Rig", "Historical binding identities round trip");
+                  git_pose_copy.pose_before_skeleton == "Content/Rig.uasset" &&
+                  git_pose_copy.pose_after_skeleton == "/RigPack/Rig",
+              "Historical binding identities round trip");
         git_pose_settings["source"] = 2;
         rejects([&] { WorkspaceFile::from_json(git_pose); });
         auto layouts_json = value.to_json();
@@ -151,11 +152,13 @@ int main() {
         layout_settings["inherit_after_layouts"] = false;
         const auto layouts_copy = WorkspaceFile::from_json(layouts_json).documents[0].settings;
         check(layouts_copy.request().layouts == "before-layouts.json" &&
-                  layouts_copy.request().after_layouts == "after-layouts.json" && !layouts_copy.request().inherit_after_layouts,
+                  layouts_copy.request().after_layouts == "after-layouts.json" &&
+                  !layouts_copy.request().inherit_after_layouts,
               "Independent layout contexts round trip");
         auto inherited = layouts_copy;
         inherited.inherit_after_layouts = true;
-        check(inherited.request().after_layouts.empty(), "Inactive after layout path is retained without selection");
+        check(inherited.request().after_layouts.empty(),
+              "Inactive after layout path is retained without selection");
         auto stores = value.to_json();
         auto &store_settings = stores["documents"][0]["settings"];
         store_settings["payload_root"] = "Before/Payloads";
@@ -164,7 +167,8 @@ int main() {
         const auto stores_copy = WorkspaceFile::from_json(stores).documents[0].settings;
         check(stores_copy.request().payload_root == "Before/Payloads" &&
                   stores_copy.request().after_payload_root == "After/Payloads" &&
-                  !stores_copy.request().inherit_after_payload_root, "Independent payload stores persist");
+                  !stores_copy.request().inherit_after_payload_root,
+              "Independent payload stores persist");
         auto mesh_state = value.to_json();
         auto &mesh_settings = mesh_state["documents"][2]["settings"];
         mesh_settings["mesh_profile"] = 1;
@@ -194,17 +198,57 @@ int main() {
         auto bad_physics = physics_state;
         bad_physics["documents"][2]["settings"]["physics_profile"] = 2;
         rejects([&] { WorkspaceFile::from_json(bad_physics); });
+        auto skeletal_state = value.to_json();
+        auto &skeletal_settings = skeletal_state["documents"][2]["settings"];
+        skeletal_settings["skeletal_profile"] = 1;
+        skeletal_settings["after_skeletal_profile"] = 1;
+        skeletal_settings["skeletal_mobile_lod"] = 1;
+        skeletal_settings["after_skeletal_mobile_lod"] = 2;
+        skeletal_settings["skeletal_colors"] = 2;
+        skeletal_settings["after_skeletal_colors"] = 1;
+        auto skeletal_copy =
+            WorkspaceFile::from_json(skeletal_state).documents[2].settings.request().container;
+        check(skeletal_copy && skeletal_copy->skeletal_profile == CookedSkeletalProfile::unreal_5_3_windows &&
+                  skeletal_copy->after_skeletal_profile == CookedSkeletalProfile::unreal_5_3_windows &&
+                  skeletal_copy->skeletal_mobile_lod == false &&
+                  skeletal_copy->after_skeletal_mobile_lod == true &&
+                  skeletal_copy->skeletal_colors == true && skeletal_copy->after_skeletal_colors == false,
+              "Independent skeletal producer contexts persist");
+        for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                                "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors"}) {
+            auto invalid = skeletal_state;
+            invalid["documents"][2]["settings"][key] = 3;
+            rejects([&] { WorkspaceFile::from_json(invalid); });
+            invalid = skeletal_state;
+            invalid["documents"][2]["settings"].erase(key);
+            rejects([&] { WorkspaceFile::from_json(invalid); });
+        }
+        auto legacy_eight = value.to_json();
+        legacy_eight["schema"] = "cyuediff.workspace/8";
+        for (auto &d : legacy_eight["documents"])
+            for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                                    "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors"})
+                d["settings"].erase(key);
+        auto migrated_eight =
+            WorkspaceFile::from_json(legacy_eight).documents[2].settings.request().container;
+        check(migrated_eight && migrated_eight->skeletal_profile == CookedSkeletalProfile::unspecified &&
+                  !migrated_eight->skeletal_mobile_lod && !migrated_eight->skeletal_colors,
+              "Version eight does not invent a skeletal reader or defaults");
         auto legacy_seven = value.to_json();
         legacy_seven["schema"] = "cyuediff.workspace/7";
         for (auto &d : legacy_seven["documents"])
-            for (const auto *key : {"physics_profile", "after_physics_profile"})
+            for (const auto *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                                    "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors",
+                                    "physics_profile", "after_physics_profile"})
                 d["settings"].erase(key);
         check(WorkspaceFile::from_json(legacy_seven).documents[2].settings.physics_profile == 0,
               "Version seven does not invent native physics context");
         auto legacy_six = value.to_json();
         legacy_six["schema"] = "cyuediff.workspace/6";
         for (auto &d : legacy_six["documents"])
-            for (const auto *key : {"physics_profile", "after_physics_profile", "mesh_profile",
+            for (const auto *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                                    "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors",
+                                    "physics_profile", "after_physics_profile", "mesh_profile",
                                     "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod"})
                 d["settings"].erase(key);
         check(WorkspaceFile::from_json(legacy_six).documents[2].settings.mesh_profile == 0,
@@ -212,7 +256,9 @@ int main() {
         auto legacy_five = value.to_json();
         legacy_five["schema"] = "cyuediff.workspace/5";
         for (auto &d : legacy_five["documents"])
-            for (const char *key : {"physics_profile", "after_physics_profile", "mesh_profile",
+            for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                                    "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors",
+                                    "physics_profile", "after_physics_profile", "mesh_profile",
                                     "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod",
                                     "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
@@ -221,20 +267,24 @@ int main() {
         auto legacy_four = value.to_json();
         legacy_four["schema"] = "cyuediff.workspace/4";
         for (auto &d : legacy_four["documents"])
-            for (const char *key : {"physics_profile", "after_physics_profile", "mesh_profile",
-                                    "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod",
-                                    "layouts", "after_layouts", "inherit_after_layouts", "payload_root",
-                                    "after_payload_root", "inherit_after_payload_root"})
+            for (const char *key :
+                 {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                  "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors", "physics_profile",
+                  "after_physics_profile", "mesh_profile", "after_mesh_profile", "mesh_mobile_lod",
+                  "after_mesh_mobile_lod", "layouts", "after_layouts", "inherit_after_layouts",
+                  "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
         const auto old_copy = WorkspaceFile::from_json(legacy_four).documents[0].settings;
         check(old_copy.layouts.empty() && old_copy.after_layouts.empty() && old_copy.inherit_after_layouts,
               "Actual version four workspaces retain default readers");
         auto legacy_three = pose_json;
         for (auto &d : legacy_three["documents"])
-            for (const char *key : {"physics_profile", "after_physics_profile", "mesh_profile",
-                                    "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod",
-                                    "layouts", "after_layouts", "inherit_after_layouts", "payload_root",
-                                    "after_payload_root", "inherit_after_payload_root"})
+            for (const char *key :
+                 {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                  "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors", "physics_profile",
+                  "after_physics_profile", "mesh_profile", "after_mesh_profile", "mesh_mobile_lod",
+                  "after_mesh_mobile_lod", "layouts", "after_layouts", "inherit_after_layouts",
+                  "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
         legacy_three["schema"] = "cyuediff.workspace/3";
         for (auto &d : legacy_three["documents"])
@@ -245,7 +295,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/8",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/9",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -258,13 +308,15 @@ int main() {
         pose_settings.pose_enabled = false;
         auto version_two = value.to_json();
         for (auto &d : version_two["documents"])
-            for (const char *key : {"physics_profile", "after_physics_profile", "mesh_profile",
-                                    "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod",
-                                    "layouts", "after_layouts", "inherit_after_layouts", "payload_root",
-                                    "after_payload_root", "inherit_after_payload_root"})
+            for (const char *key :
+                 {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                  "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors", "physics_profile",
+                  "after_physics_profile", "mesh_profile", "after_mesh_profile", "mesh_mobile_lod",
+                  "after_mesh_mobile_lod", "layouts", "after_layouts", "inherit_after_layouts",
+                  "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/8",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/9",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -276,10 +328,12 @@ int main() {
         rejects([&] { WorkspaceFile::from_json(bad_layout); });
         auto legacy = value.to_json();
         for (auto &d : legacy["documents"])
-            for (const char *key : {"physics_profile", "after_physics_profile", "mesh_profile",
-                                    "after_mesh_profile", "mesh_mobile_lod", "after_mesh_mobile_lod",
-                                    "layouts", "after_layouts", "inherit_after_layouts", "payload_root",
-                                    "after_payload_root", "inherit_after_payload_root"})
+            for (const char *key :
+                 {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                  "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors", "physics_profile",
+                  "after_physics_profile", "mesh_profile", "after_mesh_profile", "mesh_mobile_lod",
+                  "after_mesh_mobile_lod", "layouts", "after_layouts", "inherit_after_layouts",
+                  "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
         legacy["schema"] = "cyuediff.workspace/1";
         for (auto &d : legacy["documents"])
@@ -287,7 +341,7 @@ int main() {
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/8",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/9",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

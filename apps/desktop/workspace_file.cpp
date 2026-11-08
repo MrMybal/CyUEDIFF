@@ -134,6 +134,12 @@ Json WorkspaceFile::to_json() const {
         s["source"] = d.settings.source;
         s["cooked_profile"] = d.settings.cooked_profile;
         s["after_cooked_profile"] = d.settings.after_cooked_profile;
+        s["skeletal_profile"] = d.settings.skeletal_profile;
+        s["after_skeletal_profile"] = d.settings.after_skeletal_profile;
+        s["skeletal_mobile_lod"] = d.settings.skeletal_mobile_lod;
+        s["after_skeletal_mobile_lod"] = d.settings.after_skeletal_mobile_lod;
+        s["skeletal_colors"] = d.settings.skeletal_colors;
+        s["after_skeletal_colors"] = d.settings.after_skeletal_colors;
         s["physics_profile"] = d.settings.physics_profile;
         s["after_physics_profile"] = d.settings.after_physics_profile;
         s["mesh_profile"] = d.settings.mesh_profile;
@@ -146,7 +152,7 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/8"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/9"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
@@ -155,7 +161,8 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                 (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
                  j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
                  (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
-                  (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8"))) &&
+                  (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
+                   j["schema"] == "cyuediff.workspace/9"))) &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];
@@ -182,7 +189,8 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        const bool physics_extension = j["schema"] == "cyuediff.workspace/8";
+        const bool skeletal_extension = j["schema"] == "cyuediff.workspace/9";
+        const bool physics_extension = j["schema"] == "cyuediff.workspace/8" || skeletal_extension;
         saved.container_tab = number(d["containerTab"], -1, physics_extension ? 8 : 7);
         const auto &s = d["settings"];
         const bool mesh_extension = j["schema"] == "cyuediff.workspace/7" || physics_extension;
@@ -191,11 +199,12 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         const auto old_fields = std::size(strings) + std::size(flags) + 3 +
                                 (layout_extension ? std::size(layout_strings) + 1 : 0) +
                                 (payload_extension ? std::size(payload_strings) + 1 : 0) +
-                                (mesh_extension ? 4 : 0) + (physics_extension ? 2 : 0);
+                                (mesh_extension ? 4 : 0) + (physics_extension ? 2 : 0) +
+                                (skeletal_extension ? 6 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
-        require(s.is_object() &&
-                    (pose_extension || (j["schema"] != "cyuediff.workspace/4" && !layout_extension && s.size() == old_fields)),
+        require(s.is_object() && (pose_extension || (j["schema"] != "cyuediff.workspace/4" &&
+                                                     !layout_extension && s.size() == old_fields)),
                 "Unexpected workspace settings");
         if (payload_extension) {
             for (const auto &field : payload_strings) {
@@ -228,6 +237,17 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         saved.settings.source = number(s["source"], 0, 2);
         saved.settings.cooked_profile = number(s["cooked_profile"], 0, 2);
         saved.settings.after_cooked_profile = number(s["after_cooked_profile"], 0, 2);
+        if (skeletal_extension)
+            for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
+                                    "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors"})
+                require(s.contains(key), "Missing cooked skeletal setting");
+        saved.settings.skeletal_profile = number(s.value("skeletal_profile", Json(0)), 0, 1);
+        saved.settings.after_skeletal_profile = number(s.value("after_skeletal_profile", Json(0)), 0, 1);
+        saved.settings.skeletal_mobile_lod = number(s.value("skeletal_mobile_lod", Json(0)), 0, 2);
+        saved.settings.after_skeletal_mobile_lod =
+            number(s.value("after_skeletal_mobile_lod", Json(0)), 0, 2);
+        saved.settings.skeletal_colors = number(s.value("skeletal_colors", Json(0)), 0, 2);
+        saved.settings.after_skeletal_colors = number(s.value("after_skeletal_colors", Json(0)), 0, 2);
         if (physics_extension)
             for (const auto *key : {"physics_profile", "after_physics_profile"})
                 require(s.contains(key), "Missing cooked physics setting");

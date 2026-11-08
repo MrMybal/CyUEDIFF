@@ -45,6 +45,10 @@ int main(int argc, char **argv) {
             std::memcpy(changed.storage.package.data.data() + changed.positions + 12, &x, 4);
             texture_container(target / "changed", changed.storage);
             texture_container(target / "corrupt", f.storage, 2, true);
+            auto skin_changed = f;
+            skin_changed.storage.package.data[skin_changed.weights + 6] = 129;
+            skin_changed.storage.package.data[skin_changed.weights + 7] = 126;
+            texture_container(target / "skin-changed", skin_changed.storage);
             auto scripts = skeletal_scripts();
             scripts.save(target / "global.ucas");
             zen_toc(scripts, 5).save(target / "global.utoc");

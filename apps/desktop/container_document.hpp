@@ -2,6 +2,7 @@
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/cooked_texture.hpp>
 #include <cyuediff/cooked_mesh.hpp>
+#include <cyuediff/cooked_skeletal.hpp>
 #include <cyuediff/cooked_physics.hpp>
 #include <cyuediff/collision_wireframe.hpp>
 #include <optional>
@@ -17,6 +18,10 @@ struct ContainerSource {
     std::optional<bool> keep_mobile_min_lod_setting, after_keep_mobile_min_lod_setting;
     CookedPhysicsProfile physics_profile = CookedPhysicsProfile::unspecified,
                          after_physics_profile = CookedPhysicsProfile::unspecified;
+    CookedSkeletalProfile skeletal_profile = CookedSkeletalProfile::unspecified,
+                          after_skeletal_profile = CookedSkeletalProfile::unspecified;
+    std::optional<bool> skeletal_mobile_lod, after_skeletal_mobile_lod;
+    std::optional<bool> skeletal_colors, after_skeletal_colors;
     bool compare_payloads = false;
     std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;

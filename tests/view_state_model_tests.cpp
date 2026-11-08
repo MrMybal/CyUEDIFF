@@ -56,6 +56,7 @@ int main() {
             {"asset", asset},
             {"container",
              {{"filter", "Player"}, {"object", nullptr}, {"member", "0001"}, {"values", property}}}};
+        document["container"]["meshSkin"]=true;document["container"]["meshSkinView"]={{"selected","vertex/39999"},{"filter","Root"},{"changedOnly",false},{"properties",property}};
         view_state::validate(document);
         ++checks;
         view_state::validate({{"inspectors",
@@ -71,6 +72,7 @@ int main() {
         rejects({{"inspectors", {{"Graph", {{"properties", {{"changedOnly", 1}}}}}}}}, "graphs");
         rejects({{"parameterFilters", {{"MI", {{"filter", 1}}}}}}, "graphs");
         rejects({{"changedOnly", 1}}, "mesh");
+        rejects({{"meshSkin",1}},"container");rejects({{"meshSkinView",{{"selected",17}}}},"container");
         rejects({{"codec", "x.dll"}}, "document");
         rejects({{"selected", 5}}, "asset");
         rejects({{"changedOnly", 1}}, "property");

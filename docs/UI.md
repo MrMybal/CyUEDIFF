@@ -84,3 +84,10 @@ Independent hosts call `PropertyView::register_translations()` once. `set_filter
 ## View layout state - 0.42-0.43
 
 `view_state()` / `restore_view_state(Json)` also include supported `layout` objects: asset and cooked object splits, property preview fractions, single/comparison property and material columns, member columns and graph/container diagnostics. Bind data first and restore outside drawing. Column identities are stable across English/French; proportions adapt to the content area and do not serialize pixel coordinates. A restore replaces the live table's previous resize state. See [workspace layout contracts](WORKSPACES.md) for fields, validation and the independent desktop sidebar state. No reader, codec, resource upload or filesystem access runs while drawing layout controls.
+
+
+## Focused mesh skin inspection
+
+`MeshSkinView` in the source-built `CyUEDiff::UI` target accepts immutable `MeshSkin` pointers. It supplies named bone/pose and per-render-vertex raw weight inspection, semantic before/after classification, searchable stored values, changed-entry navigation and focused typed details. Its clipped list retains numeric vertex ordering and scrolls a restored selection into view; it does not flatten the entire skin into one limited property table. EN/FR labels and all five themes are exercised.
+
+Bind snapshots with `set_skins(before, after, comparing)` outside `draw()`. An unavailable peer should be an inspection (`comparing = false`, one supplied side); a known absent skin can retain true addition/removal semantics with `comparing = true`. The view does not infer missing weights, normalize weights, evaluate poses or skin vertices. State uses the existing data-only inspection contract: identity, filter, changed-only mode and focused property state. Container review retains it under `meshSkinView`, with the `meshSkin` mode flag and independent skeletal producer settings in workspace 9.

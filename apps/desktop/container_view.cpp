@@ -25,9 +25,23 @@ cyui::Tone state_tone(const std::string &state) {
 }
 } // namespace
 void ContainerView::register_translations() {
+    MeshSkinView::register_translations();
     PropertyView::register_translations();
     cyui::registerTranslations(
-        "fr", {{"Cooked meshes", "Meshes cooked"},
+        "fr", {{"Peer mesh unavailable; changes cannot be classified.",
+                "Mesh opposé indisponible ; les changements ne peuvent pas être classés."},
+               {"cooked-skeletal-lod","Lecture des LOD squelettiques cooked"},
+               {"cooked-skeletal-vertices","Lecture des sommets squelettiques"},
+               {"cooked-skeletal-weights","Lecture des poids squelettiques"},
+               {"Cooked skeletal settings", "Réglages squelettiques cooked"},
+               {"Before skeletal", "Squelettique avant"},
+               {"After skeletal", "Squelettique après"},
+               {"Vertex colors", "Couleurs des sommets"},
+               {"After vertex colors", "Couleurs des sommets après"},
+               {"Use the skeletal producer mobile-LOD setting; omitted colors need an explicit value.",
+                "Utilisez le réglage de LOD mobile du producteur squelettique ; les couleurs omises "
+                "nécessitent une valeur explicite."},
+               {"Cooked meshes", "Meshes cooked"},
                {"Native physics", "Physique native"},
                {"Cooked physics settings", "Réglages de physique cooked"},
                {"Before physics", "Physique avant"},
@@ -52,8 +66,7 @@ void ContainerView::register_translations() {
                {"On", "Activé"},
                {"Use the producer r.StaticMesh.KeepMobileMinLODSettingOnDesktop value.",
                 "Utilisez la valeur r.StaticMesh.KeepMobileMinLODSettingOnDesktop du producteur."},
-               {"Cooked render buffers; later Nanite and collision data remains opaque.",
-                "Buffers de rendu cooked ; les données Nanite et de collision suivantes restent opaques."},
+               {"Stored render LOD geometry.", "Géométrie des LOD de rendu enregistrés."},
                {"Cooked pixels", "Pixels cooked"},
                {"Stored channels; no color transform. HDR previews use Reinhard / sRGB at 0 EV.",
                 "Canaux stockés ; aucune transformation de couleur. Aperçus HDR : Reinhard / sRGB à 0 EV."},
@@ -291,6 +304,7 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     collisions_.set_models(nullptr, nullptr, {}, {});
     mesh_rows_.clear();
     mesh_ = 0;
+    mesh_skin_ = false;
     pixel_rows_.clear();
     pixel_ = 0;
     diagnostics_.clear();
@@ -346,7 +360,14 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                 MeshRow row;
                 row.key = preview.key;
                 row.after = after;
-                row.view.set_mesh(preview.geometry, other, after, peer != nullptr);
+                row.comparison_known = !peer || other || peer->inspection.is_null();
+                row.view.set_mesh(preview.geometry, other, after, peer != nullptr && row.comparison_known);
+                const auto own_skin = preview.geometry->skin, peer_skin = other ? other->skin : nullptr;
+                row.skin_available = own_skin || peer_skin;
+                if (row.skin_available)
+                    row.skin.set_skins(after ? peer_skin : own_skin, after ? own_skin : peer_skin,
+                                       peer != nullptr && row.comparison_known);
+
                 mesh_rows_.push_back(std::move(row));
             }
             diagnostics_.insert(diagnostics_.end(), side.mesh_diagnostics.begin(),
@@ -548,7 +569,10 @@ Json ContainerView::mesh_report() const {
                                          {"added", r.view.changes().added},
                                          {"removed", r.view.changes().removed},
                                          {"modified", r.view.changes().modified}}},
-                        {"edges", r.view.visible_edge_count()}});
+                        {"edges", r.view.visible_edge_count()},
+                        {"comparisonKnown", r.comparison_known},
+                        {"skinAvailable", r.skin_available},
+                        {"skin", r.skin_available ? r.skin.report() : Json(nullptr)}});
     return rows;
 }
 Json ContainerView::property_report() const {
@@ -585,6 +609,9 @@ Json ContainerView::view_state() const {
         result["mesh"] = mesh_rows_[mesh_].key;
         result["meshAfter"] = mesh_rows_[mesh_].after;
         result["meshView"] = mesh_rows_[mesh_].view.view_state();
+        result["meshSkin"] = mesh_skin_;
+        if (mesh_rows_[mesh_].skin_available)
+            result["meshSkinView"] = mesh_rows_[mesh_].skin.view_state();
     }
     if (physics_present_)
         result["physics"] = physics_.view_state();
@@ -652,6 +679,10 @@ void ContainerView::restore_view_state(const Json &state) {
                 mesh_ = static_cast<int>(i);
                 if (state.contains("meshView"))
                     mesh_rows_[i].view.restore_view_state(state["meshView"]);
+                if (state.contains("meshSkin"))
+                    mesh_skin_ = state["meshSkin"].get<bool>();
+                if (state.contains("meshSkinView") && mesh_rows_[i].skin_available)
+                    mesh_rows_[i].skin.restore_view_state(state["meshSkinView"]);
                 break;
             }
     if (state.contains("pixel"))
@@ -896,9 +927,17 @@ ContainerAction ContainerView::draw(bool busy) {
                     mesh_ = static_cast<int>(i);
             ImGui::EndCombo();
         }
-        ImGui::TextWrapped(
-            "%s", cyui::tr("Cooked render buffers; later Nanite and collision data remains opaque.").c_str());
-        mesh_rows_[mesh_].view.draw("##cooked-mesh");
+        ImGui::TextWrapped("%s", cyui::tr("Stored render LOD geometry.").c_str());
+        auto &row = mesh_rows_[mesh_];
+        if (!row.comparison_known)
+            cyui::callout(cyui::Tone::warning,
+                          cyui::tr("Peer mesh unavailable; changes cannot be classified.").c_str());
+        if (row.skin_available)
+            ImGui::Checkbox(cyui::trLabel("Bones and weights").c_str(), &mesh_skin_);
+        if (row.skin_available && mesh_skin_)
+            row.skin.draw("##cooked-skin");
+        else
+            row.view.draw("##cooked-mesh");
         ImGui::EndTabItem();
     }
     if (collisions_present_ &&

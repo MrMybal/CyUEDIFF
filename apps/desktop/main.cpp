@@ -209,6 +209,35 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.settings.script_objects = text;
             else
                 options.container_filter = text;
+        } else if (argument == "--skeletal-profile" || argument == "--after-skeletal-profile") {
+            if (value() != "ue5.3-windows")
+                throw Error("desktop-option", "Supported cooked skeletal profile: ue5.3-windows");
+            options.container_parameters = true;
+            if (argument == "--after-skeletal-profile") {
+                options.settings.after_skeletal_profile = 1;
+                options.after_container_parameters = true;
+            } else
+                options.settings.skeletal_profile = 1;
+        } else if (argument == "--skeletal-keep-mobile-min-lod" ||
+                   argument == "--after-skeletal-keep-mobile-min-lod" || argument == "--has-vertex-colors" ||
+                   argument == "--after-has-vertex-colors") {
+            const auto setting = value();
+            if (setting != "0" && setting != "1")
+                throw Error("desktop-option", "Skeletal producer setting must be 0 or 1");
+            options.container_parameters = true;
+            const bool after = argument.rfind("--after-", 0) == 0;
+            const int option = setting == "0" ? 1 : 2;
+            const bool colors = argument.find("vertex-colors") != std::string::npos;
+            if (after) {
+                options.after_container_parameters = true;
+                if (colors)
+                    options.settings.after_skeletal_colors = option;
+                else
+                    options.settings.after_skeletal_mobile_lod = option;
+            } else if (colors)
+                options.settings.skeletal_colors = option;
+            else
+                options.settings.skeletal_mobile_lod = option;
         } else if (argument == "--physics-profile" || argument == "--after-physics-profile") {
             if (value() != "ue5.3-windows")
                 throw Error("desktop-option", "Supported cooked physics profile: ue5.3-windows");
@@ -1864,6 +1893,39 @@ class Shell {
                                 .c_str());
                         cyui::endSection();
                     }
+                    if (current().layout.section("skeletal-native", "Cooked skeletal settings",
+                                                 current().settings.skeletal_profile ||
+                                                     current().settings.after_skeletal_profile)) {
+                        const auto disabled = cyui::tr("Disabled"), unknown = cyui::tr("Unknown"),
+                                   off = cyui::tr("Off"), on = cyui::tr("On");
+                        const char *profiles[] = {disabled.c_str(), "UE 5.3 Windows"};
+                        const char *settings[] = {unknown.c_str(), off.c_str(), on.c_str()};
+                        if (cyui::beginProperties("##native-skeletal-context", 95)) {
+                            cyui::property(cyui::tr("Before skeletal").c_str());
+                            ImGui::Combo("##skeletal-profile", &current().settings.skeletal_profile, profiles,
+                                         2);
+                            cyui::property(cyui::tr("Mobile min LOD").c_str());
+                            ImGui::Combo("##skeletal-mobile-lod", &current().settings.skeletal_mobile_lod,
+                                         settings, 3);
+                            cyui::property(cyui::tr("Vertex colors").c_str());
+                            ImGui::Combo("##skeletal-colors", &current().settings.skeletal_colors, settings,
+                                         3);
+                            cyui::property(cyui::tr("After skeletal").c_str());
+                            ImGui::Combo("##after-skeletal-profile",
+                                         &current().settings.after_skeletal_profile, profiles, 2);
+                            cyui::property(cyui::tr("After mobile min LOD").c_str());
+                            ImGui::Combo("##after-skeletal-mobile-lod",
+                                         &current().settings.after_skeletal_mobile_lod, settings, 3);
+                            cyui::property(cyui::tr("After vertex colors").c_str());
+                            ImGui::Combo("##after-skeletal-colors", &current().settings.after_skeletal_colors,
+                                         settings, 3);
+                            cyui::endProperties();
+                        }
+                        ImGui::TextWrapped("%s", cyui::tr("Use the skeletal producer mobile-LOD setting; "
+                                                          "omitted colors need an explicit value.")
+                                                     .c_str());
+                        cyui::endSection();
+                    }
                     if (current().layout.section("schema", "Schema contexts (optional)",
                                                  !current().settings.container_schema.empty() ||
                                                      !current().settings.after_container_schema.empty())) {
@@ -2532,6 +2594,8 @@ int run(Options options) {
                "  --smoke --save-workspace FILE.json : explicit workspace test write\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
+               "  [--skeletal-profile ue5.3-windows --skeletal-keep-mobile-min-lod 0|1 --has-vertex-colors 0|1]\n"
+               "  [--after-skeletal-profile ue5.3-windows --after-skeletal-keep-mobile-min-lod 0|1 --after-has-vertex-colors 0|1]\n"
                "  [--physics-profile ue5.3-windows] [--after-physics-profile ue5.3-windows]\n"
                "  [--mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1]\n"
                "  [--after-mesh-profile ue5.3-windows --after-keep-mobile-min-lod 0|1]\n"

@@ -14,6 +14,9 @@ struct Settings {
     bool pose_enabled = false, pose_independent_frames = false;
     std::string before_revision = "HEAD~1", after_revision = "HEAD";
     int source = 0, cooked_profile = 0, after_cooked_profile = 0;
+    int skeletal_profile = 0, after_skeletal_profile = 0;
+    int skeletal_mobile_lod = 0, after_skeletal_mobile_lod = 0, skeletal_colors = 0,
+        after_skeletal_colors = 0;
     int physics_profile = 0, after_physics_profile = 0;
     int mesh_profile = 0, after_mesh_profile = 0, mesh_mobile_lod = 0, after_mesh_mobile_lod = 0;
     std::string container_path, container_entry, script_objects, after_container_path, after_script_objects;
@@ -53,6 +56,12 @@ struct Settings {
                 mesh_profile == 1 ? CookedMeshProfile::unreal_5_3_windows : CookedMeshProfile::unspecified;
             if (mesh_mobile_lod)
                 input.keep_mobile_min_lod_setting = mesh_mobile_lod == 2;
+            input.skeletal_profile = skeletal_profile == 1 ? CookedSkeletalProfile::unreal_5_3_windows
+                                                           : CookedSkeletalProfile::unspecified;
+            if (skeletal_mobile_lod)
+                input.skeletal_mobile_lod = skeletal_mobile_lod == 2;
+            if (skeletal_colors)
+                input.skeletal_colors = skeletal_colors == 2;
             input.profile = cooked_profile == 1
                                 ? ZenProfile::unreal_5_3
                                 : (cooked_profile == 2 ? ZenProfile::unreal_5_5 : ZenProfile::unspecified);
@@ -65,6 +74,13 @@ struct Settings {
                                                                    : CookedMeshProfile::unspecified;
                 if (after_mesh_mobile_lod)
                     input.after_keep_mobile_min_lod_setting = after_mesh_mobile_lod == 2;
+                input.after_skeletal_profile = after_skeletal_profile == 1
+                                                   ? CookedSkeletalProfile::unreal_5_3_windows
+                                                   : CookedSkeletalProfile::unspecified;
+                if (after_skeletal_mobile_lod)
+                    input.after_skeletal_mobile_lod = after_skeletal_mobile_lod == 2;
+                if (after_skeletal_colors)
+                    input.after_skeletal_colors = after_skeletal_colors == 2;
                 input.after_script_objects = fs::u8path(after_script_objects);
                 input.after_schema = fs::u8path(after_container_schema);
                 input.after_profile =

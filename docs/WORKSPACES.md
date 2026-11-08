@@ -1,6 +1,6 @@
 # Workspace files
 
-The optional desktop host has a data-only `cyuediff.workspace/8` JSON format (post-0.181 development). It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
+The optional desktop host has a data-only `cyuediff.workspace/9` JSON format (post-0.181 development). It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
 
 Local filesystem paths are saved as absolute paths. Relative paths in a file being opened resolve against that file's parent directory. Git asset/project paths remain repository-relative, and mounted names such as `/Game/Example` remain mounted when a project context is present. Git revision expressions are retained as entered, so a later opening can resolve a moving branch differently. No checkout, network fetch or source modification is performed.
 
@@ -102,9 +102,13 @@ Container chapter 7 selects mapped cooked collisions. The `container.collisions`
 
 ## Version eight native physics context and review
 
-New saves use `cyuediff.workspace/8`. Each document retains `physics_profile` and
+Format 8 introduced the native physics settings. Each document retains `physics_profile` and
 `after_physics_profile` independently (0 disabled, 1 explicit UE 5.3 Windows).
 Container chapter 8 and `container.physics` retain the checked collision-style
 body/shape, viewport and property-inspector state. Runtime geometry, native buffers
 and codec handles are not persisted. Formats 1–7 still open; the new reader
 profiles remain disabled on migration. See [COOKED_PHYSICS.md](COOKED_PHYSICS.md).
+
+## Version nine cooked skeletal context and review
+
+Format 9 adds independent before/after cooked skeletal profiles, producer mobile-LOD presence and color fallback facts. The selected cooked mesh keeps its orbit state plus an optional bones/weights inspector, identity/filter and focused property state. Formats 1–8 migrate with skeletal decoding disabled and unknown producer facts; no reader or color default is invented.

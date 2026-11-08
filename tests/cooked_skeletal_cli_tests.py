@@ -8,6 +8,7 @@ import sys
 import tempfile
 
 cli, fixture = [str(Path(p).resolve()) for p in sys.argv[1:3]]
+desktop = str(Path(sys.argv[3]).resolve()) if len(sys.argv) > 3 else None
 env = {k.upper() if os.name == 'nt' else k: v for k, v in os.environ.items()}
 checks = 0
 with tempfile.TemporaryDirectory(prefix='.test-tmp-cooked-skeletal-', dir=Path.cwd()) as temp:
@@ -45,6 +46,51 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-cooked-skeletal-', dir=Path.c
     run('zen-skeletal', inline, entry, '--out', inline.with_suffix('.ucas'), code=2)
     run('zen-skeletal', inline, entry, '--out', root/'native.usmap', code=2)
     run('zen-skeletal', inline, entry, '--out', root/'global.ucas', code=2)
+    if desktop:
+        before_native = ['--skeletal-profile', 'ue5.3-windows', '--skeletal-keep-mobile-min-lod', '0', '--has-vertex-colors', '0']
+        after_native = ['--after-skeletal-profile', 'ue5.3-windows', '--after-skeletal-keep-mobile-min-lod', '0', '--after-has-vertex-colors', '0']
+        after_context = ['--after-cooked-profile', 'ue5.3', '--after-script-objects', str(root/'global.utoc'), '--after-schema', str(root/'context.json')]
+        def render(*arguments):
+            p = subprocess.run([desktop, '--smoke', '--no-preferences', *map(str, arguments)], env=env, capture_output=True, timeout=45)
+            assert p.returncode == 0, p.stderr.decode('utf-8', 'replace')
+        for lang in ('en', 'fr'):
+            report = root/(lang+'.json')
+            workspace = root/(lang+'-workspace.json')
+            render('--locale', lang, '--container', inline, '--container-entry', entry,
+                   '--after-container', root/'skin-changed.utoc', '--container-tab', 'meshes',
+                   '--report', report, '--save-workspace', workspace, *common, *before_native, *after_native, *after_context)
+            data = json.loads(report.read_text(encoding='utf-8'))
+            doc = data['document']['container']
+            assert doc['meshPreviews'] == doc['after']['meshPreviews'] == 1
+            assert doc['meshDifferences'][0]['comparison']['status'] == 'changed'
+            views = data['containerView']['meshViews']
+            assert len(views) == 2 and all(v['comparisonKnown'] and v['skinAvailable'] and v['skin']['modified'] == 1 for v in views)
+            assert sum(v['changes']['modified'] for v in views) > 0
+            saved = json.loads(workspace.read_text(encoding='utf-8'))
+            assert saved['schema'] == 'cyuediff.workspace/9'
+            settings = saved['documents'][0]['settings']
+            assert settings['skeletal_profile'] == settings['after_skeletal_profile'] == 1
+            assert settings['skeletal_mobile_lod'] == settings['after_skeletal_mobile_lod'] == 1
+            assert settings['skeletal_colors'] == settings['after_skeletal_colors'] == 1
+            state = saved['documents'][0]['viewState']['container']
+            state['meshSkin'] = True
+            state['meshSkinView']['selected'] = 'vertex/1'
+            state['meshSkinView']['properties'] = {'filter': '', 'changedOnly': False, 'selected': None}
+            workspace.write_text(json.dumps(saved), encoding='utf-8')
+            reopened = root/(lang+'-reopened.json')
+            render('--workspace', workspace, '--report', reopened, '--save-workspace', root/(lang+'-resaved.json'))
+            restored = json.loads((root/(lang+'-resaved.json')).read_text(encoding='utf-8'))
+            state = restored['documents'][0]['viewState']['container']
+            assert state['meshSkin'] and state['meshSkinView']['selected'] == 'vertex/1'
+            assert json.loads(reopened.read_text(encoding='utf-8'))['containerView']['tab'] == 6
+            checks += 9
+        unknown = root/'unknown.json'
+        render('--container', inline, '--container-entry', entry, '--after-container', inline,
+               '--container-tab', 'meshes', '--report', unknown, *common, *before_native, *after_context)
+        views = json.loads(unknown.read_text(encoding='utf-8'))['containerView']['meshViews']
+        assert len(views) == 1 and not views[0]['comparisonKnown'] and not views[0]['skin']['comparing']
+        assert views[0]['changes']['removed'] == views[0]['changes']['modified'] == 0
+        checks += 2
     assert all(hashlib.sha256(p.read_bytes()).hexdigest() == h for p, h in originals.items())
     checks += 1
 print(f'{checks} cooked skeletal CLI checks passed')
