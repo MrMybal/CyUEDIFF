@@ -14,6 +14,7 @@
 #include <cyuediff/zen.hpp>
 #include <cyuediff/cooked_texture.hpp>
 #include <cyuediff/cooked_mesh.hpp>
+#include <cyuediff/cooked_physics.hpp>
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/binary_layout.hpp>
 #include <cmath>
@@ -141,6 +142,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff zen-export-mesh CONTAINER ENTRY --out MESH.obj [--lod N]\n"
                "  cyuediff zen-mesh-diff BEFORE ENTRY AFTER ENTRY [--lod N] [--after-lod N]\n"
                "  Mesh commands also require --cooked-profile ue5.3 --schema CONTEXT.json.\n"
+               "  cyuediff zen-physics CONTAINER ENTRY --physics-profile ue5.3-windows [cooked context]\n"
+               "  cyuediff zen-physics-diff BEFORE ENTRY AFTER ENTRY [same cooked context]\n"
                "  cyuediff zen-collision CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
                "  cyuediff zen-collision-wire CONTAINER ENTRY [same cooked context]\n"
                "  cyuediff zen-collision-diff BEFORE ENTRY AFTER ENTRY [same cooked context]\n"
@@ -171,7 +174,9 @@ int run(const std::vector<std::string> &args) {
         return run_binary_command(args);
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--mesh-profile",
+    const std::set<std::string> valued = {"--physics-profile",
+                                          "--after-physics-profile",
+                                          "--mesh-profile",
                                           "--after-mesh-profile",
                                           "--keep-mobile-min-lod",
                                           "--after-keep-mobile-min-lod",
@@ -267,6 +272,8 @@ int run(const std::vector<std::string> &args) {
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
+    const bool cooked_physics = command == "zen-physics" || command == "zen-physics-diff";
+    const bool cooked_physics_diff = command == "zen-physics-diff";
     const bool cooked_collision =
         command == "zen-collision" || command == "zen-collision-wire" || command == "zen-collision-diff";
     const bool cooked_collision_diff = command == "zen-collision-diff";
@@ -275,10 +282,10 @@ int run(const std::vector<std::string> &args) {
     const bool cooked_mesh_diff = command == "zen-mesh-diff";
     const bool cooked_pixels = command == "zen-texture" || command == "zen-preview" || command == "zen-image-diff" || command == "zen-hdr-diff";
     const bool cooked_pixel_diff = command == "zen-image-diff" || command == "zen-hdr-diff";
-    const bool cooked_compare =
-        command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff || cooked_collision_diff;
+    const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff || cooked_mesh_diff ||
+                                cooked_collision_diff || cooked_physics_diff;
     const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog" ||
-                             cooked_pixels || cooked_mesh || cooked_collision;
+                             cooked_pixels || cooked_mesh || cooked_collision || cooked_physics;
     if (zen_command)
         required = cooked_compare ? 4u : (command == "zen-catalog" ? 1u : 2u);
     const bool container_command = command == "container" || command == "container-read" ||
@@ -343,6 +350,8 @@ int run(const std::vector<std::string> &args) {
                 !(key == "--snapshot" && (command == "zen-inspect" || command == "zen-catalog")) &&
                 !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
                 !((cooked_pixels || cooked_mesh) && key == "--export-index") &&
+                !(cooked_physics && key == "--physics-profile") &&
+                !(cooked_physics_diff && key == "--after-physics-profile") &&
                 !(cooked_mesh && (key == "--mesh-profile" || key == "--keep-mobile-min-lod")) &&
                 !(cooked_mesh && command != "zen-mesh" && key == "--lod") &&
                 !(cooked_mesh_diff &&
@@ -357,6 +366,8 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Unsupported cooked option: " + key);
             continue;
         }
+        if (key == "--physics-profile" || key == "--after-physics-profile")
+            throw Error("arguments", key + " requires a cooked physics command");
         if (key == "--mesh-profile" || key == "--after-mesh-profile" || key == "--keep-mobile-min-lod" ||
             key == "--after-keep-mobile-min-lod" || key == "--after-lod")
             throw Error("arguments", key + " requires a cooked mesh command");
@@ -676,6 +687,37 @@ int run(const std::vector<std::string> &args) {
                 output["afterMesh"] = after.to_json();
                 output["beforeLod"] = lod;
                 output["afterLod"] = after_lod;
+            }
+        } else if (cooked_physics) {
+            auto physics_options = [&](const char *key, CookedPhysicsOptions fallback) {
+                if (flags.contains(key)) {
+                    if (flags.at(key).get<std::string>() != "ue5.3-windows")
+                        throw Error("arguments", "Supported cooked physics profile: ue5.3-windows");
+                    fallback.profile = CookedPhysicsProfile::unreal_5_3_windows;
+                }
+                return fallback;
+            };
+            auto options = physics_options("--physics-profile", {});
+            auto before = read_zen_cooked_physics(input, select(input, positional[1]), before_options,
+                                                  read_options, options);
+            if (!cooked_physics_diff) {
+                output = std::move(before);
+                exit_code = output.at("complete").get<bool>() ? 0 : 2;
+            } else {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects"))
+                    after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema"))
+                    after_options.schema_context = schema_context(path_option("--after-schema"));
+                auto other = open(fs::u8path(positional[2]));
+                auto after =
+                    read_zen_cooked_physics(other, select(other, positional[3]), after_options, read_options,
+                                            physics_options("--after-physics-profile", options));
+                output = compare_cooked_physics(before, after, options);
+                output["beforeContext"] = before.at("provenance");
+                output["afterContext"] = after.at("provenance");
+                exit_code = !output.at("complete").get<bool>() ? 2 : output.at("changes").empty() ? 0 : 1;
             }
         } else if (cooked_collision) {
             auto before = read_zen_package(input, select(input, positional[1]), before_options, read_options);

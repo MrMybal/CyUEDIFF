@@ -78,3 +78,7 @@ Explicit local virtualized bulk resolution is shared by texture/HDR and modern M
 ## Mapped collision models — post-0.181
 
 Classic and Zen collision inputs share a bounded reflected-property projector. The cooked adapter retains provenance and unknown native coverage while normalizing qualified typed fields with collision rejection. Prepared snapshots and body-local wireframes move from the worker into the existing bilingual view; rendering does not open or decode files. See COOKED_COLLISIONS.md for class/serializer boundaries and real evidence.
+
+## Native Chaos cooker data — post-0.181
+
+`cooked_physics.hpp` exposes bounded selected UE 5.3 Windows raw-stream and Zen BodySetup readers. Graph references retain shared identity without duplicate object expansion. Native geometry, mass, topology, acceleration and UV/maps remain separate from reflected shape/default reconstruction. Exact field comparisons ignore transport provenance and graph tag numbering; unavailable peers remain unresolved. The installed example links Core only. See [COOKED_PHYSICS.md](COOKED_PHYSICS.md).

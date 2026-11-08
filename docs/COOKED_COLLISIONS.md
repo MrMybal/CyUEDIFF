@@ -1,6 +1,6 @@
 # Mapped cooked collision shapes
 
-The Core projects explicitly mapped cooked BodySetup properties into the same stored collision and body-local wire models as loose assets. It runs without Unreal, Git or a graphics device. This is reflected collision data, not a decoded Chaos physics blob or a physics simulation.
+The Core projects explicitly mapped cooked BodySetup properties into the same stored collision and body-local wire models as loose assets. It runs without Unreal, Git or a graphics device. This API projects reflected collision data. A separate native Chaos reader is described in [COOKED_PHYSICS.md](COOKED_PHYSICS.md); neither API runs a physics simulation.
 
 ## Context and class scope
 
@@ -70,4 +70,4 @@ The installed `examples/cooked_collision_consumer` links only CyUEDiff::Core and
 
 Original fixtures exercise actual Zen member/schema reads, scalar/struct geometry, exact context fingerprints, named differences, absent bindings/templates, invalid values, property boundaries, duplicate normalized fields, budgets, cancellation and unchanged inputs. CLI/native integration covers damaged source hashes, invalid mapped floats, unavailable geometry, protected writes, EN/FR review, camera/shape retention and a report hard-link guard.
 
-The selected real corpus contains 84 BodySetup packages. Their 77 available stored shapes (72 convexes, three boxes and two spheres) match all 235 stored geometry fields and all 3,552 prepared wire edges against loose sources. A separately built installed Core-only consumer matches CLI projections and wires. Seven inputs have no available stored shape in this domain; this does not certify that their native physics data is empty. Source/companion/container/context/mapping/codec/tool hashes remain unchanged. Native physics decoding, enum-name resolution and omitted defaults are outside this comparison and remain open in COMPLETION.md.
+The selected real corpus contains 84 BodySetup packages. Their 77 available stored shapes (72 convexes, three boxes and two spheres) match all 235 stored geometry fields and all 3,552 prepared wire edges against loose sources. A separately built installed Core-only consumer matches CLI projections and wires. Seven inputs have no available stored shape in this domain; this does not certify that their native physics data is empty. Source/companion/container/context/mapping/codec/tool hashes remain unchanged. Native physics, enum-name resolution and omitted defaults are outside this reflected comparison. The separately scoped native reader and remaining work are tracked in COOKED_PHYSICS.md and COMPLETION.md.

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(CyUEDiffCookedPhysicsConsumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(cooked_physics_consumer main.cpp)
+target_link_libraries(cooked_physics_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(cooked_physics_consumer PRIVATE /EHsc /utf-8)
+endif()
