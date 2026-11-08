@@ -37,3 +37,8 @@ Whole cooked AnimSequence extraction now connects that primitive to verified reg
 
 
 Explicit scalar compressed-curve buffer decoding now supports the three selected UE 5.3 Windows built-in layouts, rich-key/tangent inspection and encoded-order sampling. The installed Core-only consumer validates 4,626 actual codec values across three independently prepared/cooked animations, with complete byte/hash identity and separately checked settings registration. Automatic whole-package curve dependency binding and CLI/desktop curve review remain required. See [compressed scalar curve contracts](COMPRESSED_CURVES.md).
+
+
+### Whole cooked scalar curve binding — post-0.181 development
+
+The Core/CLI now resolve exact AnimSequence curve settings and actual mapped Codec registration for UE 5.3 Windows RichCurve, UniformIndexable and UniformlySampled. Immutable focused scalar queries, independent-time differences, separate encoding/value coverage, curve-only/empty/unknown handling, cancellation/budgets and dependency output protection are implemented. An installed Core-only consumer matches 4,626 actual Unreal codec values from three complete cooked packages (maximum delta 4.7684e-7), verifies complete buffers/identities/settings and preserves protected source/context/container hashes. Original whole-package and CLI fixtures exercise malformed/unknown registrations and independent contexts. See [COMPRESSED_CURVES.md](COMPRESSED_CURVES.md). Desktop scalar projection and broader codec/runtime/Nanite/native coverage remain open; this is local development, not a new release or overall completion.

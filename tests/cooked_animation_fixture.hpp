@@ -8,7 +8,11 @@ inline Bytes animation_scripts() {
                                             "AnimCompress_PerTrackCompression",
                                             "Skeleton",
                                             "AnimCompress_BitwiseCompressOnly",
-                                            "CustomCodec"};
+                                            "CustomCodec",
+                                            "AnimCurveCompressionSettings",
+                                            "AnimCurveCompressionCodec_CompressedRichCurve",
+                                            "AnimCurveCompressionCodec_UniformIndexable",
+                                            "AnimCurveCompressionCodec_UniformlySampled"};
     Bytes b;
     name_batch(b, names);
     b.i(static_cast<int>(names.size()));
@@ -21,7 +25,7 @@ inline Bytes animation_scripts() {
     }
     return b;
 }
-inline Bytes animation_schema() {
+inline Bytes animation_schema(bool curves = false) {
     const std::vector<std::string> names = {"/Script/Engine",
                                             "AnimationAsset",
                                             "AnimSequence",
@@ -29,7 +33,10 @@ inline Bytes animation_schema() {
                                             "BoneCompressionSettings",
                                             "Interpolation",
                                             "AnimBoneCompressionSettings",
-                                            "Codecs"};
+                                            "Codecs",
+                                            "CurveCompressionSettings",
+                                            "AnimCurveCompressionSettings",
+                                            "Codec"};
     Bytes p;
     p.i(static_cast<int>(names.size()));
     for (const auto &s : names) {
@@ -38,7 +45,7 @@ inline Bytes animation_schema() {
             p.put(c);
     }
     p.i(0);
-    p.i(4);
+    p.i(5);
     auto schema = [&](int name, int super, unsigned n) {
         p.i(name);
         p.i(super);
@@ -53,18 +60,22 @@ inline Bytes animation_schema() {
     };
     schema(1, -1, 1);
     field(0, 3, 4);
-    schema(2, 1, 2);
+    schema(2, 1, curves ? 3 : 2);
     field(0, 4, 4);
     field(1, 5, 0);
+    if (curves)
+        field(2, 8, 4);
     schema(3, -1, 0);
     schema(6, -1, 1);
     field(0, 7, 8);
     p.put<std::uint8_t>(4);
+    schema(9, -1, 1);
+    field(0, 10, 4);
     Bytes paths;
     paths.put<std::uint8_t>(0);
     paths.i(0);
-    paths.i(4);
-    for (unsigned i = 0; i < 4; ++i)
+    paths.i(5);
+    for (unsigned i = 0; i < 5; ++i)
         paths.i(0);
     p.i(0x54584543);
     p.put<std::uint8_t>(0);
@@ -82,14 +93,16 @@ inline Bytes animation_schema() {
     b.append(p);
     return b;
 }
-inline ZenReadOptions animation_context() {
+inline ZenReadOptions animation_context(bool curves = false) {
     ZenReadOptions z;
     z.profile = ZenProfile::unreal_5_3;
     z.script_objects = std::make_shared<ScriptObjects>(ScriptObjects::parse(animation_scripts().data, z));
     auto c = std::make_shared<ZenSchemaContext>();
     c->profile = z.profile;
-    c->schemas = std::make_shared<UnversionedSchemas>(UnversionedSchemas::parse(animation_schema().data));
-    for (const auto &name : {"AnimSequence", "Skeleton", "AnimBoneCompressionSettings"}) {
+    c->schemas =
+        std::make_shared<UnversionedSchemas>(UnversionedSchemas::parse(animation_schema(curves).data));
+    for (const auto &name :
+         {"AnimSequence", "Skeleton", "AnimBoneCompressionSettings", "AnimCurveCompressionSettings"}) {
         auto s = "/Script/Engine." + std::string(name);
         c->bindings[s] = {s, 0};
     }
@@ -307,5 +320,71 @@ inline void save_animation(const fs::path &root, const AnimationFixture &f, unsi
     texture_container(root / "animation", f.animation.storage, bulk_type, corrupt);
     texture_container(root / "settings", f.settings.storage);
     texture_container(root / "skeleton", f.skeleton.storage);
+}
+struct AnimationCurveFixture {
+    AnimationFixture animation;
+    AnimationPackage curve_settings;
+    std::size_t curve_start = 0, curve_count_at = 0, curve_ref = 0;
+};
+inline AnimationCurveFixture cooked_animation_curve_fixture(unsigned codec = 0, bool curve_only = false) {
+    AnimationCurveFixture out;
+    out.animation = cooked_animation_fixture(false, false, true, false, true, !curve_only);
+    auto &f = out.animation;
+    const auto &raw = f.animation.storage.package.data;
+    Bytes body;
+    const auto native = f.native - f.animation.storage.body;
+    body.data.assign(raw.begin() + f.animation.storage.body, raw.begin() + f.native - 4);
+    body.data[0] = 0;
+    body.data[1] = 9; // three child fields, then the inherited Skeleton field
+    body.i(-3);
+    body.data.insert(body.data.end(), raw.begin() + f.native - 4, raw.begin() + f.native);
+    const auto curve_count_at = f.metadata - 7;
+    body.data.insert(body.data.end(), raw.begin() + f.native, raw.begin() + curve_count_at);
+    Bytes curves;
+    if (codec == 0) {
+        for (unsigned v : {2u, 1u, 4u, 4u})
+            curves.put<std::uint8_t>(std::uint8_t(v));
+        curves.i(2);
+        curves.i(12);
+        curves.put<float>(0);
+        curves.put<float>(1);
+        curves.put<float>(1);
+        curves.put<float>(5);
+    } else {
+        if (codec == 2)
+            curves.i(0);
+        curves.i(2);
+        curves.put<float>(1);
+        if (codec == 2)
+            curves.i(0);
+        curves.put<float>(1);
+        curves.put<float>(5);
+    }
+    const auto count_position = body.data.size();
+    body.i(int(curves.data.size()));
+    const auto data_position = body.data.size();
+    body.append(curves);
+    body.data.insert(body.data.end(), raw.begin() + f.metadata, raw.end());
+    f.animation =
+        animation_package({"None", "/Game/Animation", "Animation", "CurveOne"}, {{2, 1, 3, ~0ull, 1, body}},
+                          {0x8000000000000000ull, 0x8000000100000001ull, 0x8000000200000002ull},
+                          {0xabc, 0xdef, 0xaaa}, {"/Game/Settings", "/Game/Skeleton", "/Game/CurveSettings"});
+    f.native = f.animation.storage.body + native + 4;
+    out.curve_ref = f.animation.storage.body + native - 4;
+    out.curve_start = f.animation.storage.body + data_position;
+    out.curve_count_at = f.animation.storage.body + count_position;
+    Bytes settings;
+    settings.put<std::uint16_t>(0x0300);
+    settings.i(3);
+    out.curve_settings =
+        animation_package({"None", "/Game/CurveSettings", "CurveSettings", "Unused", "ArbitraryInstance"},
+                          {{2, 7, 3, ~0ull, 0xaaa, settings},
+                           {3, codec == 0 ? 9u : 8u, 8, 0, 0, {}},
+                           {4, 8 + codec, 8, 0, 0, {}}});
+    return out;
+}
+inline void save_animation_curves(const fs::path &root, const AnimationCurveFixture &f) {
+    save_animation(root, f.animation);
+    texture_container(root / "curve-settings", f.curve_settings.storage);
 }
 } // namespace cyuediff::test

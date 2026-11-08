@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/animation_compression.hpp>
 #include <cyuediff/animation.hpp>
+#include <cyuediff/compressed_curves.hpp>
 #include <cyuediff/zen.hpp>
 #include <optional>
 namespace cyuediff {
@@ -15,11 +16,12 @@ struct CookedAnimationDependency {
 };
 struct CookedAnimationOptions {
     CookedAnimationProfile profile = CookedAnimationProfile::unspecified;
-    std::optional<CookedAnimationDependency> bone_settings, skeleton;
+    std::optional<CookedAnimationDependency> bone_settings, skeleton, curve_settings;
     // Required for sampling only if Interpolation is omitted from mapped properties.
     // A conflicting stored value is refused. This is not a reconstructed default.
     std::optional<CompressedAnimationInterpolation> interpolation;
     PerTrackAnimationOptions channels;
+    CompressedCurveOptions curve_channels;
     std::uint64_t max_read_bytes = 512ull * 1024 * 1024, max_output_bytes = 256ull * 1024 * 1024;
     std::uint32_t max_bones = 65536, max_curves = 100000, max_retarget_sources = 1024;
     std::uint32_t max_codec_exports = 16384, max_outer_depth = 128, max_string_bytes = 65536;
@@ -31,6 +33,11 @@ class CookedAnimation {
     struct Impl;
     bool decoded() const;
     bool skeleton_bound() const;
+    // Owning immutable scalar model, or null for empty/unavailable coverage.
+    std::shared_ptr<const CompressedCurves> compressed_curves() const;
+    Json curve_information() const;
+    // Stored scalar values in seconds; known-empty curves remain distinguishable from unavailable.
+    Json sample_curves(double seconds, double empty_default = 0, const OperationControl & = {}) const;
     std::optional<std::uint32_t> frame_count() const;
     Json to_json(bool include_keys = false) const;
     // Lightweight immutable-source catalogue, without full timing/key/pose arrays.
@@ -58,4 +65,17 @@ CookedAnimation read_zen_animation(const Container &, std::size_t package_entry,
 // Unknown peer data/binding cannot become a known addition/removal.
 Json compare_cooked_animation_frames(const CookedAnimation &, const CookedAnimation &, double before_frame,
                                      double after_frame, const AnimationFrameDiffOptions & = {});
+} // namespace cyuediff
+
+namespace cyuediff {
+struct CookedAnimationCurveDiffOptions {
+    double before_time = 0, after_time = 0, value_tolerance = 0, empty_default = 0;
+    std::size_t max_curve_pairs = 100000;
+    std::uint64_t max_output_bytes = 128ull * 1024 * 1024;
+    OperationControl control;
+};
+// Exact stored names; reports encoding and selected scalar changes separately.
+// Unknown peer decoding cannot become a confirmed addition/removal.
+Json compare_cooked_animation_curves(const CookedAnimation &, const CookedAnimation &,
+                                     const CookedAnimationCurveDiffOptions & = {});
 } // namespace cyuediff

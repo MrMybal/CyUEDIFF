@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(CyUEDiffCookedCurveConsumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(cooked_curve_consumer main.cpp)
+target_link_libraries(cooked_curve_consumer PRIVATE CyUEDiff::Core)
+target_compile_features(cooked_curve_consumer PRIVATE cxx_std_17)

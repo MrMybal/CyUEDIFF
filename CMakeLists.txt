@@ -126,6 +126,9 @@ if(BUILD_TESTING)
     target_link_libraries(cyuediff_compressed_curve_tests PRIVATE CyUEDiff::Core)
     target_compile_definitions(cyuediff_compressed_curve_tests PRIVATE CYUEDIFF_CURVE_REFERENCE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/compressed_curves_ue53_reference.json")
     add_test(NAME compressed_curves COMMAND cyuediff_compressed_curve_tests)
+    add_executable(cyuediff_cooked_animation_curve_tests tests/cooked_animation_curve_tests.cpp)
+    target_link_libraries(cyuediff_cooked_animation_curve_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME cooked_animation_curves COMMAND cyuediff_cooked_animation_curve_tests)
     add_executable(cyuediff_cooked_animation_tests tests/cooked_animation_tests.cpp)
     target_link_libraries(cyuediff_cooked_animation_tests PRIVATE CyUEDiff::Core)
     add_test(NAME cooked_animation COMMAND cyuediff_cooked_animation_tests)
@@ -472,6 +475,9 @@ if(BUILD_TESTING)
             add_test(NAME cooked_collision_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_collision_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_collision_tests>")
+            add_test(NAME cooked_animation_curve_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_animation_curve_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_animation_curve_tests>")
             add_test(NAME cooked_animation_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_animation_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_animation_tests>")
@@ -945,3 +951,6 @@ install(FILES scripts/validate_cooked_animation.py DESTINATION ${CMAKE_INSTALL_D
 
 install(DIRECTORY examples/compressed_curve_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(FILES scripts/validate_compressed_curves.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
+
+install(DIRECTORY examples/cooked_curve_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(FILES scripts/validate_cooked_curves.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)

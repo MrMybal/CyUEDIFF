@@ -38,3 +38,8 @@ Version 0.181.0 already supplies the foundational Core, optional Git adapter, so
 17. Continue broader native/plugin and Blueprint contexts, whole-package compressed-curve binding/review, independent skeletal/morph/Nanite validation, desktop layout and delivery closure.
 
 Do not mark the overall goal complete while any required workstream remains open. Generated reports, host-owned samples and private paths stay under ignored build directories; commits contain only original code/fixtures and public documentation. Development commits remain local until another push is authorized.
+
+
+### Whole cooked scalar curve binding — post-0.181 development
+
+The Core/CLI now resolve exact AnimSequence curve settings and actual mapped Codec registration for UE 5.3 Windows RichCurve, UniformIndexable and UniformlySampled. Immutable focused scalar queries, independent-time differences, separate encoding/value coverage, curve-only/empty/unknown handling, cancellation/budgets and dependency output protection are implemented. An installed Core-only consumer matches 4,626 actual Unreal codec values from three complete cooked packages (maximum delta 4.7684e-7), verifies complete buffers/identities/settings and preserves protected source/context/container hashes. Original whole-package and CLI fixtures exercise malformed/unknown registrations and independent contexts. See [COMPRESSED_CURVES.md](COMPRESSED_CURVES.md). Desktop scalar projection and broader codec/runtime/Nanite/native coverage remain open; this is local development, not a new release or overall completion.

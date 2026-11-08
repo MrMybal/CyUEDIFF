@@ -132,6 +132,14 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff zen-animation-frame INPUT.utoc ID [same context] --frame 12.5\n"
                "  cyuediff zen-animation-frame-diff BEFORE.utoc ID AFTER.utoc ID [independent contexts] "
                "--before-frame N --after-frame N\n"
+               "  cyuediff zen-animation-curves INPUT.utoc ID [animation context] --curve-settings-entry ID "
+               "--time SECONDS\n"
+               "  cyuediff zen-animation-curves-diff BEFORE.utoc ID AFTER.utoc ID [independent contexts] "
+               "--before-time S --after-time S\n"
+               "    --curve-settings-container TOC and "
+               "--after-curve-settings-entry/--after-curve-settings-container select explicit dependencies.\n"
+               "    --curve-default N selects the empty-curve fallback; --value-tolerance N applies to curve "
+               "diffs.\n"
                "  cyuediff container INPUT.pak|INPUT.utoc [--out REPORT.json]\n"
                "  cyuediff container-read INPUT ENTRY_PATH_OR_ID --out BYTES.bin [--codec MODULE.dll]\n"
                "  cyuediff container-hash INPUT [--codec MODULE.dll] [--out REPORT.json]\n"
@@ -204,6 +212,13 @@ int run(const std::vector<std::string> &args) {
                                           "--after-interpolation",
                                           "--bone-settings-container",
                                           "--bone-settings-entry",
+                                          "--curve-settings-container",
+                                          "--curve-settings-entry",
+                                          "--after-curve-settings-container",
+                                          "--after-curve-settings-entry",
+                                          "--before-time",
+                                          "--after-time",
+                                          "--curve-default",
                                           "--after-bone-settings-container",
                                           "--after-bone-settings-entry",
                                           "--skeleton-container",
@@ -308,9 +323,13 @@ int run(const std::vector<std::string> &args) {
     const bool cooked_collision =
         command == "zen-collision" || command == "zen-collision-wire" || command == "zen-collision-diff";
     const bool cooked_collision_diff = command == "zen-collision-diff";
+    const bool cooked_animation_curves =
+        command == "zen-animation-curves" || command == "zen-animation-curves-diff";
+    const bool cooked_animation_curve_diff = command == "zen-animation-curves-diff";
+    const bool cooked_animation_frame_diff = command == "zen-animation-frame-diff";
     const bool cooked_animation = command == "zen-animation" || command == "zen-animation-frame" ||
-                                  command == "zen-animation-frame-diff";
-    const bool cooked_animation_diff = command == "zen-animation-frame-diff";
+                                  cooked_animation_frame_diff || cooked_animation_curves;
+    const bool cooked_animation_diff = cooked_animation_frame_diff || cooked_animation_curve_diff;
     const bool cooked_skeletal = command == "zen-skeletal" || command == "zen-skeletal-diff";
     const bool cooked_skeletal_diff = command == "zen-skeletal-diff";
     const bool cooked_mesh = command == "zen-mesh" || command == "zen-geometry" ||
@@ -359,20 +378,24 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments","--retarget-source requires skeleton-pose or socket-pose");
         if ((key=="--before-retarget-source"||key=="--after-retarget-source") && command!="skeleton-pose-diff" && command!="socket-pose-diff")
             throw Error("arguments",key+" requires skeleton-pose-diff or socket-pose-diff");
-        if((key=="--time-start" || key=="--time-end" || key=="--samples" || key=="--before-lane" || key=="--after-lane" || key=="--value-tolerance") && command!="curve-value-diff")
+        if ((key == "--time-start" || key == "--time-end" || key == "--samples" || key == "--before-lane" ||
+             key == "--after-lane" || key == "--value-tolerance") &&
+            command != "curve-value-diff" && !(cooked_animation_curve_diff && key == "--value-tolerance"))
             throw Error("arguments",key+" requires curve-value-diff");
         if(key=="--curve-family" && command!="curves" && command!="curves-diff" && command!="curve-value" && command!="curve-value-diff" && command!="curve-components")throw Error("arguments","--curve-family requires a curve command");
         if(key=="--curve-id" && command!="curve-components")throw Error("arguments","--curve-id requires curve-components");
-        if(key=="--time" && command!="curve-value" && command!="curve-components")throw Error("arguments","--time requires curve-value or curve-components");
+        if (key == "--time" && command != "curve-value" && command != "curve-components" &&
+            command != "zen-animation-curves")
+            throw Error("arguments", "--time requires curve-value or curve-components");
         if(key=="--lane" && command!="curve-value")throw Error("arguments","--lane requires curve-value");
         if (key == "--frame" && command != "animation-frame" && command != "zen-animation-frame" &&
             !source_pose_single)
             throw Error("arguments", "--frame requires animation-frame");
         if ((key == "--before-frame" || key == "--after-frame") && command != "animation-frame-diff" &&
-            !cooked_animation_diff && !source_pose_diff)
+            !cooked_animation_frame_diff && !source_pose_diff)
             throw Error("arguments", key + " requires animation-frame-diff or animation-pose-diff");
         if ((key == "--rotation-tolerance" || key == "--scale-tolerance") &&
-            command != "animation-frame-diff" && !cooked_animation_diff)
+            command != "animation-frame-diff" && !cooked_animation_frame_diff)
             throw Error("arguments", key + " requires animation-frame-diff");
         if(key=="--skeleton-object" && !source_pose_single)throw Error("arguments",key+" requires animation-pose");
         if((key=="--before-skeleton" || key=="--after-skeleton" || key=="--before-skeleton-object" || key=="--after-skeleton-object") && !source_pose_diff)throw Error("arguments",key+" requires animation-pose-diff");
@@ -380,8 +403,8 @@ int run(const std::vector<std::string> &args) {
             command != "skeleton-pose-diff" && command != "socket-pose-diff")
             throw Error("arguments", key + " requires a model or pose comparison");
         if (key == "--position-tolerance" && command != "skeleton-pose-diff" &&
-            command != "socket-pose-diff" && command != "animation-frame-diff" && !cooked_animation_diff &&
-            !source_pose_diff)
+            command != "socket-pose-diff" && command != "animation-frame-diff" &&
+            !cooked_animation_frame_diff && !source_pose_diff)
             throw Error("arguments","--position-tolerance requires a pose comparison");
         if (key == "--max-commits" || key == "--skip")
             throw Error("arguments", key + " requires git-history");
@@ -399,18 +422,26 @@ int run(const std::vector<std::string> &args) {
                 !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
                 !((cooked_pixels || cooked_mesh || cooked_skeletal || cooked_animation) &&
                   key == "--export-index") &&
-                !(cooked_animation && (key == "--animation-profile" || key == "--interpolation" ||
-                                       key == "--bone-settings-container" || key == "--bone-settings-entry" ||
-                                       key == "--skeleton-container" || key == "--skeleton-entry")) &&
+                !(cooked_animation &&
+                  (key == "--animation-profile" || key == "--interpolation" ||
+                   key == "--bone-settings-container" || key == "--bone-settings-entry" ||
+                   key == "--curve-settings-container" || key == "--curve-settings-entry" ||
+                   key == "--skeleton-container" || key == "--skeleton-entry")) &&
                 !(command == "zen-animation" && key == "--include-keys") &&
                 !(command == "zen-animation-frame" && key == "--frame") &&
                 !(cooked_animation_diff &&
-                  (key == "--before-frame" || key == "--after-frame" || key == "--after-animation-profile" ||
-                   key == "--after-interpolation" || key == "--after-bone-settings-container" ||
-                   key == "--after-bone-settings-entry" || key == "--after-skeleton-container" ||
-                   key == "--after-skeleton-entry" || key == "--after-export-index" ||
-                   key == "--position-tolerance" || key == "--rotation-tolerance" ||
-                   key == "--scale-tolerance")) &&
+                  (key == "--after-animation-profile" || key == "--after-interpolation" ||
+                   key == "--after-bone-settings-container" || key == "--after-bone-settings-entry" ||
+                   key == "--after-curve-settings-container" || key == "--after-curve-settings-entry" ||
+                   key == "--after-skeleton-container" || key == "--after-skeleton-entry" ||
+                   key == "--after-export-index")) &&
+                !(cooked_animation_frame_diff &&
+                  (key == "--before-frame" || key == "--after-frame" || key == "--position-tolerance" ||
+                   key == "--rotation-tolerance" || key == "--scale-tolerance")) &&
+                !(cooked_animation_curves && key == "--curve-default") &&
+                !(command == "zen-animation-curves" && key == "--time") &&
+                !(cooked_animation_curve_diff &&
+                  (key == "--before-time" || key == "--after-time" || key == "--value-tolerance")) &&
                 !(cooked_physics && key == "--physics-profile") &&
                 !(cooked_physics_diff && key == "--after-physics-profile") &&
                 !(cooked_skeletal && (key == "--skeletal-profile" || key == "--has-vertex-colors" ||
@@ -436,9 +467,11 @@ int run(const std::vector<std::string> &args) {
         if (key == "--animation-profile" || key == "--after-animation-profile" || key == "--interpolation" ||
             key == "--after-interpolation" || key == "--include-keys" || key == "--bone-settings-container" ||
             key == "--bone-settings-entry" || key == "--after-bone-settings-container" ||
-            key == "--after-bone-settings-entry" || key == "--skeleton-container" ||
-            key == "--skeleton-entry" || key == "--after-skeleton-container" ||
-            key == "--after-skeleton-entry")
+            key == "--after-bone-settings-entry" || key == "--curve-settings-container" ||
+            key == "--curve-settings-entry" || key == "--after-curve-settings-container" ||
+            key == "--after-curve-settings-entry" || key == "--before-time" || key == "--after-time" ||
+            key == "--curve-default" || key == "--skeleton-container" || key == "--skeleton-entry" ||
+            key == "--after-skeleton-container" || key == "--after-skeleton-entry")
             throw Error("arguments", key + " requires a cooked animation command");
         if (key == "--physics-profile" || key == "--after-physics-profile")
             throw Error("arguments", key + " requires a cooked physics command");
@@ -732,6 +765,7 @@ int run(const std::vector<std::string> &args) {
                     return CookedAnimationDependency{dependency_container,
                                                      select(dependency_container, entry), z, read_options};
                 };
+                fallback.curve_settings = dependency("curve-settings");
                 fallback.bone_settings = dependency("bone-settings");
                 fallback.skeleton = dependency("skeleton");
                 return fallback;
@@ -745,7 +779,15 @@ int run(const std::vector<std::string> &args) {
             if (command == "zen-animation")
                 output = before.to_json(flags.contains("--include-keys") &&
                                         integer_option("--include-keys", 1) != 0);
-            else if (command == "zen-animation-frame") {
+            else if (command == "zen-animation-curves") {
+                output =
+                    before.sample_curves(real_option("--time", 0, -std::numeric_limits<float>::max(),
+                                                     std::numeric_limits<float>::max()),
+                                         real_option("--curve-default", 0, -std::numeric_limits<float>::max(),
+                                                     std::numeric_limits<float>::max()));
+                output["curveContext"] = before.curve_information();
+                exit_code = output.value("ready", false) ? 0 : 2;
+            } else if (command == "zen-animation-frame") {
                 output = before.sample(real_option("--frame", 0, 0, 2147483646.));
                 if (!output.value("ready", false))
                     exit_code = 2;
@@ -761,16 +803,37 @@ int run(const std::vector<std::string> &args) {
                     read_zen_animation(other, select(other, positional[3]), after_options, read_options,
                                        native_options(true, other, after_options, opts),
                                        selected_export("--after-export-index"));
-                AnimationFrameDiffOptions comparison;
-                comparison.position_tolerance = real_option("--position-tolerance", 0, 0, 1e300);
-                comparison.rotation_tolerance_degrees = real_option("--rotation-tolerance", 0, 0, 180);
-                comparison.scale_tolerance = real_option("--scale-tolerance", 0, 0, 1e300);
-                output = compare_cooked_animation_frames(
-                    before, after, real_option("--before-frame", 0, 0, 2147483646.),
-                    real_option("--after-frame", 0, 0, 2147483646.), comparison);
-                output["beforeAnimation"] = before.to_json();
-                output["afterAnimation"] = after.to_json();
-                exit_code = !output.value("complete", false) ? 2 : output.at("status") == "identical" ? 0 : 1;
+                if (cooked_animation_curve_diff) {
+                    CookedAnimationCurveDiffOptions comparison;
+                    comparison.before_time =
+                        real_option("--before-time", 0, -std::numeric_limits<float>::max(),
+                                    std::numeric_limits<float>::max());
+                    comparison.after_time = real_option("--after-time", 0, -std::numeric_limits<float>::max(),
+                                                        std::numeric_limits<float>::max());
+                    comparison.value_tolerance = real_option("--value-tolerance", 0, 0, 1e300);
+                    comparison.empty_default =
+                        real_option("--curve-default", 0, -std::numeric_limits<float>::max(),
+                                    std::numeric_limits<float>::max());
+                    output = compare_cooked_animation_curves(before, after, comparison);
+                    output["beforeCurveContext"] = before.curve_information();
+                    output["afterCurveContext"] = after.curve_information();
+                    exit_code = !output.value("complete", false)     ? 2
+                                : output.at("status") == "identical" ? 0
+                                                                     : 1;
+                } else {
+                    AnimationFrameDiffOptions comparison;
+                    comparison.position_tolerance = real_option("--position-tolerance", 0, 0, 1e300);
+                    comparison.rotation_tolerance_degrees = real_option("--rotation-tolerance", 0, 0, 180);
+                    comparison.scale_tolerance = real_option("--scale-tolerance", 0, 0, 1e300);
+                    output = compare_cooked_animation_frames(
+                        before, after, real_option("--before-frame", 0, 0, 2147483646.),
+                        real_option("--after-frame", 0, 0, 2147483646.), comparison);
+                    output["beforeAnimation"] = before.to_json();
+                    output["afterAnimation"] = after.to_json();
+                    exit_code = !output.value("complete", false)     ? 2
+                                : output.at("status") == "identical" ? 0
+                                                                     : 1;
+                }
             }
         } else if (cooked_skeletal) {
             auto native_options = [&](bool after, CookedSkeletalOptions fallback) {

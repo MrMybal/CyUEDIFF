@@ -186,13 +186,16 @@ struct CompressedCurves::Impl {
     std::vector<std::uint8_t> raw;
     std::vector<Curve> curves;
     std::string sha256, io_hash;
-    std::uint64_t unreferenced = 0;
+    std::uint64_t unreferenced = 0, accounted = 0;
     float sample_rate = 0;
     std::uint32_t samples = 0;
 };
 CompressedCurves::CompressedCurves(std::shared_ptr<const Impl> p) : impl_(std::move(p)) {}
 std::size_t CompressedCurves::curve_count() const {
     return impl_->curves.size();
+}
+std::uint64_t CompressedCurves::accounted_output_bytes() const {
+    return impl_->accounted;
 }
 CompressedCurves decode_compressed_curves(const CompressedCurveSource &s, const CompressedCurveOptions &o) {
     o.control.check();
@@ -330,6 +333,7 @@ CompressedCurves decode_compressed_curves(const CompressedCurveSource &s, const 
     need(covered <= s.buffer.size(), "Curve coverage exceeds buffer");
     v->unreferenced = s.buffer.size() - covered;
     o.control.checkpoint("decode-compressed-curves", v->curves.size(), v->curves.size());
+    v->accounted = budget.output;
     return CompressedCurves(std::move(v));
 }
 
@@ -487,6 +491,14 @@ Json metadata(const Curve &c, std::size_t i) {
             {"encodingSha256", c.hash}};
 }
 } // namespace
+CompressedCurveCodec CompressedCurves::codec() const {
+    return impl_->codec;
+}
+Json CompressedCurves::curve_metadata(std::size_t curve, const OperationControl &control) const {
+    control.check();
+    need(curve < impl_->curves.size(), "Compressed curve index exceeds table");
+    return metadata(impl_->curves[curve], curve);
+}
 Json CompressedCurves::catalog(const OperationControl &control) const {
     return to_json(false, control);
 }

@@ -20,6 +20,10 @@ class CompressedCurves {
   public:
     struct Impl;
     std::size_t curve_count() const;
+    CompressedCurveCodec codec() const;
+    Json curve_metadata(std::size_t curve, const OperationControl & = {}) const;
+    // Conservative decoder-accounted allocation bound, including owned data and hashing scratch.
+    std::uint64_t accounted_output_bytes() const;
     Json catalog(const OperationControl & = {}) const;
     Json to_json(bool include_keys = false, const OperationControl & = {}) const;
     // Original encoded values/tangents. Uniform sample times are identified as derived.

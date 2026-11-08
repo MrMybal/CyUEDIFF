@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <set>
+#include <limits>
 #include <string_view>
 #include <utility>
 namespace cyuediff {
@@ -310,6 +311,54 @@ Resolved resolve(const Loaded &main, const Json &ref, const std::optional<Cooked
             "Animation dependency is not the expected non-template class");
     return result;
 }
+struct CurveSelection {
+    const ZenExport *object = nullptr;
+    std::size_t index = SIZE_MAX;
+    CompressedCurveCodec codec = CompressedCurveCodec::unspecified;
+    std::string unavailable;
+};
+CurveSelection curve_codec(const Resolved &settings, Budget &b) {
+    const auto &root = settings.object();
+    const auto &p = settings.package->package;
+    limit(p.exports.size() <= b.o.max_codec_exports, "Curve settings exceed export budget");
+    if (root.property_read.is_null() || root.property_read.value("status", std::string{}) != "decoded")
+        return {nullptr, SIZE_MAX, CompressedCurveCodec::unspecified,
+                "curve-settings-properties-not-decoded"};
+    const auto &properties = root.property_read.at("properties");
+    charge_properties(properties, b);
+    const auto *registered =
+        property(properties, "/Script/Engine.AnimCurveCompressionSettings.Codec", "ObjectProperty");
+    if (!registered)
+        return {nullptr, SIZE_MAX, CompressedCurveCodec::unspecified, "curve-codec-not-stored"};
+    context(registered->is_object(), "Registered curve codec is null or invalid");
+    if (registered->value("kind", std::string{}) != "export")
+        return {nullptr, SIZE_MAX, CompressedCurveCodec::unspecified, "external-curve-codec-registration"};
+    const auto path = registered->value("path", std::string{});
+    context(!path.empty(), "Registered curve codec has no path");
+    std::size_t index = SIZE_MAX;
+    for (std::size_t i = 0; i < p.exports.size(); ++i) {
+        b.o.control.check();
+        if (p.exports[i].path == path) {
+            context(index == SIZE_MAX, "Ambiguous registered curve codec path");
+            index = i;
+        }
+    }
+    context(index != SIZE_MAX && !(p.exports[index].flags & 0x30),
+            "Registered curve codec is absent or a template");
+    const auto &selected = p.exports[index];
+    CompressedCurveCodec type = CompressedCurveCodec::unspecified;
+    if (selected.class_name == "/Script/Engine.AnimCurveCompressionCodec_CompressedRichCurve")
+        type = CompressedCurveCodec::rich_curve;
+    else if (selected.class_name == "/Script/Engine.AnimCurveCompressionCodec_UniformIndexable")
+        type = CompressedCurveCodec::uniform_indexable;
+    else if (selected.class_name == "/Script/Engine.AnimCurveCompressionCodec_UniformlySampled")
+        type = CompressedCurveCodec::uniformly_sampled;
+    if (type == CompressedCurveCodec::unspecified)
+        return {&selected, index, type, "unsupported-curve-codec-lookup"};
+    // These exact classes inherit the verified base lookup returning the registered codec.
+    // The serialized path is retained; it is not a selector for this known lookup behavior.
+    return {&selected, index, type, {}};
+}
 struct CodecSelection {
     const ZenExport *object = nullptr;
     std::size_t index = SIZE_MAX;
@@ -502,6 +551,7 @@ std::vector<MeshBone> skeleton(const Resolved &binding, const std::string &expec
 struct CookedAnimation::Impl {
     Json metadata = Json::object();
     std::shared_ptr<const PerTrackAnimation> channels;
+    std::shared_ptr<const CompressedCurves> curves;
     std::vector<MeshBone> bones;
     bool bound = false;
     std::optional<CompressedAnimationInterpolation> interpolation;
@@ -514,12 +564,66 @@ bool CookedAnimation::decoded() const {
 bool CookedAnimation::skeleton_bound() const {
     return impl_->bound;
 }
+std::shared_ptr<const CompressedCurves> CookedAnimation::compressed_curves() const {
+    return impl_->curves;
+}
+Json CookedAnimation::curve_information() const {
+    return impl_->metadata.at("curves");
+}
+Json CookedAnimation::sample_curves(double seconds, double empty_default,
+                                    const OperationControl &control) const {
+    control.check();
+    need(std::isfinite(seconds) && std::abs(seconds) <= std::numeric_limits<float>::max(),
+         "Invalid curve time");
+    need(std::isfinite(empty_default) && std::abs(empty_default) <= std::numeric_limits<float>::max(),
+         "Invalid empty curve default");
+    const auto &v = *impl_;
+    const auto &info = v.metadata.at("curves");
+    const bool known = bool(v.curves) || (info.is_object() && info.value("status", std::string{}) == "empty");
+    Json out = {
+        {"schema", "cyuediff.cooked-animation-curves/1"},
+        {"scope",
+         "stored encoded-order scalar channels in seconds; no runtime sorting, filtering or blending"},
+        {"source", v.metadata.at("source")},
+        {"time", seconds},
+        {"nativeTime", static_cast<float>(seconds)},
+        {"emptyDefault", empty_default},
+        {"nativeEmptyDefault", static_cast<float>(empty_default)},
+        {"ready", known},
+        {"storedCurvesKnown", known},
+        {"declaredNames", info.is_object() ? info.at("names") : Json(nullptr)},
+        {"values", Json::object()},
+        {"unavailable", known              ? Json(nullptr)
+                        : info.is_object() ? info.value("unavailable", Json("curve-data-unavailable"))
+                                           : Json("compressed-data-unavailable")}};
+    if (!v.curves)
+        return out;
+    for (std::size_t i = 0; i < v.curves->curve_count(); ++i) {
+        control.checkpoint("sample-cooked-curves", i, v.curves->curve_count());
+        const auto name = info.at("names").at(i).get<std::string>();
+        Json row = {{"index", i}, {"name", name}, {"ready", false}, {"value", nullptr}};
+        try {
+            row["value"] = v.curves->sample_curve(i, seconds, empty_default, control);
+            row["ready"] = true;
+        } catch (const Error &e) {
+            if (e.code == "cancelled")
+                throw;
+            row["unavailable"] = e.code + ": " + e.what();
+            out["ready"] = false;
+        }
+        out["values"]["name:" + name] = std::move(row);
+    }
+    control.checkpoint("sample-cooked-curves", v.curves->curve_count(), v.curves->curve_count());
+    return out;
+}
 std::optional<std::uint32_t> CookedAnimation::frame_count() const {
     return impl_->frames;
 }
 Json CookedAnimation::to_json(bool keys) const {
     auto j = impl_->metadata;
     j["animation"] = impl_->channels ? impl_->channels->to_json(keys) : Json(nullptr);
+    if (impl_->curves)
+        j["curves"]["decoded"] = impl_->curves->to_json(keys);
     return j;
 }
 Json CookedAnimation::catalog(const OperationControl &control) const {
@@ -536,6 +640,8 @@ Json CookedAnimation::catalog(const OperationControl &control) const {
               {"frameCount", v.frames ? Json(*v.frames) : Json(nullptr)},
               {"skeleton", Json::object()},
               {"animation", v.channels ? v.channels->catalog(control) : Json(nullptr)}};
+    if (v.curves)
+        j["curves"]["decoded"] = v.curves->catalog(control);
     for (auto it = v.metadata.at("skeleton").begin(); it != v.metadata.at("skeleton").end(); ++it)
         if (it.key() != "bones" && it.key() != "retargetSources")
             j["skeleton"][it.key()] = *it;
@@ -648,22 +754,26 @@ CookedAnimation read_zen_animation(const Container &container, std::size_t entry
     if (o.narrow_string_encoding == NarrowStringEncoding::unspecified && zen.schema_context)
         o.narrow_string_encoding = zen.schema_context->narrow_string_encoding;
     o.control.cancelled = [a = input.control, b = zen.control, c = read.control, d = input.channels.control,
-                           settings = input.bone_settings, skel = input.skeleton] {
+                           settings = input.bone_settings, skel = input.skeleton,
+                           curve_settings = input.curve_settings,
+                           curve_control = input.curve_channels.control] {
         a.check();
         b.check();
         c.check();
         d.check();
-        for (const auto *source : {&settings, &skel})
+        curve_control.check();
+        for (const auto *source : {&settings, &skel, &curve_settings})
             if (*source) {
                 (*source)->zen.control.check();
                 (*source)->read.control.check();
             }
         return false;
     };
-    o.control.progress = input.control.progress  ? input.control.progress
-                         : zen.control.progress  ? zen.control.progress
-                         : read.control.progress ? read.control.progress
-                                                 : input.channels.control.progress;
+    o.control.progress = input.control.progress            ? input.control.progress
+                         : zen.control.progress            ? zen.control.progress
+                         : read.control.progress           ? read.control.progress
+                         : input.channels.control.progress ? input.channels.control.progress
+                                                           : input.curve_channels.control.progress;
     o.control.check();
     supported(o.profile == CookedAnimationProfile::unreal_5_3_windows &&
                   zen.profile == ZenProfile::unreal_5_3,
@@ -768,7 +878,7 @@ CookedAnimation read_zen_animation(const Container &container, std::size_t entry
         source.track_to_skeleton.push_back(bone);
     }
     out->metadata["trackToSkeleton"] = source.track_to_skeleton;
-    const auto curves = r.count(o.max_curves);
+    const auto curves = r.count(std::min(o.max_curves, o.curve_channels.max_curves));
     Json names = Json::array();
     std::set<std::string> named;
     for (unsigned i = 0; i < curves; ++i) {
@@ -797,6 +907,7 @@ CookedAnimation read_zen_animation(const Container &container, std::size_t entry
     budget.reserve(handle.size() + curve_path.size());
     const auto curve_bytes = r.count(0x7fffffffu);
     r.range(curve_bytes);
+    const auto curve_start = r.pos;
     out->metadata["curves"] = {{"names", std::move(names)},
                                {"codecPath", curve_path},
                                {"bytes", curve_bytes},
@@ -806,6 +917,55 @@ CookedAnimation read_zen_animation(const Container &container, std::size_t entry
     out->metadata["compressedBuffer"] = {{"bytes", num_bytes},
                                          {"storage", use_bulk ? "bulk" : "inline"},
                                          {"bulk", use_bulk ? window.metadata : Json(nullptr)}};
+    auto &curve_info = out->metadata["curves"];
+    curve_info["settingsReference"] =
+        reference(properties, "/Script/Engine.AnimSequence.CurveCompressionSettings");
+    curve_info["unavailable"] = nullptr;
+    if (curves || curve_bytes) {
+        const auto curve_settings = resolve(main, curve_info["settingsReference"], o.curve_settings,
+                                            "/Script/Engine.AnimCurveCompressionSettings", budget);
+        if (!curve_settings.package)
+            curve_info["unavailable"] = "curve-compression-settings-not-bound";
+        else {
+            curve_info["settings"] =
+                provenance(*curve_settings.package, curve_settings.object(), curve_settings.index);
+            const auto selected_curve = curve_codec(curve_settings, budget);
+            if (selected_curve.object)
+                curve_info["codec"] =
+                    provenance(*curve_settings.package, *selected_curve.object, selected_curve.index);
+            if (!selected_curve.unavailable.empty())
+                curve_info["unavailable"] = selected_curve.unavailable;
+            else {
+                CompressedCurveSource curve_source;
+                curve_source.codec = selected_curve.codec;
+                limit(curve_bytes <= o.curve_channels.max_read_bytes,
+                      "Compressed curves exceed channel read budget");
+                budget.reserve(curve_bytes);
+                curve_source.buffer.assign(main.bytes.begin() + static_cast<std::ptrdiff_t>(curve_start),
+                                           main.bytes.begin() +
+                                               static_cast<std::ptrdiff_t>(curve_start + curve_bytes));
+                budget.reserve(std::uint64_t(curves) * sizeof(std::string));
+                curve_source.names.reserve(curves);
+                for (const auto &name : curve_info.at("names")) {
+                    o.control.check();
+                    budget.reserve(name.get_ref<const std::string &>().size());
+                    curve_source.names.push_back(name.get<std::string>());
+                }
+                auto options = o.curve_channels;
+                options.profile = CompressedCurveProfile::unreal_5_3_windows;
+                options.control = o.control;
+                options.max_curves = std::min(options.max_curves, o.max_curves);
+                options.max_output_bytes =
+                    std::min(options.max_output_bytes, o.max_output_bytes - budget.output);
+                out->curves =
+                    std::make_shared<CompressedCurves>(decode_compressed_curves(curve_source, options));
+                budget.reserve(out->curves->accounted_output_bytes());
+                curve_info["status"] = "decoded";
+                curve_info["lookup"] =
+                    "verified base GetCodec returns the registered Codec; stored path retained";
+            }
+        }
+    }
     const auto bone_ref = reference(properties, "/Script/Engine.AnimSequence.BoneCompressionSettings");
     auto settings =
         resolve(main, bone_ref, o.bone_settings, "/Script/Engine.AnimBoneCompressionSettings", budget);
@@ -978,5 +1138,127 @@ Json compare_cooked_animation_frames(const CookedAnimation &before, const Cooked
     out["unavailableTracks"] = unavailable;
     out["status"] = !out.at("complete").get<bool>() ? "incomplete" : changed ? "changed" : "identical";
     return out;
+}
+Json compare_cooked_animation_curves(const CookedAnimation &before, const CookedAnimation &after,
+                                     const CookedAnimationCurveDiffOptions &o) {
+    o.control.check();
+    for (double t : {o.before_time, o.after_time, o.empty_default})
+        need(std::isfinite(t) && std::abs(t) <= std::numeric_limits<float>::max(),
+             "Invalid scalar curve comparison time/default");
+    need(std::isfinite(o.value_tolerance) && o.value_tolerance >= 0, "Invalid scalar curve tolerance");
+    const auto a = before.curve_information(), b = after.curve_information();
+    const auto am = before.compressed_curves(), bm = after.compressed_curves();
+    auto known = [](const Json &v, const auto &model) {
+        return bool(model) || (v.is_object() && v.value("status", std::string{}) == "empty");
+    };
+    const bool stored = known(a, am) && known(b, bm);
+    std::uint64_t output = 4096;
+    auto reserve = [&](std::uint64_t n) {
+        limit(output <= o.max_output_bytes && n <= o.max_output_bytes - output,
+              "Curve comparison exceeds output budget");
+        output += n;
+    };
+    reserve(0);
+    std::map<std::string, std::array<std::size_t, 2>> names;
+    unsigned side = 0;
+    for (const auto *info : {&a, &b}) {
+        if (info->is_object())
+            for (std::size_t i = 0; i < info->at("names").size(); ++i) {
+                o.control.check();
+                const auto name = info->at("names").at(i).get<std::string>();
+                auto it = names.find(name);
+                if (it == names.end()) {
+                    limit(names.size() < o.max_curve_pairs, "Curve comparison exceeds pair budget");
+                    reserve(name.size() + 256);
+                    it = names.emplace(name, std::array<std::size_t, 2>{SIZE_MAX, SIZE_MAX}).first;
+                }
+                it->second[side] = i;
+            }
+        ++side;
+    }
+    Json result = {
+        {"schema", "cyuediff.cooked-animation-curve-diff/1"},
+        {"scope",
+         "stored scalar encoding and selected encoded-order values; no whole-asset/runtime equality"},
+        {"beforeTime", o.before_time},
+        {"nativeBeforeTime", static_cast<float>(o.before_time)},
+        {"nativeAfterTime", static_cast<float>(o.after_time)},
+        {"afterTime", o.after_time},
+        {"valueTolerance", o.value_tolerance},
+        {"emptyDefault", o.empty_default},
+        {"nativeEmptyDefault", static_cast<float>(o.empty_default)},
+        {"complete", stored},
+        {"status", "incomplete"},
+        {"curves", Json::object()},
+        {"encodingChanges", 0},
+        {"valueChanges", 0},
+        {"unavailableCurves", 0}};
+    std::size_t encoding_changes = 0, value_changes = 0, unavailable = 0, processed = 0;
+    bool complete = stored;
+    for (const auto &entry : names) {
+        o.control.checkpoint("compare-cooked-curves", processed++, names.size());
+        reserve(entry.first.size() * 3 + 8192);
+        const bool present[2] = {entry.second[0] != SIZE_MAX, entry.second[1] != SIZE_MAX};
+        Json metadata[2] = {nullptr, nullptr}, values[2] = {nullptr, nullptr};
+        bool ready = stored;
+        for (unsigned s = 0; s < 2; ++s) {
+            const auto &model = s ? bm : am;
+            if (!model || !present[s]) {
+                if (present[s])
+                    ready = false;
+                continue;
+            }
+            metadata[s] = model->curve_metadata(entry.second[s], o.control);
+            try {
+                values[s] = {{"ready", true},
+                             {"value", model->sample_curve(entry.second[s], s ? o.after_time : o.before_time,
+                                                           o.empty_default, o.control)}};
+            } catch (const Error &e) {
+                if (e.code == "cancelled")
+                    throw;
+                values[s] = {{"ready", false}, {"value", nullptr}, {"unavailable", e.code + ": " + e.what()}};
+                ready = false;
+            }
+        }
+        std::string encoding = "unavailable", value = "unavailable";
+        Json delta = nullptr;
+        if (stored) {
+            encoding = !present[0]   ? "added"
+                       : !present[1] ? "removed"
+                       : am->codec() == bm->codec() &&
+                               metadata[0].at("encodingSha256") == metadata[1].at("encodingSha256")
+                           ? "identical"
+                           : "changed";
+            encoding_changes += encoding != "identical";
+        }
+        if (ready) {
+            if (!present[0])
+                value = "added";
+            else if (!present[1])
+                value = "removed";
+            else {
+                const double d = values[1].at("value").get<double>() - values[0].at("value").get<double>();
+                delta = d;
+                value = std::abs(d) > o.value_tolerance ? "changed" : "identical";
+            }
+            value_changes += value != "identical";
+        } else {
+            complete = false;
+            ++unavailable;
+        }
+        result["curves"]["name:" + entry.first] = {
+            {"before", {{"metadata", std::move(metadata[0])}, {"sample", std::move(values[0])}}},
+            {"after", {{"metadata", std::move(metadata[1])}, {"sample", std::move(values[1])}}},
+            {"encodingStatus", encoding},
+            {"valueStatus", value},
+            {"valueDelta", delta}};
+    }
+    o.control.checkpoint("compare-cooked-curves", names.size(), names.size());
+    result["complete"] = complete;
+    result["encodingChanges"] = encoding_changes;
+    result["valueChanges"] = value_changes;
+    result["unavailableCurves"] = unavailable;
+    result["status"] = !complete ? "incomplete" : encoding_changes || value_changes ? "changed" : "identical";
+    return result;
 }
 } // namespace cyuediff

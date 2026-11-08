@@ -40,6 +40,16 @@ Three separately prepared animations each supply six original scalar curves. The
 
 The installed `examples/compressed_curve_consumer` takes an explicit codec, data-only names/times JSON, a complete binary buffer and a protected output path. `validate_compressed_curves.py` validates actual codec references and optional protected-source hashes through that consumer. See the [example](../examples/compressed_curve_consumer/README.md) and the [optional original Unreal adapter](../tools/unreal_reference/README.md).
 
+## Whole-package binding and scalar differences
+
+The [cooked animation reader](COOKED_ANIMATIONS.md) now accepts an explicit `CookedAnimationOptions::curve_settings` dependency. It resolves the exact stored AnimSequence reference and the settings object's mapped `Codec` ObjectProperty. Package name/public export hash, class and non-template checks apply. The three supported built-ins use their verified base lookup behavior; an unused codec export or a suggestive instance name cannot select a decoder. Stored codec paths remain provenance even when different from the registered object's current handle. Unknown plugin/external lookup behavior remains opaque.
+
+`compressed_curves()` exposes the immutable decoder, `curve_information()` the native coverage/provenance, and `sample_curves(seconds, empty_default)` named scalar values. Curve-only packages do not need a bone decoder, Skeleton binding or an invented bone-frame range. Confirmed empty names and bytes are known absence; unknown coverage never becomes a removal. Requested seconds/defaults and their float32 native representations are reported. `compare_cooked_animation_curves` reports encoding and selected scalar changes separately, with independent times, a scalar tolerance, bounded pairs/output and cancellation. This covers encoded-order scalar channels, independently of runtime blending or bone interpolation.
+
+`zen-animation` includes bound curve metadata and optional stored keys. `zen-animation-curves --time` and `zen-animation-curves-diff --before-time --after-time --value-tolerance` expose focused scalar review. Before/after curve-settings TOCs and IDs are explicit, and every opened input remains protected against output replacement.
+
+The installed [whole-package consumer](../examples/cooked_curve_consumer/README.md) and `validate_cooked_curves.py` additionally prove actual settings binding, complete cooked buffer SHA-256/IoHash, encoded identities and 4,626 direct Unreal codec values through the installed Core-only SDK. The largest measured delta is 4.7684e-7. Protected original/derived/context inputs remain unchanged. Original fixtures and CLI checks cover all three codecs, curve-only/empty/unknown peers, registration ambiguity, malformed dependencies/data, independent contexts/times, budgets, cancellation and output protection.
+
 ## Remaining integration
 
-This closes the selected scalar buffer decoders and SDK queries. Automatic verified curve-settings binding in the whole [cooked animation reader](COOKED_ANIMATIONS.md), dedicated CLI/desktop curve inspection/differences, further codec/plugin/build profiles and broader runtime correspondence remain open. The existing whole reader still labels its curve values opaque until that binding is implemented. No new release, public push or complete-product claim is implied.
+Dedicated desktop scalar projection, further codec/plugin/build profiles and broader runtime correspondence remain open. No new release, public push or complete-product claim is implied.
