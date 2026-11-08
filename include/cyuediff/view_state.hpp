@@ -280,6 +280,17 @@ inline void validate(const Json &v, std::string_view kind) {
                                                                  : 3);
                     known = true;
                 }
+        } else if (kind == "cloth") {
+            string({"filter"});
+            flag({"changedOnly"});
+            child("properties", "property");
+            if (key == "section" || key == "lodBias" || key == "vertex") {
+                if (key != "vertex" || !x.is_null()) {
+                    require(x.is_number_integer());
+                    scalar(x, 0, 4294967295.);
+                }
+                known = true;
+            }
         } else if (kind == "render-morph") {
             string({"target", "filter"});
             flag({"changedOnly"});
@@ -321,6 +332,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("pixelView", "texture");
             child("meshView", "mesh");
             child("meshSkinView", "graph-inspection");
+            child("meshClothView", "cloth");
+            flag({"meshCloth"});
             child("meshRenderMorphView", "render-morph");
             flag({"meshRenderMorphs"});
             flag({"meshSkin"});
@@ -337,7 +350,9 @@ inline void validate(const Json &v, std::string_view kind) {
         require(known);
     }
     if (kind == "container")
-        require(!(v.value("meshSkin", false) && v.value("meshRenderMorphs", false)));
+        require(int(v.value("meshSkin", false)) + int(v.value("meshRenderMorphs", false)) +
+                    int(v.value("meshCloth", false)) <=
+                1);
     if(kind=="skeleton")
         require(int(v.value("posePreview",false))+int(v.value("animationPreview",false))+int(v.value("attachmentsPreview",false))<=1);
     if(kind=="curves" && v.contains("rangeBegin") && v.contains("rangeEnd"))

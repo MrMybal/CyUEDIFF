@@ -31,6 +31,7 @@ else()
     target_compile_options(cyuediff_blake3 PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3_prefix.h)
 endif()
 add_library(cyuediff_core STATIC
+    src/cloth.cpp
     src/compressed_morphs.cpp
     src/render_morphs.cpp src/compressed_curves.cpp src/cooked_animation.cpp src/animation_compression.cpp src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
@@ -92,7 +93,7 @@ if(CYUEDIFF_BUILD_UI)
         set(CYUI_MODULES "Diff;Nodes;Images;Viewport")
         add_subdirectory("${CYUEDIFF_CYUI_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/cyui")
     endif()
-    add_library(cyuediff_ui STATIC ui/nanite_view.cpp ui/cooked_curve_view.cpp ui/cooked_animation_view.cpp ui/animation_pose_view.cpp ui/curve_view.cpp ui/animation_source_view.cpp ui/attachments_view.cpp ui/animation_metadata_view.cpp ui/reference_pose_viewport.cpp ui/view_layout.cpp ui/skeleton_view.cpp ui/collision_viewport.cpp ui/collision_view.cpp ui/graph_inspector.cpp ui/property_view.cpp ui/catalog_view.cpp ui/asset_view.cpp ui/blueprint_view.cpp ui/texture_view.cpp ui/mesh_view.cpp ui/mesh_skin_view.cpp ui/render_morph_view.cpp ui/material_view.cpp)
+    add_library(cyuediff_ui STATIC ui/nanite_view.cpp ui/cooked_curve_view.cpp ui/cooked_animation_view.cpp ui/animation_pose_view.cpp ui/curve_view.cpp ui/animation_source_view.cpp ui/attachments_view.cpp ui/animation_metadata_view.cpp ui/reference_pose_viewport.cpp ui/view_layout.cpp ui/skeleton_view.cpp ui/collision_viewport.cpp ui/collision_view.cpp ui/graph_inspector.cpp ui/property_view.cpp ui/catalog_view.cpp ui/asset_view.cpp ui/blueprint_view.cpp ui/texture_view.cpp ui/mesh_view.cpp ui/mesh_skin_view.cpp ui/render_morph_view.cpp ui/cloth_view.cpp ui/material_view.cpp)
     add_library(CyUEDiff::UI ALIAS cyuediff_ui)
     target_include_directories(cyuediff_ui PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
     find_package(Threads REQUIRED)
@@ -305,6 +306,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_cooked_skeletal_tests tests/cooked_skeletal_tests.cpp)
     target_link_libraries(cyuediff_cooked_skeletal_tests PRIVATE CyUEDiff::Core)
     add_test(NAME cooked_skeletal_payloads COMMAND cyuediff_cooked_skeletal_tests)
+    add_executable(cyuediff_cooked_cloth_tests tests/cooked_cloth_tests.cpp)
+    target_link_libraries(cyuediff_cooked_cloth_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME cooked_cloth COMMAND cyuediff_cooked_cloth_tests)
     add_executable(cyuediff_cooked_morph_tests tests/cooked_morph_tests.cpp)
     target_link_libraries(cyuediff_cooked_morph_tests PRIVATE CyUEDiff::Core)
     add_test(NAME cooked_morphs COMMAND cyuediff_cooked_morph_tests)
@@ -506,6 +510,9 @@ if(BUILD_TESTING)
             add_test(NAME cooked_animation_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_animation_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_animation_tests>")
+            add_test(NAME cooked_cloth_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_cloth_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>" "$<TARGET_FILE:cyuediff_cooked_cloth_tests>")
             add_test(NAME cooked_morphs_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_morph_cli_tests.py" "$<TARGET_FILE:cyuediff>"
                 "$<TARGET_FILE:cyuediff_cooked_morph_tests>")
@@ -729,6 +736,9 @@ if(BUILD_TESTING)
         add_executable(cyuediff_cooked_animation_view_tests tests/cooked_animation_view_tests.cpp)
         target_link_libraries(cyuediff_cooked_animation_view_tests PRIVATE CyUEDiff::UI)
         add_test(NAME cooked_animation_view COMMAND cyuediff_cooked_animation_view_tests)
+        add_executable(cyuediff_cloth_view_tests tests/cloth_view_tests.cpp)
+        target_link_libraries(cyuediff_cloth_view_tests PRIVATE CyUEDiff::UI)
+        add_test(NAME cloth_view COMMAND cyuediff_cloth_view_tests)
         add_executable(cyuediff_render_morph_view_tests tests/render_morph_view_tests.cpp)
         target_link_libraries(cyuediff_render_morph_view_tests PRIVATE CyUEDiff::UI)
         add_test(NAME render_morph_view COMMAND cyuediff_render_morph_view_tests)
@@ -765,6 +775,10 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_collision_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_collision_tests>" "$<TARGET_FILE:cyuediff_desktop>")
             set_tests_properties(desktop_cooked_collision_cli PROPERTIES TIMEOUT 120)
+            add_test(NAME desktop_cooked_cloth_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_cloth_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>" "$<TARGET_FILE:cyuediff_cooked_cloth_tests>" "$<TARGET_FILE:cyuediff_desktop>")
+            set_tests_properties(desktop_cooked_cloth_cli PROPERTIES TIMEOUT 120)
             add_test(NAME desktop_cooked_morphs_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_morph_cli_tests.py" "$<TARGET_FILE:cyuediff>"
                 "$<TARGET_FILE:cyuediff_cooked_morph_tests>" "$<TARGET_FILE:cyuediff_desktop>")

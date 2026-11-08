@@ -1,3 +1,4 @@
+#include <cyuediff/cloth.hpp>
 #include <cyuediff/render_morphs.hpp>
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/mesh_morphs.hpp>
@@ -652,6 +653,8 @@ Json MeshGeometry::to_json() const {
         morphs->validate(*this);
         result["morphs"] = morphs->to_json();
     }
+    if (cloth)
+        result["cloth"] = cloth->semantic_snapshot();
     if (render_morphs)
         result["renderMorphs"] = render_morphs->semantic_snapshot();
     return result;

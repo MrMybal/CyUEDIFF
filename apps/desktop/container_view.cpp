@@ -29,6 +29,7 @@ void ContainerView::register_translations() {
     NaniteView::register_translations();
     MeshSkinView::register_translations();
     RenderMorphView::register_translations();
+    ClothView::register_translations();
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr",
@@ -355,6 +356,7 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     mesh_ = 0;
     mesh_skin_ = false;
     mesh_morphs_ = false;
+    mesh_cloth_ = false;
     pixel_rows_.clear();
     pixel_ = 0;
     diagnostics_.clear();
@@ -422,6 +424,11 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                 if (row.morphs_available)
                     row.morphs.set_models(after ? peer_morphs : own_morphs, after ? own_morphs : peer_morphs,
                                           peer != nullptr && row.comparison_known);
+                const auto own_cloth = preview.geometry->cloth, peer_cloth = other ? other->cloth : nullptr;
+                row.cloth_available = own_cloth || peer_cloth;
+                if (row.cloth_available)
+                    row.cloth.set_cloths(after ? peer_cloth : own_cloth, after ? own_cloth : peer_cloth,
+                                         peer != nullptr && row.comparison_known);
                 mesh_rows_.push_back(std::move(row));
             }
             diagnostics_.insert(diagnostics_.end(), side.mesh_diagnostics.begin(),
@@ -646,7 +653,9 @@ Json ContainerView::mesh_report() const {
                         {"skinAvailable", r.skin_available},
                         {"skin", r.skin_available ? r.skin.report() : Json(nullptr)},
                         {"morphsAvailable", r.morphs_available},
-                        {"morphs", r.morphs_available ? r.morphs.report() : Json(nullptr)}});
+                        {"morphs", r.morphs_available ? r.morphs.report() : Json(nullptr)},
+                        {"clothAvailable", r.cloth_available},
+                        {"cloth", r.cloth_available ? r.cloth.report() : Json(nullptr)}});
     return rows;
 }
 Json ContainerView::property_report() const {
@@ -728,6 +737,9 @@ Json ContainerView::view_state() const {
         result["mesh"] = mesh_rows_[mesh_].key;
         result["meshAfter"] = mesh_rows_[mesh_].after;
         result["meshView"] = mesh_rows_[mesh_].view.view_state();
+        result["meshCloth"] = mesh_cloth_;
+        if (mesh_rows_[mesh_].cloth_available)
+            result["meshClothView"] = mesh_rows_[mesh_].cloth.view_state();
         result["meshRenderMorphs"] = mesh_morphs_;
         if (mesh_rows_[mesh_].morphs_available)
             result["meshRenderMorphView"] = mesh_rows_[mesh_].morphs.view_state();
@@ -864,6 +876,10 @@ void ContainerView::restore_view_state(const Json &state) {
                 mesh_ = static_cast<int>(i);
                 if (state.contains("meshView"))
                     mesh_rows_[i].view.restore_view_state(state["meshView"]);
+                if (state.contains("meshCloth"))
+                    mesh_cloth_ = state["meshCloth"].get<bool>();
+                if (state.contains("meshClothView") && mesh_rows_[i].cloth_available)
+                    mesh_rows_[i].cloth.restore_view_state(state["meshClothView"]);
                 if (state.contains("meshRenderMorphs"))
                     mesh_morphs_ = state["meshRenderMorphs"].get<bool>();
                 if (state.contains("meshRenderMorphView") && mesh_rows_[i].morphs_available)
@@ -1122,12 +1138,23 @@ ContainerAction ContainerView::draw(bool busy) {
             cyui::callout(cyui::Tone::warning,
                           cyui::tr("Peer mesh unavailable; changes cannot be classified.").c_str());
         if (row.skin_available && ImGui::Checkbox(cyui::trLabel("Bones and weights").c_str(), &mesh_skin_) &&
-            mesh_skin_)
+            mesh_skin_) {
             mesh_morphs_ = false;
+            mesh_cloth_ = false;
+        }
         if (row.morphs_available &&
-            ImGui::Checkbox(cyui::trLabel("Render morph targets").c_str(), &mesh_morphs_) && mesh_morphs_)
+            ImGui::Checkbox(cyui::trLabel("Render morph targets").c_str(), &mesh_morphs_) && mesh_morphs_) {
             mesh_skin_ = false;
-        if (row.morphs_available && mesh_morphs_)
+            mesh_cloth_ = false;
+        }
+        if (row.cloth_available && ImGui::Checkbox(cyui::trLabel("Cloth mappings").c_str(), &mesh_cloth_) &&
+            mesh_cloth_) {
+            mesh_skin_ = false;
+            mesh_morphs_ = false;
+        }
+        if (row.cloth_available && mesh_cloth_)
+            row.cloth.draw("##cooked-cloth");
+        else if (row.morphs_available && mesh_morphs_)
             row.morphs.draw("##cooked-morphs");
         else if (row.skin_available && mesh_skin_)
             row.skin.draw("##cooked-skin");

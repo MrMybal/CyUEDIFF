@@ -328,6 +328,15 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                                  std::uint64_t(g.triangles.size()) * sizeof(MeshTriangle);
                         for (const auto &v : g.instances)
                             bytes += v.uvs.size() * sizeof(std::array<float, 2>);
+                        if (g.cloth) {
+                            bytes += sizeof(MeshCloth) + g.cloth->buffer.size() * sizeof(ClothMapping) +
+                                     g.cloth->index_mapping.size() * sizeof(ClothBufferIndex);
+                            for (const auto &s : g.cloth->sections) {
+                                bytes += sizeof(ClothSection);
+                                for (const auto &bias : s->lod_biases)
+                                    bytes += bias.size() * (sizeof(ClothMapping) + 256);
+                            }
+                        }
                         if (g.render_morphs) {
                             bytes += g.render_morphs->buffer().accounted_output_bytes();
                             for (std::size_t mi = 0; mi < g.render_morphs->buffer().morph_count(); ++mi)

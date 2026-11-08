@@ -30,6 +30,11 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     // No file is saved and no existing source asset is changed.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateSkinWeightProfiles(UObject *Asset, int32 Variant);
+    // Creates original cloth mapping data only on caller-prepared /Game/Corpus/Cloth* copies.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static bool PreparePrivateCloth(UObject *Asset, int32 Variant);
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportClothReference(UObject *Asset);
     // Adds original morph deltas only to caller-prepared /Game/Corpus/Morph* copies; never saves.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateMorphs(UObject *Asset, int32 Variant);

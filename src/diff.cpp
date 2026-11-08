@@ -291,6 +291,15 @@ MeshComparison compare_meshes(const MeshGeometry &before, const MeshGeometry &af
         if (!b.contains("renderMorphs"))
             b["renderMorphs"] = empty;
     }
+    if (a.contains("cloth") || b.contains("cloth")) {
+        const Json empty = {{"schema", "cyuediff.cloth/1"},
+                            {"scope", "stored-cloth-deformer-mapping"},
+                            {"sections", Json::object()}};
+        if (!a.contains("cloth"))
+            a["cloth"] = empty;
+        if (!b.contains("cloth"))
+            b["cloth"] = empty;
+    }
     walk(a, b, "", result.changes);
     return result;
 }

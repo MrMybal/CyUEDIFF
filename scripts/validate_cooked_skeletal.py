@@ -12,6 +12,7 @@ import os
 import re
 from pathlib import Path
 import subprocess
+import struct
 
 
 def digest(path):
@@ -183,6 +184,98 @@ def compare_morphs(actual, reference):
     return {'values': values, 'storedMorphDeltas': entries, 'morphTargets': targets, 'morphBatches': batches}
 
 
+def compare_cloth(actual, reference):
+    """Check stored cloth maps against Engine API and its exported record serializer.
+
+    Physical simulation vertices, collision response and runtime cloth poses are
+    outside this comparison. Complete native records, including padding, are
+    checked separately from the semantic mapping projection.
+    """
+    if reference.get('schema') != 'cyuediff.unreal-cloth-reference/1' or not reference.get('engine', '').startswith('5.3.'):
+        raise ValueError('Matching UE 5.3 cloth reference required')
+    if actual.get('schema') != 'cyuediff.cooked-skeletal-mesh/1' or actual.get('profile') != 'ue5.3-windows':
+        raise ValueError('Unexpected cooked skeletal schema/profile')
+    if actual['object'] != reference['object'] or len(actual['lods']) != len(reference['lods']):
+        raise ValueError('Cloth object or LOD identities disagree')
+    def encode(records):
+        data = bytearray()
+        def scalar(value):
+            if isinstance(value, dict) and set(value) == {'nonFiniteBits'}:
+                return struct.pack('<I', value['nonFiniteBits'])
+            return struct.pack('<f', value)
+        try:
+            for record in records:
+                for key in ('position', 'normal', 'tangent'):
+                    if len(record[key]) != 4:
+                        raise ValueError('Cloth coefficient vector size differs')
+                    for value in record[key]:
+                        data.extend(scalar(value))
+                if len(record['sourceIndices']) != 4:
+                    raise ValueError('Cloth source index vector size differs')
+                data.extend(struct.pack('<4H', *record['sourceIndices']))
+                data.extend(scalar(record['weight']))
+                data.extend(struct.pack('<I', record['padding']))
+        except (TypeError, struct.error, OverflowError, KeyError) as error:
+            raise ValueError('Invalid typed cloth record') from error
+        return bytes(data)
+    def api_bits(data):
+        # UE's ordinary numeric JSON can print -0.0 as integer 0. The separate
+        # native-record bytes and decoded Core buffer still require exact bits.
+        result = bytearray(data)
+        for at in range(0, len(result), 64):
+            for offset in (*range(0, 48, 4), 56):
+                if struct.unpack_from('<I', result, at + offset)[0] == 0x80000000:
+                    struct.pack_into('<I', result, at + offset, 0)
+        return bytes(result)
+    c = Check()
+    records = sections = mapped_vertices = 0
+    for li, (lod, ref) in enumerate(zip(actual['lods'], reference['lods'])):
+        model = lod.get('cloth')
+        has_data = any(s['assetIndex'] != -1 or s['assetLOD'] != -1 or any(s['assetGuidWords']) or any(s['mappings']) for s in ref['sections'])
+        if model is None:
+            if has_data or ref['buffer'] or ref['indexMapping']:
+                raise ValueError('Cloth data is absent from a nonempty native reference')
+            continue
+        if model.get('schema') != 'cyuediff.cloth/1' or model.get('scope') != 'stored-cloth-deformer-mapping':
+            raise ValueError('Unexpected cloth projection scope')
+        if model['simulationMeshBoundsVerified']:
+            raise ValueError('Stored mapping validation cannot certify simulation mesh bounds')
+        where = f'LOD{li}/cloth'
+        c.equal(len(model['sections']), len(ref['sections']), where + '/sections')
+        for section, source in zip(model['sections'], ref['sections']):
+            for key in ('firstVertex', 'vertices', 'assetIndex', 'assetLOD', 'assetGuidWords'):
+                if section[key] != source[key]:
+                    raise ValueError('Cloth binding integer identity differs')
+            if len(section['mappings']) != len(source['mappings']):
+                raise ValueError('Cloth LOD bias inventory differs')
+            for mapping, expected_mapping in zip(section['mappings'], source['mappings']):
+                if api_bits(encode(mapping)) != api_bits(encode(expected_mapping)):
+                    raise ValueError('Decoded section mapping bits differ from actual Engine API values')
+            for key in ('firstVertex', 'vertices', 'assetIndex', 'assetLOD', 'assetGuidWords', 'mappings'):
+                c.equal(section[key], source[key], where + '/section/' + str(section['section']) + '/' + key)
+            sections += 1
+            if source['mappings'] and source['mappings'][0]:
+                mapped_vertices += source['vertices']
+        if model['indexMapping'] != ref['indexMapping']:
+            raise ValueError('Cloth buffer index identities differ')
+        c.equal(model['indexMapping'], ref['indexMapping'], where + '/indexMapping')
+        c.equal(model['buffer'], ref['buffer'], where + '/buffer')
+        count = len(ref['buffer'])
+        if count:
+            if not model['bufferStored'] or ref['stride'] != 64:
+                raise ValueError('Native cloth buffer is unavailable or has another stride')
+            raw = bytes(ref['nativeRecordBytes'])
+            if len(raw) != count * 64 or model['bufferInfo']['recordSha256'] != hashlib.sha256(raw).hexdigest():
+                raise ValueError('Cloth record bytes differ from actual Engine serialization')
+            if encode(model['buffer']) != raw or api_bits(encode(ref['buffer'])) != api_bits(raw):
+                raise ValueError('Decoded cloth record bits differ from actual Engine serialization')
+            records += count
+        elif model['bufferStored']:
+            raise ValueError('Unexpected stored cloth buffer')
+    return {'values': c.values, 'clothSections': sections, 'clothRecords': records,
+            'clothMappedVertices': mapped_vertices}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for field in ('manifest', 'consumer', 'container', 'global-toc', 'schema', 'output-dir'):
@@ -196,8 +289,9 @@ def main():
         parser.error('Select 1..10000 explicit 24-hex package chunk IDs')
     references = [(manifest_path.parent / row['reference']).resolve() for row in cases]
     morph_references = [(manifest_path.parent / row['morphReference']).resolve() if row.get('morphReference') else None for row in cases]
+    cloth_references = [(manifest_path.parent / row['clothReference']).resolve() if row.get('clothReference') else None for row in cases]
     protected = [args.consumer.resolve(), args.container.resolve(), args.global_toc.resolve(),
-                 args.schema.resolve(), manifest_path, *references, *[p for p in morph_references if p]]
+                 args.schema.resolve(), manifest_path, *references, *[p for p in morph_references + cloth_references if p]]
     for toc in (args.container, args.global_toc):
         protected.extend(p.resolve() for p in toc.parent.glob(toc.stem + '*.ucas'))
     schema = json.loads(args.schema.read_text(encoding='utf-8'))
@@ -233,6 +327,10 @@ def main():
                 morphs = compare_morphs(actual, json.loads(morph_references[i].read_text(encoding='utf-8')))
                 evidence['values'] += morphs.pop('values')
                 evidence.update(morphs)
+            if cloth_references[i]:
+                cloth = compare_cloth(actual, json.loads(cloth_references[i].read_text(encoding='utf-8')))
+                evidence['values'] += cloth.pop('values')
+                evidence.update(cloth)
             evidence.update(entry=row['entry'], object=actual['object'], referenceEngine=reference['engine'])
             reports.append(evidence)
             (output / f'{i:03d}.json').write_text(json.dumps(actual, indent=2), encoding='utf-8')

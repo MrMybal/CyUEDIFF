@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/zen.hpp>
 #include <cyuediff/mesh_skin.hpp>
+#include <cyuediff/cloth.hpp>
 #include <cyuediff/render_morphs.hpp>
 #include <optional>
 namespace cyuediff {
@@ -24,6 +25,8 @@ struct CookedSkeletalOptions {
     // Aggregate compressed morph tables/entries across loaded LODs.
     std::uint32_t max_morph_targets = 4096, max_morph_batches = 1'000'000;
     std::uint64_t max_morph_deltas = 4'000'000;
+    std::uint64_t max_cloth_mappings = 4'000'000;
+    std::uint32_t max_cloth_influences = 5;
 };
 struct CookedSkeletalWeightProfile {
     std::string name, skin_profile_key;
@@ -40,6 +43,7 @@ struct CookedSkeletalSection {
     std::uint32_t max_influences = 0;
     std::vector<std::uint16_t> bone_map;
     Json fields = Json::object();
+    std::shared_ptr<const ClothSection> cloth;
     Json to_json() const;
 };
 struct CookedSkeletalLod {
@@ -52,6 +56,7 @@ struct CookedSkeletalLod {
     std::string unavailable;
     std::shared_ptr<const MeshGeometry> geometry;
     std::shared_ptr<const MeshRenderMorphs> morphs;
+    std::shared_ptr<const MeshCloth> cloth;
     Json to_json(bool include_geometry = false) const;
 };
 struct CookedSkeletalMesh {
@@ -73,7 +78,8 @@ struct CookedSkeletalMesh {
 // stored-slot profiles under distinct "profile:" keys beside the base "default".
 // Compressed morph buffers retain exact stored render deltas and bind names only
 // through explicit MorphTargets references to native child UMorphTarget exports.
-// Cloth, duplicate-vertex tables and custom vertex attributes require another decoder.
+// Stored cloth section/deformer mappings are typed and verified against the render buffer.
+// Duplicate-vertex tables and custom vertex attributes require another decoder.
 // Later object-native data remains an identified opaque tail. No Unreal execution.
 CookedSkeletalMesh read_zen_skeletal_mesh(const Container &, std::size_t package_entry,
                                           const ZenReadOptions &, const ContainerReadOptions &,

@@ -169,7 +169,8 @@ struct Cursor {
 struct Budget {
     const CookedSkeletalOptions &o;
     std::uint64_t vertices = 0, indices = 0, triangles = 0, sections = 0, influences = 0, output = 0;
-    std::uint64_t profiles = 0, overrides = 0, morphs = 0, morph_batches = 0, morph_deltas = 0;
+    std::uint64_t profiles = 0, overrides = 0, morphs = 0, morph_batches = 0, morph_deltas = 0,
+                  cloth_mappings = 0;
     void add(std::uint64_t &counter, std::uint64_t n, std::uint64_t max, const char *s) {
         limit(counter <= max && n <= max - counter, s);
         counter += n;
@@ -207,6 +208,53 @@ float packed(Cursor &r, bool high) {
     auto max = high ? 65536 : 256;
     return static_cast<float>(v & (max / 2) ? int(v) - max : int(v)) / (high ? 32767.f : 127.f);
 }
+ClothMapping cloth_mapping(Cursor &r) {
+    ClothMapping m;
+    for (auto *v : {&m.position, &m.normal, &m.tangent})
+        for (auto &f : *v) {
+            const auto bits = r.u32();
+            std::memcpy(&f, &bits, 4);
+        }
+    for (auto &v : m.source_indices)
+        v = static_cast<std::uint16_t>(r.number(2));
+    const auto bits = r.u32();
+    std::memcpy(&m.weight, &bits, 4);
+    m.padding = r.u32();
+    m.validate();
+    return m;
+}
+std::vector<ClothMapping> cloth_mappings(Cursor &r, Budget &b, bool bulk) {
+    const auto n = bulk ? r.array(64, INT32_MAX) : r.count(INT32_MAX);
+    r.range(std::uint64_t(n) * 64);
+    b.add(b.cloth_mappings, n, b.o.max_cloth_mappings, "Cloth mappings exceed aggregate budget");
+    b.reserve(std::uint64_t(n) * (sizeof(ClothMapping) + (b.o.geometry ? 256 : 0)));
+    std::vector<ClothMapping> out;
+    out.reserve(n);
+    for (unsigned i = 0; i < n; ++i) {
+        if (!(i & 1023))
+            b.o.control.checkpoint("cooked-cloth-mappings", i, n);
+        out.push_back(cloth_mapping(r));
+    }
+    return out;
+}
+std::vector<ClothBufferIndex> cloth_indices(Cursor &r, Budget &b) {
+    const auto n = r.count(b.o.max_sections);
+    r.range(std::uint64_t(n) * 12);
+    b.reserve(std::uint64_t(n) * sizeof(ClothBufferIndex));
+    std::vector<ClothBufferIndex> out;
+    out.reserve(n);
+    for (unsigned i = 0; i < n; ++i) {
+        b.o.control.check();
+        out.push_back({r.u32(), r.u32(), r.u32()});
+    }
+    return out;
+}
+bool has_cloth_buffer(const CookedSkeletalLod &lod) {
+    for (const auto &s : lod.sections)
+        if (s.cloth && s.cloth->has_render_mapping())
+            return true;
+    return false;
+}
 void section(Cursor &r, CookedSkeletalLod &lod, const std::vector<std::string> &, Budget &b,
              std::size_t bones) {
     CookedSkeletalSection s;
@@ -221,9 +269,13 @@ void section(Cursor &r, CookedSkeletalLod &lod, const std::vector<std::string> &
     auto shadow = r.boolean(), ray = r.boolean();
     s.first_vertex = r.u32();
     const auto cloth_lods = r.count(b.o.max_lods);
+    auto cloth = std::make_shared<ClothSection>();
+    cloth->section = static_cast<std::uint32_t>(lod.sections.size());
+    cloth->first_vertex = s.first_vertex;
+    b.reserve(sizeof(ClothSection) + std::uint64_t(cloth_lods) * sizeof(std::vector<ClothMapping>));
     for (unsigned i = 0; i < cloth_lods; ++i) {
         b.o.control.check();
-        supported(r.count(b.o.max_vertices) == 0, "Skeletal cloth mappings require a cloth decoder");
+        cloth->lod_biases.push_back(cloth_mappings(r, b, false));
     }
     s.bone_map = bone_array(r, b, bones);
     s.vertices = r.u32();
@@ -232,11 +284,14 @@ void section(Cursor &r, CookedSkeletalLod &lod, const std::vector<std::string> &
     s.max_influences = static_cast<std::uint32_t>(maxinf);
     limit(s.vertices <= b.o.max_vertices && s.max_influences <= b.o.max_influences,
           "Skeletal section exceeds vertex or influence budget");
-    auto cloth_asset = static_cast<std::uint16_t>(r.number(2));
-    auto cloth_guid = r.guid();
-    auto cloth_lod = r.i32();
-    supported(cloth_asset == 65535 && cloth_lod == -1 && cloth_guid == std::string(32, '0'),
-              "Skeletal clothing binding requires a cloth decoder");
+    cloth->vertices = s.vertices;
+    const auto asset_bits = r.number(2);
+    cloth->asset_index = asset_bits & 0x8000 ? int(asset_bits) - 65536 : int(asset_bits);
+    for (auto &v : cloth->asset_guid)
+        v = r.u32();
+    cloth->asset_lod = r.i32();
+    cloth->validate(b.o.max_vertices, b.o.max_cloth_influences, b.o.control);
+    s.cloth = std::move(cloth);
     supported((strips & 1) != 0, "Skeletal duplicate-vertex table requires another decoder");
     const auto disabled = r.boolean();
     s.fields = {{"stripFlags", strips},
@@ -255,7 +310,8 @@ std::string folded(std::string name) {
             c += 'a' - 'A';
     return name;
 }
-Json availability(Cursor &r, Budget &b, bool colors, const std::vector<std::string> &names) {
+Json availability(Cursor &r, Budget &b, bool colors, const std::vector<std::string> &names,
+                  const CookedSkeletalLod &lod) {
     const auto &o = b.o;
     const auto index_bytes = r.number(1);
     need(index_bytes == 2 || index_bytes == 4, "Invalid cached skeletal index width");
@@ -283,6 +339,17 @@ Json availability(Cursor &r, Budget &b, bool colors, const std::vector<std::stri
     need(lookup_vertices == (variable ? vertices : 0) &&
              (variable || std::uint64_t(vertices) * maxinf == weights),
          "Cached skeletal skin dimensions disagree");
+    Json cloth = nullptr;
+    if (has_cloth_buffer(lod)) {
+        const auto cloth_index_map = cloth_indices(r, b);
+        const auto stride = r.u32(), count = r.u32();
+        need(stride == 64, "Cached cloth stride disagrees with profile");
+        limit(count <= o.max_cloth_mappings, "Cached cloth records exceed budget");
+        Json rows = Json::array();
+        for (const auto &i : cloth_index_map)
+            rows.push_back(i.to_json());
+        cloth = {{"stride", stride}, {"vertices", count}, {"indexMapping", rows}};
+    }
     const auto count = r.count(o.max_weight_profiles);
     Json profiles = Json::array();
     std::set<std::string> keys;
@@ -293,7 +360,8 @@ Json availability(Cursor &r, Budget &b, bool colors, const std::vector<std::stri
         b.reserve(128 + name.size());
         profiles.push_back(std::move(name));
     }
-    return {{"weightProfiles", profiles},
+    return {{"cloth", cloth},
+            {"weightProfiles", profiles},
             {"vertices", vertices},
             {"indices", indices},
             {"indexBytes", index_bytes},
@@ -312,6 +380,8 @@ Json availability(Cursor &r, Budget &b, bool colors, const std::vector<std::stri
             {"colorVertices", color_vertices}};
 }
 void match_availability(const Json &actual, const Json &expected) {
+    need(actual.at("cloth") == expected.at("cloth"),
+         "Cached cloth dimensions/index mapping disagree with loaded buffers");
     auto loaded_names = actual.at("weightProfiles").get<std::vector<std::string>>();
     auto cached_names = expected.at("weightProfiles").get<std::vector<std::string>>();
     std::sort(loaded_names.begin(), loaded_names.end());
@@ -502,6 +572,43 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
             if (g)
                 g->instances[i].color = {v[2], v[1], v[0], v[3]};
         }
+    }
+    std::shared_ptr<MeshCloth> cloth;
+    for (const auto &section : lod.sections)
+        if (section.cloth && section.cloth->has_stored_data()) {
+            cloth = std::make_shared<MeshCloth>();
+            break;
+        }
+    Json cloth_availability = nullptr;
+    if (cloth) {
+        b.reserve(sizeof(MeshCloth) + lod.sections.size() * sizeof(std::shared_ptr<const ClothSection>));
+        for (const auto &s : lod.sections)
+            cloth->sections.push_back(s.cloth);
+        if (has_cloth_buffer(lod)) {
+            cloth->buffer_stored = true;
+            const auto start = r.pos;
+            need(r.strip() == 0, "Unknown cloth buffer strip flags");
+            const auto records_at = r.pos + 8;
+            cloth->buffer = cloth_mappings(r, b, true);
+            cloth->index_mapping = cloth_indices(r, b);
+            Json mapping_rows = Json::array();
+            for (const auto &i : cloth->index_mapping)
+                mapping_rows.push_back(i.to_json());
+            cloth_availability = {
+                {"stride", 64}, {"vertices", cloth->buffer.size()}, {"indexMapping", mapping_rows}};
+            cloth->buffer_info = {
+                {"stride", 64},
+                {"records", cloth->buffer.size()},
+                {"recordBytes", std::uint64_t(cloth->buffer.size()) * 64},
+                {"recordSha256", detail::hash_range(r.bytes, records_at,
+                                                    std::uint64_t(cloth->buffer.size()) * 64, b.o.control)},
+                {"serializedBytes", r.pos - start},
+                {"serializedSha256", detail::hash_range(r.bytes, start, r.pos - start, b.o.control)}};
+        }
+        cloth->validate(n, b.o.max_cloth_influences, b.o.control);
+        lod.cloth = cloth;
+        if (g)
+            g->cloth = cloth;
     }
     const auto profile_count = r.count(b.o.max_weight_profiles);
     b.add(b.profiles, profile_count, b.o.max_weight_profiles, "Skeletal LODs exceed profile budget");
@@ -694,7 +801,8 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
                          {"zeroWeightPaddingInSemanticSkin", false}};
         lod.geometry = g;
     }
-    lod.buffers = {{"weightProfiles", profile_list},
+    lod.buffers = {{"cloth", cloth_availability},
+                   {"weightProfiles", profile_list},
                    {"vertices", n},
                    {"indices", ni},
                    {"indexBytes", index_bytes},
@@ -734,9 +842,12 @@ Json CookedSkeletalWeightProfile::to_json(bool include) const {
     return out;
 }
 Json CookedSkeletalSection::to_json() const {
-    return {{"material", material},        {"firstIndex", first_index}, {"triangles", triangles},
-            {"firstVertex", first_vertex}, {"vertices", vertices},      {"maxInfluences", max_influences},
-            {"boneMap", bone_map},         {"fields", fields}};
+    Json out = {{"material", material},        {"firstIndex", first_index}, {"triangles", triangles},
+                {"firstVertex", first_vertex}, {"vertices", vertices},      {"maxInfluences", max_influences},
+                {"boneMap", bone_map},         {"fields", fields}};
+    if (cloth && cloth->has_stored_data())
+        out["cloth"] = cloth->to_json();
+    return out;
 }
 Json CookedSkeletalLod::to_json(bool include) const {
     Json s = Json::array();
@@ -750,6 +861,8 @@ Json CookedSkeletalLod::to_json(bool include) const {
     j["weightProfiles"] = Json::array();
     for (const auto &profile : weight_profiles)
         j["weightProfiles"].push_back(profile.to_json(include));
+    if (cloth)
+        j["cloth"] = cloth->to_json(include);
     if (morphs)
         j["morphs"] = morphs->to_json(include);
     if (include && geometry)
@@ -1019,7 +1132,7 @@ CookedSkeletalMesh read_zen_skeletal_mesh(const Container &container, std::size_
                 auto window = bulk_reader.describe(index, r.pos, r.end);
                 Json cached = nullptr;
                 if (window.bytes)
-                    cached = availability(r, budget, colors, package.names);
+                    cached = availability(r, budget, colors, package.names, lod);
                 lod.unavailable = window.unavailable;
                 bulk_reader.load(window);
                 if (lod.unavailable.empty()) {

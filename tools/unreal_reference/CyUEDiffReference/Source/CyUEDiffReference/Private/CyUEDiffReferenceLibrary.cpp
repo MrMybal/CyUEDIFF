@@ -1,4 +1,7 @@
 #include "CyUEDiffReferenceLibrary.h"
+#include "ClothingAssetFactory.h"
+#include "ClothingAsset.h"
+#include "ClothLODData.h"
 #include "HAL/IConsoleManager.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimBoneCompressionCodec.h"
@@ -405,6 +408,164 @@ bool UCyUEDiffReferenceLibrary::PreparePrivateSkinWeightProfiles(UObject *Asset,
     Mesh->PostEditChange();
     FAssetCompilingManager::Get().FinishAllCompilation();
     return true;
+}
+bool UCyUEDiffReferenceLibrary::PreparePrivateCloth(UObject *Asset, int32 Variant) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh || Variant < 0 || Variant > 3 ||
+        !Mesh->GetOutermost()->GetName().StartsWith(TEXT("/Game/Corpus/Cloth")) ||
+        Mesh->GetMeshClothingAssets().Num() != ((Variant & 1) ? 1 : 0))
+        return false;
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    Mesh->SetUseLegacyMeshDerivedDataKey(false);
+    Mesh->InvalidateDeriveDataCacheGUID();
+    if (!Mesh->GetImportedModel() || !Mesh->GetImportedModel()->LODModels.Num() ||
+        !Mesh->GetImportedModel()->LODModels[0].Sections.Num())
+        return false;
+    UE_LOG(LogTemp, Display, TEXT("Private cloth source: LODverts=%d soft=%d sectionverts=%d"),
+           Mesh->GetImportedModel()->LODModels[0].NumVertices,
+           Mesh->GetImportedModel()->LODModels[0].Sections[0].SoftVertices.Num(),
+           Mesh->GetImportedModel()->LODModels[0].Sections[0].NumVertices);
+    {
+        FScopedSkeletalMeshPostEditChange Edit(Mesh);
+        UClothingAssetCommon *Cloth = nullptr;
+        if (Variant & 1) {
+            Cloth = Cast<UClothingAssetCommon>(Mesh->GetMeshClothingAssets()[0]);
+            if (!Cloth || Cloth->GetOuter() != Mesh)
+                return false;
+            Cloth->UnbindFromSkeletalMesh(Mesh, 0);
+        } else {
+            FSkeletalMeshClothBuildParams Params;
+            Params.AssetName = TEXT("CyCloth");
+            Params.LodIndex = 0;
+            Params.SourceSection = 0;
+            Params.bRemoveFromMesh = false;
+            auto *Factory = NewObject<UClothingAssetFactory>();
+            Cloth = Cast<UClothingAssetCommon>(Factory->CreateFromSkeletalMesh(Mesh, Params));
+            if (Cloth)
+                Mesh->AddClothingAsset(Cloth);
+        }
+        if (!Cloth || !Cloth->LodData.Num()) {
+            UE_LOG(LogTemp, Warning, TEXT("Private cloth factory produced no asset/LOD"));
+            return false;
+        }
+        auto &LOD = Cloth->LodData[0];
+        LOD.bUseMultipleInfluences = Variant >= 2;
+        LOD.SkinningKernelRadius = 50.0f;
+        auto &Physical = LOD.PhysicalMeshData;
+        UE_LOG(LogTemp, Display, TEXT("Private cloth physical: verts=%d indices=%d soft=%d"),
+               Physical.Vertices.Num(), Physical.Indices.Num(),
+               Mesh->GetImportedModel()->LODModels[0].Sections[0].SoftVertices.Num());
+
+        if (Variant & 1)
+            for (int32 I = 0; I < Physical.Vertices.Num(); I += 3)
+                Physical.Vertices[I].Z += .25f;
+        auto &Distances = Physical.FindOrAddWeightMap(EWeightMapTargetCommon::MaxDistance);
+        Distances = FPointWeightMap(Physical.Vertices.Num(), 10.0f);
+        LOD.PointWeightMaps.Empty();
+        FPointWeightMap Mask;
+        Mask.Initialize(Distances, EWeightMapTargetCommon::MaxDistance);
+        LOD.PointWeightMaps.Add(MoveTemp(Mask));
+        Cloth->InvalidateAllCachedData();
+        if (!Cloth->BindToSkeletalMesh(Mesh, 0, 0, 0)) {
+            UE_LOG(LogTemp, Warning, TEXT("Private cloth bind failed"));
+            return false;
+        }
+        auto &Model = Mesh->GetImportedModel()->LODModels[0];
+        const auto &Section = Model.Sections[0];
+        auto &User =
+            FSkelMeshSourceSectionUserData::GetSourceSectionUserData(Model.UserSectionsData, Section);
+        User.ClothingData = Section.ClothingData;
+        User.CorrespondClothAssetIndex = Section.CorrespondClothAssetIndex;
+    }
+    Mesh->MarkPackageDirty();
+    Mesh->PostEditChange();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    UE_LOG(LogTemp, Display, TEXT("Private cloth after refresh: imported=%d render=%d records=%d"),
+           Mesh->GetImportedModel()->LODModels[0].HasClothData(),
+           Mesh->GetResourceForRendering()->LODRenderData[0].HasClothData(),
+           Mesh->GetResourceForRendering()->LODRenderData[0].ClothVertexBuffer.GetNumVertices());
+    return Mesh->GetResourceForRendering() && Mesh->GetResourceForRendering()->LODRenderData.Num() &&
+           Mesh->GetResourceForRendering()->LODRenderData[0].HasClothData();
+}
+FString UCyUEDiffReferenceLibrary::ExportClothReference(UObject *Asset) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh)
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    const auto *Render = Mesh->GetResourceForRendering();
+    if (!Render)
+        return FString();
+    auto Out = MakeShared<FJsonObject>();
+    Out->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-cloth-reference/1"));
+    Out->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Out->SetStringField(TEXT("object"), Mesh->GetPathName());
+    const auto Mapping = [](const FMeshToMeshVertData &M) {
+        auto V = MakeShared<FJsonObject>();
+        V->SetField(TEXT("position"), Vec4(M.PositionBaryCoordsAndDist));
+        V->SetField(TEXT("normal"), Vec4(M.NormalBaryCoordsAndDist));
+        V->SetField(TEXT("tangent"), Vec4(M.TangentBaryCoordsAndDist));
+        Values Indices;
+        for (int32 I = 0; I < 4; ++I)
+            Indices.Add(Number(M.SourceMeshVertIndices[I]));
+        V->SetArrayField(TEXT("sourceIndices"), Indices);
+        V->SetNumberField(TEXT("weight"), M.Weight);
+        V->SetNumberField(TEXT("padding"), M.Padding);
+        return V;
+    };
+    Values LODs;
+    for (const auto &LOD : Render->LODRenderData) {
+        auto L = MakeShared<FJsonObject>();
+        Values Sections;
+        for (const auto &Section : LOD.RenderSections) {
+            auto S = MakeShared<FJsonObject>();
+            S->SetNumberField(TEXT("firstVertex"), Section.BaseVertexIndex);
+            S->SetNumberField(TEXT("vertices"), Section.NumVertices);
+            S->SetNumberField(TEXT("assetIndex"), Section.CorrespondClothAssetIndex);
+            S->SetNumberField(TEXT("assetLOD"), Section.ClothingData.AssetLodIndex);
+            Values Guid;
+            for (auto V : {Section.ClothingData.AssetGuid.A, Section.ClothingData.AssetGuid.B,
+                           Section.ClothingData.AssetGuid.C, Section.ClothingData.AssetGuid.D})
+                Guid.Add(Number(V));
+            S->SetArrayField(TEXT("assetGuidWords"), Guid);
+            Values Biases;
+            for (const auto &Bias : Section.ClothMappingDataLODs) {
+                Values Records;
+                for (const auto &M : Bias)
+                    Records.Add(Obj(Mapping(M)));
+                Biases.Add(MakeShared<FJsonValueArray>(Records));
+            }
+            S->SetArrayField(TEXT("mappings"), Biases);
+            Sections.Add(Obj(S));
+        }
+        L->SetArrayField(TEXT("sections"), Sections);
+        const auto &Buffer = LOD.ClothVertexBuffer;
+        L->SetNumberField(TEXT("stride"), Buffer.GetStride());
+        Values Records, Indices;
+        for (uint32 I = 0; I < Buffer.GetNumVertices(); ++I)
+            Records.Add(Obj(Mapping(Buffer.MappingData(I))));
+        for (const auto &M : Buffer.GetClothIndexMapping())
+            Indices.Add(Array({Number(M.BaseVertexIndex), Number(M.MappingOffset), Number(M.LODBiasStride)}));
+        L->SetArrayField(TEXT("buffer"), Records);
+        L->SetArrayField(TEXT("indexMapping"), Indices);
+        // The whole-buffer serializer is not exported by the installed Engine.
+        // Exercise the actual exported mapping-record serializers separately.
+        TArray<uint8> Bytes;
+        FMemoryWriter Writer(Bytes, true);
+        for (uint32 I = 0; I < Buffer.GetNumVertices(); ++I) {
+            auto Record = Buffer.MappingData(I);
+            Writer << Record;
+        }
+        Values Raw;
+        for (uint8 V : Bytes)
+            Raw.Add(Number(V));
+        L->SetArrayField(TEXT("nativeRecordBytes"), Raw);
+        LODs.Add(Obj(L));
+    }
+    Out->SetArrayField(TEXT("lods"), LODs);
+    FString Result;
+    auto Writer = TJsonWriterFactory<>::Create(&Result);
+    FJsonSerializer::Serialize(Out, Writer);
+    return Result;
 }
 bool UCyUEDiffReferenceLibrary::PreparePrivateMorphs(UObject *Asset, int32 Variant) {
     auto *Mesh = Cast<USkeletalMesh>(Asset);

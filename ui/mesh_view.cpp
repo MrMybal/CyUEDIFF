@@ -119,6 +119,41 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
             }
         }
     }
+    std::set<std::uint32_t> changed_cloth_vertices;
+    if (mesh && peer && (current.contains("cloth") || remote.contains("cloth"))) {
+        const Json empty = Json::object();
+        const auto &a = current.contains("cloth") ? current["cloth"]["sections"] : empty;
+        const auto &b = remote.contains("cloth") ? remote["cloth"]["sections"] : empty;
+        std::set<std::string> sections;
+        for (auto i = a.begin(); i != a.end(); ++i)
+            sections.insert(i.key());
+        for (auto i = b.begin(); i != b.end(); ++i)
+            sections.insert(i.key());
+        for (const auto &section : sections) {
+            const auto &av = a.contains(section) ? a[section] : empty;
+            const auto &bv = b.contains(section) ? b[section] : empty;
+            bool binding = av.empty() != bv.empty();
+            for (const auto *key : {"assetIndex", "assetLOD", "assetGuidWords"})
+                binding = binding || av.contains(key) != bv.contains(key) ||
+                          (av.contains(key) && bv.contains(key) && av[key] != bv[key]);
+            const auto &ab = av.contains("lodBiases") ? av["lodBiases"] : empty;
+            const auto &bb = bv.contains("lodBiases") ? bv["lodBiases"] : empty;
+            std::set<std::string> biases;
+            for (auto i = ab.begin(); i != ab.end(); ++i)
+                biases.insert(i.key());
+            for (auto i = bb.begin(); i != bb.end(); ++i)
+                biases.insert(i.key());
+            for (const auto &bias : biases) {
+                const auto &x = ab.contains(bias) ? ab[bias] : empty;
+                const auto &y = bb.contains(bias) ? bb[bias] : empty;
+                for (const auto *v : {&x, &y})
+                    for (auto i = v->begin(); i != v->end(); ++i)
+                        if (binding || !x.contains(i.key()) || !y.contains(i.key()) ||
+                            x[i.key()] != y[i.key()])
+                            changed_cloth_vertices.insert(static_cast<std::uint32_t>(std::stoul(i.key())));
+            }
+        }
+    }
     auto different = [&](const char *table, std::uint32_t id) {
         auto key = std::to_string(id);
         return !peer || !remote.at(table).contains(key) ||
@@ -162,7 +197,9 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                     if (!peer_edges.count(key))
                         change = after ? ChangeKind::added : ChangeKind::removed;
                     else {
-                        bool changed = changed_morph_vertices.count(key.first) ||
+                        bool changed = changed_cloth_vertices.count(key.first) ||
+                                       changed_cloth_vertices.count(key.second) ||
+                                       changed_morph_vertices.count(key.first) ||
                                        changed_morph_vertices.count(key.second) ||
                                        changed_skin_vertices.count(key.first) ||
                                        changed_skin_vertices.count(key.second) ||
