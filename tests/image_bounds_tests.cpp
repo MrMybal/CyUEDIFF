@@ -48,6 +48,19 @@ int main() {
         check(compare_images(single_a, single_b).changed_bounds.to_json() ==
                   Json{{"x", 0}, {"y", 0}, {"width", 1}, {"height", 1}},
               "One-pixel image bounds");
+        OperationControl stopped;
+        bool cancel = false;
+        stopped.cancelled = [&] { return cancel; };
+        stopped.progress = [&](const auto &p) {
+            if (p.phase == "Comparing pixels")
+                cancel = true;
+        };
+        try {
+            compare_images(before, before, 0, true, stopped);
+            throw std::runtime_error("Pixel comparison cancellation ignored");
+        } catch (const Error &e) {
+            check(e.code == "cancelled", "Pixel comparison cancellation propagates");
+        }
         std::cout << checks << " image bounds checks passed\n";
         return 0;
     } catch (const std::exception &e) {

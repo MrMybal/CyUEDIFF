@@ -20,7 +20,8 @@ std::string ZenSchemaContext::fingerprint() const {
             state["nativeStructs"][binding.first] = native_struct_layout_name(binding.second);
     }
     if (!struct_layouts.empty()) {
-        if (!binary_layouts) throw Error("schema-context", "Missing binary layout catalogue");
+        if (!binary_layouts)
+            throw Error("schema-context", "Missing binary layout catalogue");
         state["binaryLayoutsSha256"] = binary_layouts->sha256();
         state["structLayouts"] = struct_layouts;
     }
@@ -318,14 +319,18 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
         auto at = static_cast<std::int64_t>(r.u64()), duplicate = static_cast<std::int64_t>(r.u64()),
              size = static_cast<std::int64_t>(r.u64());
         auto flags = r.u32();
-        auto index = r.number(1);
-        r.skip(3);
+        const auto tail = r.u32();
         require(at >= -1 && duplicate >= -1 && size >= 0, "Invalid cooked bulk range");
-        p.bulk_data.push_back({{"offset", at},
-                               {"duplicateOffset", duplicate},
-                               {"size", size},
-                               {"flags", flags},
-                               {"cookedIndex", index}});
+        Json bulk = {{"offset", at}, {"duplicateOffset", duplicate}, {"size", size}, {"flags", flags}};
+        // UE 5.3 stores a reserved uint32; the cooked index was introduced later.
+        if (options.profile == ZenProfile::unreal_5_5) {
+            require((tail & 0xffffff00u) == 0, "Nonzero cooked bulk padding");
+            bulk["cookedIndex"] = tail & 255;
+        } else {
+            require(tail == 0, "Nonzero reserved cooked bulk field");
+            bulk["reserved"] = 0;
+        }
+        p.bulk_data.push_back(std::move(bulk));
     }
     if (options.profile == ZenProfile::unreal_5_5) {
         auto pad = (8 - r.pos % 8) % 8;

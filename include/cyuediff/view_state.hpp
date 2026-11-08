@@ -230,7 +230,9 @@ inline void validate(const Json &v, std::string_view kind) {
             child("comparison", "diff");
         } else if (kind == "container") {
             child("layout", "container-layout");
-            string({"filter", "objectFilter"});
+            string({"filter", "objectFilter", "pixel"});
+            child("pixelView", "texture");
+            flag({"pixelAfter"});
             string({"member", "object"}, true);
             flag({"packagesOnly", "changedOnly", "propertyMode"});
             for (const auto *field : {"inspection", "properties", "values", "comparison", "schema"})

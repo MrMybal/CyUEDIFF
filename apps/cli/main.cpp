@@ -12,6 +12,7 @@
 #include <cyuediff/hdr.hpp>
 #include <cyuediff/container.hpp>
 #include <cyuediff/zen.hpp>
+#include <cyuediff/cooked_texture.hpp>
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/binary_layout.hpp>
 #include <cmath>
@@ -123,7 +124,14 @@ int run(const std::vector<std::string> &args) {
                "[--after-cooked-profile PROFILE] [--out FILE]\n"
                "  cyuediff zen-catalog CONTAINER --cooked-profile PROFILE [--script-objects GLOBAL.utoc] "
                "[--codec MODULE.dll] [--out FILE]\n"
-               "  Cooked commands accept --schema CONTEXT.json; zen-diff accepts --after-schema.\n"
+               "  cyuediff zen-texture CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
+               "  cyuediff zen-preview CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json --out IMAGE.png\n"
+               "  cyuediff zen-image-diff BEFORE ENTRY AFTER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
+               "  cyuediff zen-hdr-diff BEFORE ENTRY AFTER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
+               "  Cooked pixel commands accept --export-index N, --platform N and --mip N.\n"
+               "  Cooked pixel comparisons accept --after-export-index N, --after-platform N, --threshold and --heatmap.\n"
+               "  zen-preview accepts --exposure EV for floating pixel display.\n"
+               "  Cooked commands accept --schema CONTEXT.json; comparisons accept --after-schema.\n"
                "  zen-diff accepts --script-objects, --after-script-objects and --codec.\n"
                "  zen-inspect/zen-catalog accept --snapshot; zen-catalog accepts --max-packages and "
                "--max-exports.\n"
@@ -150,7 +158,7 @@ int run(const std::vector<std::string> &args) {
                                           "--after-script-objects",
                                           "--max-assets",
                                           "--max-entries",
-                                          "--exposure",
+                                          "--exposure", "--export-index", "--after-export-index", "--platform", "--after-platform",
                                           "--project",
                                           "--before-project",
                                           "--after-project",
@@ -197,9 +205,12 @@ int run(const std::vector<std::string> &args) {
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
-    const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog";
+    const bool cooked_pixels = command == "zen-texture" || command == "zen-preview" || command == "zen-image-diff" || command == "zen-hdr-diff";
+    const bool cooked_pixel_diff = command == "zen-image-diff" || command == "zen-hdr-diff";
+    const bool cooked_compare = command == "zen-diff" || cooked_pixel_diff;
+    const bool zen_command = command == "zen-inspect" || command == "zen-diff" || command == "zen-catalog" || cooked_pixels;
     if (zen_command)
-        required = command == "zen-diff" ? 4u : (command == "zen-inspect" ? 2u : 1u);
+        required = cooked_compare ? 4u : (command == "zen-catalog" ? 1u : 2u);
     const bool container_command = command == "container" || command == "container-read" ||
                                    command == "container-hash" || command == "container-diff";
     const bool catalog_command = command == "catalog" || command == "git-catalog";
@@ -259,13 +270,19 @@ int run(const std::vector<std::string> &args) {
         if (zen_command) {
             if (key != "--out" && key != "--codec" && key != "--cooked-profile" &&
                 key != "--script-objects" && key != "--schema" &&
-                !(key == "--snapshot" && command != "zen-diff") &&
+                !(key == "--snapshot" && (command == "zen-inspect" || command == "zen-catalog")) &&
                 !(command == "zen-catalog" && (key == "--max-packages" || key == "--max-exports")) &&
-                !(command == "zen-diff" && (key == "--after-cooked-profile" ||
+                !(cooked_pixels && key == "--export-index") &&
+                !(cooked_pixels && command != "zen-texture" && (key == "--mip" || key == "--platform")) &&
+                !(command == "zen-preview" && key == "--exposure") &&
+                !(cooked_pixel_diff && (key == "--threshold" || key == "--heatmap" || key == "--after-platform" || key == "--after-export-index")) &&
+                !(cooked_compare && (key == "--after-cooked-profile" ||
                                             key == "--after-script-objects" || key == "--after-schema")))
                 throw Error("arguments", "Unsupported cooked option: " + key);
             continue;
         }
+        if (key == "--export-index" || key == "--after-export-index" || key == "--platform" || key == "--after-platform")
+            throw Error("arguments", key + " requires a cooked texture command");
         if (key == "--schema" || key == "--after-schema" || key == "--cooked-profile" ||
             key == "--after-cooked-profile" || key == "--script-objects" || key == "--after-script-objects" ||
             key == "--max-packages" || key == "--max-exports")
@@ -521,6 +538,58 @@ int run(const std::vector<std::string> &args) {
             output = catalog_zen_packages(input, before_options, read_options, catalog_options);
             if (!output.at("complete").get<bool>())
                 exit_code = 2;
+        } else if (cooked_pixels) {
+            auto selected_export = [&](const char *key) -> std::size_t {
+                return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
+            };
+            auto before = read_zen_texture2d(input, select(input, positional[1]), before_options, read_options,
+                                            {}, selected_export("--export-index"));
+            const auto mip = integer_option("--mip", 31);
+            auto selected_platform = [&](const CookedTexture2D &texture, const char *key) -> const CookedTexturePlatform & {
+                if (!flags.contains(key) && texture.platforms.size() != 1)
+                    throw Error("cooked-texture-selection", "Select a cooked pixel format with --platform/--after-platform");
+                const auto index = integer_option(key, 15);
+                if (index >= texture.platforms.size())
+                    throw Error("cooked-texture-selection", "Cooked pixel format index exceeds platform table");
+                return texture.platforms[index];
+            };
+            if (command == "zen-texture") output = before.to_json();
+            else if (command == "zen-preview") {
+                const auto &platform = selected_platform(before, "--platform");
+                const bool hdr = gpu_pixel_format_is_hdr(unreal_gpu_pixel_format(platform.format));
+                const auto exposure = real_option("--exposure", 0, -32, 32);
+                if (!hdr && flags.contains("--exposure")) throw Error("arguments", "--exposure requires floating cooked samples");
+                png = hdr ? tone_map_hdr(decode_cooked_mip_hdr(platform, mip), exposure) : decode_cooked_mip(platform, mip);
+                png_destination = path_option("--out");
+                if (png_destination.empty()) throw Error("arguments", "zen-preview requires --out IMAGE.png");
+                output = {{"schema", "cyuediff.cooked-preview/1"}, {"texture", before.to_json()},
+                          {"mip", mip}, {"width", png.width}, {"height", png.height},
+                          {"conversion", hdr ? "explicit HDR display tone map" : "RGBA8 stored channels; no color transform"}};
+                if (hdr) output["exposureEV"] = exposure;
+            } else {
+                auto after_options = before_options;
+                after_options.profile = profile("--after-cooked-profile", before_options.profile);
+                if (flags.contains("--after-script-objects")) after_options.script_objects = scripts(path_option("--after-script-objects"));
+                if (flags.contains("--after-schema")) after_options.schema_context = schema_context(path_option("--after-schema"));
+                auto other = open(fs::u8path(positional[2]));
+                auto after = read_zen_texture2d(other, select(other, positional[3]), after_options, read_options,
+                                               {}, selected_export("--after-export-index"));
+                const auto &a = selected_platform(before, "--platform");
+                const auto &b = selected_platform(after, "--after-platform");
+                png_destination = path_option("--heatmap");
+                if (command == "zen-hdr-diff") {
+                    auto comparison = compare_hdr_images(decode_cooked_mip_hdr(a,mip), decode_cooked_mip_hdr(b,mip),
+                        real_option("--threshold",0,0,std::numeric_limits<double>::max()), !png_destination.empty());
+                    output = comparison.to_json();exit_code = comparison.comparable && !comparison.changed_pixels ? 0 : 1;
+                    png = std::move(comparison.heatmap);
+                } else {
+                    auto comparison = compare_images(decode_cooked_mip(a,mip), decode_cooked_mip(b,mip),
+                        static_cast<std::uint8_t>(integer_option("--threshold",255)), !png_destination.empty());
+                    output = comparison.to_json();exit_code = comparison.comparable && !comparison.changed_pixels ? 0 : 1;
+                    png = std::move(comparison.heatmap);
+                }
+                output["mip"] = mip;output["beforeTexture"] = before.to_json();output["afterTexture"] = after.to_json();
+            }
         } else {
             auto before = read_zen_package(input, select(input, positional[1]), before_options, read_options);
             if (command == "zen-inspect")
@@ -1026,7 +1095,7 @@ int run(const std::vector<std::string> &args) {
                                         (!before_layouts || !after_layouts || before_layouts->sha256() != after_layouts->sha256())}};
     }
     auto text = output.dump(2, ' ', false, Json::error_handler_t::replace) + "\n";
-    auto destination = (command == "preview" || command == "export-mesh" || command == "container-read")
+    auto destination = (command == "preview" || command == "zen-preview" || command == "export-mesh" || command == "container-read")
                            ? fs::path{}
                            : path_option("--out");
     auto guarded_path = [](const fs::path &path) {

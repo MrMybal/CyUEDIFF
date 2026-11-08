@@ -368,3 +368,7 @@ Native lifecycle tests verify hidden restoration, actual HWND rectangles, rememb
 ## Smoke action deadlines — 0.162
 
 The hidden smoke runner grants a separate 30-second loading phase to each explicit scripted document action, including reload and duplication. A completed initial load no longer consumes the next action's loading budget. The phase starts before the action is invoked, so synchronous action work is included. The existing 64-action limit and per-Git-process timeout remain in effect. Longer multi-case historical CTest suites have 360-second aggregate budgets, and the desktop Git model suite has a 240-second budget. Per-case timing is logged to distinguish cumulative test duration from an individual stalled load. These changes concern hidden validation and do not alter interactive document loading.
+
+## Cooked pixels — post-0.181 development
+
+With an explicit UE 5.3 profile, matching texture property schemas and global script objects, inspecting a supported Texture2D member prepares its mip previews off-thread. **Cooked pixels** selects before/after objects, formats and mipmaps and exposes zoom, fitting, sample differences and changed-region fitting. English is the default; **Pixels cooked** supplies the French interface. The selected chapter, mip/side and viewport are retained in workspaces. HDR comparisons use floating samples before display conversion. Unsupported native layouts remain in texture diagnostics. See [COOKED_TEXTURES.md](COOKED_TEXTURES.md).

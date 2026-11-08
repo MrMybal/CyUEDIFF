@@ -157,6 +157,8 @@ ImageRgba8 decode_texture(const TextureSource &, std::uint32_t mip = 0,
                           const TextureDecodeOptions &options = {});
 ImageComparison compare_images(const ImageRgba8 &, const ImageRgba8 &, std::uint8_t threshold = 0,
                                bool heatmap = false);
+ImageComparison compare_images(const ImageRgba8 &, const ImageRgba8 &, std::uint8_t threshold,
+                               bool heatmap, const OperationControl &);
 void write_png(const fs::path &, const ImageRgba8 &);
 struct MeshSource {
     std::string object_path;

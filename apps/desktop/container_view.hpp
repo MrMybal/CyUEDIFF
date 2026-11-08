@@ -1,6 +1,7 @@
 #pragma once
 #include "container_document.hpp"
 #include <cyuediff/property_view.hpp>
+#include <cyuediff/texture_view.hpp>
 namespace cyuediff::desktop {
 enum class ContainerAction { none, inspect, select_object };
 class ContainerView {
@@ -17,6 +18,13 @@ class ContainerView {
         Json before = nullptr, after = nullptr, before_read = nullptr, after_read = nullptr;
         Json before_values = nullptr, after_values = nullptr;
     };
+    struct PixelRow {
+        std::string key;
+        bool after = false;
+        TextureView view;
+    };
+    std::vector<PixelRow> pixel_rows_;
+    int pixel_ = 0;
     std::vector<MemberRow> member_rows_;
     std::vector<ObjectRow> object_rows_;
     std::vector<int> members_, objects_;
@@ -48,6 +56,11 @@ class ContainerView {
         return values_.table();
     }
     Json property_report() const;
+    bool set_pixel_preview(const std::string &, bool after, const cyui::ImageData &);
+    bool set_pixel_difference(const ContainerTextureDifference &, const cyui::ImageData &);
+    std::size_t pixel_count() const {
+        return pixel_rows_.size();
+    }
     bool select_object(std::size_t);
     void apply_object_selection();
     const ContainerEntry *selected_member() const;

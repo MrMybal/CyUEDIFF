@@ -76,3 +76,5 @@ Version 0.179 adds a local filesystem store for virtualized editor source payloa
 ## Explicit GPU pixel API
 
 The reusable Core can also decode explicitly identified raw/BC1–BC7 platform mip bytes, including unsigned BC6H and floating RGBA. See [GPU_TEXTURES.md](GPU_TEXTURES.md) for exact footprints, stored-channel semantics and independent platform validation. Native cooked payload resolution remains a separate reader.
+
+Cooked UE 5.3 Texture2D native windows and their verified inline/external mip bytes are now available as post-0.181 development, with CLI and bilingual desktop previews/diffs. See [COOKED_TEXTURES.md](COOKED_TEXTURES.md) for exact profile gates, channel semantics, real evidence and unsupported storage families.

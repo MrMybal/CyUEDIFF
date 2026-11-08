@@ -17,7 +17,24 @@ Json ContainerDocument::report() const {
         schema["mappingLoaded"] = schema_loaded;
         schema["contextSha256"] = zen ? zen->schema_context_sha256 : std::string{};
     }
+    Json pixels = Json::array();
+    for (const auto &p : previews)
+        pixels.push_back({{"key", p.key},
+                          {"object", p.object_path},
+                          {"format", p.format},
+                          {"mip", p.mip},
+                          {"width", p.image.width},
+                          {"height", p.image.height},
+                          {"hdr", p.hdr.has_value()}});
+    Json differences = Json::array();
+    for (const auto &d : pixel_differences)
+        differences.push_back(
+            {{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}});
     return {{"schema", "cyuediff.desktop-container/1"},
+            {"textures", textures},
+            {"texturePreviews", std::move(pixels)},
+            {"textureDifferences", std::move(differences)},
+            {"textureDiagnostics", texture_diagnostics},
             {"metadata", metadata},
             {"inspection", inspection},
             {"zen", zen ? zen->to_json() : Json(nullptr)},
@@ -136,6 +153,70 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
             document->schema_loaded = true;
         }
         document->zen = ZenPackage::parse(bytes, zen);
+        std::uint64_t preview_bytes = 0;
+        std::optional<CookedTextureReader> native_reader;
+        const auto preview_limit = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
+        for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
+            const auto &object = document->zen->exports[i];
+            if (object.class_name != "/Script/Engine.Texture2D" || (object.flags & 0x30))
+                continue;
+            try {
+                if (!native_reader) {
+                    CookedTextureOptions native;
+                    native.control = control;
+                    native.max_payload_bytes = source.max_payload_bytes;
+                    native.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
+                    native_reader = CookedTextureReader::open(*document->input, found, zen, read, native);
+                    if (native_reader->package().sha256 != document->zen->sha256)
+                        throw Error("container-integrity",
+                                    "Cooked texture package changed during document preparation");
+                }
+                auto texture = native_reader->read(i);
+                document->textures.push_back(texture.to_json());
+                for (const auto &platform : texture.platforms)
+                    for (std::size_t m = 0; m < platform.mips.size(); ++m) {
+                        const auto &mip = platform.mips[m];
+                        try {
+                            if (!mip.loaded)
+                                throw Error("cooked-texture-unavailable",
+                                            "Cooked mip is unavailable: " + mip.unavailable);
+                            const auto hdr =
+                                gpu_pixel_format_is_hdr(unreal_gpu_pixel_format(platform.format));
+                            const auto size = std::uint64_t(mip.width) * mip.height * (hdr ? 20 : 4);
+                            if (size > preview_limit - preview_bytes)
+                                throw Error("cooked-texture-limit",
+                                            "Cooked pixel previews exceed document byte budget");
+                            GpuDecodeOptions gpu;
+                            gpu.control = control;
+                            gpu.max_output_bytes = preview_limit - preview_bytes;
+                            ContainerTexturePreview preview;
+                            preview.object_path = texture.object_path;
+                            preview.format = platform.format;
+                            preview.mip = static_cast<std::uint32_t>(m);
+                            preview.key =
+                                texture.object_path + " [" + platform.format + "] mip " + std::to_string(m);
+                            if (hdr) {
+                                preview.hdr = decode_cooked_mip_hdr(platform, m, gpu);
+                                preview.image = tone_map_hdr(*preview.hdr, 0, control);
+                            } else
+                                preview.image = decode_cooked_mip(platform, m, gpu);
+                            preview_bytes += size;
+                            document->previews.push_back(std::move(preview));
+                        } catch (const Error &error) {
+                            if (error.code == "cancelled")
+                                throw;
+                            document->texture_diagnostics.push_back(texture.object_path + " mip " +
+                                                                    std::to_string(m) + ": " + error.code +
+                                                                    ": " + error.what());
+                        }
+                    }
+            } catch (const Error &error) {
+                if (error.code == "cancelled" || error.code == "container-integrity")
+                    throw;
+                document->texture_diagnostics.push_back(object.path + ": " + error.code + ": " +
+                                                        error.what());
+            }
+        }
     }
     control.checkpoint("Document ready");
     return document;
@@ -194,6 +275,9 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             document->inspection = loaded->inspection;
             document->zen = loaded->zen;
             document->schema_loaded = loaded->schema_loaded;
+            document->textures = loaded->textures;
+            document->previews = loaded->previews;
+            document->texture_diagnostics = loaded->texture_diagnostics;
         }
         if (pair.after) {
             right.entry = document->after->input->entries()[*pair.after].id;
@@ -234,6 +318,36 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             document->member_states[i] = found == changes.end() ? "unchanged" : found->second;
         }
     }
+    if (document->after)
+        for (const auto &before : document->previews) {
+            const auto after =
+                std::find_if(document->after->previews.begin(), document->after->previews.end(),
+                             [&](const auto &p) { return p.key == before.key; });
+            if (after == document->after->previews.end())
+                continue;
+            ContainerTextureDifference difference;
+            difference.key = before.key;
+            const bool same =
+                before.image.width == after->image.width && before.image.height == after->image.height;
+            if (before.hdr && after->hdr) {
+                auto hdr = compare_hdr_images(*before.hdr, *after->hdr, 0, same, control);
+                difference.comparison = {hdr.comparable,
+                                         hdr.same_size,
+                                         hdr.before_width,
+                                         hdr.before_height,
+                                         hdr.after_width,
+                                         hdr.after_height,
+                                         hdr.changed_pixels,
+                                         0,
+                                         0,
+                                         0,
+                                         std::move(hdr.heatmap)};
+                difference.comparison.changed_bounds = hdr.changed_bounds;
+                difference.hdr = std::move(hdr);
+            } else
+                difference.comparison = compare_images(before.image, after->image, 0, same, control);
+            document->pixel_differences.push_back(std::move(difference));
+        }
     document->source = source;
     document->protected_files.insert(document->protected_files.end(),
                                      document->after->protected_files.begin(),

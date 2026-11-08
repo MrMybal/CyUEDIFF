@@ -175,7 +175,7 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        saved.container_tab = number(d["containerTab"], -1, 4);
+        saved.container_tab = number(d["containerTab"], -1, 5);
         const auto &s = d["settings"];
         const bool payload_extension = j["schema"] == "cyuediff.workspace/6";
         const bool layout_extension = j["schema"] == "cyuediff.workspace/5" || payload_extension;

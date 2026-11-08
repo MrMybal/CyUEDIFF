@@ -162,6 +162,8 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "pixels")
+                options.container_tab = 5;
             else if (name == "schema")
                 options.container_tab = 4;
             else if (name == "comparison") {
@@ -991,7 +993,7 @@ class Shell {
                 {"selectedObject", current().container_view.selected_object()},
                 {"objectProperties", current().container_view.property_report()},
                 {"selectedKey", current().container_view.selected_key()},
-                {"tab", current().container_view.active_tab()}};
+                {"tab", current().container_view.active_tab()}, {"pixelViews",current().container_view.pixel_count()}};
     }
     Json history_report() const {
 #ifdef CYUEDIFF_HAS_GIT
@@ -1502,10 +1504,30 @@ class Shell {
             return;
         if (current().displayed->container) {
             current().view.set_packages({});
+            current().container_view.set_document({});
             current().images.clear();
             current().gpu_diagnostics.clear();
             current().context_details.clear();
             current().container_view.set_document(current().displayed->container);
+            auto upload_pixels=[&](const ContainerDocument &side,bool after) {
+                for(const auto &preview:side.previews)try {
+                    auto image=renderer.upload(preview.image);
+                    if(current().container_view.set_pixel_preview(preview.key,after,
+                        {ImTextureID(reinterpret_cast<std::uintptr_t>(image.Get())),int(preview.image.width),int(preview.image.height)}))
+                        current().images.push_back(std::move(image));
+                }catch(const std::exception &error){current().gpu_diagnostics.push_back(error.what());}
+            };
+            const auto &container=*current().displayed->container;
+            upload_pixels(container,false);if(container.after)upload_pixels(*container.after,true);
+            for(const auto &difference:container.pixel_differences)try {
+                cyui::ImageData binding{};
+                Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> image;
+                if(difference.comparison.comparable) {
+                    image=renderer.upload(difference.comparison.heatmap);
+                    binding={ImTextureID(reinterpret_cast<std::uintptr_t>(image.Get())),int(difference.comparison.heatmap.width),int(difference.comparison.heatmap.height)};
+                }
+                if(current().container_view.set_pixel_difference(difference,binding) && image)current().images.push_back(std::move(image));
+            }catch(const std::exception &error){current().gpu_diagnostics.push_back(error.what());}
             if (!current().cooked_view.empty())
                 current().container_view.set_property_mode(current().cooked_view == "properties");
             if (current().container_tab >= 0 && !current().container_view.select_tab(current().container_tab))
@@ -2424,7 +2446,7 @@ int run(Options options) {
                "  --smoke --save-workspace FILE.json : explicit workspace test write\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
-               "  [--container-tab members|inspection|objects|comparison|schema]\n"
+               "  [--container-tab members|inspection|objects|comparison|schema|pixels]\n"
                "  [--after-container FILE] [--compare-container-bytes] [--container-changes-only]\n"
                "  [--after-cooked-profile ue5.3|ue5.5] [--after-script-objects GLOBAL.utoc]\n"
                "  [--cooked-profile ue5.3|ue5.5] [--script-objects GLOBAL.utoc] : explicit Zen inspection\n"

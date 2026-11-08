@@ -74,3 +74,7 @@ python scripts/validate_zen.py --container D:/build/Game-Windows.utoc --global-c
 ```
 
 The validator currently targets the supplied unversioned UE 5.3 corpus. Generated reports and modified copies remain under an ignored workspace build directory. Proprietary packages and engine files are not distributed.
+
+## Native Texture2D and bulk-map distinctions — post-0.181
+
+Supported native cooked texture pixels have a separate public reader and CLI/desktop path; see [COOKED_TEXTURES.md](COOKED_TEXTURES.md). Package-only equality retains its existing meaning. UE 5.3 bulk-map records expose a validated zero `reserved` word; UE 5.5 records expose the actual `cookedIndex` byte and require zero padding. A native texture reference must use the selected profile rather than interpreting the UE 5.3 padding as a chunk index.

@@ -215,6 +215,11 @@ ImageRgba8 decode_texture(const TextureSource &texture, std::uint32_t mip,
 }
 ImageComparison compare_images(const ImageRgba8 &before, const ImageRgba8 &after, std::uint8_t threshold,
                                bool heatmap) {
+    return compare_images(before, after, threshold, heatmap, {});
+}
+ImageComparison compare_images(const ImageRgba8 &before, const ImageRgba8 &after, std::uint8_t threshold,
+                               bool heatmap, const OperationControl &control) {
+    control.check();
     auto before_count = pixels(before);
     pixels(after);
     ImageComparison result;
@@ -237,6 +242,8 @@ ImageComparison compare_images(const ImageRgba8 &before, const ImageRgba8 &after
     }
     std::uint64_t sum = 0;
     for (std::size_t i = 0; i < before_count; ++i) {
+        if ((i & 16383) == 0)
+            control.checkpoint("Comparing pixels", i, before_count);
         unsigned maximum = 0;
         for (unsigned c = 0; c < 4; ++c) {
             auto delta =
@@ -255,6 +262,7 @@ ImageComparison compare_images(const ImageRgba8 &before, const ImageRgba8 &after
             }
         }
     }
+    control.check();
     result.mean_absolute_error = static_cast<double>(sum) / (static_cast<double>(before_count) * 4.0);
     return result;
 }

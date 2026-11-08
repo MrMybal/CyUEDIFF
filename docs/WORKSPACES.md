@@ -85,3 +85,7 @@ Single-value tables use `singleColumns` with three weights, comparison tables `c
 ## Native structure descriptions — 0.176
 
 Workspace format five adds per-document `layouts`, `after_layouts` and `inherit_after_layouts` settings for the declarative native reader. The after description inherits by default; explicitly disabling inheritance and leaving its path empty selects the built-in reader. Paths normalize relative to the workspace file and are protected from output overwrites. Formats one through four still load without overriding their readers. See [binary layout controls](BINARY_LAYOUTS.md#desktop-descriptions--0176).
+
+## Cooked pixel selection — post-0.181 development
+
+Container chapter 5 selects prepared cooked pixels. Container presentation state can retain `pixel` (the exact object/format/mip identity), `pixelAfter` and a checked `pixelView` texture viewport. Restoration resolves that identity against freshly prepared data and ignores stale selections; resource handles and decoded bytes are not persisted. Existing workspace versions and chapters remain readable.

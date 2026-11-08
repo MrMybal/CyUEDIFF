@@ -27,7 +27,12 @@ cyui::Tone state_tone(const std::string &state) {
 void ContainerView::register_translations() {
     PropertyView::register_translations();
     cyui::registerTranslations(
-        "fr", {{"Schema context", "Contexte de schéma"},
+        "fr", {{"Cooked pixels", "Pixels cooked"},
+               {"Stored channels; no color transform. HDR previews use Reinhard / sRGB at 0 EV.",
+                "Canaux stockés ; aucune transformation de couleur. Aperçus HDR : Reinhard / sRGB à 0 EV."},
+               {"Only explicitly supported native profiles are decoded.",
+                "Seuls les profils natifs explicitement pris en charge sont décodés."},
+               {"Schema context", "Contexte de schéma"},
                {"Schema contexts (optional)", "Contextes de schéma (facultatifs)"},
                {"Before schema", "Schéma avant"},
                {"After schema", "Schéma après"},
@@ -115,8 +120,8 @@ void ContainerView::register_translations() {
                                                             "décodés."},
          {"Choose an explicit UE profile for Zen object inspection.",
           "Choisissez un profil UE explicite pour inspecter les objets Zen."},
-         {"Native export bodies remain opaque; their hashes are available.",
-          "Les corps natifs des exports restent opaques ; leurs empreintes sont disponibles."},
+         {"Only explicitly supported native profiles are decoded.",
+          "Seuls les profils natifs explicitement pris en charge sont décodés."},
          {"Select a cooked object.", "Choisissez un objet cooked."},
          {"Container diagnostics", "Diagnostics du conteneur"},
          {"Decoded bytes; package data is not interpreted for this member.", "Octets décodés "
@@ -252,6 +257,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     schema_ = PropertyView{};
     member_rows_.clear();
     object_rows_.clear();
+    pixel_rows_.clear();
+    pixel_ = 0;
     diagnostics_.clear();
     if (document_) {
         auto is_zen = [](const ContainerDocument &side, const ContainerEntry *entry) {
@@ -277,6 +284,26 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                                     side.zen->diagnostics.end());
         };
         diagnostics(*document_);
+        auto add_pixels = [&](const ContainerDocument &side, bool after) {
+            for (const auto &preview : side.previews) {
+                PixelRow row;
+                row.key = preview.key;
+                row.after = after;
+                TextureSource metadata;
+                metadata.object_path = preview.object_path;
+                metadata.width = preview.image.width;
+                metadata.height = preview.image.height;
+                metadata.format = preview.format;
+                metadata.compression = "mip " + std::to_string(preview.mip);
+                row.view.set_source(std::move(metadata));
+                pixel_rows_.push_back(std::move(row));
+            }
+            diagnostics_.insert(diagnostics_.end(), side.texture_diagnostics.begin(),
+                                side.texture_diagnostics.end());
+        };
+        add_pixels(*document_, false);
+        if (document_->after)
+            add_pixels(*document_->after, true);
         if (document_->after)
             diagnostics(*document_->after);
         if (document_->after) {
@@ -374,6 +401,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                                (document_->after && !document_->after->inspection.is_null()))
                                   ? 1
                                   : 0);
+        if (!pixel_rows_.empty())
+            initial_tab_ = 5;
         select_tab_ = true;
     } else {
         members_.clear();
@@ -382,14 +411,33 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 4 || (tab == 2 && object_rows_.empty()) ||
-        (tab == 3 && !document_->after) ||
+    if (!document_ || tab < 0 || tab > 5 || (tab == 5 && pixel_rows_.empty()) ||
+        (tab == 2 && object_rows_.empty()) || (tab == 3 && !document_->after) ||
         (tab == 4 && !document_->schema_manifest &&
          (!document_->after || !document_->after->schema_manifest)))
         return false;
     initial_tab_ = tab;
     select_tab_ = true;
     return true;
+}
+bool ContainerView::set_pixel_preview(const std::string &key, bool after, const cyui::ImageData &image) {
+    for (auto &row : pixel_rows_)
+        if (row.key == key && row.after == after)
+            return row.view.set_preview(image);
+    return false;
+}
+bool ContainerView::set_pixel_difference(const ContainerTextureDifference &difference,
+                                         const cyui::ImageData &image) {
+    bool found = false;
+    for (auto &row : pixel_rows_)
+        if (row.key == difference.key) {
+            found = (difference.hdr ? row.view.set_difference(image, *difference.hdr)
+                                    : row.view.set_difference(image, difference.comparison)) ||
+                    found;
+            if (!difference.comparison.changed_pixels)
+                row.view.restore_view_state({{"difference", false}});
+        }
+    return found;
 }
 Json ContainerView::property_report() const {
     auto status = [](const Json &read) -> Json {
@@ -416,6 +464,11 @@ Json ContainerView::view_state() const {
                    {"values", values_.view_state()},
                    {"comparison", comparison_.view_state()},
                    {"schema", schema_.view_state()}};
+    if (!pixel_rows_.empty() && pixel_ >= 0 && std::size_t(pixel_) < pixel_rows_.size()) {
+        result["pixel"] = pixel_rows_[pixel_].key;
+        result["pixelAfter"] = pixel_rows_[pixel_].after;
+        result["pixelView"] = pixel_rows_[pixel_].view.view_state();
+    }
     if (!layout_.snapshot().empty())
         result["layout"] = layout_.snapshot();
     return result;
@@ -467,6 +520,15 @@ void ContainerView::restore_view_state(const Json &state) {
     restore("values", values_);
     restore("comparison", comparison_);
     restore("schema", schema_);
+    if (state.contains("pixel"))
+        for (std::size_t i = 0; i < pixel_rows_.size(); ++i)
+            if (pixel_rows_[i].key == state["pixel"] &&
+                pixel_rows_[i].after == state.value("pixelAfter", false)) {
+                pixel_ = static_cast<int>(i);
+                if (state.contains("pixelView"))
+                    pixel_rows_[i].view.restore_view_state(state["pixelView"]);
+                break;
+            }
 }
 ContainerAction ContainerView::draw(bool busy) {
     if (!document_)
@@ -595,7 +657,7 @@ ContainerAction ContainerView::draw(bool busy) {
             document_->selected_comparison.at("zen").at("contextChanged").get<bool>())
             cyui::callout(cyui::Tone::info, cyui::tr("Cooked interpretation context differs.").c_str());
         cyui::callout(cyui::Tone::warning,
-                      cyui::tr("Native export bodies remain opaque; their hashes are available.").c_str());
+                      cyui::tr("Only explicitly supported native profiles are decoded.").c_str());
         if (cyui::filterBox("##cooked-object-search", object_filter_))
             rebuild_objects();
         const auto available = ImGui::GetContentRegionAvail();
@@ -666,6 +728,25 @@ ContainerAction ContainerView::draw(bool busy) {
             cyui::tr("Explicit mappings do not verify cooked build compatibility or resolve defaults.")
                 .c_str());
         schema_.draw("##schema-provenance");
+        ImGui::EndTabItem();
+    }
+    if (!pixel_rows_.empty() &&
+        ImGui::BeginTabItem(cyui::trLabel("Cooked pixels").c_str(), nullptr, flags(5))) {
+        active_tab_ = 5;
+        auto label = [&](const PixelRow &row) {
+            return (document_->after ? cyui::tr(row.after ? "After" : "Before") + " | " : std::string{}) +
+                   row.key;
+        };
+        if (ImGui::BeginCombo("##cooked-pixel-selection", label(pixel_rows_[pixel_]).c_str())) {
+            for (std::size_t i = 0; i < pixel_rows_.size(); ++i)
+                if (ImGui::Selectable(label(pixel_rows_[i]).c_str(), pixel_ == static_cast<int>(i)))
+                    pixel_ = static_cast<int>(i);
+            ImGui::EndCombo();
+        }
+        cyui::textDim(
+            "%s", cyui::tr("Stored channels; no color transform. HDR previews use Reinhard / sRGB at 0 EV.")
+                      .c_str());
+        pixel_rows_[pixel_].view.draw("##cooked-pixels");
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();
