@@ -12,6 +12,8 @@ checks=0
 with tempfile.TemporaryDirectory(prefix='.test-tmp-whole-nanite-',dir=Path.cwd()) as tmp:
     root=Path(tmp)
     subprocess.run([fixture,'--write-fixtures',str(root)],capture_output=True,check=True,env=env,timeout=30)
+    if len(sys.argv)>3:
+        subprocess.run([str(Path(sys.argv[3]).resolve()),'--write-fixtures',str(root)],capture_output=True,check=True,env=env,timeout=30)
     context=json.loads((root/'context.json').read_text(encoding='utf-8'))
     context['bindings']['/Script/Engine.Unused']={'schema':'Collections','offset':0}
     (root/'after.usmap').write_bytes((root/'native.usmap').read_bytes())
@@ -68,6 +70,16 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-whole-nanite-',dir=Path.cwd()
         run('zen-nanite',root/'external.utoc',entry,'--out',root/name,code=2)
     for name in ('changed.utoc','changed.ucas','after-context.json','after.usmap'):
         run('zen-nanite-diff',root/'resident.utoc',entry,root/'changed.utoc',entry,'--after-schema',root/'after-context.json','--out',root/name,code=2)
+    if len(sys.argv)>3:
+        for name,channels in [('color',['colors']),('uv',['uvs']),('tangent',['tangents']),('normal',['normals','tangents'])]:
+            value=run('zen-nanite-diff',root/'attrs-before.utoc',entry,root/('attrs-'+name+'.utoc'),entry,'--compare-nanite-attributes','1',code=1)
+            assert value['surfaceStatus']=='identical' and value['attributeStatus']=='changed' and value['modified'][0]['channels']==channels
+            checks+=1
+        value=run('zen-nanite-diff',root/'attrs-before.utoc',entry,root/'attrs-before.utoc',entry,'--compare-nanite-attributes','1','--after-nanite-attributes','0',code=2)
+        assert value['geometryComplete'] and not value['complete'] and value['attributeStatus']=='unavailable'
+        checks+=1
+        run('zen-nanite',root/'attrs-before.utoc',entry,'--compare-nanite-attributes','1',code=2)
+        run('zen-nanite-diff',root/'attrs-before.utoc',entry,root/'attrs-color.utoc',entry,'--compare-nanite-attributes','2',code=2)
     assert all(hashlib.sha256(p.read_bytes()).hexdigest()==h for p,h in protected.items())
     checks+=1
 print(f'{checks} whole cooked Nanite CLI checks; protected inputs unchanged')

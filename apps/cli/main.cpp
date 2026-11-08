@@ -162,6 +162,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff zen-nanite-diff BEFORE ENTRY AFTER ENTRY [independent mesh/Nanite/context flags]\n"
                "  Nanite inspection accepts --nanite-attributes 0|1; comparisons also accept "
                "--after-nanite-attributes.\n"
+               "  zen-nanite-diff --compare-nanite-attributes 1 decodes and compares shading on common "
+               "surfaces.\n"
                "  cyuediff zen-mesh CONTAINER ENTRY --mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1\n"
                "  cyuediff zen-geometry CONTAINER ENTRY [--lod N] [--export-index N]\n"
                "  cyuediff zen-export-mesh CONTAINER ENTRY --out MESH.obj [--lod N]\n"
@@ -200,7 +202,8 @@ int run(const std::vector<std::string> &args) {
         return run_binary_command(args);
     std::vector<std::string> positional;
     Json flags = Json::object();
-    const std::set<std::string> valued = {"--nanite-attributes",
+    const std::set<std::string> valued = {"--compare-nanite-attributes",
+                                          "--nanite-attributes",
                                           "--after-nanite-attributes",
                                           "--physics-profile",
                                           "--after-physics-profile",
@@ -467,7 +470,8 @@ int run(const std::vector<std::string> &args) {
                 !((cooked_nanite || command == "zen-mesh") &&
                   (key == "--nanite-profile" || key == "--nanite-attributes")) &&
                 !(command == "zen-nanite-diff" &&
-                  (key == "--after-nanite-profile" || key == "--after-nanite-attributes")) &&
+                  (key == "--after-nanite-profile" || key == "--after-nanite-attributes" ||
+                   key == "--compare-nanite-attributes")) &&
                 !(command == "zen-nanite-cluster" && (key == "--page" || key == "--cluster")) &&
                 !(cooked_mesh && !cooked_nanite && command != "zen-mesh" && key == "--lod") &&
                 !(cooked_mesh_diff &&
@@ -494,7 +498,8 @@ int run(const std::vector<std::string> &args) {
         if (key == "--physics-profile" || key == "--after-physics-profile")
             throw Error("arguments", key + " requires a cooked physics command");
         if ((key == "--nanite-profile" || key == "--after-nanite-profile" || key == "--nanite-attributes" ||
-             key == "--after-nanite-attributes" || key == "--page" || key == "--cluster") &&
+             key == "--after-nanite-attributes" || key == "--compare-nanite-attributes" || key == "--page" ||
+             key == "--cluster") &&
             !cooked_mesh)
             throw Error("arguments", key + " requires a Nanite inspection command");
         if (key == "--mesh-profile" || key == "--after-mesh-profile" || key == "--keep-mobile-min-lod" ||
@@ -930,6 +935,8 @@ int run(const std::vector<std::string> &args) {
                     throw Error("arguments", "Supported Nanite profile: ue5.3-windows");
                 opts.nanite.profile = NaniteProfile::unreal_5_3_windows;
             }
+            if (flags.contains("--compare-nanite-attributes"))
+                opts.nanite.attributes = integer_option("--compare-nanite-attributes", 1) != 0;
             if (flags.contains("--nanite-attributes")) {
                 if (opts.nanite.profile == NaniteProfile::unspecified)
                     throw Error("arguments", "Attribute decoding requires an explicit Nanite profile");
@@ -991,7 +998,10 @@ int run(const std::vector<std::string> &args) {
                 const auto after =
                     read_zen_static_mesh(other, select(other, positional[3]), after_options, read_options,
                                          after_mesh_options, selected_export("--after-export-index"));
-                const auto result = compare_nanite_surfaces(*before.nanite, *after.nanite);
+                NaniteSurfaceDiffOptions comparison;
+                comparison.attributes = flags.contains("--compare-nanite-attributes") &&
+                                        integer_option("--compare-nanite-attributes", 1) != 0;
+                const auto result = compare_nanite_surfaces(*before.nanite, *after.nanite, comparison);
                 output = result.to_json();
                 output["beforeContext"] = before.nanite->information();
                 output["afterContext"] = after.nanite->information();

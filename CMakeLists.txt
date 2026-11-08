@@ -122,6 +122,10 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_nanite_surface_attribute_tests tests/nanite_surface_attribute_tests.cpp)
+    target_link_libraries(cyuediff_nanite_surface_attribute_tests PRIVATE CyUEDiff::Core)
+    target_compile_definitions(cyuediff_nanite_surface_attribute_tests PRIVATE CYUEDIFF_NANITE_ATTRIBUTES_REFERENCE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/nanite_attributes_ue53_reference.json")
+    add_test(NAME nanite_surface_attributes COMMAND cyuediff_nanite_surface_attribute_tests)
     add_executable(cyuediff_nanite_attributes_tests tests/nanite_attributes_tests.cpp)
     target_link_libraries(cyuediff_nanite_attributes_tests PRIVATE CyUEDiff::Core)
     target_compile_definitions(cyuediff_nanite_attributes_tests PRIVATE CYUEDIFF_NANITE_ATTRIBUTES_REFERENCE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/nanite_attributes_ue53_reference.json")
@@ -497,7 +501,7 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_skeletal_tests>")
             add_test(NAME cooked_nanite_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_nanite_cli_tests.py"
-                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_nanite_tests>")
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_nanite_tests>" "$<TARGET_FILE:cyuediff_nanite_surface_attribute_tests>")
             add_test(NAME cooked_mesh_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_mesh_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_mesh_tests>")
@@ -980,3 +984,5 @@ install(DIRECTORY examples/nanite_geometry_consumer DESTINATION ${CMAKE_INSTALL_
 install(FILES scripts/validate_nanite_geometry.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
 
 install(DIRECTORY examples/cooked_nanite_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+
+install(DIRECTORY examples/cooked_nanite_comparison_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)

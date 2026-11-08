@@ -30,14 +30,31 @@ struct NaniteTriangleReference {
 struct NaniteSurfaceDiffOptions {
     std::uint64_t max_triangles = 4000000, max_output_bytes = 256ull * 1024 * 1024;
     OperationControl control;
+    bool attributes = false;
+};
+enum NaniteAttributeChannel : std::uint8_t {
+    nanite_normals = 1,
+    nanite_tangents = 2,
+    nanite_colors = 4,
+    nanite_uvs = 8
+};
+struct NaniteAttributeChange {
+    NaniteTriangleReference before, after;
+    std::uint8_t changed = 0, unavailable = 0;
+    bool ambiguous = false;
+    // Corner i pairs triangle.vertices[(i + rotation) % 3] on each side.
+    std::uint8_t before_rotation = 0, after_rotation = 0;
 };
 struct NaniteSurfaceComparison {
     Json summary;
     std::vector<NaniteTriangleReference> removed, added;
+    std::vector<NaniteAttributeChange> modified;
     Json to_json(bool include_references = true) const;
 };
 // Exact native-float, orientation- and multiplicity-preserving full-leaf surface comparison.
-// Encodings are reported separately; normals/tangents/colors/UVs and runtime LOD cuts are excluded.
+// Encodings are separate. options.attributes additionally compares exact decoded shading values
+// on common oriented surfaces, preserving duplicates. Unavailable channels cannot prove equality.
+// Runtime LOD cuts and material evaluation remain excluded.
 NaniteSurfaceComparison compare_nanite_surfaces(const CookedNaniteResource &, const CookedNaniteResource &,
                                                 const NaniteSurfaceDiffOptions & = {});
 } // namespace cyuediff
