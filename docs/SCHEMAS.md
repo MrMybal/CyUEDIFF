@@ -354,3 +354,8 @@ C++ hosts set `UnversionedReadOptions::binary_layouts` and `struct_layouts`, or 
 Original UE 5.3/5.5 fixtures verify named values/diffs, all truncated prefixes, canonical binding conflicts, provenance, budgets and opaque recovery. This does not replace the missing matching-build real cooked USMAP corpus.
 
 Version-three contexts also accept explicit narrow string encodings for mapped FString and supported modern ANSI properties. An explicit context `narrowStringEncoding` takes precedence over the inline catalogue. See [encoding selection and validation](BINARY_LAYOUTS.md#explicit-narrow-string-encodings--0177). Missing encoding selections preserve the older ASCII-only mapped behavior. All encoded and decoded byte/text budgets still apply.
+
+
+## Optional matching-source preparation
+
+The standalone runtime accepts explicit cached mappings. Separate optional host tools can now export complete native UHT field descriptions from a selected UE 5.3 engine/project build and convert them to qualified, sparse cooked mappings. Twenty real texture property streams are validated against selected loose-source values; broader schemas and native serializers retain their explicit limits. See [metadata preparation and evidence](UHT_SCHEMAS.md).

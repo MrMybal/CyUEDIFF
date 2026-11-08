@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CyUEDiff.UhtExporter</AssemblyName>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="EpicGames.UHT">
+      <HintPath>$(UhtAssemblyDirectory)/EpicGames.UHT.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="EpicGames.Core">
+      <HintPath>$(UhtAssemblyDirectory)/EpicGames.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="RequireHostUht" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(UhtAssemblyDirectory)/EpicGames.UHT.dll')" Text="Set UhtAssemblyDirectory to the matching host UnrealBuildTool directory." />
+  </Target>
+</Project>

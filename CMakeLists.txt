@@ -427,6 +427,9 @@ if(BUILD_TESTING)
             add_test(NAME zen_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/zen_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_zen_tests>")
+            add_test(NAME uht_mappings_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/uht_mapping_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_schema_tests>")
             add_test(NAME reflection_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/reflection_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_reflection_tests>")
@@ -802,6 +805,12 @@ install(DIRECTORY examples/mesh_morph_consumer DESTINATION ${CMAKE_INSTALL_DATAD
 install(DIRECTORY examples/mesh_skin_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/virtualized_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/binary_layout_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(DIRECTORY examples/reflection_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(FILES scripts/export_uht_metadata.py scripts/build_uht_mappings.py scripts/uht_mappings.py
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
+install(FILES tools/uht_schema_exporter/Exporter.cs tools/uht_schema_exporter/CyUEDiff.UhtExporter.csproj
+    tools/uht_schema_exporter/NuGet.Config tools/uht_schema_exporter/README.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/tools/uht_schema_exporter)
 if(CYUEDIFF_TOP_LEVEL)
     set(CPACK_PACKAGE_NAME "CyUEDiff")
     set(CPACK_PACKAGE_VENDOR "CyUEDiff contributors")
