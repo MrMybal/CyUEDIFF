@@ -9,8 +9,22 @@ import sys
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 from uht_mappings import build_cooked_mappings
+from validate_mapped_values import norm, flat
 cli, fixture = [str(Path(p).resolve()) for p in sys.argv[1:]]
 checks = 0
+loose_values={'Samples':{'type':{'name':'FloatProperty'},'value':1.25},
+              'Material':{'type':{'name':'ObjectProperty'},'value':'/Game/Material.Material'}}
+cooked_values={'/Script/Test.Item.Samples[0]':{'type':'FloatProperty','schemaIndex':0,'value':1.25},
+               '/Script/Test.Item.Material':{'type':'ObjectProperty','value':{'kind':'package','package':'/Game/Material'}}}
+assert flat(norm(loose_values))==flat(norm(cooked_values));checks+=1
+changed=json.loads(json.dumps(cooked_values));changed['/Script/Test.Item.Samples[0]']['type']='DoubleProperty'
+assert flat(norm(loose_values))!=flat(norm(changed));checks+=1
+collision=dict(cooked_values,**{'Samples':{'type':'FloatProperty','value':2}})
+try:norm(collision)
+except ValueError:checks+=1
+else:raise AssertionError('Ambiguous property names collapsed')
+assert flat(norm({'Ordered':{'type':'ArrayProperty','value':[1,2]}}))!=flat(norm({'Ordered':{'type':'ArrayProperty','value':[2,1]}}));checks+=1
+
 
 def property(name, kind, **facts):
     return dict(EngineName=name, SourceName=name, EngineClassName=kind+'Property', Children=[], **facts)
@@ -85,6 +99,51 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-uht-mapping-', dir=Path.cwd()
         assert json.loads(source.read_text(encoding='utf-8'))==package
         checks+=1
     finally:alias.unlink()
+    dimensions=root/'dimensions.json'
+    binding={'format':'cyuediff.uht-dimensions/1','metadataSha256':report['metadataSha256'],
+             'fields':{'/Script/Test.Unresolved.Array':{'expression':'UNKNOWN_COUNT','size':2}}}
+    dimensions.write_text(json.dumps(binding),encoding='utf-8')
+    resolved=root/'resolved.usmap'
+    resolved_report=build_cooked_mappings(metadata,resolved,static_dimensions=dimensions)
+    assert resolved_report['schemas']==5 and resolved_report['staticDimensions']['fields']==binding['fields']
+    loaded=run('usmap',resolved)
+    definitions={v['path']:v for v in loaded['schemas']}
+    assert definitions['/Script/Test.Unresolved']['slots']==2 and definitions['/Script/Test.Derived']['super']=='/Script/Test.Unresolved'
+    checks+=2
+    resolved_hash=hashlib.sha256(resolved.read_bytes()).hexdigest()
+    cases=[]
+    bad=copy.deepcopy(binding);bad['metadataSha256']='0'*64;cases.append(bad)
+    bad=copy.deepcopy(binding);bad['fields']['/Script/Test.Unresolved.Array']['expression']='DIFFERENT';cases.append(bad)
+    bad=copy.deepcopy(binding);bad['fields']={'/Script/Test.Missing.Array':{'expression':'UNKNOWN_COUNT','size':2}};cases.append(bad)
+    for value in (0,256,True,1.5):
+        bad=copy.deepcopy(binding);bad['fields']['/Script/Test.Unresolved.Array']['size']=value;cases.append(bad)
+    bad=copy.deepcopy(binding);bad['fields']={'/Script/Test.DemoAsset.Samples':{'expression':'2','size':3}};cases.append(bad)
+    for bad in cases:
+        dimensions.write_text(json.dumps(bad),encoding='utf-8')
+        try:build_cooked_mappings(metadata,resolved,static_dimensions=dimensions)
+        except ValueError:pass
+        else:raise AssertionError('Invalid static dimension evidence accepted')
+        assert hashlib.sha256(resolved.read_bytes()).hexdigest()==resolved_hash
+        checks+=1
+    dimensions.write_text(json.dumps(binding),encoding='utf-8')
+    protected=root/'dimension-alias.usmap';os.link(dimensions,protected)
+    try:
+        try:build_cooked_mappings(metadata,protected,static_dimensions=dimensions)
+        except ValueError:pass
+        else:raise AssertionError('Static dimension input hard link overwritten')
+        assert json.loads(dimensions.read_text(encoding='utf-8'))==binding;checks+=1
+    finally:protected.unlink()
+    # UHT's LWC pseudo-property creates an FDoubleProperty in the matching engine.
+    lwc=copy.deepcopy(package);lwc['Children'][1]['Children'][-1]=property('Mode','LargeWorldCoordinatesReal')
+    source.write_text(json.dumps(lwc),encoding='utf-8')
+    lwc_map=root/'lwc.usmap';lwc_report=build_cooked_mappings(metadata,lwc_map)
+    saved_context=context.read_text(encoding='utf-8');lwc_context=json.loads(saved_context)
+    lwc_context.update(usmap=lwc_map.name,sha256=lwc_report['sha256'])
+    context.write_text(json.dumps(lwc_context),encoding='utf-8')
+    lwc_value=run('zen-inspect',root/'schema.utoc','000000000000000000000001',*options)['exports'][0]['propertyRead']['properties']['/Script/Test.DemoAsset.Mode']
+    assert lwc_value['type']=='DoubleProperty' and lwc_value['value']==0.0 and lwc_value['serializedZero']
+    checks+=1
+    source.write_text(json.dumps(package),encoding='utf-8');context.write_text(saved_context,encoding='utf-8')
     cyclic=copy.deepcopy(package)
     cyclic['Children'][0]['Super']='UDemoAsset'
     source.write_text(json.dumps(cyclic),encoding='utf-8')

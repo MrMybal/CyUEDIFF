@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import struct
 
-def build_cooked_mappings(metadata_directory: Path, output_file: Path, summary_file: Path | None=None):
+def build_cooked_mappings(metadata_directory: Path, output_file: Path, summary_file: Path | None=None, static_dimensions: Path | None=None):
     records = {}
     aliases = defaultdict(set)
     enums = {}
@@ -18,7 +18,7 @@ def build_cooked_mappings(metadata_directory: Path, output_file: Path, summary_f
     unsupported = []
     TYPE_NAMES = 'Byte Bool Int Float Object Name Delegate Double Array Struct Str Text Interface MulticastDelegate WeakObject LazyObject AssetObject SoftObject UInt64 UInt32 UInt16 Int64 Int16 Int8 Map Set Enum FieldPath Optional Utf8Str AnsiStr'.split()
     KINDS = {name + 'Property': i for i, name in enumerate(TYPE_NAMES)}
-    ALIASES = {'ObjectPtrProperty': 'ObjectProperty', 'ClassProperty': 'ObjectProperty', 'ClassPtrProperty': 'ObjectProperty', 'SoftClassProperty': 'SoftObjectProperty', 'MulticastInlineDelegateProperty': 'MulticastDelegateProperty', 'MulticastSparseDelegateProperty': 'MulticastDelegateProperty'}
+    ALIASES = {'LargeWorldCoordinatesRealProperty':'DoubleProperty', 'ObjectPtrProperty': 'ObjectProperty', 'ClassProperty': 'ObjectProperty', 'ClassPtrProperty': 'ObjectProperty', 'SoftClassProperty': 'SoftObjectProperty', 'MulticastInlineDelegateProperty': 'MulticastDelegateProperty', 'MulticastSparseDelegateProperty': 'MulticastDelegateProperty'}
 
     def ascii_name(name):
         if not isinstance(name, str):
@@ -48,14 +48,32 @@ def build_cooked_mappings(metadata_directory: Path, output_file: Path, summary_f
                 aliases[alias].add(identity)
         for child in node.get('Children', []):
             visit(child, module, depth + 1)
+    overrides = {}
+    dimensions_hash = None
+    if static_dimensions is not None:
+        if static_dimensions.stat().st_size > 2*1024*1024:
+            raise ValueError('Static dimension manifest exceeds byte limit')
+        dimensions_raw=static_dimensions.read_bytes()
+        dimensions_hash=hashlib.sha256(dimensions_raw).hexdigest()
+        dimensions=json.loads(dimensions_raw.decode('utf-8'))
+        if not isinstance(dimensions,dict) or set(dimensions)!={'format','metadataSha256','fields'} or dimensions['format']!='cyuediff.uht-dimensions/1':
+            raise ValueError('Invalid static dimension manifest')
+        overrides=dimensions['fields']
+        if not isinstance(overrides,dict) or len(overrides)>100000:
+            raise ValueError('Invalid static dimension fields')
+        for key,value in overrides.items():
+            if not isinstance(key,str) or not key.startswith('/Script/') or len(key)>4096 or not isinstance(value,dict) or set(value)!={'expression','size'}:
+                raise ValueError('Invalid static dimension binding')
+            if not isinstance(value['expression'],str) or not 1<=len(value['expression'])<=1024 or type(value['size']) is not int or not 1<=value['size']<=255:
+                raise ValueError('Invalid static dimension value')
     files = sorted(metadata_directory.rglob('*.cyuediff.json'))
     if not files:
         raise ValueError('No CyUEDiff UHT metadata found')
     for destination in (output_file, summary_file):
         if destination is None:
             continue
-        if any(destination.resolve() == path.resolve() or (destination.exists() and destination.samefile(path)) for path in files):
-            raise ValueError('Output overlaps metadata source')
+        if any(destination.resolve() == path.resolve() or (destination.exists() and destination.samefile(path)) for path in (files + ([static_dimensions] if static_dimensions is not None else []))):
+            raise ValueError('Output overlaps metadata or dimension source')
     if summary_file is not None and output_file.exists() and summary_file.exists() and output_file.samefile(summary_file):
         raise ValueError('Output files overlap')
     if summary_file is not None and summary_file.resolve() == output_file.resolve():
@@ -67,13 +85,18 @@ def build_cooked_mappings(metadata_directory: Path, output_file: Path, summary_f
         if path.stat().st_size > 64 * 1024 * 1024:
             raise ValueError('Metadata module byte limit exceeded')
         raw = path.read_bytes()
-        source_hashes[str(path.relative_to(metadata_directory))] = hashlib.sha256(raw).hexdigest()
+        source_hashes[path.relative_to(metadata_directory).as_posix()] = hashlib.sha256(raw).hexdigest()
         data = json.loads(raw.decode('utf-8'))
         if data.get('schema') != 'cyuediff.uht/1' or data.get('EngineClassName') != 'Package':
             raise ValueError('Expected complete CyUEDiff UHT metadata')
         if not data['SourceName'].startswith('/Script/') or '.' in data['SourceName']:
             raise ValueError('Invalid UHT module identity')
         visit(data, data['SourceName'])
+
+    metadata_sha256=hashlib.sha256(json.dumps(source_hashes,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+    if static_dimensions is not None and dimensions['metadataSha256']!=metadata_sha256:
+        raise ValueError('Static dimension manifest does not match this exact metadata export')
+    used_dimensions=set()
 
     def resolve(source):
         if not source:
@@ -95,16 +118,29 @@ def build_cooked_mappings(metadata_directory: Path, output_file: Path, summary_f
                 if 'EditorOnly' in child.get('PropertyFlags', '').split(', '):
                     continue
                 expression = child.get('ArrayDimensions', '1')
-                if not str(expression).isdigit() or str(expression).startswith('0') or not 1 <= int(expression) <= 255:
-                    raise ValueError('Unresolved static array dimension ' + str(expression))
-                dim = int(expression)
+                key=identity+'.'+child['EngineName']
+                if key in overrides:
+                    binding=overrides[key]
+                    if binding['expression']!=str(expression):
+                        raise ValueError('Static dimension expression disagrees with metadata: '+key)
+                    dim=binding['size']
+                    if str(expression).isdigit() and not str(expression).startswith('0') and dim!=int(expression):
+                        raise ValueError('Static dimension contradicts a known literal: '+key)
+                    used_dimensions.add(key)
+                else:
+                    if not str(expression).isdigit() or str(expression).startswith('0') or not 1 <= int(expression) <= 255:
+                        raise ValueError('Unresolved static array dimension ' + str(expression))
+                    dim = int(expression)
                 fields.append((slots, dim, child))
                 slots += dim
             if slots > 65535:
                 raise ValueError('Slot count exceeds USMAP')
             record.update(parent=parent, fields=fields, slots=slots)
         except (ValueError, UnicodeError) as error:
+            if str(error).startswith('Static dimension '): raise
             excluded[identity] = str(error)
+    if used_dimensions!=set(overrides):
+        raise ValueError('Unused or unreachable static dimension binding')
     changed = True
     while changed:
         changed = False
@@ -214,10 +250,14 @@ def build_cooked_mappings(metadata_directory: Path, output_file: Path, summary_f
     name_table = struct.pack('<I', len(names)) + b''.join((struct.pack('<H', len(ascii_name(n))) + ascii_name(n) for n in names))
     body = name_table + payload
     result = struct.pack('<HBiBII', 12484, 4, 0, 0, len(body), len(body)) + body
-    if any(hashlib.sha256(path.read_bytes()).hexdigest() != source_hashes[str(path.relative_to(metadata_directory))] for path in files):
+    if any(hashlib.sha256(path.read_bytes()).hexdigest() != source_hashes[path.relative_to(metadata_directory).as_posix()] for path in files):
         raise ValueError('Metadata changed during mapping generation')
+    if static_dimensions is not None and hashlib.sha256(static_dimensions.read_bytes()).hexdigest()!=dimensions_hash:
+        raise ValueError('Static dimension manifest changed during generation')
     output_file.write_bytes(result)
-    summary = {'schemas': len(schemas), 'enums': len(enum_records), 'names': len(names), 'bytes': len(result), 'excludedClasses': excluded, 'unsupportedDescriptors': unsupported, 'sha256': hashlib.sha256(result).hexdigest(), 'metadataFiles': source_hashes}
+    summary = {'schemas': len(schemas), 'enums': len(enum_records), 'names': len(names), 'bytes': len(result), 'excludedClasses': excluded, 'unsupportedDescriptors': unsupported, 'sha256': hashlib.sha256(result).hexdigest(), 'metadataFiles': source_hashes, 'metadataSha256':metadata_sha256}
+    if static_dimensions is not None:
+        summary['staticDimensions']={'sha256':dimensions_hash,'fields':overrides}
     if summary_file is not None:
         summary_file.write_text(json.dumps(summary, indent=2), encoding='utf-8')
     return summary
