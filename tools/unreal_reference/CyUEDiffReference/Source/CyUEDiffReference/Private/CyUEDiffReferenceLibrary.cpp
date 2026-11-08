@@ -752,3 +752,54 @@ FString UCyUEDiffReferenceLibrary::ExportCompressedCurvesReference(UObject *Asse
     O->SetArrayField(TEXT("buffer"), Integers(D.CompressedCurveByteStream));
     return JsonText(O);
 }
+
+FString UCyUEDiffReferenceLibrary::ExportNaniteSourceReference(UObject *Asset) {
+    auto *Mesh = Cast<UStaticMesh>(Asset);
+    if (!Mesh || !Mesh->GetOutermost()->GetName().StartsWith(TEXT("/Game/Corpus/")))
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    const auto *Render = Mesh->GetRenderData();
+    const auto *Resource = Render ? Render->NaniteResourcesPtr.Get() : nullptr;
+    const auto *Description = Mesh->GetMeshDescription(0);
+    if (!Resource || !Resource->NumClusters || !Description || Description->Vertices().Num() > 1000000 ||
+        Description->Triangles().Num() > 2000000)
+        return FString();
+    const auto Attributes = FStaticMeshConstAttributes(*Description);
+    const auto Positions = Attributes.GetVertexPositions();
+    auto Result = MakeShared<FJsonObject>();
+    Result->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-nanite-source-reference/1"));
+    Result->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Result->SetStringField(TEXT("object"), Mesh->GetPathName());
+    Result->SetNumberField(TEXT("positionPrecision"), Resource->PositionPrecision);
+    const float Scale = FMath::Exp2(float(Resource->PositionPrecision));
+    Values Vertices;
+    for (const auto ID : Description->Vertices().GetElementIDs()) {
+        const auto Position = Positions[ID];
+        const float X = FMath::RoundToFloat(Position.X * Scale), Y = FMath::RoundToFloat(Position.Y * Scale),
+                    Z = FMath::RoundToFloat(Position.Z * Scale);
+        if (!FMath::IsFinite(X) || !FMath::IsFinite(Y) || !FMath::IsFinite(Z) ||
+            FMath::Abs(double(X)) > 2147483647. || FMath::Abs(double(Y)) > 2147483647. ||
+            FMath::Abs(double(Z)) > 2147483647.)
+            return FString();
+        auto V = MakeShared<FJsonObject>();
+        V->SetNumberField(TEXT("id"), ID.GetValue());
+        V->SetField(TEXT("position"), Vec3(Position));
+        V->SetField(TEXT("quantizedPosition"), Vec3(FIntVector(int32(X), int32(Y), int32(Z))));
+        Vertices.Add(Obj(V));
+    }
+    Values Triangles;
+    for (const auto ID : Description->Triangles().GetElementIDs()) {
+        Values VertexIDs;
+        for (const auto Instance : Description->GetTriangleVertexInstances(ID))
+            VertexIDs.Add(Number(Description->GetVertexInstanceVertex(Instance).GetValue()));
+        Triangles.Add(Array(MoveTemp(VertexIDs)));
+    }
+    Result->SetArrayField(TEXT("vertices"), MoveTemp(Vertices));
+    Result->SetArrayField(TEXT("triangles"), MoveTemp(Triangles));
+    Result->SetNumberField(TEXT("naniteClusters"), Resource->NumClusters);
+    Result->SetNumberField(TEXT("nanitePages"), Resource->PageStreamingStates.Num());
+    FString Output;
+    const auto Writer = TJsonWriterFactory<>::Create(&Output);
+    FJsonSerializer::Serialize(Result, Writer);
+    return Output;
+}

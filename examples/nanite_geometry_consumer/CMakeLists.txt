@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(CyUEDiffNaniteGeometryConsumer LANGUAGES CXX)
+find_package(CyUEDiff CONFIG REQUIRED)
+add_executable(nanite_geometry_consumer main.cpp)
+target_link_libraries(nanite_geometry_consumer PRIVATE CyUEDiff::Core)

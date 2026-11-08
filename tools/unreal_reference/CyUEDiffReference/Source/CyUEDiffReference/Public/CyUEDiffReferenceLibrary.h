@@ -14,6 +14,9 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     // Writes only caller-prepared /Game/Corpus assets; no file is saved here.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool BindPrivateSkeleton(UObject *Asset, USkeleton *Skeleton, UPhysicsAsset *Physics);
+    // Read-only original source geometry plus the actual Nanite quantization setting.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportNaniteSourceReference(UObject *Asset);
     // Samples the actual compressed codec, bypassing source-model/raw fallback.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportCompressedAnimationReference(UObject *Asset);
