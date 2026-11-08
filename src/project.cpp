@@ -8,7 +8,19 @@
 namespace cyuediff {
 namespace {
 fs::path normalized(const fs::path &p) {
-    return fs::weakly_canonical(fs::absolute(p));
+    // Resolve existing ancestors before appending a missing asset stem. On Windows,
+    // weakly_canonical can fail fast for a nonexistent suffix under a short-name path.
+    auto existing = fs::absolute(p);
+    fs::path suffix;
+    while (!fs::exists(existing)) {
+        const auto parent = existing.parent_path();
+        if (parent.empty() || parent == existing)
+            throw Error("io", "Cannot resolve project path ancestor");
+        suffix = suffix.empty() ? existing.filename() : existing.filename() / suffix;
+        existing = parent;
+    }
+    const auto resolved = fs::canonical(existing);
+    return suffix.empty() ? resolved : (resolved / suffix).lexically_normal();
 }
 bool within(const fs::path &p, const fs::path &root) {
     auto relative = p.lexically_relative(root);
