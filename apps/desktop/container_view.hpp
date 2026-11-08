@@ -5,6 +5,7 @@
 #include <cyuediff/mesh_view.hpp>
 #include <cyuediff/mesh_skin_view.hpp>
 #include <cyuediff/collision_view.hpp>
+#include <cyuediff/cooked_animation_view.hpp>
 namespace cyuediff::desktop {
 enum class ContainerAction { none, inspect, select_object };
 class ContainerView {
@@ -33,6 +34,10 @@ class ContainerView {
         MeshSkinView skin;
         bool skin_available = false, comparison_known = true;
     };
+    CookedAnimationView animation_;
+    int before_animation_ = -1, after_animation_ = -1;
+    bool animation_present_ = false;
+    void bind_animation();
     CollisionView physics_;
     bool physics_present_ = false;
     CollisionView collisions_;
@@ -78,6 +83,13 @@ class ContainerView {
     std::size_t pixel_count() const {
         return pixel_rows_.size();
     }
+    void poll() {
+        animation_.poll();
+    }
+    bool busy() const {
+        return animation_.busy();
+    }
+    Json animation_report() const;
     Json mesh_report() const;
     Json physics_report() const {
         return physics_present_ ? physics_.report() : Json(nullptr);

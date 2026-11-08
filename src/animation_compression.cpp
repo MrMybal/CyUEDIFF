@@ -1,5 +1,6 @@
 #include <cyuediff/animation_compression.hpp>
 #include <cyuediff/content_hash.hpp>
+#include "archive.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -49,6 +50,7 @@ struct Cursor {
 struct Channel {
     std::int32_t offset = -1;
     std::uint32_t format = 6, flags = 0, bytes = 0;
+    std::string encoded_sha256;
     // Four components allow vector and quaternion channels to share bounded storage.
     std::vector<std::array<float, 4>> keys;
     std::vector<std::uint32_t> frames;
@@ -188,6 +190,8 @@ Channel channel(Cursor buffer, std::uint64_t key_start, std::int32_t offset, boo
         }
     }
     out.bytes = static_cast<std::uint32_t>(buffer.pos - begin);
+    b.reserve(64);
+    out.encoded_sha256 = detail::hash_range(buffer.bytes, begin, out.bytes, b.o.control);
     windows.emplace_back(begin, buffer.pos);
     return out;
 }
@@ -262,9 +266,16 @@ std::array<double, 4> rotation_sample(const Channel &c, std::uint32_t frames, fl
         v *= inverse;
     return out;
 }
-Json channel_json(const Channel &c, bool rotation, bool include_keys) {
-    Json j = {{"offset", c.offset}, {"bytes", c.bytes},      {"format", c.format},
-              {"flags", c.flags},   {"keys", c.keys.size()}, {"frames", c.frames}};
+Json channel_json(const Channel &c, bool rotation, bool include_keys, bool timing = true) {
+    Json j = {{"offset", c.offset},
+              {"bytes", c.bytes},
+              {"format", c.format},
+              {"flags", c.flags},
+              {"keys", c.keys.size()},
+              {"encodedSha256", c.encoded_sha256},
+              {"frameTableEntries", c.frames.size()}};
+    if (timing)
+        j["frames"] = c.frames;
     j["timing"] = c.keys.empty() ? "implicit" : c.frames.empty() ? "uniform" : "explicit";
     if (include_keys) {
         j["values"] = Json::array();
@@ -300,6 +311,13 @@ Json CompressedAnimationBonePose::to_json() const {
             {"scale", scale}};
 }
 Json PerTrackAnimation::to_json(bool include_keys) const {
+    return json(include_keys, true);
+}
+Json PerTrackAnimation::catalog(const OperationControl &control) const {
+    return json(false, false, control);
+}
+Json PerTrackAnimation::json(bool include_keys, bool timing, const OperationControl &control) const {
+    control.check();
     const auto &v = *impl_;
     Json j = {{"schema", "cyuediff.per-track-animation/1"},
               {"profile", "ue5.3-windows"},
@@ -313,15 +331,96 @@ Json PerTrackAnimation::to_json(bool include_keys) const {
               {"scaleOffsetsPresent", v.scale_present},
               {"scaleStripSize", v.scale_strip_size},
               {"tracks", Json::array()}};
+    if (!timing)
+        j["schema"] = "cyuediff.per-track-animation-catalog/1";
     for (std::size_t i = 0; i < v.tracks.size(); ++i) {
+        control.check();
         const auto &t = v.tracks[i];
         j["tracks"].push_back({{"track", i},
                                {"skeletonIndex", t.skeleton},
-                               {"translation", channel_json(t.translation, false, include_keys)},
-                               {"rotation", channel_json(t.rotation, true, include_keys)},
-                               {"scale", channel_json(t.scale, false, include_keys)}});
+                               {"translation", channel_json(t.translation, false, include_keys, timing)},
+                               {"rotation", channel_json(t.rotation, true, include_keys, timing)},
+                               {"scale", channel_json(t.scale, false, include_keys, timing)}});
     }
     return j;
+}
+Json PerTrackAnimation::stored_key(std::size_t track, CompressedAnimationChannel which, std::uint32_t key,
+                                   const OperationControl &control) const {
+    control.check();
+    const auto &v = *impl_;
+    require(track < v.tracks.size(), "Compressed track index exceeds table");
+    support(which == CompressedAnimationChannel::translation ||
+                which == CompressedAnimationChannel::rotation || which == CompressedAnimationChannel::scale,
+            "Unsupported compressed channel selector");
+    const auto &t = v.tracks[track];
+    const auto &c = which == CompressedAnimationChannel::translation ? t.translation
+                    : which == CompressedAnimationChannel::rotation  ? t.rotation
+                                                                     : t.scale;
+    require(key < c.keys.size(), "Stored compressed key index exceeds channel");
+    const double frame = !c.frames.empty()   ? double(c.frames[key])
+                         : c.keys.size() > 1 ? double(key) * double(v.frames - 1) / double(c.keys.size() - 1)
+                                             : 0.;
+    Json values = Json::array();
+    for (unsigned i = 0; i < (which == CompressedAnimationChannel::rotation ? 4u : 3u); ++i)
+        values.push_back(c.keys[key][i]);
+    return {{"index", key}, {"frame", frame}, {"value", std::move(values)}};
+}
+Json PerTrackAnimation::key_preview(std::size_t track, std::uint32_t maximum,
+                                    const OperationControl &control) const {
+    control.check();
+    require(track < impl_->tracks.size(), "Compressed track index exceeds table");
+    limit(maximum >= 2 && maximum <= 4096, "Key preview point count must be between 2 and 4096");
+    const auto &t = impl_->tracks[track];
+    Json j = {{"track", track},
+              {"skeletonIndex", t.skeleton},
+              {"frameCount", impl_->frames},
+              {"bufferSha256", impl_->sha256},
+              {"scaleOffsetsPresent", impl_->scale_present}};
+    unsigned index = 0;
+    for (const auto *c : {&t.translation, &t.rotation, &t.scale}) {
+        auto channel = channel_json(*c, index == 1, false, false);
+        const auto count = c->keys.size();
+        const auto n = std::min<std::size_t>(count, maximum);
+        channel["points"] = Json::array();
+        channel["omittedKeys"] = count - n;
+        if (!count)
+            channel["implicitValue"] = index == 1                            ? Json({0, 0, 0, 1})
+                                       : index == 2 && !impl_->scale_present ? Json({1, 1, 1})
+                                                                             : Json({0, 0, 0});
+        for (std::size_t i = 0; i < n; ++i) {
+            control.check();
+            const auto k = n > 1 ? std::uint64_t(i) * (count - 1) / (n - 1) : 0;
+            channel["points"].push_back(stored_key(track, static_cast<CompressedAnimationChannel>(index),
+                                                   static_cast<std::uint32_t>(k), control));
+        }
+        j[index == 0 ? "translation" : index == 1 ? "rotation" : "scale"] = std::move(channel);
+        ++index;
+    }
+    return j;
+}
+CompressedAnimationBonePose PerTrackAnimation::sample_track(std::size_t track, double frame,
+                                                            CompressedAnimationInterpolation interpolation,
+                                                            const OperationControl &control) const {
+    control.check();
+    const auto &v = *impl_;
+    require(track < v.tracks.size(), "Compressed track index exceeds table");
+    require(std::isfinite(frame) && frame >= 0 && frame <= double(v.frames - 1),
+            "Animation sample frame exceeds sequence");
+    support(interpolation == CompressedAnimationInterpolation::linear ||
+                interpolation == CompressedAnimationInterpolation::step,
+            "Unsupported animation interpolation");
+    const float relative = v.frames > 1 ? float(frame / double(v.frames - 1)) : 0.f;
+    const bool step = interpolation == CompressedAnimationInterpolation::step;
+    const auto &t = v.tracks[track];
+    CompressedAnimationBonePose p;
+    p.track = static_cast<std::uint32_t>(track);
+    p.skeleton_index = t.skeleton;
+    p.translation = vector_sample(t.translation, v.frames, relative, step, {0, 0, 0});
+    p.rotation = rotation_sample(t.rotation, v.frames, relative, step);
+    p.scale =
+        vector_sample(t.scale, v.frames, relative, step,
+                      v.scale_present ? std::array<double, 3>{0, 0, 0} : std::array<double, 3>{1, 1, 1});
+    return p;
 }
 std::vector<CompressedAnimationBonePose>
 PerTrackAnimation::sample(double frame, CompressedAnimationInterpolation interpolation,

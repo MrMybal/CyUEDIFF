@@ -392,3 +392,8 @@ parameters and native topology/acceleration/maps remain inspectable. Unavailable
 peer data does not appear as removed geometry. Workspace format eight preserves
 the independent profiles, chapter 8 and checked selection/camera state. See
 [COOKED_PHYSICS.md](COOKED_PHYSICS.md).
+
+
+## Cooked compressed animation review — post-0.181 development
+
+The **Containers → Cooked animation settings** section selects explicit UE 5.3 Windows readers, producer interpolation and the exact compression-settings/Skeleton members independently before/after. Separate dependency TOCs are optional; empty paths use the main input on that side. **After member override** can compare different animation IDs. Use **Cooked animations** for named track search/change navigation, encoding versus selected-frame statuses, independent fractional frames, local TRS metrics/tolerances, bounded channel plots, stored-key markers and focused original-key values. Names require verified Skeleton binding; unavailable peers remain unknown. Decoding and review preparation run on workers. The interface uses stored compressed local channels without runtime retargeting, additive bases or skinning. Compressed curve values remain unavailable. Version-ten workspaces retain context and navigation. See [the full contract and flags](COOKED_ANIMATIONS.md#focused-queries-and-desktop-review).

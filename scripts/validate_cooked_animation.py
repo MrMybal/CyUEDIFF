@@ -69,6 +69,8 @@ def verify_case(consumer, row, destination, tolerance):
                 skeleton_components += 1
                 if delta > tolerance:
                     raise ValueError('Native Skeleton reference transform differs')
+    if actual.get('focusedQueriesVerified') != len(expected['tracks'])*len(expected['sampleFrames']) or type(actual.get('storedQueriesVerified')) is not int or actual['storedQueriesVerified'] < 0:
+        raise ValueError('Installed consumer did not verify focused samples and stored-key queries')
     if len(actual['samples']) != len(expected['sampleFrames']):
         raise ValueError('Cooked sample cardinality differs')
     count = 0
@@ -103,7 +105,7 @@ def verify_case(consumer, row, destination, tolerance):
         if file_hash(path) != digest:
             raise ValueError('A validation input changed')
     return {'object': info['source']['object'], 'frames': keys, 'tracks': len(expected['tracks']),
-            'components': count, 'maxComponentDelta': maximum, 'skeletonComponents': skeleton_components,
+            'components': count, 'focusedQueries': actual['focusedQueriesVerified'], 'storedKeyQueries': actual['storedQueriesVerified'], 'maxComponentDelta': maximum, 'skeletonComponents': skeleton_components,
             'maxSkeletonDelta': maximum_skeleton, 'packageSha256': info['source']['packageSha256'],
             'bufferIoHash': info['animation']['bufferIoHash'], 'skeletonPackageSha256': binding['packageSha256'],
             'settingsPackageSha256': info['boneCodec']['settings']['packageSha256']}
@@ -133,6 +135,8 @@ def main():
             raise ValueError('Protected source SHA256 differs after validation')
     summary = {'schema': 'cyuediff.cooked-animation-validation-result/1', 'cases': results,
                'components': sum(row['components'] for row in results),
+               'focusedQueries': sum(row['focusedQueries'] for row in results),
+               'storedKeyQueries': sum(row['storedKeyQueries'] for row in results),
                'skeletonComponents': sum(row['skeletonComponents'] for row in results),
                'maxComponentDelta': max(row['maxComponentDelta'] for row in results),
                'maxSkeletonDelta': max(row['maxSkeletonDelta'] for row in results),

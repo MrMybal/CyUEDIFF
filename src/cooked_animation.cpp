@@ -522,6 +522,71 @@ Json CookedAnimation::to_json(bool keys) const {
     j["animation"] = impl_->channels ? impl_->channels->to_json(keys) : Json(nullptr);
     return j;
 }
+Json CookedAnimation::catalog(const OperationControl &control) const {
+    control.check();
+    const auto &v = *impl_;
+    Json j = {{"schema", "cyuediff.cooked-animation-catalog/1"},
+              {"boneChannelsDecoded", bool(v.channels)},
+              {"identitiesComplete", v.bound},
+              {"source", v.metadata.at("source")},
+              {"interpolation", v.metadata.at("interpolation")},
+              {"unavailable", v.metadata.at("unavailable")},
+              {"boneCodec", v.metadata.at("boneCodec")},
+              {"curves", v.metadata.at("curves")},
+              {"frameCount", v.frames ? Json(*v.frames) : Json(nullptr)},
+              {"skeleton", Json::object()},
+              {"animation", v.channels ? v.channels->catalog(control) : Json(nullptr)}};
+    for (auto it = v.metadata.at("skeleton").begin(); it != v.metadata.at("skeleton").end(); ++it)
+        if (it.key() != "bones" && it.key() != "retargetSources")
+            j["skeleton"][it.key()] = *it;
+    j["skeleton"]["bones"] = Json::array();
+    for (const auto &bone : v.bones) {
+        control.check();
+        j["skeleton"]["bones"].push_back({{"id", bone.id}, {"name", bone.name}, {"parent", bone.parent}});
+    }
+    return j;
+}
+Json CookedAnimation::key_preview(std::size_t track, std::uint32_t maximum,
+                                  const OperationControl &control) const {
+    control.check();
+    if (!impl_->channels)
+        throw Error("cooked-animation-unavailable", "Compressed bone channels are unavailable");
+    return impl_->channels->key_preview(track, maximum, control);
+}
+Json CookedAnimation::stored_key(std::size_t track, CompressedAnimationChannel channel, std::uint32_t key,
+                                 const OperationControl &control) const {
+    control.check();
+    if (!impl_->channels)
+        throw Error("cooked-animation-unavailable", "Compressed bone channels are unavailable");
+    return impl_->channels->stored_key(track, channel, key, control);
+}
+Json CookedAnimation::sample_track(std::size_t track, double frame, const OperationControl &control) const {
+    control.check();
+    need(std::isfinite(frame) && frame >= 0, "Invalid cooked animation sample frame");
+    if (impl_->frames)
+        need(frame <= double(*impl_->frames - 1), "Cooked animation frame exceeds sequence");
+    Json j = {{"frame", frame}, {"track", track}, {"ready", false}, {"identitiesComplete", impl_->bound}};
+    if (!impl_->channels) {
+        j["unavailable"] = impl_->metadata.at("unavailable");
+        return j;
+    }
+    if (!impl_->interpolation) {
+        j["unavailable"] = "interpolation-not-specified";
+        return j;
+    }
+    const auto p = impl_->channels->sample_track(track, frame, *impl_->interpolation, control);
+    j["skeletonIndex"] = p.skeleton_index;
+    j["positions"] = p.translation;
+    j["rotations"] = p.rotation;
+    j["scales"] = p.scale;
+    j["ready"] = true;
+    if (impl_->bound) {
+        need(p.skeleton_index >= 0 && std::size_t(p.skeleton_index) < impl_->bones.size(),
+             "Compressed track exceeds verified Skeleton");
+        j["name"] = impl_->bones[std::size_t(p.skeleton_index)].name;
+    }
+    return j;
+}
 Json CookedAnimation::sample(double frame, const OperationControl &control) const {
     control.check();
     need(std::isfinite(frame) && frame >= 0, "Invalid cooked animation sample frame");

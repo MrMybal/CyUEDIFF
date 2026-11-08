@@ -332,6 +332,39 @@ int main(int argc, char **argv) {
         ends.t = ends.add(1, 9, 3, ds, {1, 3, 4});
         near(decode(ends.source()).sample(.5)[0].translation[0], .75,
              "Unanchored table retains codec extrapolation");
+        const auto catalog = a.catalog();
+        check(!catalog["tracks"][0]["rotation"].contains("frames") &&
+                  catalog["tracks"][0]["rotation"]["frameTableEntries"] == 2,
+              "Catalogue avoids full timing arrays");
+        check(!catalog["tracks"][0]["translation"]["encodedSha256"].get<std::string>().empty(),
+              "Stored channel fingerprint is retained");
+        for (double frame : {0., .5, 2.5, 4.})
+            check(a.sample_track(0, frame).to_json() == a.sample(frame)[0].to_json(),
+                  "Focused sample equals full sample");
+        const auto preview = a.key_preview(0, 2);
+        check(preview["translation"]["points"].size() == 2 &&
+                  preview["translation"]["points"][1]["index"] == 1 &&
+                  preview["translation"]["points"][1]["frame"] == 4,
+              "Focused key endpoints and uniform timing");
+        check(preview["scale"]["points"].empty() && preview["scale"]["implicitValue"] == Json({1, 1, 1}),
+              "Implicit codec scale is not a fabricated stored key");
+        check(a.stored_key(0, CompressedAnimationChannel::rotation, 1)["frame"] == 4,
+              "Explicit stored timing is retained");
+        refused([&] { a.key_preview(0, 1); }, "animation-compression-limit");
+        refused([&] { a.key_preview(0, 4097); }, "animation-compression-limit");
+        refused([&] { a.sample_track(1, 0); }, "animation-compression-layout");
+        refused([&] { a.stored_key(0, CompressedAnimationChannel::scale, 0); },
+                "animation-compression-layout");
+        Wire many;
+        many.frames = 1000;
+        Bytes many_keys;
+        for (unsigned i = 0; i < 1000; ++i)
+            f32(many_keys, float(i));
+        many.t = many.add(1, 1, 1000, many_keys);
+        auto reduced = decode(many.source()).key_preview(0, 7);
+        check(reduced["translation"]["points"].size() == 7 && reduced["translation"]["omittedKeys"] == 993 &&
+                  reduced["translation"]["points"].back()["index"] == 999,
+              "Decimated preview preserves original indices and last endpoint");
         auto copy = a;
         source.buffer.clear();
         near(copy.sample(4)[0].translation[0], 10, "Decoded immutable ownership");

@@ -4,6 +4,7 @@
 #include <cyuediff/cooked_mesh.hpp>
 #include <cyuediff/cooked_skeletal.hpp>
 #include <cyuediff/cooked_physics.hpp>
+#include <cyuediff/cooked_animation.hpp>
 #include <cyuediff/collision_wireframe.hpp>
 #include <optional>
 namespace cyuediff::desktop {
@@ -22,9 +23,20 @@ struct ContainerSource {
                           after_skeletal_profile = CookedSkeletalProfile::unspecified;
     std::optional<bool> skeletal_mobile_lod, after_skeletal_mobile_lod;
     std::optional<bool> skeletal_colors, after_skeletal_colors;
+    std::string after_entry;
+    CookedAnimationProfile animation_profile = CookedAnimationProfile::unspecified,
+                           after_animation_profile = CookedAnimationProfile::unspecified;
+    std::optional<CompressedAnimationInterpolation> animation_interpolation, after_animation_interpolation;
+    fs::path bone_settings_container, skeleton_container, after_bone_settings_container,
+        after_skeleton_container;
+    std::string bone_settings_entry, skeleton_entry, after_bone_settings_entry, after_skeleton_entry;
     bool compare_payloads = false;
     std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;
+};
+struct ContainerAnimationPreview {
+    std::string object_path;
+    std::shared_ptr<const CookedAnimation> model;
 };
 struct ContainerMeshPreview {
     std::string key, object_path;
@@ -58,6 +70,9 @@ struct ContainerDocument {
     Json meshes = Json::array(), mesh_differences = Json::array();
     std::vector<ContainerMeshPreview> mesh_previews;
     std::vector<std::string> mesh_diagnostics;
+    Json animations = Json::array();
+    std::vector<ContainerAnimationPreview> animation_previews;
+    std::vector<std::string> animation_diagnostics;
     Json textures = Json::array();
     std::vector<ContainerTexturePreview> previews;
     std::vector<ContainerTextureDifference> pixel_differences;

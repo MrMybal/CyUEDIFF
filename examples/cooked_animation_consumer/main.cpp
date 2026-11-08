@@ -54,8 +54,38 @@ int main(int argc, char **argv) {
         if (frames > 10000 || std::uint64_t(2 * frames - 1) * tracks > 200000)
             throw std::runtime_error("Example sample output exceeds budget");
         Json out = {{"animation", std::move(info)}, {"samples", Json::array()}};
-        for (std::uint32_t i = 0; i < 2 * frames - 1; ++i)
-            out["samples"].push_back(a.sample(i * .5));
+        const auto catalog = a.catalog();
+        if (catalog.at("animation").at("tracks").size() != tracks)
+            throw std::runtime_error("Focused catalogue track count differs");
+        std::uint64_t focused_queries = 0, stored_queries = 0;
+        for (std::size_t t = 0; t < tracks; ++t) {
+            const auto preview = a.key_preview(t, 2);
+            unsigned c = 0;
+            for (const char *channel : {"translation", "rotation", "scale"}) {
+                for (const auto &point : preview.at(channel).at("points")) {
+                    if (a.stored_key(t, static_cast<CompressedAnimationChannel>(c), point.at("index")) !=
+                        point)
+                        throw std::runtime_error("Focused original key differs from bounded preview");
+                    ++stored_queries;
+                }
+                ++c;
+            }
+        }
+        for (std::uint32_t i = 0; i < 2 * frames - 1; ++i) {
+            auto sample = a.sample(i * .5);
+            for (std::size_t t = 0; t < tracks; ++t) {
+                const auto focused = a.sample_track(t, i * .5);
+                const auto &named = sample.at("tracks").at("name:" + focused.at("name").get<std::string>());
+                for (const char *field :
+                     {"positions", "rotations", "scales", "track", "skeletonIndex", "ready"})
+                    if (focused.at(field) != named.at(field))
+                        throw std::runtime_error("Focused sample differs from complete named frame");
+                ++focused_queries;
+            }
+            out["samples"].push_back(std::move(sample));
+        }
+        out["focusedQueriesVerified"] = focused_queries;
+        out["storedQueriesVerified"] = stored_queries;
         const auto target = fs::u8path(argv[7]);
         std::vector<fs::path> protected_paths = c.files();
         const auto &global_paths = global.files();

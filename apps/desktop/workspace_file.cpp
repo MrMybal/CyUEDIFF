@@ -35,6 +35,17 @@ const std::pair<const char *, std::string Settings::*> layout_strings[] = {
     {"layouts", &Settings::layouts}, {"after_layouts", &Settings::after_layouts}};
 const std::pair<const char *, std::string Settings::*> payload_strings[] = {
     {"payload_root", &Settings::payload_root}, {"after_payload_root", &Settings::after_payload_root}};
+const std::pair<const char *, std::string Settings::*> animation_strings[] = {
+    {"after_container_entry", &Settings::after_container_entry},
+    {"bone_settings_container", &Settings::bone_settings_container},
+    {"skeleton_container", &Settings::skeleton_container},
+    {"after_bone_settings_container", &Settings::after_bone_settings_container},
+    {"after_skeleton_container", &Settings::after_skeleton_container},
+    {"bone_settings_entry", &Settings::bone_settings_entry},
+    {"skeleton_entry", &Settings::skeleton_entry},
+    {"after_bone_settings_entry", &Settings::after_bone_settings_entry},
+    {"after_skeleton_entry", &Settings::after_skeleton_entry},
+};
 const std::pair<const char *, bool Settings::*> flags[] = {
     {"previews", &Settings::previews},
     {"discover_engine", &Settings::discover_engine},
@@ -73,7 +84,9 @@ void normalize(Settings &s, const fs::path &base) {
          {&Settings::engine, &Settings::after_engine, &Settings::repository, &Settings::lfs_objects,
           &Settings::container_path, &Settings::after_container_path, &Settings::script_objects,
           &Settings::after_script_objects, &Settings::container_schema, &Settings::after_container_schema,
-          &Settings::layouts, &Settings::after_layouts, &Settings::payload_root, &Settings::after_payload_root})
+          &Settings::bone_settings_container, &Settings::skeleton_container,
+          &Settings::after_bone_settings_container, &Settings::after_skeleton_container, &Settings::layouts,
+          &Settings::after_layouts, &Settings::payload_root, &Settings::after_payload_root})
         path(s.*member);
     if (s.source != 1) {
         for (bool after : {false, true}) {
@@ -117,6 +130,12 @@ Json WorkspaceFile::to_json() const {
         Json s = Json::object();
         for (const auto &field : strings)
             s[field.first] = d.settings.*field.second;
+        for (const auto &field : animation_strings)
+            s[field.first] = d.settings.*field.second;
+        s["animation_profile"] = d.settings.animation_profile;
+        s["after_animation_profile"] = d.settings.after_animation_profile;
+        s["animation_interpolation"] = d.settings.animation_interpolation;
+        s["after_animation_interpolation"] = d.settings.after_animation_interpolation;
         for (const auto &field : layout_strings)
             s[field.first] = d.settings.*field.second;
         for (const auto &field : payload_strings)
@@ -152,7 +171,7 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/9"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/10"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
@@ -162,7 +181,7 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                  j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
                  (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
                   (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
-                   j["schema"] == "cyuediff.workspace/9"))) &&
+                   (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10")))) &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];
@@ -189,9 +208,11 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        const bool skeletal_extension = j["schema"] == "cyuediff.workspace/9";
+        const bool animation_extension = j["schema"] == "cyuediff.workspace/10";
+        const bool skeletal_extension = j["schema"] == "cyuediff.workspace/9" || animation_extension;
         const bool physics_extension = j["schema"] == "cyuediff.workspace/8" || skeletal_extension;
-        saved.container_tab = number(d["containerTab"], -1, physics_extension ? 8 : 7);
+        saved.container_tab =
+            number(d["containerTab"], -1, animation_extension ? 9 : (physics_extension ? 8 : 7));
         const auto &s = d["settings"];
         const bool mesh_extension = j["schema"] == "cyuediff.workspace/7" || physics_extension;
         const bool payload_extension = j["schema"] == "cyuediff.workspace/6" || mesh_extension;
@@ -200,7 +221,8 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                                 (layout_extension ? std::size(layout_strings) + 1 : 0) +
                                 (payload_extension ? std::size(payload_strings) + 1 : 0) +
                                 (mesh_extension ? 4 : 0) + (physics_extension ? 2 : 0) +
-                                (skeletal_extension ? 6 : 0);
+                                (skeletal_extension ? 6 : 0) +
+                                (animation_extension ? std::size(animation_strings) + 4 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
         require(s.is_object() && (pose_extension || (j["schema"] != "cyuediff.workspace/4" &&
@@ -237,6 +259,21 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         saved.settings.source = number(s["source"], 0, 2);
         saved.settings.cooked_profile = number(s["cooked_profile"], 0, 2);
         saved.settings.after_cooked_profile = number(s["after_cooked_profile"], 0, 2);
+        if (animation_extension) {
+            for (const auto &field : animation_strings) {
+                require(s.contains(field.first), "Missing cooked animation setting");
+                saved.settings.*field.second = text(s.at(field.first));
+            }
+            require(s.contains("animation_profile"), "Missing cooked animation setting");
+            saved.settings.animation_profile = number(s.at("animation_profile"), 0, 1);
+            require(s.contains("after_animation_profile"), "Missing cooked animation setting");
+            saved.settings.after_animation_profile = number(s.at("after_animation_profile"), 0, 1);
+            require(s.contains("animation_interpolation"), "Missing cooked animation setting");
+            saved.settings.animation_interpolation = number(s.at("animation_interpolation"), 0, 2);
+            require(s.contains("after_animation_interpolation"), "Missing cooked animation setting");
+            saved.settings.after_animation_interpolation =
+                number(s.at("after_animation_interpolation"), 0, 2);
+        }
         if (skeletal_extension)
             for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
                                     "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors"})

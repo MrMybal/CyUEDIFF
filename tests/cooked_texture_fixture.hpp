@@ -113,7 +113,9 @@ inline void texture_container(const fs::path &stem, const TextureFixture &fixtur
     const unsigned count = bulk ? 2 : 1;
     toc.patch(20, 144);
     toc.patch(24, count);
-    toc.patch(28, count);
+    const auto block_count =
+        (fixture.package.data.size() + 65535) / 65536 + (fixture.bulk.data.size() + 65535) / 65536;
+    toc.patch(28, static_cast<int>(block_count));
     toc.patch(32, 12);
     toc.patch(44, 65536);
     toc.patch(52, 1);
@@ -130,19 +132,23 @@ inline void texture_container(const fs::path &stem, const TextureFixture &fixtur
     big(0);
     big(fixture.package.data.size());
     if (bulk) {
-        big(65536);
+        big(((fixture.package.data.size() + 65535) / 65536) * 65536);
         big(fixture.bulk.data.size());
     }
     const auto package_bytes = fixture.package.data.size();
     for (unsigned i = 0; i < count; ++i) {
         const auto at = i ? package_bytes : 0;
-        const auto size = i ? fixture.bulk.data.size() : package_bytes;
-        for (unsigned n = 0; n < 5; ++n)
-            toc.put<std::uint8_t>(static_cast<std::uint8_t>(at >> (8 * n)));
-        for (unsigned repeat = 0; repeat < 2; ++repeat)
-            for (unsigned n = 0; n < 3; ++n)
-                toc.put<std::uint8_t>(static_cast<std::uint8_t>(size >> (8 * n)));
-        toc.put<std::uint8_t>(0);
+        const auto bytes = i ? fixture.bulk.data.size() : package_bytes;
+        for (std::size_t offset = 0; offset < bytes; offset += 65536) {
+            const auto size = std::min<std::size_t>(65536, bytes - offset);
+            const auto block_at = at + offset;
+            for (unsigned n = 0; n < 5; ++n)
+                toc.put<std::uint8_t>(static_cast<std::uint8_t>(block_at >> (8 * n)));
+            for (unsigned repeat = 0; repeat < 2; ++repeat)
+                for (unsigned n = 0; n < 3; ++n)
+                    toc.put<std::uint8_t>(static_cast<std::uint8_t>(size >> (8 * n)));
+            toc.put<std::uint8_t>(0);
+        }
     }
     io_chunk_meta(toc, fixture.package.data);
     if (bulk)

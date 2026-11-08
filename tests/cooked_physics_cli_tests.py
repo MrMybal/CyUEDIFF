@@ -67,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix='cyuediff-physics-cli-') as directory:
             assert model['physicsDifference']['status']=='changed'
             assert data['containerView']['tab']==8 and review['shape']==shape and review['beforeEdges']==review['afterEdges']==6
             saved=json.loads(workspace.read_text(encoding='utf-8'))
-            assert saved['schema']=='cyuediff.workspace/9' and saved['documents'][0]['settings']['physics_profile']==1
+            assert saved['schema']=='cyuediff.workspace/10' and saved['documents'][0]['settings']['physics_profile']==1
             assert saved['documents'][0]['settings']['after_physics_profile']==1
             assert saved['documents'][0]['viewState']['container']['physics']['viewport']['yaw']==.3
         run([desktop,'--smoke','--no-preferences','--workspace',root/'fr-workspace.json','--report',root/'reopened.json'])

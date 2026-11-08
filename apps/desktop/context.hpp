@@ -21,6 +21,11 @@ struct Settings {
     int mesh_profile = 0, after_mesh_profile = 0, mesh_mobile_lod = 0, after_mesh_mobile_lod = 0;
     std::string container_path, container_entry, script_objects, after_container_path, after_script_objects;
     std::string container_schema, after_container_schema;
+    int animation_profile = 0, after_animation_profile = 0, animation_interpolation = 0,
+        after_animation_interpolation = 0;
+    std::string after_container_entry, bone_settings_container, skeleton_container,
+        after_bone_settings_container, after_skeleton_container, bone_settings_entry, skeleton_entry,
+        after_bone_settings_entry, after_skeleton_entry;
     bool compare_container_payloads = false;
     bool previews = true, discover_engine = true, include_engine = false;
     bool ready() const {
@@ -50,6 +55,16 @@ struct Settings {
             input.script_objects = fs::u8path(script_objects);
             input.schema = fs::u8path(container_schema);
             input.entry = container_entry;
+            input.animation_profile = animation_profile == 1 ? CookedAnimationProfile::unreal_5_3_windows
+                                                             : CookedAnimationProfile::unspecified;
+            if (animation_interpolation)
+                input.animation_interpolation = animation_interpolation == 1
+                                                    ? CompressedAnimationInterpolation::linear
+                                                    : CompressedAnimationInterpolation::step;
+            input.bone_settings_container = fs::u8path(bone_settings_container);
+            input.skeleton_container = fs::u8path(skeleton_container);
+            input.bone_settings_entry = bone_settings_entry;
+            input.skeleton_entry = skeleton_entry;
             input.physics_profile = physics_profile == 1 ? CookedPhysicsProfile::unreal_5_3_windows
                                                          : CookedPhysicsProfile::unspecified;
             input.mesh_profile =
@@ -67,6 +82,18 @@ struct Settings {
                                 : (cooked_profile == 2 ? ZenProfile::unreal_5_5 : ZenProfile::unspecified);
             if (!after_container_path.empty()) {
                 input.after_path = fs::u8path(after_container_path);
+                input.after_entry = after_container_entry;
+                input.after_animation_profile = after_animation_profile == 1
+                                                    ? CookedAnimationProfile::unreal_5_3_windows
+                                                    : CookedAnimationProfile::unspecified;
+                if (after_animation_interpolation)
+                    input.after_animation_interpolation = after_animation_interpolation == 1
+                                                              ? CompressedAnimationInterpolation::linear
+                                                              : CompressedAnimationInterpolation::step;
+                input.after_bone_settings_container = fs::u8path(after_bone_settings_container);
+                input.after_skeleton_container = fs::u8path(after_skeleton_container);
+                input.after_bone_settings_entry = after_bone_settings_entry;
+                input.after_skeleton_entry = after_skeleton_entry;
                 input.after_physics_profile = after_physics_profile == 1
                                                   ? CookedPhysicsProfile::unreal_5_3_windows
                                                   : CookedPhysicsProfile::unspecified;

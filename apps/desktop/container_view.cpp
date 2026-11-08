@@ -25,77 +25,104 @@ cyui::Tone state_tone(const std::string &state) {
 }
 } // namespace
 void ContainerView::register_translations() {
+    CookedAnimationView::register_translations();
     MeshSkinView::register_translations();
     PropertyView::register_translations();
     cyui::registerTranslations(
-        "fr", {{"Peer mesh unavailable; changes cannot be classified.",
-                "Mesh opposé indisponible ; les changements ne peuvent pas être classés."},
-               {"cooked-skeletal-lod","Lecture des LOD squelettiques cooked"},
-               {"cooked-skeletal-vertices","Lecture des sommets squelettiques"},
-               {"cooked-skeletal-weights","Lecture des poids squelettiques"},
-               {"Cooked skeletal settings", "Réglages squelettiques cooked"},
-               {"Before skeletal", "Squelettique avant"},
-               {"After skeletal", "Squelettique après"},
-               {"Vertex colors", "Couleurs des sommets"},
-               {"After vertex colors", "Couleurs des sommets après"},
-               {"Use the skeletal producer mobile-LOD setting; omitted colors need an explicit value.",
-                "Utilisez le réglage de LOD mobile du producteur squelettique ; les couleurs omises "
-                "nécessitent une valeur explicite."},
-               {"Cooked meshes", "Meshes cooked"},
-               {"Native physics", "Physique native"},
-               {"Cooked physics settings", "Réglages de physique cooked"},
-               {"Before physics", "Physique avant"},
-               {"After physics", "Physique après"},
-               {"Decoded native Chaos geometry in cooker coordinates; no simulation.",
-                "Géométrie Chaos native décodée dans les coordonnées de cuisson ; aucune simulation."},
-               {"Preparing native physics geometry", "Préparation de la géométrie physique native"},
-               {"cooked-physics-body", "Lecture des corps physiques cooked"},
-               {"Cooked collisions", "Collisions cooked"},
-               {"Stored collision shapes; native physics data is not decoded.",
-                "Formes de collision enregistrées ; les données physiques natives ne sont pas décodées."},
-               {"Projecting cooked collision shapes", "Projection des formes de collision cooked"},
-               {"Projecting stored collision shapes", "Projection des formes de collision enregistrées"},
-               {"collision-wireframe", "Préparation des contours de collision"},
-               {"Cooked mesh settings", "Réglages des meshes cooked"},
-               {"Before mesh", "Mesh avant"},
-               {"After mesh", "Mesh après"},
-               {"Mobile min LOD", "LOD mobile minimal"},
-               {"After mobile min LOD", "LOD mobile minimal après"},
-               {"Unknown", "Inconnu"},
-               {"Off", "Désactivé"},
-               {"On", "Activé"},
-               {"Use the producer r.StaticMesh.KeepMobileMinLODSettingOnDesktop value.",
-                "Utilisez la valeur r.StaticMesh.KeepMobileMinLODSettingOnDesktop du producteur."},
-               {"Stored render LOD geometry.", "Géométrie des LOD de rendu enregistrés."},
-               {"Cooked pixels", "Pixels cooked"},
-               {"Stored channels; no color transform. HDR previews use Reinhard / sRGB at 0 EV.",
-                "Canaux stockés ; aucune transformation de couleur. Aperçus HDR : Reinhard / sRGB à 0 EV."},
-               {"Only explicitly supported native profiles are decoded.",
-                "Seuls les profils natifs explicitement pris en charge sont décodés."},
-               {"Schema context", "Contexte de schéma"},
-               {"Schema contexts (optional)", "Contextes de schéma (facultatifs)"},
-               {"Before schema", "Schéma avant"},
-               {"After schema", "Schéma après"},
-               {"Choose before schema...", "Choisir le schéma avant..."},
-               {"Choose after schema...", "Choisir le schéma après..."},
-               {"Cooked schema context (*.json)", "Contexte de schéma cooked (*.json)"},
-               {"Choose schema context", "Choisir un contexte de schéma"},
-               {"Object details", "Détails de l'objet"},
-               {"Decoded properties", "Propriétés décodées"},
-               {"No decoded properties", "Aucune propriété décodée"},
-               {"Supply a matching schema context and inspect the member.",
-                "Fournissez un contexte de schéma compatible et inspectez le membre."},
-               {"Before properties only; after values are unknown.",
-                "Propriétés avant uniquement ; valeurs après inconnues."},
-               {"After properties only; before values are unknown.",
-                "Propriétés après uniquement ; valeurs avant inconnues."},
-               {"Explicit mappings do not verify cooked build compatibility or resolve defaults.",
-                "Les mappings explicites ne valident pas la compatibilité du build cooked ni les valeurs par "
-                "défaut."},
-               {"Cooked interpretation context differs.", "Le contexte d'interprétation cooked diffère."},
-               {"Object comparison requires explicit profiles on both present members.",
-                "La comparaison d'objets requiert un profil explicite pour chaque membre présent."},
-               {"schema-context", "Lecture du contexte de schéma"}});
+        "fr",
+        {{"Cooked animation settings", "Réglages des animations cooked"},
+         {"Before animation", "Animation avant"},
+         {"After animation", "Animation après"},
+         {"Before interpolation", "Interpolation avant"},
+         {"After interpolation", "Interpolation après"},
+         {"Linear", "Linéaire"},
+         {"Step", "Palier"},
+         {"Before settings TOC", "TOC des réglages avant"},
+         {"After settings TOC", "TOC des réglages après"},
+         {"Before settings member", "Membre des réglages avant"},
+         {"After settings member", "Membre des réglages après"},
+         {"Before Skeleton TOC", "TOC du Skeleton avant"},
+         {"After Skeleton TOC", "TOC du Skeleton après"},
+         {"Before Skeleton member", "Membre du Skeleton avant"},
+         {"After Skeleton member", "Membre du Skeleton après"},
+         {"Before member ID or path", "ID ou chemin du membre avant"},
+         {"After member override", "Membre après distinct"},
+         {"Dependency member IDs are explicit. An empty dependency TOC uses that side's main container. "
+          "Interpolation is required only when omitted from stored properties.",
+          "Les ID des dépendances sont explicites. Un TOC de dépendance vide utilise le conteneur principal "
+          "du même côté. L’interpolation est requise uniquement si les propriétés enregistrées l’omettent."},
+         {"Cooked animations", "Animations cooked"},
+         {"Before animation object", "Objet animation avant"},
+         {"After animation object", "Objet animation après"},
+         {"Animation object unavailable", "Objet animation indisponible"},
+         {"Peer mesh unavailable; changes cannot be classified.",
+          "Mesh opposé indisponible ; les changements ne peuvent pas être classés."},
+         {"cooked-skeletal-lod", "Lecture des LOD squelettiques cooked"},
+         {"cooked-skeletal-vertices", "Lecture des sommets squelettiques"},
+         {"cooked-skeletal-weights", "Lecture des poids squelettiques"},
+         {"Cooked skeletal settings", "Réglages squelettiques cooked"},
+         {"Before skeletal", "Squelettique avant"},
+         {"After skeletal", "Squelettique après"},
+         {"Vertex colors", "Couleurs des sommets"},
+         {"After vertex colors", "Couleurs des sommets après"},
+         {"Use the skeletal producer mobile-LOD setting; omitted colors need an explicit value.",
+          "Utilisez le réglage de LOD mobile du producteur squelettique ; les couleurs omises "
+          "nécessitent une valeur explicite."},
+         {"Cooked meshes", "Meshes cooked"},
+         {"Native physics", "Physique native"},
+         {"Cooked physics settings", "Réglages de physique cooked"},
+         {"Before physics", "Physique avant"},
+         {"After physics", "Physique après"},
+         {"Decoded native Chaos geometry in cooker coordinates; no simulation.",
+          "Géométrie Chaos native décodée dans les coordonnées de cuisson ; aucune simulation."},
+         {"Preparing native physics geometry", "Préparation de la géométrie physique native"},
+         {"cooked-physics-body", "Lecture des corps physiques cooked"},
+         {"Cooked collisions", "Collisions cooked"},
+         {"Stored collision shapes; native physics data is not decoded.",
+          "Formes de collision enregistrées ; les données physiques natives ne sont pas décodées."},
+         {"Projecting cooked collision shapes", "Projection des formes de collision cooked"},
+         {"Projecting stored collision shapes", "Projection des formes de collision enregistrées"},
+         {"collision-wireframe", "Préparation des contours de collision"},
+         {"Cooked mesh settings", "Réglages des meshes cooked"},
+         {"Before mesh", "Mesh avant"},
+         {"After mesh", "Mesh après"},
+         {"Mobile min LOD", "LOD mobile minimal"},
+         {"After mobile min LOD", "LOD mobile minimal après"},
+         {"Unknown", "Inconnu"},
+         {"Off", "Désactivé"},
+         {"On", "Activé"},
+         {"Use the producer r.StaticMesh.KeepMobileMinLODSettingOnDesktop value.",
+          "Utilisez la valeur r.StaticMesh.KeepMobileMinLODSettingOnDesktop du producteur."},
+         {"Stored render LOD geometry.", "Géométrie des LOD de rendu enregistrés."},
+         {"Cooked pixels", "Pixels cooked"},
+         {"Stored channels; no color transform. HDR previews use Reinhard / sRGB at 0 EV.",
+          "Canaux stockés ; aucune transformation de couleur. Aperçus HDR : Reinhard / sRGB à 0 EV."},
+         {"Only explicitly supported native profiles are decoded.",
+          "Seuls les profils natifs explicitement pris en charge sont décodés."},
+         {"Schema context", "Contexte de schéma"},
+         {"Schema contexts (optional)", "Contextes de schéma (facultatifs)"},
+         {"Before schema", "Schéma avant"},
+         {"After schema", "Schéma après"},
+         {"Choose before schema...", "Choisir le schéma avant..."},
+         {"Choose after schema...", "Choisir le schéma après..."},
+         {"Cooked schema context (*.json)", "Contexte de schéma cooked (*.json)"},
+         {"Choose schema context", "Choisir un contexte de schéma"},
+         {"Object details", "Détails de l'objet"},
+         {"Decoded properties", "Propriétés décodées"},
+         {"No decoded properties", "Aucune propriété décodée"},
+         {"Supply a matching schema context and inspect the member.",
+          "Fournissez un contexte de schéma compatible et inspectez le membre."},
+         {"Before properties only; after values are unknown.",
+          "Propriétés avant uniquement ; valeurs après inconnues."},
+         {"After properties only; before values are unknown.",
+          "Propriétés après uniquement ; valeurs avant inconnues."},
+         {"Explicit mappings do not verify cooked build compatibility or resolve defaults.",
+          "Les mappings explicites ne valident pas la compatibilité du build cooked ni les valeurs par "
+          "défaut."},
+         {"Cooked interpretation context differs.", "Le contexte d'interprétation cooked diffère."},
+         {"Object comparison requires explicit profiles on both present members.",
+          "La comparaison d'objets requiert un profil explicite pour chaque membre présent."},
+         {"schema-context", "Lecture du contexte de schéma"}});
 
     cyui::registerTranslations("en", {{"schema-context", "Reading schema context"},
                                       {"container-diff", "Comparing decoded members"},
@@ -302,6 +329,9 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     physics_.set_models(nullptr, nullptr, {}, {});
     collisions_present_ = false;
     collisions_.set_models(nullptr, nullptr, {}, {});
+    animation_.set_animations(nullptr);
+    animation_present_ = false;
+    before_animation_ = after_animation_ = -1;
     mesh_rows_.clear();
     mesh_ = 0;
     mesh_skin_ = false;
@@ -522,6 +552,14 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
             initial_tab_ = 5;
         if (!mesh_rows_.empty())
             initial_tab_ = 6;
+        before_animation_ = document_->animation_previews.empty() ? -1 : 0;
+        after_animation_ = document_->after && !document_->after->animation_previews.empty() ? 0 : -1;
+        animation_present_ = before_animation_ >= 0 || after_animation_ >= 0 ||
+                             !document_->animation_diagnostics.empty() ||
+                             (document_->after && !document_->after->animation_diagnostics.empty());
+        bind_animation();
+        if (animation_present_)
+            initial_tab_ = 9;
         select_tab_ = true;
     } else {
         members_.clear();
@@ -530,10 +568,10 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 8 || (tab == 8 && !physics_present_) ||
-        (tab == 7 && !collisions_present_) || (tab == 6 && mesh_rows_.empty()) ||
-        (tab == 5 && pixel_rows_.empty()) || (tab == 2 && object_rows_.empty()) ||
-        (tab == 3 && !document_->after) ||
+    if (!document_ || tab < 0 || tab > 9 || (tab == 9 && !animation_present_) ||
+        (tab == 8 && !physics_present_) || (tab == 7 && !collisions_present_) ||
+        (tab == 6 && mesh_rows_.empty()) || (tab == 5 && pixel_rows_.empty()) ||
+        (tab == 2 && object_rows_.empty()) || (tab == 3 && !document_->after) ||
         (tab == 4 && !document_->schema_manifest &&
          (!document_->after || !document_->after->schema_manifest)))
         return false;
@@ -587,6 +625,30 @@ Json ContainerView::property_report() const {
             {"afterStatus", row ? status(row->after_read) : Json(nullptr)},
             {"visibleProperties", row ? values_.visible_count() : 0}};
 }
+void ContainerView::bind_animation() {
+    const auto before = document_ && before_animation_ >= 0
+                            ? document_->animation_previews.at(before_animation_).model
+                            : nullptr;
+    const auto after = document_ && document_->after && after_animation_ >= 0
+                           ? document_->after->animation_previews.at(after_animation_).model
+                           : nullptr;
+    animation_.set_animations(before, after, document_ && document_->after != nullptr);
+}
+Json ContainerView::animation_report() const {
+    if (!animation_present_)
+        return nullptr;
+    auto result = animation_.report();
+    result["beforeObject"] = before_animation_ >= 0
+                                 ? Json(document_->animation_previews.at(before_animation_).object_path)
+                                 : Json(nullptr);
+    result["afterObject"] = after_animation_ >= 0
+                                ? Json(document_->after->animation_previews.at(after_animation_).object_path)
+                                : Json(nullptr);
+    result["beforeDiagnostics"] = document_->animation_diagnostics;
+    result["afterDiagnostics"] =
+        document_->after ? Json(document_->after->animation_diagnostics) : Json::array();
+    return result;
+}
 Json ContainerView::view_state() const {
     Json result = {{"filter", filter_.query},
                    {"objectFilter", object_filter_.query},
@@ -612,6 +674,16 @@ Json ContainerView::view_state() const {
         result["meshSkin"] = mesh_skin_;
         if (mesh_rows_[mesh_].skin_available)
             result["meshSkinView"] = mesh_rows_[mesh_].skin.view_state();
+    }
+    if (animation_present_) {
+        result["animation"] = animation_.view_state();
+        result["beforeAnimation"] =
+            before_animation_ >= 0 ? Json(document_->animation_previews.at(before_animation_).object_path)
+                                   : Json(nullptr);
+        result["afterAnimation"] =
+            after_animation_ >= 0
+                ? Json(document_->after->animation_previews.at(after_animation_).object_path)
+                : Json(nullptr);
     }
     if (physics_present_)
         result["physics"] = physics_.view_state();
@@ -668,6 +740,28 @@ void ContainerView::restore_view_state(const Json &state) {
     restore("values", values_);
     restore("comparison", comparison_);
     restore("schema", schema_);
+    if (animation_present_) {
+        bool changed = false;
+        auto select = [&](const char *key, const ContainerDocument *side, int &selected) {
+            if (!state.contains(key))
+                return;
+            int index = -1;
+            if (side && !state[key].is_null())
+                for (std::size_t i = 0; i < side->animation_previews.size(); ++i)
+                    if (side->animation_previews[i].object_path == state[key]) {
+                        index = int(i);
+                        break;
+                    }
+            changed = changed || selected != index;
+            selected = index;
+        };
+        select("beforeAnimation", document_.get(), before_animation_);
+        select("afterAnimation", document_->after.get(), after_animation_);
+        if (changed)
+            bind_animation();
+        if (state.contains("animation"))
+            animation_.restore_view_state(state["animation"]);
+    }
     if (physics_present_ && state.contains("physics"))
         physics_.restore_view_state(state["physics"]);
     if (collisions_present_ && state.contains("collisions"))
@@ -949,6 +1043,34 @@ ContainerAction ContainerView::draw(bool busy) {
     if (physics_present_ && ImGui::BeginTabItem(cyui::trLabel("Native physics").c_str(), nullptr, flags(8))) {
         active_tab_ = 8;
         physics_.draw("##native-physics-review");
+        ImGui::EndTabItem();
+    }
+    if (animation_present_ &&
+        ImGui::BeginTabItem(cyui::trLabel("Cooked animations").c_str(), nullptr, flags(9))) {
+        active_tab_ = 9;
+        auto choose = [&](const char *label, const ContainerDocument *side, int &selected) {
+            if (!side || side->animation_previews.empty())
+                return;
+            const auto preview = selected >= 0 ? side->animation_previews.at(selected).object_path
+                                               : cyui::tr("Animation object unavailable");
+            if (ImGui::BeginCombo(cyui::trLabel(label).c_str(), preview.c_str())) {
+                for (std::size_t i = 0; i < side->animation_previews.size(); ++i)
+                    if (ImGui::Selectable(side->animation_previews[i].object_path.c_str(),
+                                          selected == int(i))) {
+                        selected = int(i);
+                        bind_animation();
+                    }
+                ImGui::EndCombo();
+            }
+        };
+        choose("Before animation object", document_.get(), before_animation_);
+        choose("After animation object", document_->after.get(), after_animation_);
+        for (const auto &diagnostic : document_->animation_diagnostics)
+            ImGui::TextWrapped("%s: %s", cyui::tr("Before").c_str(), diagnostic.c_str());
+        if (document_->after)
+            for (const auto &diagnostic : document_->after->animation_diagnostics)
+                ImGui::TextWrapped("%s: %s", cyui::tr("After").c_str(), diagnostic.c_str());
+        animation_.draw();
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

@@ -33,6 +33,12 @@ class CookedAnimation {
     bool skeleton_bound() const;
     std::optional<std::uint32_t> frame_count() const;
     Json to_json(bool include_keys = false) const;
+    // Lightweight immutable-source catalogue, without full timing/key/pose arrays.
+    Json catalog(const OperationControl & = {}) const;
+    Json key_preview(std::size_t track, std::uint32_t max_points = 2048, const OperationControl & = {}) const;
+    Json stored_key(std::size_t track, CompressedAnimationChannel, std::uint32_t key,
+                    const OperationControl & = {}) const;
+    Json sample_track(std::size_t track, double frame, const OperationControl & = {}) const;
     // Stored compressed bone-local samples. Names require a verified Skeleton;
     // absent dependencies/interpolation yield explicit unavailable coverage.
     // No retargeting, additive-base application, missing-track fallback or skinning.

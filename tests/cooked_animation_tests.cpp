@@ -98,6 +98,14 @@ int main(int argc, char **argv) {
               "Missing track does not borrow Skeleton reference pose");
         check(!sample["skeleton"].contains("bones") && !sample["skeleton"].contains("retargetSources"),
               "Samples do not duplicate full Skeleton payload");
+        check(a.sample_track(0, 2.5)["positions"] == sample["tracks"]["name:Child"]["positions"],
+              "Focused named sample equals full projection");
+        check(a.catalog()["skeleton"]["bones"][1]["name"] == "Child" &&
+                  !a.catalog()["skeleton"]["bones"][1].contains("translation"),
+              "Lightweight catalogue keeps names without full reference poses");
+        check(a.key_preview(0, 2)["translation"]["points"].size() == 2 &&
+                  a.stored_key(0, CompressedAnimationChannel::translation, 1)["value"][0] == 10,
+              "Focused raw keys remain available");
         auto identical = compare_cooked_animation_frames(a, a, 2.5, 2.5);
         check(identical["status"] == "identical" && identical["comparedTracks"] == 1,
               "Named stored-frame comparison");

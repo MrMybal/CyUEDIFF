@@ -1,6 +1,6 @@
 # Workspace files
 
-The optional desktop host has a data-only `cyuediff.workspace/9` JSON format (post-0.181 development). It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
+The optional desktop host has a data-only `cyuediff.workspace/10` JSON format (post-0.181 development). It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
 
 Local filesystem paths are saved as absolute paths. Relative paths in a file being opened resolve against that file's parent directory. Git asset/project paths remain repository-relative, and mounted names such as `/Game/Example` remain mounted when a project context is present. Git revision expressions are retained as entered, so a later opening can resolve a moving branch differently. No checkout, network fetch or source modification is performed.
 
@@ -112,3 +112,10 @@ profiles remain disabled on migration. See [COOKED_PHYSICS.md](COOKED_PHYSICS.md
 ## Version nine cooked skeletal context and review
 
 Format 9 adds independent before/after cooked skeletal profiles, producer mobile-LOD presence and color fallback facts. The selected cooked mesh keeps its orbit state plus an optional bones/weights inspector, identity/filter and focused property state. Formats 1–8 migrate with skeletal decoding disabled and unknown producer facts; no reader or color default is invented.
+
+
+## Cooked animation contexts — post-0.181 development
+
+Version ten adds independent before/after native animation profiles, interpolation facts, settings/Skeleton container paths and literal member IDs, plus an optional independent after-member selection. Only physical dependency paths are normalized. Formats one through nine remain readable and gain disabled native animation profiles, unknown interpolation and empty dependency/after-member selections. Their compatibility or defaults are not inferred.
+
+The container's optional `beforeAnimation`/`afterAnimation` store exact object paths (or null). Its `animation` state retains a stable named/numeric track key, nonnegative fractional `frame`/`afterFrame`, `independentFrames`, one of ten TRS components, filters, change-only mode, position/rotation/scale tolerances, original key indices and focused property state. Missing saved objects stay unavailable instead of selecting another animation. Restored tracks scroll into view when present. Worker results publish only for the latest request; pending inspector state survives preparation. Native animation is container tab 9. Section expansion uses the `animation-native` layout key. The existing data-only size/type/finite-value limits and output protections apply.

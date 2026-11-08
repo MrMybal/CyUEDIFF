@@ -40,6 +40,8 @@ auto metadata = animation.to_json();
 
 The installed `examples/per_track_animation_consumer` links only Core. Its README describes its explicit JSON metadata and binary buffer inputs. JSON serialization and caller-owned source allocations are separate from decoder output budgeting. Read bytes, track/frame counts, aggregate decoded keys and decoded/sample working output are bounded; cancellation/progress propagate through hashing, key/table loops and sampling. Malformed views, invalid offsets/counts, non-finite values, unordered/out-of-domain tables, unsupported formats and partial overlaps fail before a decoded result is published. Invalid sample domains or overflowing interpolation fail before a pose is returned.
 
+`catalog(control)` exposes channel byte fingerprints without large timing/key arrays. Focused `sample_track` and `stored_key` queries avoid full-frame/key serialization. Bounded `key_preview` returns original indices/times/endpoints, omitted counts and explicit implicit values. The whole cooked reader exposes the same focused queries for verified named tracks; the source-built UI uses them on its cancellable worker.
+
 ## Independent evidence
 
 The optional original Unreal reference adapter calls `BoneCompressionCodec->DecompressBone` directly, bypassing an editor source/raw-data fallback. For two separately cooked animations, the Core input buffer's complete IoHash equals Unreal's reported compressed buffer. All 68 tracks at every integer and half frame agree within 2e-6: 377 + 111 sampled poses per track, **331,840 numeric components**, largest measured component delta about **9.46e-7**. These are stored bone-local compressed-codec samples, not runtime retargeted or additive-applied poses.

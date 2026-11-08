@@ -80,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-cooked-skeletal-', dir=Path.c
             assert len(views) == 2 and all(v['comparisonKnown'] and v['skinAvailable'] and v['skin']['modified'] == 1 for v in views)
             assert sum(v['changes']['modified'] for v in views) > 0
             saved = json.loads(workspace.read_text(encoding='utf-8'))
-            assert saved['schema'] == 'cyuediff.workspace/9'
+            assert saved['schema'] == 'cyuediff.workspace/10'
             settings = saved['documents'][0]['settings']
             assert settings['skeletal_profile'] == settings['after_skeletal_profile'] == 1
             assert settings['skeletal_mobile_lod'] == settings['after_skeletal_mobile_lod'] == 1

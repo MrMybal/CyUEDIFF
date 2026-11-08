@@ -22,6 +22,15 @@ std::string bytes(const fs::path &p) {
     std::ifstream f(p, std::ios::binary);
     return {std::istreambuf_iterator<char>(f), {}};
 }
+void strip_animation(Json &j) {
+    for (auto &d : j["documents"])
+        for (const char *key :
+             {"after_container_entry", "bone_settings_container", "skeleton_container",
+              "after_bone_settings_container", "after_skeleton_container", "bone_settings_entry",
+              "skeleton_entry", "after_bone_settings_entry", "after_skeleton_entry", "animation_profile",
+              "after_animation_profile", "animation_interpolation", "after_animation_interpolation"})
+            d["settings"].erase(key);
+}
 template <class F> void rejects(F f) {
     try {
         f();
@@ -223,7 +232,78 @@ int main() {
             invalid["documents"][2]["settings"].erase(key);
             rejects([&] { WorkspaceFile::from_json(invalid); });
         }
+        auto animation_state = value.to_json();
+        auto &animation_settings = animation_state["documents"][2]["settings"];
+        animation_settings["animation_profile"] = 1;
+        animation_settings["after_animation_profile"] = 1;
+        animation_settings["animation_interpolation"] = 1;
+        animation_settings["after_animation_interpolation"] = 2;
+        animation_settings["after_container_entry"] = "independent-after-id";
+        animation_settings["bone_settings_entry"] = "before-settings-id";
+        animation_settings["after_bone_settings_entry"] = "after-settings-id";
+        animation_settings["skeleton_entry"] = "before-skeleton-id";
+        animation_settings["after_skeleton_entry"] = "after-skeleton-id";
+        animation_settings["bone_settings_container"] = "Dependencies/Before.utoc";
+        animation_settings["after_skeleton_container"] = "Dependencies/After.utoc";
+        animation_state["documents"][2]["containerTab"] = 9;
+        animation_state["documents"][2]["viewState"] = {{"container",
+                                                         {{"beforeAnimation", "/Game/A.A"},
+                                                          {"afterAnimation", "/Game/B.B"},
+                                                          {"animation",
+                                                           {{"selected", "name:Root"},
+                                                            {"frame", 1.25},
+                                                            {"afterFrame", 2.5},
+                                                            {"independentFrames", true},
+                                                            {"beforeKey", 4}}}}}};
+        const auto animation_roundtrip = WorkspaceFile::from_json(animation_state);
+        auto animation_request = animation_roundtrip.documents[2].settings.request().container;
+        check(animation_request &&
+                  animation_request->animation_profile == CookedAnimationProfile::unreal_5_3_windows &&
+                  animation_request->after_animation_interpolation ==
+                      CompressedAnimationInterpolation::step &&
+                  animation_request->animation_interpolation == CompressedAnimationInterpolation::linear &&
+                  animation_request->bone_settings_entry == "before-settings-id" &&
+                  animation_request->after_bone_settings_entry == "after-settings-id" &&
+                  animation_request->after_entry == "independent-after-id" &&
+                  animation_roundtrip.to_json() == animation_state,
+              "Independent cooked animation sources and fractional view state persist");
+        for (const auto *key : {"animation_profile", "after_animation_profile", "animation_interpolation",
+                                "after_animation_interpolation"}) {
+            auto broken = animation_state;
+            broken["documents"][2]["settings"][key] = 3;
+            rejects([&] { WorkspaceFile::from_json(broken); });
+        }
+        for (const auto *key :
+             {"after_container_entry", "bone_settings_container", "skeleton_container",
+              "after_bone_settings_container", "after_skeleton_container", "bone_settings_entry",
+              "skeleton_entry", "after_bone_settings_entry", "after_skeleton_entry", "animation_profile",
+              "after_animation_profile", "animation_interpolation", "after_animation_interpolation"}) {
+            auto broken = animation_state;
+            broken["documents"][2]["settings"].erase(key);
+            rejects([&] { WorkspaceFile::from_json(broken); });
+        }
+        auto legacy_nine = animation_state;
+        strip_animation(legacy_nine);
+        legacy_nine["schema"] = "cyuediff.workspace/9";
+        legacy_nine["documents"][2]["containerTab"] = 4;
+        legacy_nine["documents"][2]["viewState"] = Json::object();
+        const auto migrated_nine =
+            WorkspaceFile::from_json(legacy_nine).documents[2].settings.request().container;
+        check(migrated_nine && migrated_nine->animation_profile == CookedAnimationProfile::unspecified &&
+                  !migrated_nine->animation_interpolation && migrated_nine->bone_settings_entry.empty() &&
+                  migrated_nine->after_entry.empty(),
+              "Version nine migration does not invent animation compatibility, interpolation or bindings");
+        save_workspace(path, WorkspaceFile::from_json(animation_state));
+        const auto animation_paths = read_workspace(path).documents[2].settings;
+        check(animation_paths.bone_settings_container ==
+                      fs::absolute("Dependencies/Before.utoc").u8string() &&
+                  animation_paths.after_skeleton_container ==
+                      fs::absolute("Dependencies/After.utoc").u8string() &&
+                  animation_paths.after_container_entry == "independent-after-id" &&
+                  animation_paths.skeleton_entry == "before-skeleton-id",
+              "Only physical dependency paths are normalized; virtual member identities remain literal");
         auto legacy_eight = value.to_json();
+        strip_animation(legacy_eight);
         legacy_eight["schema"] = "cyuediff.workspace/8";
         for (auto &d : legacy_eight["documents"])
             for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
@@ -235,6 +315,7 @@ int main() {
                   !migrated_eight->skeletal_mobile_lod && !migrated_eight->skeletal_colors,
               "Version eight does not invent a skeletal reader or defaults");
         auto legacy_seven = value.to_json();
+        strip_animation(legacy_seven);
         legacy_seven["schema"] = "cyuediff.workspace/7";
         for (auto &d : legacy_seven["documents"])
             for (const auto *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
@@ -244,6 +325,7 @@ int main() {
         check(WorkspaceFile::from_json(legacy_seven).documents[2].settings.physics_profile == 0,
               "Version seven does not invent native physics context");
         auto legacy_six = value.to_json();
+        strip_animation(legacy_six);
         legacy_six["schema"] = "cyuediff.workspace/6";
         for (auto &d : legacy_six["documents"])
             for (const auto *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
@@ -254,6 +336,7 @@ int main() {
         check(WorkspaceFile::from_json(legacy_six).documents[2].settings.mesh_profile == 0,
               "Version six does not invent native mesh context");
         auto legacy_five = value.to_json();
+        strip_animation(legacy_five);
         legacy_five["schema"] = "cyuediff.workspace/5";
         for (auto &d : legacy_five["documents"])
             for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
@@ -265,6 +348,7 @@ int main() {
         check(WorkspaceFile::from_json(legacy_five).documents[0].settings.request().payload_root.empty(),
               "Version five migration does not discover a payload store");
         auto legacy_four = value.to_json();
+        strip_animation(legacy_four);
         legacy_four["schema"] = "cyuediff.workspace/4";
         for (auto &d : legacy_four["documents"])
             for (const char *key :
@@ -286,6 +370,7 @@ int main() {
                   "after_mesh_mobile_lod", "layouts", "after_layouts", "inherit_after_layouts",
                   "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
+        strip_animation(legacy_three);
         legacy_three["schema"] = "cyuediff.workspace/3";
         for (auto &d : legacy_three["documents"])
             for (const char *key :
@@ -295,7 +380,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/9",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/10",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -315,8 +400,9 @@ int main() {
                   "after_mesh_mobile_lod", "layouts", "after_layouts", "inherit_after_layouts",
                   "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
+        strip_animation(version_two);
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/9",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/10",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -335,13 +421,14 @@ int main() {
                   "after_mesh_mobile_lod", "layouts", "after_layouts", "inherit_after_layouts",
                   "payload_root", "after_payload_root", "inherit_after_payload_root"})
                 d["settings"].erase(key);
+        strip_animation(legacy);
         legacy["schema"] = "cyuediff.workspace/1";
         for (auto &d : legacy["documents"])
             d.erase("viewState");
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/9",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/10",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

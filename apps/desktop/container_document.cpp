@@ -31,6 +31,8 @@ Json ContainerDocument::report() const {
         differences.push_back(
             {{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}});
     return {{"schema", "cyuediff.desktop-container/1"},
+            {"animations", animations},
+            {"animationDiagnostics", animation_diagnostics},
             {"physics", physics},
             {"physicsDifference", physics_difference},
             {"physicsEdges", physics_wire.edge_count()},
@@ -226,6 +228,69 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                 document->physics_diagnostics.push_back(error.code + ": " + error.what());
             }
         }
+        if (source.animation_profile != CookedAnimationProfile::unspecified) {
+            unsigned count = 0;
+            for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
+                const auto &object = document->zen->exports[i];
+                if (object.class_name != "/Script/Engine.AnimSequence" || (object.flags & 0x30))
+                    continue;
+                try {
+                    if (++count > 4)
+                        throw Error("cooked-animation-limit", "Animation document export limit exceeded");
+                    CookedAnimationOptions options;
+                    options.profile = source.animation_profile;
+                    options.interpolation = source.animation_interpolation;
+                    options.control = control;
+                    options.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
+                    options.max_output_bytes = 64ull * 1024 * 1024;
+                    auto dependency =
+                        [&](const fs::path &path,
+                            const std::string &entry) -> std::optional<CookedAnimationDependency> {
+                        if (entry.empty()) {
+                            if (!path.empty())
+                                throw Error("desktop-animation",
+                                            "A dependency container requires an explicit member ID or path");
+                            return {};
+                        }
+                        auto container = path.empty() ? *document->input : Container::open(path, index);
+                        document->protected_files.insert(document->protected_files.end(),
+                                                         container.files().begin(), container.files().end());
+                        std::size_t selected = SIZE_MAX;
+                        for (std::size_t j = 0; j < container.entries().size(); ++j) {
+                            control.check();
+                            const auto &candidate = container.entries()[j];
+                            if (candidate.id == entry ||
+                                (!candidate.path.empty() && candidate.path == entry)) {
+                                if (selected != SIZE_MAX)
+                                    throw Error("container-entry", "Ambiguous animation dependency member");
+                                selected = j;
+                            }
+                        }
+                        if (selected == SIZE_MAX)
+                            throw Error("container-entry", "No matching animation dependency member");
+                        return CookedAnimationDependency{std::move(container), selected, zen, read};
+                    };
+                    options.bone_settings =
+                        dependency(source.bone_settings_container, source.bone_settings_entry);
+                    options.skeleton = dependency(source.skeleton_container, source.skeleton_entry);
+                    auto animation = std::make_shared<CookedAnimation>(
+                        read_zen_animation(*document->input, found, zen, read, options, i));
+                    auto catalog = animation->catalog(control);
+                    if (catalog.at("source").at("packageSha256") != document->zen->sha256)
+                        throw Error("container-integrity",
+                                    "Cooked animation package changed during preparation");
+                    document->animations.push_back(std::move(catalog));
+                    document->animation_previews.push_back({object.path, std::move(animation)});
+                } catch (const Error &error) {
+                    if (error.code == "cancelled" || error.code == "container-integrity")
+                        throw;
+                    document->animation_diagnostics.push_back(object.path + ": " + error.code + ": " +
+                                                              error.what());
+                }
+                if (count > 4)
+                    break;
+            }
+        }
         std::uint64_t mesh_output = 0;
         for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
             const auto &object = document->zen->exports[i];
@@ -376,8 +441,13 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
                                                                  const fs::path &codec,
                                                                  const OperationControl &control) {
     if (source.after_path.empty()) {
-        if (source.compare_payloads || !source.after_script_objects.empty() ||
-            source.after_profile != ZenProfile::unspecified || !source.after_schema.empty() ||
+        if (source.compare_payloads || !source.after_entry.empty() ||
+            source.after_animation_profile != CookedAnimationProfile::unspecified ||
+            source.after_animation_interpolation.has_value() ||
+            !source.after_bone_settings_container.empty() || !source.after_skeleton_container.empty() ||
+            !source.after_bone_settings_entry.empty() || !source.after_skeleton_entry.empty() ||
+            !source.after_script_objects.empty() || source.after_profile != ZenProfile::unspecified ||
+            !source.after_schema.empty() ||
             source.after_physics_profile != CookedPhysicsProfile::unspecified ||
             source.after_skeletal_profile != CookedSkeletalProfile::unspecified ||
             source.after_skeletal_mobile_lod.has_value() || source.after_skeletal_colors.has_value() ||
@@ -388,7 +458,16 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     }
     if (!source.max_comparison_bytes || source.max_comparison_bytes > 1024ull * 1024 * 1024)
         throw Error("desktop-container", "Comparison budget must be between 1 byte and 1 GiB");
+    if (!source.after_entry.empty() && source.entry.empty())
+        throw Error("desktop-container", "An explicit after member requires a before member");
     auto left = source;
+    left.after_entry.clear();
+    left.after_animation_profile = CookedAnimationProfile::unspecified;
+    left.after_animation_interpolation.reset();
+    left.after_bone_settings_container.clear();
+    left.after_skeleton_container.clear();
+    left.after_bone_settings_entry.clear();
+    left.after_skeleton_entry.clear();
     left.after_path.clear();
     left.after_script_objects.clear();
     left.after_schema.clear();
@@ -402,6 +481,12 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     left.compare_payloads = false;
     left.entry.clear();
     auto right = left;
+    right.animation_profile = source.after_animation_profile;
+    right.animation_interpolation = source.after_animation_interpolation;
+    right.bone_settings_container = source.after_bone_settings_container;
+    right.skeleton_container = source.after_skeleton_container;
+    right.bone_settings_entry = source.after_bone_settings_entry;
+    right.skeleton_entry = source.after_skeleton_entry;
     right.path = source.after_path;
     right.script_objects = source.after_script_objects;
     right.schema = source.after_schema;
@@ -425,8 +510,11 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
                              (!side.input->entries()[*entry].path.empty() &&
                               side.input->entries()[*entry].path == source.entry));
         };
-        if (!source.entry.empty() && (row.key == source.entry || matches(*document, row.before) ||
-                                      matches(*document->after, row.after))) {
+        const bool match = source.after_entry.empty()
+                               ? (row.key == source.entry || matches(*document, row.before) ||
+                                  matches(*document->after, row.after))
+                               : (row.before && (row.key == source.entry || matches(*document, row.before)));
+        if (!source.entry.empty() && match) {
             if (selected)
                 throw Error("container-entry", "Ambiguous comparison member ID or virtual path");
             selected = i;
@@ -439,6 +527,10 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
         if (pair.before) {
             left.entry = document->input->entries()[*pair.before].id;
             const auto loaded = load_single(left, codec, control);
+            document->animations = loaded->animations;
+            document->animation_previews = loaded->animation_previews;
+            document->animation_diagnostics = loaded->animation_diagnostics;
+            document->protected_files = loaded->protected_files;
             document->inspection = loaded->inspection;
             document->zen = loaded->zen;
             document->schema_loaded = loaded->schema_loaded;
@@ -456,8 +548,9 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             document->previews = loaded->previews;
             document->texture_diagnostics = loaded->texture_diagnostics;
         }
-        if (pair.after) {
-            right.entry = document->after->input->entries()[*pair.after].id;
+        if (pair.after || !source.after_entry.empty()) {
+            right.entry = source.after_entry.empty() ? document->after->input->entries()[*pair.after].id
+                                                     : source.after_entry;
             document->after = load_single(right, codec, control);
         }
         const auto &b = document->inspection;
@@ -465,12 +558,17 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
         const std::string state =
             !pair.before
                 ? "added"
-                : (!pair.after ? "removed"
-                               : (b.at("decodedSha256") == a.at("decodedSha256") ? "unchanged" : "modified"));
-        document->member_states[*selected] = state;
+                : (!pair.after && source.after_entry.empty()
+                       ? "removed"
+                       : (b.at("decodedSha256") == a.at("decodedSha256") ? "unchanged" : "modified"));
+        if (source.after_entry.empty())
+            document->member_states[*selected] = state;
         document->selected_comparison = {
             {"schema", "cyuediff.desktop-container-member-diff/1"},
             {"key", pair.key},
+            {"explicitPair", !source.after_entry.empty()},
+            {"beforeEntry", b.is_object() ? b.at("entry").at("id") : Json(nullptr)},
+            {"afterEntry", a.is_object() ? a.at("entry").at("id") : Json(nullptr)},
             {"state", state},
             {"coverage", "decoded-bytes"},
             {"externalBulkCompared", false},

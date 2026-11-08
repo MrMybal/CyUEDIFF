@@ -162,6 +162,8 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "animations")
+                options.container_tab = 9;
             else if (name == "physics")
                 options.container_tab = 8;
             else if (name == "collisions")
@@ -209,6 +211,52 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.settings.script_objects = text;
             else
                 options.container_filter = text;
+        } else if (argument == "--after-container-entry" || argument == "--bone-settings-container" ||
+                   argument == "--skeleton-container" || argument == "--after-bone-settings-container" ||
+                   argument == "--after-skeleton-container" || argument == "--bone-settings-entry" ||
+                   argument == "--skeleton-entry" || argument == "--after-bone-settings-entry" ||
+                   argument == "--after-skeleton-entry") {
+            const auto text = value();
+            options.container_parameters = true;
+            if (argument.rfind("--after-", 0) == 0)
+                options.after_container_parameters = true;
+            if (argument == "--after-container-entry")
+                options.settings.after_container_entry = text;
+            else if (argument == "--bone-settings-container")
+                options.settings.bone_settings_container = text;
+            else if (argument == "--skeleton-container")
+                options.settings.skeleton_container = text;
+            else if (argument == "--after-bone-settings-container")
+                options.settings.after_bone_settings_container = text;
+            else if (argument == "--after-skeleton-container")
+                options.settings.after_skeleton_container = text;
+            else if (argument == "--bone-settings-entry")
+                options.settings.bone_settings_entry = text;
+            else if (argument == "--skeleton-entry")
+                options.settings.skeleton_entry = text;
+            else if (argument == "--after-bone-settings-entry")
+                options.settings.after_bone_settings_entry = text;
+            else if (argument == "--after-skeleton-entry")
+                options.settings.after_skeleton_entry = text;
+        } else if (argument == "--animation-profile" || argument == "--after-animation-profile") {
+            if (value() != "ue5.3-windows")
+                throw Error("desktop-option", "Supported cooked animation profile: ue5.3-windows");
+            options.container_parameters = true;
+            if (argument == "--after-animation-profile") {
+                options.settings.after_animation_profile = 1;
+                options.after_container_parameters = true;
+            } else
+                options.settings.animation_profile = 1;
+        } else if (argument == "--animation-interpolation" || argument == "--after-animation-interpolation") {
+            const auto setting = value();
+            if (setting != "linear" && setting != "step")
+                throw Error("desktop-option", "Animation interpolation must be linear or step");
+            options.container_parameters = true;
+            if (argument == "--after-animation-interpolation") {
+                options.settings.after_animation_interpolation = setting == "linear" ? 1 : 2;
+                options.after_container_parameters = true;
+            } else
+                options.settings.animation_interpolation = setting == "linear" ? 1 : 2;
         } else if (argument == "--skeletal-profile" || argument == "--after-skeletal-profile") {
             if (value() != "ue5.3-windows")
                 throw Error("desktop-option", "Supported cooked skeletal profile: ue5.3-windows");
@@ -742,7 +790,9 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
     if (options.settings.source == 2) {
         for (const auto &path :
              {options.settings.container_path, options.settings.script_objects,
-              options.settings.after_container_path, options.settings.after_script_objects}) {
+              options.settings.after_container_path, options.settings.after_script_objects,
+              options.settings.bone_settings_container, options.settings.skeleton_container,
+              options.settings.after_bone_settings_container, options.settings.after_skeleton_container}) {
             if (path.empty())
                 continue;
             ContainerOptions limits;
@@ -1061,7 +1111,8 @@ class Shell {
                 {"pixelViews", current().container_view.pixel_count()},
                 {"meshViews", current().container_view.mesh_report()},
                 {"collisionView", current().container_view.collision_report()},
-                {"physicsView", current().container_view.physics_report()}};
+                {"physicsView", current().container_view.physics_report()},
+                {"animationView", current().container_view.animation_report()}};
     }
     Json history_report() const {
 #ifdef CYUEDIFF_HAS_GIT
@@ -1127,6 +1178,9 @@ class Shell {
         if (history_.busy())
             return true;
 #endif
+        for (const auto &entry : presentations_)
+            if (entry.second->container_view.busy())
+                return true;
         return session_.busy() || browser_.busy();
     }
     std::string error() const {
@@ -1511,6 +1565,8 @@ class Shell {
                                 session_.documents().size() < session_.maximum());
     }
     void poll(Renderer &renderer) {
+        for (auto &entry : presentations_)
+            entry.second->container_view.poll();
 #ifdef CYUEDIFF_HAS_GIT
         history_.poll();
         if (history_.document() != historied_) {
@@ -1830,6 +1886,8 @@ class Shell {
                     if (cyui::beginProperties("##container-input", 95)) {
                         cyui::property(cyui::tr("Container file").c_str());
                         field("##container-file", current().settings.container_path);
+                        cyui::property(cyui::tr("Before member ID or path").c_str());
+                        field("##container-member", current().settings.container_entry);
                         cyui::property(cyui::tr("Cooked profile").c_str());
                         const auto bytes = cyui::tr("Byte inspection");
                         const char *profiles[] = {bytes.c_str(), "UE 5.3", "UE 5.5"};
@@ -1838,6 +1896,8 @@ class Shell {
                         field("##script-toc", current().settings.script_objects);
                         cyui::property(cyui::tr("After container").c_str());
                         field("##after-container-file", current().settings.after_container_path);
+                        cyui::property(cyui::tr("After member override").c_str());
+                        field("##after-container-member", current().settings.after_container_entry);
                         cyui::property(cyui::tr("After cooked profile").c_str());
                         ImGui::Combo("##after-cooked-profile", &current().settings.after_cooked_profile,
                                      profiles, 3);
@@ -1846,6 +1906,53 @@ class Shell {
                         cyui::property(cyui::tr("Codec module").c_str());
                         field("##container-codec", current().settings.codec);
                         cyui::endProperties();
+                    }
+                    if (current().layout.section("animation-native", "Cooked animation settings",
+                                                 current().settings.animation_profile ||
+                                                     current().settings.after_animation_profile)) {
+                        const auto disabled = cyui::tr("Disabled"), unknown = cyui::tr("Unknown"),
+                                   linear = cyui::tr("Linear"), step = cyui::tr("Step");
+                        const char *profiles[] = {disabled.c_str(), "UE 5.3 Windows"};
+                        const char *interpolation[] = {unknown.c_str(), linear.c_str(), step.c_str()};
+                        if (cyui::beginProperties("##native-animation-context", 120)) {
+                            cyui::property(cyui::tr("Before animation").c_str());
+                            ImGui::Combo("##animation-profile", &current().settings.animation_profile,
+                                         profiles, 2);
+                            cyui::property(cyui::tr("Before interpolation").c_str());
+                            ImGui::Combo("##animation-interpolation",
+                                         &current().settings.animation_interpolation, interpolation, 3);
+                            cyui::property(cyui::tr("Before settings TOC").c_str());
+                            field("##bone_settings_container", current().settings.bone_settings_container);
+                            cyui::property(cyui::tr("Before settings member").c_str());
+                            field("##bone_settings_entry", current().settings.bone_settings_entry);
+                            cyui::property(cyui::tr("Before Skeleton TOC").c_str());
+                            field("##skeleton_container", current().settings.skeleton_container);
+                            cyui::property(cyui::tr("Before Skeleton member").c_str());
+                            field("##skeleton_entry", current().settings.skeleton_entry);
+                            cyui::property(cyui::tr("After animation").c_str());
+                            ImGui::Combo("##after-animation-profile",
+                                         &current().settings.after_animation_profile, profiles, 2);
+                            cyui::property(cyui::tr("After interpolation").c_str());
+                            ImGui::Combo("##after-animation-interpolation",
+                                         &current().settings.after_animation_interpolation, interpolation, 3);
+                            cyui::property(cyui::tr("After settings TOC").c_str());
+                            field("##after_bone_settings_container",
+                                  current().settings.after_bone_settings_container);
+                            cyui::property(cyui::tr("After settings member").c_str());
+                            field("##after_bone_settings_entry",
+                                  current().settings.after_bone_settings_entry);
+                            cyui::property(cyui::tr("After Skeleton TOC").c_str());
+                            field("##after_skeleton_container", current().settings.after_skeleton_container);
+                            cyui::property(cyui::tr("After Skeleton member").c_str());
+                            field("##after_skeleton_entry", current().settings.after_skeleton_entry);
+                            cyui::endProperties();
+                        }
+                        ImGui::TextWrapped("%s",
+                                           cyui::tr("Dependency member IDs are explicit. An empty dependency "
+                                                    "TOC uses that side's main container. Interpolation is "
+                                                    "required only when omitted from stored properties.")
+                                               .c_str());
+                        cyui::endSection();
                     }
                     if (current().layout.section("physics-native", "Cooked physics settings",
                                                  current().settings.physics_profile ||
@@ -2587,6 +2694,13 @@ int run(Options options) {
                "  [--pose-before-skeleton-object PATH] [--pose-after-skeleton-object PATH]\n"
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
+               "  --after-container-entry ID_OR_PATH (optional independent after member)\n"
+               "  --animation-profile ue5.3-windows [--animation-interpolation linear|step]\n"
+               "  --bone-settings-entry ID [--bone-settings-container TOC] --skeleton-entry ID "
+               "[--skeleton-container TOC]\n"
+               "  --after-animation-profile/--after-animation-interpolation and --after- dependency options "
+               "are independent.\n"
+               "  --container-tab animations opens compressed bone-local tracks.\n"
                "  [--document-action select:N|close|duplicate|reopen|close-others|next|previous|reload] : "
                "smoke only\n"
                "  [--new-document SOURCE_OPTIONS ...] [--document-index 0..7]\n"
@@ -2594,8 +2708,10 @@ int run(Options options) {
                "  --smoke --save-workspace FILE.json : explicit workspace test write\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
-               "  [--skeletal-profile ue5.3-windows --skeletal-keep-mobile-min-lod 0|1 --has-vertex-colors 0|1]\n"
-               "  [--after-skeletal-profile ue5.3-windows --after-skeletal-keep-mobile-min-lod 0|1 --after-has-vertex-colors 0|1]\n"
+               "  [--skeletal-profile ue5.3-windows --skeletal-keep-mobile-min-lod 0|1 --has-vertex-colors "
+               "0|1]\n"
+               "  [--after-skeletal-profile ue5.3-windows --after-skeletal-keep-mobile-min-lod 0|1 "
+               "--after-has-vertex-colors 0|1]\n"
                "  [--physics-profile ue5.3-windows] [--after-physics-profile ue5.3-windows]\n"
                "  [--mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1]\n"
                "  [--after-mesh-profile ue5.3-windows --after-keep-mobile-min-lod 0|1]\n"

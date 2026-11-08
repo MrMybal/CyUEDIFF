@@ -79,7 +79,8 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
             flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics",
-                  "animationPose", "binaryLayouts", "virtualizedPayloads", "mesh-native", "physics-native", "skeletal-native"});
+                  "animationPose", "binaryLayouts", "virtualizedPayloads", "mesh-native", "physics-native",
+                  "animation-native", "skeletal-native"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);
@@ -209,6 +210,32 @@ inline void validate(const Json &v, std::string_view kind) {
             child("viewport", "mesh");
             string({"body", "shape"}, true);
             child("properties", "property");
+        } else if (kind == "cooked-animation") {
+            string({"selected", "filter"});
+            flag({"independentFrames", "changedOnly"});
+            child("properties", "property");
+            if (key == "frame" || key == "afterFrame") {
+                scalar(x, 0, 2147483646.);
+                known = true;
+            }
+            if (key == "component") {
+                require(x.is_number_integer());
+                scalar(x, 0, 9);
+                known = true;
+            }
+            if (key == "beforeKey" || key == "afterKey") {
+                require(x.is_number_integer());
+                scalar(x, 0, 2147483647.);
+                known = true;
+            }
+            if (key == "positionTolerance" || key == "scaleTolerance") {
+                scalar(x, 0, std::numeric_limits<double>::max());
+                known = true;
+            }
+            if (key == "rotationToleranceDegrees") {
+                scalar(x, 0, 180);
+                known = true;
+            }
         } else if (kind == "asset") {
             child("meshMorphs", "property");
             flag({"meshMorphInspection"});
@@ -230,6 +257,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("after", "side");
             child("comparison", "diff");
         } else if (kind == "container") {
+            child("animation", "cooked-animation");
+            string({"beforeAnimation", "afterAnimation"}, true);
             child("layout", "container-layout");
             string({"filter", "objectFilter", "pixel"});
             child("pixelView", "texture");
