@@ -112,6 +112,7 @@ Json CookedTexture2D::to_json() const {
             {"profile", profile},
             {"packageSha256", package_sha256},
             {"schemaContextSha256", schema_context_sha256},
+            {"scriptObjectsSha256", script_objects_sha256},
             {"mappingVerified", false},
             {"exportIndex", export_index},
             {"nativeOffset", native_offset},
@@ -202,6 +203,7 @@ CookedTexture2D CookedTextureReader::read(std::size_t selected) {
     result.profile = package.profile;
     result.package_sha256 = package.sha256;
     result.schema_context_sha256 = package.schema_context_sha256;
+    result.script_objects_sha256 = package.script_objects_sha256;
     result.native_offset = object.offset + prop_offset + prop_bytes;
     result.native_bytes = object.offset + object.size - result.native_offset;
     Cursor r{bytes, result.native_offset, object.offset + object.size};

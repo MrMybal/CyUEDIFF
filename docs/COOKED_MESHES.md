@@ -12,7 +12,7 @@ The selected profile is an editor-stripped, non-template `/Script/Engine.StaticM
 
 ## Stored projection
 
-Each LOD retains its strip flags, cooked-out/inlined status, sections, material indices, index windows, deviation, buffer sizes and payload hashes. Available render geometry uses the public `MeshGeometry` model:
+The package, schema-context and global script-table SHA-256s, selected export index and explicit producer setting retain interpretation provenance. Each LOD retains its strip flags, cooked-out/inlined status, sections, material indices, index windows, deviation, buffer sizes and payload hashes. Available render geometry uses the public `MeshGeometry` model:
 
 - Float32 positions, signed packed 8-bit or 16-bit tangent/normal basis and stored binormal sign. Samples are not renormalized; the most-negative signed packed value may be slightly below -1.
 - Half or full float UV channels, optional Windows BGRA8 vertex colors and 16/32-bit primary, reversed and depth index buffers.
@@ -22,7 +22,7 @@ Each LOD retains its strip flags, cooked-out/inlined status, sections, material 
 
 Availability flags and metadata for streamed LODs are retained. Advertised index channels are checked against their payload. Producer support settings can clear inactive metadata even when the serialized buffer is present; the payload remains the stored projection.
 
-Inline LODs and inline, ordinary, optional, duplicate-optional or memory-mapped bulk windows are supported. Used external chunks receive mandatory whole-chunk IoStore BLAKE3 verification before publishing geometry. Missing chunks, unused/empty payloads and cooked-out LODs are explicit unavailable states, not empty replacement meshes. The later native tail retains offset, size and SHA-256.
+Inline LODs and inline, ordinary, optional, duplicate-optional or memory-mapped bulk windows are supported. Used external chunks receive mandatory whole-chunk IoStore BLAKE3 verification before publishing geometry. Unused payloads consume no inline bytes, even when their declared size is nonzero; no offset is fabricated from their unused metadata. Missing chunks, unused/empty payloads and cooked-out LODs are explicit unavailable states, not empty replacement meshes. The later native tail retains offset, size and SHA-256.
 
 ## CLI and desktop
 

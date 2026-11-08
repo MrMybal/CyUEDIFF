@@ -92,6 +92,10 @@ int main(int argc, char **argv) {
                             check(out.native_offset == f.storage.body + 2 &&
                                       out.tail_offset == f.inline_count + 1 && out.tail_bytes == 1,
                                   "Exact native prefix and opaque tail boundaries");
+                            check(out.script_objects_sha256 == context.script_objects->sha256() &&
+                                      out.export_index == 0 &&
+                                      out.to_json()["scriptObjectsSha256"] == out.script_objects_sha256,
+                                  "Native projection retains global table and selected export provenance");
                             check(out.to_json(true)["lods"][0]["geometry"]["triangles"].size() == 1,
                                   "Reusable geometry JSON");
                         }
@@ -165,6 +169,31 @@ int main(int argc, char **argv) {
                     }
                 }
             }
+        for (bool external : {false, true}) {
+            auto unused = cooked_mesh_fixture(true, external);
+            auto &b = unused.storage.package;
+            if (!external) {
+                const auto from = unused.positions - 18;
+                // Drop only the stored buffer window: the remaining availability metadata follows the bulk
+                // index.
+                const auto to = unused.inline_count - 12 - 80;
+                b.data.erase(b.data.begin() + static_cast<std::ptrdiff_t>(from),
+                             b.data.begin() + static_cast<std::ptrdiff_t>(to));
+                std::uint32_t exp;
+                std::memcpy(&exp, b.data.data() + 32, 4);
+                const std::uint64_t size = b.data.size() - unused.storage.body;
+                std::memcpy(b.data.data() + exp + 8, &size, 8);
+            }
+            b.patch(static_cast<int>(unused.flags), external ? 0x10521 : 104);
+            const std::int64_t invalid = -1;
+            std::memcpy(b.data.data() + unused.storage.bulk_row, &invalid, 8);
+            unused.storage.bulk.data.clear();
+            auto decoded = read(unused, options);
+            check(decoded.lods[0].unavailable == "unused" && !decoded.lods[0].geometry &&
+                      decoded.lods[0].bulk["offset"].is_null() &&
+                      decoded.lods[0].bulk["declaredOffset"] == -1,
+                  "Unused payload has no fabricated bytes or resolved offset");
+        }
         auto f = cooked_mesh_fixture();
         auto absent = options;
         absent.keep_mobile_min_lod_setting.reset();

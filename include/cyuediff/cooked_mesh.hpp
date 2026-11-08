@@ -29,9 +29,10 @@ struct CookedMeshLod {
     Json to_json(bool include_geometry = false) const;
 };
 struct CookedStaticMesh {
-    std::string object_path, package_sha256, schema_context_sha256;
+    std::string object_path, package_sha256, schema_context_sha256, script_objects_sha256;
     std::uint64_t native_offset = 0, parsed_native_bytes = 0, tail_offset = 0, tail_bytes = 0;
     std::string tail_sha256;
+    std::size_t export_index = 0;
     std::vector<CookedMeshLod> lods;
     Json native_prefix = Json::object(), materials = Json::array();
     Json to_json(bool include_geometry = false) const;

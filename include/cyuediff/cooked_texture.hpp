@@ -26,7 +26,7 @@ struct CookedTexturePlatform {
     Json to_json() const;
 };
 struct CookedTexture2D {
-    std::string object_path, profile, package_sha256, schema_context_sha256;
+    std::string object_path, profile, package_sha256, schema_context_sha256, script_objects_sha256;
     std::uint64_t native_offset = 0, native_bytes = 0;
     std::size_t export_index = 0;
     std::vector<CookedTexturePlatform> platforms;

@@ -441,6 +441,8 @@ Json CookedStaticMesh::to_json(bool include) const {
             {"object", object_path},
             {"packageSha256", package_sha256},
             {"schemaContextSha256", schema_context_sha256},
+            {"scriptObjectsSha256", script_objects_sha256},
+            {"exportIndex", export_index},
             {"mappingVerified", false},
             {"nativeOffset", native_offset},
             {"parsedNativeBytes", parsed_native_bytes},
@@ -503,6 +505,8 @@ CookedStaticMesh read_zen_static_mesh(const Container &container, std::size_t en
     out.object_path = object.path;
     out.package_sha256 = package.sha256;
     out.schema_context_sha256 = package.schema_context_sha256;
+    out.script_objects_sha256 = package.script_objects_sha256;
+    out.export_index = selected;
     out.native_offset = object.offset + offset + consumed;
     const auto &properties = object.property_read.at("properties");
     const auto m = properties.find("/Script/Engine.StaticMesh.StaticMaterials");
@@ -608,7 +612,11 @@ CookedStaticMesh read_zen_static_mesh(const Container &container, std::size_t en
             auto chunk_id = member.id;
             std::uint64_t bulk_offset = 0;
             bool external = flags & 1;
-            if (!external) {
+            const bool unused = (flags & (1u << 5)) != 0;
+            if (unused) {
+                // BULKDATA_Unused serializes no inline payload, even with a nonzero declared size.
+                lod.unavailable = "unused";
+            } else if (!external) {
                 need(!(flags & ((1u << 8) | (1u << 10) | (1u << 11) | (1u << 12) | (1u << 14))),
                      "Conflicting inline cooked mesh bulk flags");
                 bulk_offset = r.pos;
@@ -636,10 +644,11 @@ CookedStaticMesh read_zen_static_mesh(const Container &container, std::size_t en
             const auto sizes = stored_sizes(r);
             lod.bulk = {{"bulkIndex", bulk_index},
                         {"flags", flags},
-                        {"offset", bulk_offset},
+                        {"offset", unused ? Json(nullptr) : Json(bulk_offset)},
+                        {"declaredOffset", bulk.at("offset")},
                         {"bytes", size},
                         {"chunkId", chunk_id},
-                        {"storage", external ? "external" : "inline"},
+                        {"storage", unused ? "unused" : (external ? "external" : "inline")},
                         {"availability", available.json()}};
             const std::vector<std::uint8_t> *data = &bytes;
             std::string source_hash = member.source_hash;

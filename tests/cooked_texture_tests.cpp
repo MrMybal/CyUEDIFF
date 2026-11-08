@@ -68,6 +68,9 @@ int main(int argc, char **argv) {
             auto f = cooked_texture_fixture(external);
             auto result = read(f);
             const auto &m = result.platforms.at(0).mips.at(0);
+            check(result.script_objects_sha256 == context.script_objects->sha256() &&
+                      result.to_json()["scriptObjectsSha256"] == result.script_objects_sha256,
+                  "Texture retains explicit global script table provenance");
             check(result.object_path == "/Game/Texture.Texture" && result.native_offset == f.body + 2,
                   "Native texture starts at the exact decoded property boundary");
             check(m.loaded && m.width == 4 && m.height == 4 && m.size == 8 && !m.sha256.empty(),
@@ -193,12 +196,12 @@ int main(int argc, char **argv) {
         auto first = reader.read();
         const auto count = reads;
         auto second = reader.read();
-        check(first.to_json() == second.to_json() && count>0 && reads == count,
+        check(first.to_json() == second.to_json() && count > 0 && reads == count,
               "Worker session reuses one verified package and external chunk");
         auto moved = std::move(reader);
         refused([&] { reader.read(); }, "cooked-texture-layout");
         check(moved.read().platforms[0].mips[0].loaded, "Session ownership moves safely");
-        texture_container(stem,f);
+        texture_container(stem, f);
         context.profile = ZenProfile::unreal_5_5;
         refused([&] { read_zen_texture2d(container, 0, context); }, "cooked-texture-profile");
         context = texture_context();
