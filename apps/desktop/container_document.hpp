@@ -2,6 +2,7 @@
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/cooked_texture.hpp>
 #include <cyuediff/cooked_mesh.hpp>
+#include <cyuediff/cooked_physics.hpp>
 #include <cyuediff/collision_wireframe.hpp>
 #include <optional>
 namespace cyuediff::desktop {
@@ -14,6 +15,8 @@ struct ContainerSource {
     CookedMeshProfile mesh_profile = CookedMeshProfile::unspecified,
                       after_mesh_profile = CookedMeshProfile::unspecified;
     std::optional<bool> keep_mobile_min_lod_setting, after_keep_mobile_min_lod_setting;
+    CookedPhysicsProfile physics_profile = CookedPhysicsProfile::unspecified,
+                         after_physics_profile = CookedPhysicsProfile::unspecified;
     bool compare_payloads = false;
     std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;
@@ -41,6 +44,9 @@ struct ContainerDocument {
     std::optional<ZenPackage> zen;
     std::optional<ZenSchemaManifest> schema_manifest;
     bool schema_loaded = false;
+    Json physics = nullptr, physics_difference = nullptr, physics_model = nullptr;
+    CollisionWireframe physics_wire;
+    std::vector<std::string> physics_diagnostics;
     Json collisions = nullptr, collision_difference = nullptr;
     CollisionWireframe collision_wire;
     std::vector<std::string> collision_diagnostics;

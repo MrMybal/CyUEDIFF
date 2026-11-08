@@ -58,12 +58,14 @@ cyuediff::CookedPhysicsOptions options;
 options.profile = cyuediff::CookedPhysicsProfile::unreal_5_3_windows;
 auto data = cyuediff::read_zen_cooked_physics(container, entry, zen, read, options);
 auto difference = cyuediff::compare_cooked_physics(beforeData, afterData, options);
+auto review = cyuediff::cooked_physics_review(data, options); // model + prepared wireframe
 // For a separately obtained, explicitly identified raw cooker stream:
 auto raw = cyuediff::read_chaos_physics(bytes, options);
 ```
 
 ```text
 cyuediff zen-physics BUILD.utoc PACKAGE_ID --physics-profile ue5.3-windows --cooked-profile ue5.3 --schema context.json --script-objects global.utoc
+cyuediff zen-physics-wire BUILD.utoc PACKAGE_ID [same explicit context]
 cyuediff zen-physics-diff BEFORE.utoc ID AFTER.utoc ID [same explicit context]
 ```
 
@@ -83,9 +85,42 @@ successful decode nor an unchanged comparison certifies a caller's schema mappin
 its fingerprint and `mappingVerified: false` remain in provenance.
 
 The installed `examples/cooked_physics_consumer` builds against `CyUEDiff::Core`
-without Unreal, Git or graphics dependencies. Native physics currently has a
-Core/CLI/SDK path. The desktop's **Cooked collisions** chapter still reviews the
-separate reflected shape projection; native physics visualization remains open.
+without Unreal, Git or graphics dependencies. It returns the native snapshot and
+its prepared review model/wireframe. `zen-physics-wire` returns the same geometry
+for other applications.
+
+## Desktop native review
+
+Choose **UE 5.3 Windows** for each present side in **Cooked physics settings**.
+The matching Zen profile, schema and global-script context remain explicit and
+independent. **Native physics** (**Physique native** in French), container chapter
+8, selects stored native bodies and shape references. The worker prepares data;
+the view performs no file I/O or Unreal calls.
+
+The shared collision viewport provides before/after panes, changed-shape colors,
+wire picking, orbit/pan/zoom, fitting and retained selection/camera. Its inspector
+shows the selected native object's planes, topology, bounds, volume, center of
+mass, margin, inertia, mass rotation, triangle/BVH/material/map data. Body details
+retain format availability and the UV/remap streams.
+
+Convex preview edges follow stored ordered face boundaries. No hull or
+triangulation diagonals are invented. Triangle preview edges follow stored vertex
+indices, deduplicated by index within the shape. Coordinates remain **cooker**
+coordinates; the preview does not synthesize owner transforms. Shared native
+objects retain distinct array-reference identities. Null references and absent
+face topology retain their diagnostics instead of invented geometry.
+
+Native format availability is independent from geometry equality. An unavailable
+peer format or disabled/missing peer reader is unknown, with no false removed or
+modified wire colors. A complete table that proves a format absent can show an
+actual removal. Transport GUIDs/hashes, graph tag numbers and lossless index widths
+are excluded from shape coloring.
+
+Workspace version eight stores before/after physics profiles, chapter 8 and the
+checked `container.physics` body/shape/viewport/inspector state. Formats 1–7 remain
+readable; migration leaves these new profiles disabled instead of guessing a
+producer platform. The **Cooked collisions** chapter remains a separate reflected
+shape/default-coverage view.
 
 ## Evidence and limits
 
@@ -99,10 +134,14 @@ storage, explicit profile/context failures and protected outputs.
 wire reader, the CLI and an installed Core-only consumer. The selected real
 corpus has 84 packages and 81 inline physics streams, containing 142 convex
 objects and 72 triangle meshes: 42,771 native geometry vertices and 96,095
-collision triangles. All native fields and stream/export end offsets agree.
+collision triangles. All native fields and stream/export end offsets agree; independently reconstructed
+native contours match all 124,178 prepared wire edges.
 Original assets, companions, containers, mappings, codec and tools remain unchanged.
 The independent reader uses the supplied mapped property boundary; it does not
 independently certify mappings or simulate the engine.
+
+Native geometry, budgets and unavailable-peer colors also have original Core/UI
+fixtures, including English/French rendering across all five themes.
 
 Real external physics storage, nonempty real hit-result UV data, skeletal runtime
 physics behavior, other producer versions/platforms, custom implicit types, level

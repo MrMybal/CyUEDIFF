@@ -41,7 +41,7 @@ Supported stored shapes are spheres, boxes, capsules, tapered capsules and conve
 
 `bodyTableKnown` records whether the input's recognized class table is available. A missing body or explicitly empty collection can therefore be distinguished from an unavailable collection. Viewports do not paint unreadable peer geometry as deleted or modified. Actual known body removal remains visible even when unrelated owner references are incomplete.
 
-Native remainder byte counts begin at a successfully decoded property boundary. When properties are unavailable, the entire body is marked `opaque-cooked-body`. The retained `exportBodySha256` hashes the complete export body; it is **not** presented as a native-tail-only hash. Native StaticMesh body references are not reconstructed from outer containment. Level-set data, implicit physics geometry, native Chaos acceleration structures and broader derived-class roles remain open.
+Native remainder byte counts begin at a successfully decoded property boundary. When properties are unavailable, the entire body is marked `opaque-cooked-body`. The retained `exportBodySha256` hashes the complete export body; it is **not** presented as a native-tail-only hash. Native StaticMesh body references are not reconstructed from outer containment. Level-set data and broader derived-class roles remain open. Native convex/triangle physics and Chaos acceleration structures are outside this reflected projection; the separate reader is described in COOKED_PHYSICS.md.
 
 ## Core, CLI and desktop
 

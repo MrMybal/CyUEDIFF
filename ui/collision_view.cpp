@@ -115,16 +115,9 @@ bool CollisionView::select_shape(const std::string &key) {
 bool CollisionView::next_changed_shape(bool previous) {
     if (!comparing_ || shapes_.empty())
         return false;
-    const auto *a = selected(before_, false), *b = selected(after_, false);
-    auto entry = [](const Json *body, const std::string &key) -> const Json * {
-        if (!body || !body->contains("shapes"))
-            return nullptr;
-        auto it = body->at("shapes").find(key);
-        return it == body->at("shapes").end() ? nullptr : &*it;
-    };
     std::vector<std::string> changed;
     for (const auto &key : shapes_)
-        if (classify_change(entry(a, key), entry(b, key)) != ChangeKind::unchanged)
+        if (viewport_.stored_change(body_, key) != ChangeKind::unchanged)
             changed.push_back(key);
     if (changed.empty())
         return false;
@@ -174,8 +167,14 @@ void CollisionView::draw(const char *id) {
     }
     const bool cooked = (!before_.is_null() && before_.contains("provenance")) ||
                         (!after_.is_null() && after_.contains("provenance"));
-    cyui::textDim("%s", cyui::tr(cooked ? "Stored collision shapes; native physics data is not decoded."
-                                        : "Stored collision properties; physics data is not evaluated.")
+    const auto native = [](const Json &m) {
+        return !m.is_null() && m.contains("provenance") &&
+               m["provenance"].value("nativePhysicsDecoded", false);
+    };
+    cyui::textDim("%s", cyui::tr(native(before_) || native(after_)
+                                     ? "Decoded native Chaos geometry in cooker coordinates; no simulation."
+                                 : cooked ? "Stored collision shapes; native physics data is not decoded."
+                                          : "Stored collision properties; physics data is not evaluated.")
                             .c_str());
     if (!preview_errors_.empty()) {
         cyui::callout(

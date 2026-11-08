@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/zen.hpp>
+#include <cyuediff/collision_wireframe.hpp>
 namespace cyuediff {
 enum class CookedPhysicsProfile { unspecified, unreal_5_3_windows };
 struct CookedPhysicsOptions {
@@ -24,4 +25,12 @@ Json read_zen_cooked_physics(const Container &, std::size_t package_entry, const
 // graph tag values and storage index widths do not create geometry changes.
 // Missing payloads remain unresolved rather than added/removed geometry.
 Json compare_cooked_physics(const Json &before, const Json &after, const CookedPhysicsOptions &);
+struct CookedPhysicsReview {
+    Json model;
+    CollisionWireframe wire;
+};
+// Prepared cooker-coordinate geometry and native parameters from a snapshot returned
+// by read_zen_cooked_physics. No hull/default/transform reconstruction or draw-time I/O.
+CookedPhysicsReview cooked_physics_review(const Json &, const CookedPhysicsOptions &,
+                                          std::size_t max_edges = 300000);
 } // namespace cyuediff

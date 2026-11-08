@@ -162,6 +162,8 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "physics")
+                options.container_tab = 8;
             else if (name == "collisions")
                 options.container_tab = 7;
             else if (name == "meshes")
@@ -207,6 +209,15 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.settings.script_objects = text;
             else
                 options.container_filter = text;
+        } else if (argument == "--physics-profile" || argument == "--after-physics-profile") {
+            if (value() != "ue5.3-windows")
+                throw Error("desktop-option", "Supported cooked physics profile: ue5.3-windows");
+            options.container_parameters = true;
+            if (argument == "--after-physics-profile") {
+                options.settings.after_physics_profile = 1;
+                options.after_container_parameters = true;
+            } else
+                options.settings.physics_profile = 1;
         } else if (argument == "--mesh-profile" || argument == "--after-mesh-profile") {
             const auto profile = value();
             if (profile != "ue5.3-windows")
@@ -1020,7 +1031,8 @@ class Shell {
                 {"tab", current().container_view.active_tab()},
                 {"pixelViews", current().container_view.pixel_count()},
                 {"meshViews", current().container_view.mesh_report()},
-                {"collisionView", current().container_view.collision_report()}};
+                {"collisionView", current().container_view.collision_report()},
+                {"physicsView", current().container_view.physics_report()}};
     }
     Json history_report() const {
 #ifdef CYUEDIFF_HAS_GIT
@@ -1806,6 +1818,24 @@ class Shell {
                         field("##container-codec", current().settings.codec);
                         cyui::endProperties();
                     }
+                    if (current().layout.section("physics-native", "Cooked physics settings",
+                                                 current().settings.physics_profile ||
+                                                     current().settings.after_physics_profile)) {
+                        const auto disabled = cyui::tr("Disabled");
+                        const char *profiles[] = {disabled.c_str(), "UE 5.3 Windows"};
+                        if (cyui::beginProperties("##native-physics-context", 95)) {
+                            cyui::property(cyui::tr("Before physics").c_str());
+                            ImGui::Combo("##physics-native-profile", &current().settings.physics_profile,
+                                         profiles, 2);
+                            cyui::property(cyui::tr("After physics").c_str());
+                            ImGui::Combo("##after-physics-native-profile",
+                                         &current().settings.after_physics_profile, profiles, 2);
+                            cyui::endProperties();
+                        }
+                        ImGui::TextWrapped(
+                            "%s", cyui::tr("Only explicitly supported native profiles are decoded.").c_str());
+                        cyui::endSection();
+                    }
                     if (current().layout.section("mesh-native", "Cooked mesh settings",
                                                  current().settings.mesh_profile ||
                                                      current().settings.after_mesh_profile)) {
@@ -2502,9 +2532,11 @@ int run(Options options) {
                "  --smoke --save-workspace FILE.json : explicit workspace test write\n"
                "  [--schema CONTEXT.json] [--after-schema CONTEXT.json] : explicit cooked bindings\n"
                "  [--cooked-view properties|object] : select cooked object inspector\n"
+               "  [--physics-profile ue5.3-windows] [--after-physics-profile ue5.3-windows]\n"
                "  [--mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1]\n"
                "  [--after-mesh-profile ue5.3-windows --after-keep-mobile-min-lod 0|1]\n"
-               "  [--container-tab members|inspection|objects|comparison|schema|pixels|meshes|collisions]\n"
+               "  [--container-tab "
+               "members|inspection|objects|comparison|schema|pixels|meshes|collisions|physics]\n"
                "  [--after-container FILE] [--compare-container-bytes] [--container-changes-only]\n"
                "  [--after-cooked-profile ue5.3|ue5.5] [--after-script-objects GLOBAL.utoc]\n"
                "  [--cooked-profile ue5.3|ue5.5] [--script-objects GLOBAL.utoc] : explicit Zen inspection\n"

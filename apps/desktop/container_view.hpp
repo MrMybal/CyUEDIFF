@@ -30,6 +30,8 @@ class ContainerView {
         bool after = false;
         MeshView view;
     };
+    CollisionView physics_;
+    bool physics_present_ = false;
     CollisionView collisions_;
     bool collisions_present_ = false;
     std::vector<MeshRow> mesh_rows_;
@@ -73,6 +75,9 @@ class ContainerView {
         return pixel_rows_.size();
     }
     Json mesh_report() const;
+    Json physics_report() const {
+        return physics_present_ ? physics_.report() : Json(nullptr);
+    }
     Json collision_report() const {
         return collisions_present_ ? collisions_.report() : Json(nullptr);
     }

@@ -20,6 +20,17 @@ bool collection_known(const Json *snapshot, const CollisionWireShape &shape) {
     auto body = snapshot->at("bodies").find(shape.body);
     if (body == snapshot->at("bodies").end())
         return snapshot->value("bodyTableKnown", false);
+    if (!shape.collection.empty()) {
+        if (body->at("collections").contains(shape.collection))
+            return true;
+        if (body->value("nativeFormatTableKnown", false)) {
+            for (const auto &prefix : body->at("unavailableFormats"))
+                if (shape.collection.rfind(prefix.get<std::string>(), 0) == 0)
+                    return false;
+            return true; // The complete native format table proves this collection absent.
+        }
+        return false;
+    }
     const char *collection = shape.kind == "sphere"            ? "SphereElems"
                              : shape.kind == "box"             ? "BoxElems"
                              : shape.kind == "capsule"         ? "SphylElems"
@@ -44,6 +55,7 @@ void include(CollisionBounds &out, const CollisionBounds &other) {
 void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe after, const Json *a,
                                    const Json *b, bool comparing) {
     changes_.clear();
+    stored_changes_.clear();
     comparing_ = comparing;
     std::set<std::pair<std::string, std::string>> ready_before, ready_after;
     for (const auto &s : before.shapes)
@@ -55,10 +67,14 @@ void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe
     for (const auto *model : {&before, &after})
         for (const auto &s : model->shapes) {
             const auto key = std::make_pair(s.body, s.identity);
+            if (changes_.count(key))
+                continue;
             const auto *x = shape_value(a, s.body, s.identity), *y = shape_value(b, s.body, s.identity);
-            const bool known = (!x || ready_before.count(key)) && (!y || ready_after.count(key)) &&
-                               (x || collection_known(a, s)) && (y || collection_known(b, s));
-            changes_[key] = comparing && known ? classify_change(x, y) : ChangeKind::unchanged;
+            const bool known = (x || collection_known(a, s)) && (y || collection_known(b, s));
+            const auto stored = comparing && known ? classify_change(x, y) : ChangeKind::unchanged;
+            stored_changes_[key] = stored;
+            const bool ready = (!x || ready_before.count(key)) && (!y || ready_after.count(key));
+            changes_[key] = ready ? stored : ChangeKind::unchanged;
         }
     before_ = std::move(before);
     after_ = std::move(after);
@@ -204,6 +220,10 @@ std::size_t CollisionViewport::visible_edge_count(bool after) const {
             count += s.lines.size();
     return count;
 }
+ChangeKind CollisionViewport::stored_change(const std::string &body, const std::string &shape) const {
+    auto i = stored_changes_.find({body, shape});
+    return i == stored_changes_.end() ? ChangeKind::unchanged : i->second;
+}
 ChangeCounts CollisionViewport::changes() const {
     ChangeCounts result;
     for (const auto &entry : changes_)
@@ -292,8 +312,11 @@ void CollisionViewport::draw(const char *id) {
         cyui::textDim("%s", cyui::tr("Select a body to preview its local geometry.").c_str());
         return;
     }
-    ImGui::TextWrapped("%s",
-                       cyui::tr("Body-local preview; bone and component placement is unavailable.").c_str());
+    ImGui::TextWrapped(
+        "%s", cyui::tr(before_.space == "cooker" || after_.space == "cooker"
+                           ? "Cooker-coordinate preview; bone and component placement is unavailable."
+                           : "Body-local preview; bone and component placement is unavailable.")
+                  .c_str());
     auto inline_next = [&](float width) {
         const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
         if (right - ImGui::GetItemRectMax().x > width + ImGui::GetStyle().ItemSpacing.x)

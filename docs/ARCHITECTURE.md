@@ -82,3 +82,13 @@ Classic and Zen collision inputs share a bounded reflected-property projector. T
 ## Native Chaos cooker data — post-0.181
 
 `cooked_physics.hpp` exposes bounded selected UE 5.3 Windows raw-stream and Zen BodySetup readers. Graph references retain shared identity without duplicate object expansion. Native geometry, mass, topology, acceleration and UV/maps remain separate from reflected shape/default reconstruction. Exact field comparisons ignore transport provenance and graph tag numbering; unavailable peers remain unresolved. The installed example links Core only. See [COOKED_PHYSICS.md](COOKED_PHYSICS.md).
+
+## Native physics review preparation
+
+`cooked_physics_review.cpp` prepares bounded native cooker-coordinate wires and a
+transport-neutral inspection model from decoded physics snapshots. Convex face
+boundaries and indexed triangle contours preserve explicit topology; no hull or
+owner defaults are generated. Worker-owned results enter the shared collision
+view with exact native collection availability. Missing peer readers/formats stay
+unknown, independently from actual known format removal. The same Core preparation
+is available to CLI and installed SDK consumers, with no draw-thread decoding.

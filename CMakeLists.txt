@@ -31,7 +31,7 @@ else()
     target_compile_options(cyuediff_blake3 PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3_prefix.h)
 endif()
 add_library(cyuediff_core STATIC
-    src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
+    src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
 target_sources(cyuediff_core PRIVATE $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
@@ -645,6 +645,9 @@ if(BUILD_TESTING)
         add_executable(cyuediff_skeleton_view_tests tests/skeleton_view_tests.cpp)
         target_link_libraries(cyuediff_skeleton_view_tests PRIVATE CyUEDiff::UI)
         add_test(NAME desktop_skeleton_view COMMAND cyuediff_skeleton_view_tests)
+        add_executable(cyuediff_physics_view_tests tests/physics_view_tests.cpp)
+        target_link_libraries(cyuediff_physics_view_tests PRIVATE CyUEDiff::UI)
+        add_test(NAME desktop_physics_view COMMAND cyuediff_physics_view_tests)
         add_executable(cyuediff_collision_view_tests tests/collision_view_tests.cpp)
         target_link_libraries(cyuediff_collision_view_tests PRIVATE CyUEDiff::UI)
         add_test(NAME desktop_collision_view COMMAND cyuediff_collision_view_tests)
@@ -664,6 +667,10 @@ if(BUILD_TESTING)
         target_link_libraries(cyuediff_document_tabs_tests PRIVATE cyuediff_desktop_model CyUEDiff::UI)
         add_test(NAME desktop_document_tabs COMMAND cyuediff_document_tabs_tests)
         if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_cooked_physics_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_physics_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_physics_tests>" "$<TARGET_FILE:cyuediff_desktop>")
+            set_tests_properties(desktop_cooked_physics_cli PROPERTIES TIMEOUT 120)
             add_test(NAME desktop_cooked_collision_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/cooked_collision_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_cooked_collision_tests>" "$<TARGET_FILE:cyuediff_desktop>")

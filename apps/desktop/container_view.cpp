@@ -28,6 +28,14 @@ void ContainerView::register_translations() {
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Cooked meshes", "Meshes cooked"},
+               {"Native physics", "Physique native"},
+               {"Cooked physics settings", "Réglages de physique cooked"},
+               {"Before physics", "Physique avant"},
+               {"After physics", "Physique après"},
+               {"Decoded native Chaos geometry in cooker coordinates; no simulation.",
+                "Géométrie Chaos native décodée dans les coordonnées de cuisson ; aucune simulation."},
+               {"Preparing native physics geometry", "Préparation de la géométrie physique native"},
+               {"cooked-physics-body", "Lecture des corps physiques cooked"},
                {"Cooked collisions", "Collisions cooked"},
                {"Stored collision shapes; native physics data is not decoded.",
                 "Formes de collision enregistrées ; les données physiques natives ne sont pas décodées."},
@@ -80,6 +88,7 @@ void ContainerView::register_translations() {
                                       {"container-diff", "Comparing decoded members"},
                                       {"container-index", "Reading container index"},
                                       {"container-read", "Reading container member"},
+                                      {"cooked-physics-body", "Reading cooked physics bodies"},
                                       {"cooked-script-objects", "Reading script objects"},
                                       {"cooked-package", "Reading cooked objects"}});
     cyui::registerTranslations(
@@ -276,6 +285,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     schema_ = PropertyView{};
     member_rows_.clear();
     object_rows_.clear();
+    physics_present_ = false;
+    physics_.set_models(nullptr, nullptr, {}, {});
     collisions_present_ = false;
     collisions_.set_models(nullptr, nullptr, {}, {});
     mesh_rows_.clear();
@@ -341,6 +352,31 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
             diagnostics_.insert(diagnostics_.end(), side.mesh_diagnostics.begin(),
                                 side.mesh_diagnostics.end());
         };
+        physics_present_ =
+            (!document_->physics_model.is_null() && !document_->physics_model.at("bodies").empty()) ||
+            (document_->after && !document_->after->physics_model.is_null() &&
+             !document_->after->physics_model.at("bodies").empty());
+        if (physics_present_) {
+            auto model = [](const ContainerDocument &side) -> Json {
+                if (!side.physics_model.is_null())
+                    return side.physics_model;
+                if (side.inspection.is_null())
+                    return nullptr; // The selected member is absent.
+                return {{"schema", "cyuediff.collision/1"}, {"complete", false},
+                        {"bodyTableKnown", false},          {"bodies", Json::object()},
+                        {"owners", Json::object()},         {"provenance", {{"nativePhysicsDecoded", true}}}};
+            };
+            physics_.set_models(model(*document_),
+                                document_->after ? model(*document_->after) : Json(nullptr),
+                                document_->physics_wire,
+                                document_->after ? document_->after->physics_wire : CollisionWireframe{},
+                                document_->after != nullptr);
+        }
+        diagnostics_.insert(diagnostics_.end(), document_->physics_diagnostics.begin(),
+                            document_->physics_diagnostics.end());
+        if (document_->after)
+            diagnostics_.insert(diagnostics_.end(), document_->after->physics_diagnostics.begin(),
+                                document_->after->physics_diagnostics.end());
         collisions_present_ =
             !document_->collisions.is_null() || (document_->after && !document_->after->collisions.is_null());
         if (collisions_present_) {
@@ -473,9 +509,10 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 7 || (tab == 7 && !collisions_present_) ||
-        (tab == 6 && mesh_rows_.empty()) || (tab == 5 && pixel_rows_.empty()) ||
-        (tab == 2 && object_rows_.empty()) || (tab == 3 && !document_->after) ||
+    if (!document_ || tab < 0 || tab > 8 || (tab == 8 && !physics_present_) ||
+        (tab == 7 && !collisions_present_) || (tab == 6 && mesh_rows_.empty()) ||
+        (tab == 5 && pixel_rows_.empty()) || (tab == 2 && object_rows_.empty()) ||
+        (tab == 3 && !document_->after) ||
         (tab == 4 && !document_->schema_manifest &&
          (!document_->after || !document_->after->schema_manifest)))
         return false;
@@ -549,6 +586,8 @@ Json ContainerView::view_state() const {
         result["meshAfter"] = mesh_rows_[mesh_].after;
         result["meshView"] = mesh_rows_[mesh_].view.view_state();
     }
+    if (physics_present_)
+        result["physics"] = physics_.view_state();
     if (collisions_present_)
         result["collisions"] = collisions_.view_state();
     if (!layout_.snapshot().empty())
@@ -602,6 +641,8 @@ void ContainerView::restore_view_state(const Json &state) {
     restore("values", values_);
     restore("comparison", comparison_);
     restore("schema", schema_);
+    if (physics_present_ && state.contains("physics"))
+        physics_.restore_view_state(state["physics"]);
     if (collisions_present_ && state.contains("collisions"))
         collisions_.restore_view_state(state["collisions"]);
     if (state.contains("mesh"))
@@ -864,6 +905,11 @@ ContainerAction ContainerView::draw(bool busy) {
         ImGui::BeginTabItem(cyui::trLabel("Cooked collisions").c_str(), nullptr, flags(7))) {
         active_tab_ = 7;
         collisions_.draw("##cooked-collision-review");
+        ImGui::EndTabItem();
+    }
+    if (physics_present_ && ImGui::BeginTabItem(cyui::trLabel("Native physics").c_str(), nullptr, flags(8))) {
+        active_tab_ = 8;
+        physics_.draw("##native-physics-review");
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

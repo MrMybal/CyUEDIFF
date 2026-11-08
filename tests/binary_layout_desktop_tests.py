@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-layout-desktop-',dir=Path.cwd
     restored=run('--workspace',workspace,'--locale','fr')
     assert restored['document']==first['document'] and restored['workspace']['documents'][0]['viewState']==first['workspace']['documents'][0]['viewState']
     saved=json.loads(workspace.read_text(encoding='utf-8'))
-    assert saved['schema']=='cyuediff.workspace/7' and saved['documents'][0]['settings']['inherit_after_layouts']
+    assert saved['schema']=='cyuediff.workspace/8' and saved['documents'][0]['settings']['inherit_after_layouts']
     alternate=root/'alternate.json'
     value=json.loads((root/'layouts.json').read_text(encoding='utf-8'))
     value['layouts']['Record']['fields'][0]['name']='renamed'

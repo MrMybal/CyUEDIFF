@@ -52,7 +52,7 @@ if desktop.is_file():
  workspace_file=target/'workspace.json';workspace_report=target/'workspace-report.json'
  subprocess.run([str(desktop),'--smoke','--no-preferences','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  saved_workspace=json.loads(workspace_file.read_text(encoding='utf-8'))
- assert saved_workspace['schema']=='cyuediff.workspace/7' and len(saved_workspace['documents'])==1
+ assert saved_workspace['schema']=='cyuediff.workspace/8' and len(saved_workspace['documents'])==1
  saved_workspace['documents'][0]['viewState']={'asset':{'filter':'installed pending state'},'layout':{'sidebarWidth':500,'project':True}}
  workspace_file.write_text(json.dumps(saved_workspace),encoding='utf-8')
  original_workspace=workspace_file.read_bytes()

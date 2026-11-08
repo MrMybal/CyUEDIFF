@@ -34,6 +34,8 @@ void AssetView::register_translations() {
                {"No visible collision geometry", "Aucune g\u00e9om\u00e9trie de collision visible"},
                {"Select a body to preview its local geometry.",
                 "S\u00e9lectionnez un corps pour afficher sa g\u00e9om\u00e9trie locale."},
+               {"Cooker-coordinate preview; bone and component placement is unavailable.",
+                "Aperçu dans les coordonnées de cuisson ; placement des os et composants indisponible."},
                {"Body-local preview; bone and component placement is unavailable.",
                 "Aper\u00e7u local au corps ; placement des os et composants indisponible."},
                {"Collision body", "Corps de collision"},
@@ -45,6 +47,8 @@ void AssetView::register_translations() {
                 "Ce package ne contient aucun BodySetup pris en charge."},
                {"Stored collision shapes; native physics data is not decoded.",
                 "Formes de collision enregistrées ; les données physiques natives ne sont pas décodées."},
+               {"Decoded native Chaos geometry in cooker coordinates; no simulation.",
+                "Géométrie Chaos native décodée dans les coordonnées de cuisson ; aucune simulation."},
                {"Stored collision properties; physics data is not evaluated.",
                 "Propri\u00e9t\u00e9s de collision enregistr\u00e9es ; les donn\u00e9es physiques ne sont "
                 "pas \u00e9valu\u00e9es."},

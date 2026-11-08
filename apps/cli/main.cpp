@@ -143,6 +143,7 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff zen-mesh-diff BEFORE ENTRY AFTER ENTRY [--lod N] [--after-lod N]\n"
                "  Mesh commands also require --cooked-profile ue5.3 --schema CONTEXT.json.\n"
                "  cyuediff zen-physics CONTAINER ENTRY --physics-profile ue5.3-windows [cooked context]\n"
+               "  cyuediff zen-physics-wire CONTAINER ENTRY [same explicit cooked physics context]\n"
                "  cyuediff zen-physics-diff BEFORE ENTRY AFTER ENTRY [same cooked context]\n"
                "  cyuediff zen-collision CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json\n"
                "  cyuediff zen-collision-wire CONTAINER ENTRY [same cooked context]\n"
@@ -272,7 +273,8 @@ int run(const std::vector<std::string> &args) {
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
-    const bool cooked_physics = command == "zen-physics" || command == "zen-physics-diff";
+    const bool cooked_physics =
+        command == "zen-physics" || command == "zen-physics-wire" || command == "zen-physics-diff";
     const bool cooked_physics_diff = command == "zen-physics-diff";
     const bool cooked_collision =
         command == "zen-collision" || command == "zen-collision-wire" || command == "zen-collision-diff";
@@ -701,8 +703,15 @@ int run(const std::vector<std::string> &args) {
             auto before = read_zen_cooked_physics(input, select(input, positional[1]), before_options,
                                                   read_options, options);
             if (!cooked_physics_diff) {
-                output = std::move(before);
-                exit_code = output.at("complete").get<bool>() ? 0 : 2;
+                if (command == "zen-physics-wire") {
+                    auto review = cooked_physics_review(before, options);
+                    output = review.wire.to_json();
+                    output["provenance"] = before.at("provenance");
+                    exit_code = before.at("complete").get<bool>() ? 0 : 2;
+                } else {
+                    output = std::move(before);
+                    exit_code = output.at("complete").get<bool>() ? 0 : 2;
+                }
             } else {
                 auto after_options = before_options;
                 after_options.profile = profile("--after-cooked-profile", before_options.profile);

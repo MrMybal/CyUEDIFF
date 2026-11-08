@@ -11,7 +11,7 @@ cooked_physics_consumer INPUT.utoc ENTRY GLOBAL.utoc SCHEMA.json [CODEC]
 ```
 
 The result contains native convex/triangle geometry, mass parameters, topology,
-BVH data, UVs and face/vertex maps. Status 2 denotes a missing format/chunk or an
+BVH data, UVs and face/vertex maps, plus a prepared `review` model/wireframe. Status 2 denotes a missing format/chunk or an
 error. Every used container chunk is integrity checked. A platform format label
 such as `PhysXPC` is retained as metadata; the explicit profile selects the reader.
 No defaults, simulation, owner transforms or arbitrary plugin serializers are inferred.

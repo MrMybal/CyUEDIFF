@@ -31,6 +31,10 @@ Json ContainerDocument::report() const {
         differences.push_back(
             {{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}});
     return {{"schema", "cyuediff.desktop-container/1"},
+            {"physics", physics},
+            {"physicsDifference", physics_difference},
+            {"physicsEdges", physics_wire.edge_count()},
+            {"physicsDiagnostics", physics_diagnostics},
             {"collisions", collisions},
             {"collisionDifference", collision_difference},
             {"collisionEdges", collision_wire.edge_count()},
@@ -76,6 +80,13 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                     {{"key", before.key},
                      {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
         }
+    if (!document->physics.is_null() && document->after && !document->after->physics.is_null()) {
+        CookedPhysicsOptions options;
+        options.profile = source.physics_profile;
+        options.control = control;
+        document->physics_difference =
+            compare_cooked_physics(document->physics, document->after->physics, options);
+    }
     if (document->zen && document->after && document->after->zen &&
         (!document->collisions.is_null() || !document->after->collisions.is_null())) {
         CollisionOptions projection;
@@ -197,6 +208,24 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                 document->collision_diagnostics.push_back(error.code + ": " + error.what());
             }
         }
+        if (source.physics_profile != CookedPhysicsProfile::unspecified) {
+            try {
+                CookedPhysicsOptions options;
+                options.profile = source.physics_profile;
+                options.control = control;
+                options.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
+                options.max_output_bytes = 128ull * 1024 * 1024;
+                auto physics = read_zen_cooked_physics(*document->input, found, zen, read, options);
+                auto review = cooked_physics_review(physics, options);
+                document->physics = std::move(physics);
+                document->physics_model = std::move(review.model);
+                document->physics_wire = std::move(review.wire);
+            } catch (const Error &error) {
+                if (error.code == "cancelled" || error.code == "container-integrity")
+                    throw;
+                document->physics_diagnostics.push_back(error.code + ": " + error.what());
+            }
+        }
         std::uint64_t mesh_output = 0;
         for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
             const auto &object = document->zen->exports[i];
@@ -313,6 +342,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     if (source.after_path.empty()) {
         if (source.compare_payloads || !source.after_script_objects.empty() ||
             source.after_profile != ZenProfile::unspecified || !source.after_schema.empty() ||
+            source.after_physics_profile != CookedPhysicsProfile::unspecified ||
             source.after_mesh_profile != CookedMeshProfile::unspecified ||
             source.after_keep_mobile_min_lod_setting.has_value())
             throw Error("desktop-container", "After container options require an after container");
@@ -325,6 +355,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     left.after_script_objects.clear();
     left.after_schema.clear();
     left.after_profile = ZenProfile::unspecified;
+    left.after_physics_profile = CookedPhysicsProfile::unspecified;
     left.after_mesh_profile = CookedMeshProfile::unspecified;
     left.after_keep_mobile_min_lod_setting.reset();
     left.compare_payloads = false;
@@ -334,6 +365,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     right.script_objects = source.after_script_objects;
     right.schema = source.after_schema;
     right.profile = source.after_profile;
+    right.physics_profile = source.after_physics_profile;
     right.mesh_profile = source.after_mesh_profile;
     right.keep_mobile_min_lod_setting = source.after_keep_mobile_min_lod_setting;
     auto document = std::make_shared<ContainerDocument>(*load_single(left, codec, control));
@@ -366,6 +398,10 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             document->inspection = loaded->inspection;
             document->zen = loaded->zen;
             document->schema_loaded = loaded->schema_loaded;
+            document->physics = loaded->physics;
+            document->physics_model = loaded->physics_model;
+            document->physics_wire = loaded->physics_wire;
+            document->physics_diagnostics = loaded->physics_diagnostics;
             document->collisions = loaded->collisions;
             document->collision_wire = loaded->collision_wire;
             document->collision_diagnostics = loaded->collision_diagnostics;
@@ -456,6 +492,13 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
                     {{"key", before.key},
                      {"comparison", compare_meshes(*before.geometry, *after->geometry).to_json()}});
         }
+    if (!document->physics.is_null() && document->after && !document->after->physics.is_null()) {
+        CookedPhysicsOptions options;
+        options.profile = source.physics_profile;
+        options.control = control;
+        document->physics_difference =
+            compare_cooked_physics(document->physics, document->after->physics, options);
+    }
     if (document->zen && document->after && document->after->zen &&
         (!document->collisions.is_null() || !document->after->collisions.is_null())) {
         CollisionOptions projection;

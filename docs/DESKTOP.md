@@ -380,3 +380,15 @@ Choose UE 5.3 Windows and the producer mobile-LOD setting in **Cooked mesh setti
 ## Mapped cooked collision review — post-0.181 development
 
 With matching BodySetup property bindings, **Cooked collisions** displays worker-prepared stored shapes and body-local wires. Select bodies/shapes, inspect values and compare known before/after geometry with a retained camera. The EN/FR interface preserves chapter 7 and the collision state in workspaces. Missing peer geometry stays unavailable rather than being painted as deleted. Native physics remains explicitly opaque. See COOKED_COLLISIONS.md.
+
+## Native Chaos review — post-0.181 development
+
+**Cooked physics settings** selects an explicit UE 5.3 Windows native reader for
+before and after independently. With matching schema/global/Zen contexts,
+**Native physics** (**Physique native**) displays worker-prepared native convex
+and triangle contours in stored cooker coordinates. Body/shape selection, picking,
+synchronized camera and changed-shape navigation reuse the collision review;
+parameters and native topology/acceleration/maps remain inspectable. Unavailable
+peer data does not appear as removed geometry. Workspace format eight preserves
+the independent profiles, chapter 8 and checked selection/camera state. See
+[COOKED_PHYSICS.md](COOKED_PHYSICS.md).

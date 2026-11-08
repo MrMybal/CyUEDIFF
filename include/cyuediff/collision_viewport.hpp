@@ -8,7 +8,7 @@ enum class CollisionCameraView { perspective, front, right, top };
 // Prepared geometry, one selected body's coordinate system, shared before/after camera.
 class CollisionViewport {
     CollisionWireframe before_, after_;
-    std::map<std::pair<std::string, std::string>, ChangeKind> changes_;
+    std::map<std::pair<std::string, std::string>, ChangeKind> changes_, stored_changes_;
     std::string body_, shape_, picked_;
     cyui::ViewportState camera_;
     int navigation_pane_ = 0;
@@ -33,6 +33,7 @@ class CollisionViewport {
     std::size_t visible_edge_count(bool after = false) const;
     std::size_t rendered_edges() const { return rendered_edges_; }
     ChangeCounts changes() const;
+    ChangeKind stored_change(const std::string &body, const std::string &shape) const;
     void draw(const char *id = "Collision geometry");
 };
 } // namespace cyuediff

@@ -159,14 +159,20 @@ def main():
     try:
         for i, pair in enumerate(pairs):
             sdk = run([args.consumer, args.container, pair['id'], args.global_toc, args.schema, *([args.codec] if args.codec else [])])
+            review = sdk.pop('review')
             native = run([args.cli, 'zen-physics', args.container, pair['id'], '--physics-profile', 'ue5.3-windows', *common])
             assert sdk == native, 'Installed SDK/CLI native physics disagreement'
             assert native['complete'] and native['bodyTableKnown']
+            wire = run([args.cli, 'zen-physics-wire', args.container, pair['id'], '--physics-profile', 'ue5.3-windows', *common])
+            wire.pop('provenance')
+            assert review['wireframe'] == wire, 'Installed SDK/CLI native prepared geometry disagreement'
+            expected_lines = {}
+
             zen = run([args.cli, 'zen-inspect', args.container, pair['id'], *common])
             raw = out / f'{i:03}.bin'
             run([args.cli, 'container-read', args.container, pair['id'], *codec, '--out', raw])
             data = raw.read_bytes()
-            counts = {'convexes': 0, 'triangleMeshes': 0, 'triangles': 0, 'vertices': 0, 'formats': 0}
+            counts = {'convexes': 0, 'triangleMeshes': 0, 'triangles': 0, 'vertices': 0, 'formats': 0, 'edges': 0}
             for body in native['bodies']:
                 e = zen['exports'][body['exportIndex']]
                 start = e['offset'] + e['propertyRead']['offset'] + e['propertyRead']['consumedBytes']
@@ -189,6 +195,26 @@ def main():
                     r.p += size
                     reference = Reference(blob).decode()
                     assert reference == fmt['physics'], 'Independent native wire field disagreement'
+                    by_tag = {obj['tag']: obj for obj in reference['objects']}
+                    for ref_name, kind in (('convexRefs','convex'),('triangleMeshRefs','triangleMesh')):
+                        for ref_index, tag in enumerate(reference[ref_name]):
+                            identity = f"chaos/{fmt['name']}#{fmt['number']}/{kind}/index:{ref_index}"
+                            lines, unique = [], set()
+                            if tag is not None:
+                                obj = by_tag[tag]
+                                if kind == 'convex':
+                                    faces = [[obj['halfEdges'][first+j][1] for j in range(count)] for first,count in obj.get('faces',[])]
+                                else:
+                                    faces = obj['triangles']
+                                for face in faces:
+                                    for j, a in enumerate(face):
+                                        b = face[(j+1) % len(face)]
+                                        edge = min(a,b), max(a,b)
+                                        if a != b and edge not in unique:
+                                            unique.add(edge)
+                                            lines.append([obj['vertices'][a], obj['vertices'][b]])
+                            expected_lines[body['object'],identity] = lines
+                            counts['edges'] += len(lines)
                     counts['formats'] += 1
                     for obj in reference['objects']:
                         counts['vertices'] += len(obj['vertices'])
@@ -198,11 +224,14 @@ def main():
                             counts['triangleMeshes'] += 1
                             counts['triangles'] += len(obj['triangles'])
                 assert r.p == len(r.b), 'Independent BodySetup export boundary disagreement'
+            assert wire['space'] == 'cooker'
+            actual_lines = {(shape['body'],shape['identity']):shape['lines'] for shape in wire['shapes']}
+            assert actual_lines == expected_lines, 'Independent native topology/line projection disagreement'
             results.append({'package': pair['name'], **counts, 'independentWireMatches': True, 'sdkMatches': True})
             (out / f'{i:03}.json').write_text(json.dumps(native), encoding='utf-8')
     finally:
         unchanged = all((digest(Path(p)) == h for p, h in before.items()))
-        summary = {'complete': len(results) == len(pairs) and unchanged, 'packages': len(results), **{k: sum((x[k] for x in results)) for k in ('formats', 'convexes', 'triangleMeshes', 'triangles', 'vertices')}, 'originalsUnchanged': unchanged, 'comparison': 'exact independent wire fields and installed Core/CLI parity; no simulation/default reconstruction', 'inputs': before, 'results': results}
+        summary = {'complete': len(results) == len(pairs) and unchanged, 'packages': len(results), **{k: sum((x[k] for x in results)) for k in ('formats', 'convexes', 'triangleMeshes', 'triangles', 'vertices', 'edges')}, 'originalsUnchanged': unchanged, 'comparison': 'exact independent wire fields/contours and installed Core/CLI parity; no simulation/default reconstruction', 'inputs': before, 'results': results}
         (out / 'summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
         assert unchanged, 'Original inputs changed during validation'
     print(json.dumps({k: v for k, v in summary.items() if k not in ('inputs', 'results')}, indent=2))

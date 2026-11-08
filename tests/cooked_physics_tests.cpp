@@ -181,6 +181,28 @@ int main(int argc, char **argv) {
             check(error.offset == 0, "Physics precision failure reports exact offset");
         }
         auto baseline = read(physics_container_fixture());
+        auto review = cooked_physics_review(baseline, o);
+        check(review.wire.edge_count() == 15 && review.wire.space == "cooker" &&
+                  review.wire.shapes.size() == 4,
+              "Native convex polygon edges and triangles retain shared/null references");
+        const auto body_path = baseline["bodies"][0]["object"].get<std::string>();
+        check(review.model["bodies"][body_path]["shapes"].size() == 4 &&
+                  review.model["provenance"]["nativePhysicsDecoded"] == true &&
+                  review.wire.to_json()["space"] == "cooker",
+              "Native review provenance and coordinate scope");
+        check(review.wire.shapes[0].collection == "chaos/PF_DXT1#0/convex" &&
+                  review.wire.shapes[0].lines.size() == 6 && review.wire.shapes[3].lines.size() == 3,
+              "Convex wire has no triangulation diagonals");
+        refused([&] { cooked_physics_review(baseline, o, 14); }, "cooked-physics-limit");
+        auto review_limit = o;
+        review_limit.max_output_bytes = 1;
+        refused([&] { cooked_physics_review(baseline, review_limit); }, "cooked-physics-limit");
+        auto review_cancel = o;
+        review_cancel.control.cancelled = [] { return true; };
+        refused([&] { cooked_physics_review(baseline, review_cancel); }, "cancelled");
+        auto invalid_review = baseline;
+        invalid_review["bodies"][0]["formats"][0]["physics"]["objects"][1]["triangles"][0][0] = 99;
+        refused([&] { cooked_physics_review(invalid_review, o); }, "cooked-physics-review");
         auto same = baseline;
         same["bodies"][0]["bodyGuidBytes"] = "different";
         auto &sp = same["bodies"][0]["formats"][0]["physics"];
@@ -204,6 +226,11 @@ int main(int argc, char **argv) {
         auto m = read(missing);
         check(!m["complete"].get<bool>() && m["bodies"][0]["formats"][0]["status"] == "missing-chunk",
               "Missing bulk is incomplete");
+        auto missing_review = cooked_physics_review(m, o);
+        check(missing_review.wire.shapes.empty() && !missing_review.model["complete"].get<bool>() &&
+                  missing_review.model["bodies"][body_path]["unavailableFormats"] ==
+                      Json({"chaos/PF_DXT1#0/"}),
+              "Unavailable native formats retain unknown collection scope");
         auto unknown = compare_cooked_physics(baseline, m, o);
         check(unknown["status"] == "incomplete" && unknown["changes"].empty() &&
                   !unknown["unresolved"].empty(),

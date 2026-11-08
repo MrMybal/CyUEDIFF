@@ -78,7 +78,8 @@ inline void validate(const Json &v, std::string_view kind) {
                 scalar(x, 180, 640);
                 known = true;
             }
-            flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics", "animationPose", "binaryLayouts", "virtualizedPayloads", "mesh-native"});
+            flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics",
+                  "animationPose", "binaryLayouts", "virtualizedPayloads", "mesh-native", "physics-native"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);
@@ -234,6 +235,7 @@ inline void validate(const Json &v, std::string_view kind) {
             child("pixelView", "texture");
             child("meshView", "mesh");
             child("collisions", "collision");
+            child("physics", "collision");
             string({"mesh"});
             flag({"meshAfter"});
             flag({"pixelAfter"});

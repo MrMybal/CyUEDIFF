@@ -14,6 +14,8 @@ struct CollisionWireShape {
     std::vector<CollisionLine> lines;
     std::vector<std::string> diagnostics;
     CollisionBounds bounds;
+    // Optional exact native collection identity for availability-aware review.
+    std::string collection;
     bool ready() const { return !lines.empty(); }
 };
 struct CollisionWireframeOptions {
@@ -26,6 +28,7 @@ struct CollisionWireframe {
     std::vector<CollisionWireShape> shapes;
     CollisionBounds bounds;
     bool source_complete = false;
+    std::string space = "body-local";
     std::size_t edge_count() const;
     Json to_json() const;
 };

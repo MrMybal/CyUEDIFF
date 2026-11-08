@@ -40,6 +40,8 @@ int run(const std::vector<std::string> &args) {
         CookedPhysicsOptions options;
         options.profile = CookedPhysicsProfile::unreal_5_3_windows;
         auto result = read_zen_cooked_physics(input, entry, zen, read, options);
+        auto review = cooked_physics_review(result, options);
+        result["review"] = {{"model", std::move(review.model)}, {"wireframe", review.wire.to_json()}};
         std::cout << result.dump(2) << '\n';
         return result.at("complete").get<bool>() ? 0 : 2;
     } catch (const std::exception &e) {

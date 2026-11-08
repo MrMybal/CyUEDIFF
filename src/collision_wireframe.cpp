@@ -228,9 +228,11 @@ Json CollisionWireframe::to_json() const {
                            {"ready", shape.ready()},
                            {"lines", std::move(lines)},
                            {"diagnostics", shape.diagnostics}});
+        if (!shape.collection.empty())
+            entries.back()["collection"] = shape.collection;
     }
     return {{"schema", "cyuediff.collision-wireframe/1"},
-            {"space", "body-local"},
+            {"space", space},
             {"sourceComplete", source_complete},
             {"shapes", std::move(entries)},
             {"bounds", bounds.valid ? Json{{"low", bounds.low}, {"high", bounds.high}} : Json(nullptr)}};
