@@ -43,6 +43,11 @@ int main() {
         metadata.properties = false;
         check(cache.open(file, metadata)->exports[0].coverage == "opaque",
               "Read profiles do not share incompatible entries");
+        ReadOptions no_reflection;
+        no_reflection.native_reflection = false;
+        auto without_reflection = cache.open(file, no_reflection);
+        check(cache.open(file) != without_reflection && cache.open(file, no_reflection) == without_reflection,
+              "Native field-definition policy participates in cache identity");
         OperationControl cancel;
         cancel.cancelled = [] { return true; };
         ReadOptions cancelled;

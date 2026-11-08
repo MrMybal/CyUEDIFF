@@ -31,7 +31,7 @@ else()
     target_compile_options(cyuediff_blake3 PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/src/blake3_prefix.h)
 endif()
 add_library(cyuediff_core STATIC
-    src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
+    src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
 target_sources(cyuediff_core PRIVATE $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
@@ -261,6 +261,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_skeleton_pose_tests tests/skeleton_pose_tests.cpp)
     target_link_libraries(cyuediff_skeleton_pose_tests PRIVATE CyUEDiff::Core)
     add_test(NAME skeleton_reference_pose COMMAND cyuediff_skeleton_pose_tests)
+    add_executable(cyuediff_reflection_tests tests/reflection_tests.cpp)
+    target_link_libraries(cyuediff_reflection_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME reflection_definitions COMMAND cyuediff_reflection_tests)
     add_executable(cyuediff_skeleton_tests tests/skeleton_tests.cpp)
     target_link_libraries(cyuediff_skeleton_tests PRIVATE CyUEDiff::Core)
     add_test(NAME skeleton_projection COMMAND cyuediff_skeleton_tests)
@@ -424,6 +427,9 @@ if(BUILD_TESTING)
             add_test(NAME zen_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/zen_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_zen_tests>")
+            add_test(NAME reflection_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/reflection_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_reflection_tests>")
             add_test(NAME container_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/container_cli_tests.py"
                 "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_container_tests>")

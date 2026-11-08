@@ -53,6 +53,12 @@ jobs:
         run: cmake -S examples/container_consumer -B build-container-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
       - name: Link external container consumer
         run: cmake --build build-container-consumer --config Release --parallel 2
+      - name: Configure external reflection consumer
+        run: cmake -S examples/reflection_consumer -B build-reflection-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Link external reflection consumer
+        run: cmake --build build-reflection-consumer --config Release --parallel 2
+      - name: Verify standalone reflection SDK
+        run: python -c "from pathlib import Path; import json, subprocess; p=Path('build-ci'); generator=p/'Release/cyuediff_reflection_tests.exe' if (p/'Release/cyuediff_reflection_tests.exe').exists() else p/'cyuediff_reflection_tests'; subprocess.run([str(generator.resolve()),'--write-fixtures','build-reflection-fixtures'],check=True); p=Path('build-reflection-consumer'); consumer=p/'Release/reflection_consumer.exe' if (p/'Release/reflection_consumer.exe').exists() else p/'reflection_consumer'; result=json.loads(subprocess.check_output([str(consumer.resolve()),'build-reflection-fixtures/before.uasset'])); assert result['complete'] and result['definitions']['TestAsset']['declaration']['fields']['Value']['type']=='IntProperty'"
       - name: Configure external cooked consumer
         run: cmake -S examples/zen_consumer -B build-zen-consumer -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-ci/sdk -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
       - name: Link external cooked consumer

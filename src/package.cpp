@@ -1,3 +1,4 @@
+#include <cyuediff/reflection.hpp>
 #include "material_io.hpp"
 #include "mesh.hpp"
 #include "texture.hpp"
@@ -741,6 +742,22 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     data->seek(consumed);
                 }
             }
+            if (!extension_native && options.native_reflection && detail::is_reflected_struct(entry)) {
+                try {
+                    entry.native_start = consumed - base;
+                    auto decoded = detail::decode_struct_definition(*data, p, base + entry.size, options);
+                    entry.native_data = std::move(decoded.data);
+                    entry.native_coverage = "struct-declaration-prefix";
+                    entry.native_end = decoded.end - base;
+                    consumed = decoded.end;
+                } catch (const Error &error) {
+                    if (error.code == "cancelled")
+                        throw;
+                    entry.native_coverage = "opaque";
+                    p.diagnostics.push_back(entry.path + ": " + error.code + ": " + error.what());
+                    data->seek(consumed);
+                }
+            }
             if (!extension_native && options.native_graphs && detail::is_edgraph_node(entry)) {
                 try {
                     if (base + entry.size - consumed > options.max_property_bytes)
@@ -962,6 +979,7 @@ Json Package::to_json() const {
             {"materials", material_snapshot()},
             {"collisions", collision_snapshot()},
             {"skeletons", skeleton_snapshot()},
+            {"reflection", reflection_definitions(*this)},
             {"coverage", coverage},
             {"fingerprints", fingerprints},
             {"completeInput", complete_input},

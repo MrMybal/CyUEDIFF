@@ -17,6 +17,8 @@ Bounded I/O  Serialization   Project/engine context
 
 `archive.cpp` supplies bounded random access, FString/byte-string reads and hashing. `package.cpp` reads supported classic package summaries, names/imports/exports and tagged properties. Recent export script windows bound the property traversal. A failed read does not search arbitrary bytes for another plausible property stream.
 
+`reflection.cpp` reads supported serialized UStruct/FProperty declaration prefixes into named native metadata. General snapshots/diffs and the typed inspector share those fields; script/class tails remain opaque. This does not reconstruct inherited defaults or arbitrary C++ serializer logic. See [field declaration contracts](REFLECTION.md).
+
 `schema.cpp` reads explicit USMAP definitions and supported unversioned values. `schema_context.cpp` validates immutable cooked class/schema/offset bindings. `zen.cpp` reads supported cooked package headers, object tables and explicitly bound property regions. A mapping fingerprint identifies a selected mapping; it does not establish that it matches a particular build. Archetype defaults are not reconstructed.
 
 `decoders.cpp` provides immutable exact-target registries and archive/custom-version profile selection. Host C++ callbacks read bounded sequential windows and return identified JSON. `binary_layout.cpp` implements the same extension mechanism from bounded JSON descriptions: named records, fixed/dynamic arrays, optional markers, primitives and package references. It also supplies explicitly bound native structures to the unversioned reader. Description files contain data and do not load native code. Missing or ambiguous native profiles remain opaque.

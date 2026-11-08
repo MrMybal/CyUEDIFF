@@ -7,8 +7,9 @@ namespace {
 auto profile(const ReadOptions &o) {
     return std::make_tuple(o.properties, o.fingerprints, o.native_graphs, o.native_textures, o.native_meshes,
                            o.native_materials, o.native_skeletons, o.native_skeleton_retargeting,
-                           o.native_skeleton_metadata, o.max_table_entries, o.max_string_bytes,
-                           o.max_property_bytes, o.max_properties, o.max_depth, o.decoders.get(), o.narrow_string_encoding);
+                           o.native_skeleton_metadata, o.native_reflection, o.max_table_entries,
+                           o.max_string_bytes, o.max_property_bytes, o.max_properties, o.max_depth,
+                           o.decoders.get(), o.narrow_string_encoding);
 }
 struct Identity {
     Json files = Json::array();
