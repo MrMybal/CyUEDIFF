@@ -115,6 +115,8 @@ int main() {
         std::memcpy(&header, changed.data.data() + 4, 4);
         changed.data[header] = 'X';
         changed.save(root / "test.ucas");
+        rejects([&] { load_container_document(source, {}); }, "container-integrity");
+        zen_toc(changed).save(root / "test.utoc");
         auto refreshed = load_container_document(source, {});
         check(refreshed->zen->sha256 != member->zen->sha256, "Every inspection reopens current source bytes");
         source.script_objects = root / "test.utoc";

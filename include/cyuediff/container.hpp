@@ -5,6 +5,9 @@ namespace cyuediff {
 // Virtual names are never used as extraction destinations.
 struct ContainerEntry {
     std::string id, path;
+    // IoStore BLAKE3-160 over the complete decoded chunk; empty for Pak.
+    std::string source_hash;
+    std::uint8_t storage_flags = 0;
     std::uint64_t offset = 0, size = 0, stored_bytes = 0;
     std::uint32_t blocks = 0;
     std::uint8_t chunk_type = 0;

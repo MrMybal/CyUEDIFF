@@ -48,12 +48,19 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-cli-', dir=Path.cwd
                 run('container-read', path, key, '--out', hardlink, error='output-path', code=2)
             finally:
                 hardlink.unlink()
-    # Same index, same sizes, one changed UCAS byte: a real byte diff must see it.
+    # Same index and sizes with corrupted source bytes must fail integrity checks.
     other = root/'other.utoc'
     other.write_bytes(toc.read_bytes())
     (root/'other.ucas').write_bytes(b'abXd')
     (root/'other_s1.ucas').write_bytes(b'efgh')
-    diff = run('container-diff', toc, other, code=1)
+    run('container-diff', toc, other, code=2, error='container-integrity')
+    corrupt_out = root/'corrupt-output.bin'
+    run('container-read', other, 'Content/A.bin', '--out', corrupt_out, code=2, error='container-integrity')
+    assert not corrupt_out.exists()
+    corrupt_out.write_bytes(b'preserve existing output')
+    run('container-read', other, 'Content/A.bin', '--out', corrupt_out, code=2, error='container-integrity')
+    assert corrupt_out.read_bytes() == b'preserve existing output'
+    diff = run('container-diff', toc, root/'changed.utoc', code=1)
     assert len(diff['changes']) == 2 and all(c['change'] == 'modified' for c in diff['changes'])
     run('container-read', pak, 'Content/Gone.bin', '--out', root/'gone.bin', code=2, error='container-deleted')
     assert not (root/'gone.bin').exists()

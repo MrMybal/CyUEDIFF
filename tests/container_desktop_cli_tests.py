@@ -78,6 +78,14 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-container-desktop-',dir=Path.
     for extra in [['--before','other.uasset'],['--repo','.'],['--browse'],['--view','textures'],['--cooked-profile','auto']]:
         run('--container',pak,*extra,code=2)
     run('--container-entry',entry,code=2)
+    # A background inspection must not publish bytes whose stored identity is stale.
+    corrupt = root/'corrupt.utoc'
+    corrupt.write_bytes((pak_dir/'test.utoc').read_bytes())
+    (root/'corrupt.ucas').write_bytes(b'abXd')
+    (root/'corrupt_s1.ucas').write_bytes(b'efgh')
+    failed = run('--container', corrupt, '--container-entry', 'Content/A.bin', code=2)
+    assert 'container-integrity' in failed['error'] and failed['document'] is None
+    checks += 1
     # Pairing is metadata-only until an explicit decoded comparison or inspection.
     pair_args=['--container',pak,'--after-container',pak]
     report=run(*pair_args,'--codec',root/'not-loaded.dll','--container-changes-only')

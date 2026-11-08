@@ -23,15 +23,15 @@ Bounded I/O  Serialization   Project/engine context
 
 `string_encoding.cpp` provides explicit, portable ASCII, Latin-1, Windows-1252 and UTF-8 conversion. Selected encodings participate in cache/context identities and before/after configuration. No process locale or statistical encoding detection is used.
 
-`container.cpp` inventories supported Pak/IoStore containers and reconstructs member bytes. This layer is separate from interpreting a cooked asset's native body. `codec.cpp` loads only an explicitly selected host codec; optional adapters are not discovered from project files or bundled into Core.
+`container.cpp` inventories supported Pak/IoStore containers and reconstructs member bytes. IoStore reads require a matching stored BLAKE3-160 source hash over the complete decoded chunk; inventory metadata describes required verification without claiming indexing has checked payload content. This layer is separate from interpreting a cooked asset's native body. `codec.cpp` loads only an explicitly selected host codec; optional adapters are not discovered from project files or bundled into Core.
 
 `project.cpp` describes project/plugin/engine content mounts. Selecting an engine root supplies context and content locations; it does not extract serializers from arbitrary plugin C++ or instantiate their classes. Dependency lookup locates files without recursively loading every referenced asset. `catalog.cpp` inventories metadata before asset decoding. `cache.cpp` keeps verified package reads in a bounded LRU, distinguishing reader/decoder/encoding profiles.
 
 ## Semantic projections
 
-Blueprint and material readers project stored editor graphs through stable node GUIDs, preserving pin/parameter changes. Texture readers describe and fingerprint source payloads; image/HDR readers decode supported previews and compare samples. MeshDescription readers expose supported static source geometry. Collision readers project reflected stored shapes. Skeleton and animation readers expose the implemented raw reference prefixes, stored retarget poses, attachments, metadata, source keys and curves.
+Blueprint and material readers project stored editor graphs through stable node GUIDs, preserving pin/parameter changes. Texture readers describe and fingerprint source payloads; image/HDR readers decode supported previews and compare samples. MeshDescription readers expose supported static source geometry and fixture-validated modern skeletal source bones, raw weight profiles and named morph deltas. Collision readers project reflected stored shapes. Skeleton and animation readers expose the implemented raw reference prefixes, stored retarget poses, attachments, metadata, source keys and curves.
 
-A specialized projection carries its coverage. A generic decoded JSON object does not automatically produce a texture, mesh, animation projection or a specialized UI view. Native skinning, Nanite, compressed animation, virtualized source resolution and broader cooked visual payloads remain separate readers on the [roadmap](ROADMAP.md).
+A specialized projection carries its coverage. A generic decoded JSON object does not automatically produce a texture, mesh, animation projection or a specialized UI view. Cooked/runtime skinning, Nanite, compressed animation and broader cooked visual payloads remain separate readers on the [roadmap](ROADMAP.md). Explicit local virtualized source resolution is already shared by texture and modern MeshDescription readers.
 
 Snapshots omit copies of large bulk payloads. Packages retain decoded property values and selected tables; the API is not fully lazy per export. Payload decoding is explicit. Input/work/depth/text budgets and cooperative cancellation are shared where documented. These component limits are not a bound on the process's entire heap.
 
@@ -49,7 +49,7 @@ The `binary_delta*` modules implement a separate byte-level layer: bounded block
 
 `apps/desktop` owns the Windows/Direct3D host, background document queue, GPU resources, file dialogs and session/workspace/preferences persistence. It supports independent loose/Git contexts and cooked schema contexts. Workspace format five stores per-document native descriptions; older workspace readers retain their default decoding. Codec executables are not persisted by workspace files. The current native dialog layout and further cooked visual bindings still need work.
 
-Core installs independently through `find_package(CyUEDiff)`. The bundled [layout consumer](../examples/binary_layout_consumer) builds against the installed Core alone. Extracted archive validation checks public consumers and desktop startup/persistence. Hosted CI is prepared but has not been executed for these local commits.
+Core installs independently through `find_package(CyUEDiff)`. The bundled [layout consumer](../examples/binary_layout_consumer) builds against the installed Core alone. Extracted archive validation checks public consumers and desktop startup/persistence. Hosted Windows/Ubuntu Core Git-on/off CI passed for published 0.181. Subsequent local development commits require their own checks before any later push.
 
 ## Format and validation boundaries
 

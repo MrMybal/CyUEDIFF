@@ -1,5 +1,6 @@
 #pragma once
 #include "package_fixture.hpp"
+#include "io_hash_fixture.hpp"
 #include <algorithm>
 namespace cyuediff::test {
 constexpr std::uint64_t script_root = 0x4000000000000001ull, script_class = 0x4000000000000002ull,
@@ -144,7 +145,7 @@ inline Bytes zen_toc(const Bytes &payload, std::uint8_t type = 1) {
         for (unsigned j = 0; j < 3; ++j)
             b.put<std::uint8_t>(static_cast<std::uint8_t>(payload.data.size() >> (8 * j)));
     b.put<std::uint8_t>(0);
-    b.zeros(33);
+    io_chunk_meta(b, payload.data);
     return b;
 }
 } // namespace cyuediff::test

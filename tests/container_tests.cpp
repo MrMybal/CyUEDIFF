@@ -1,6 +1,7 @@
 #include <cyuediff/container.hpp>
 #include "package_fixture.hpp"
 #include "container_fixtures.hpp"
+#include "io_hash_fixture.hpp"
 #include <chrono>
 #include <iostream>
 using namespace cyuediff;
@@ -32,7 +33,8 @@ void number(Bytes &b, std::uint64_t value, unsigned n, bool big = false) {
         b.put<std::uint8_t>(static_cast<std::uint8_t>(value >> (8 * (big ? n - 1 - j : j))));
 }
 // Two chunks overlap shared blocks and the first chunk crosses a partition.
-Bytes toc(const std::string &name = "A.bin", bool compressed = false, unsigned version = 5) {
+Bytes toc(const std::string &name = "A.bin", bool compressed = false, unsigned version = 5,
+          std::uint8_t third = 'c') {
     Bytes directory;
     directory.string("../../../");
     directory.i(2);
@@ -80,7 +82,13 @@ Bytes toc(const std::string &name = "A.bin", bool compressed = false, unsigned v
         b.zeros(25);
     }
     b.append(directory);
-    b.zeros(66);
+    std::vector<std::uint8_t> source = {'a', 'b', third, 'd', 'e', 'f', 'g', 'h'};
+    if (compressed) {
+        std::reverse(source.begin(), source.begin() + 4);
+        std::reverse(source.begin() + 4, source.end());
+    }
+    io_chunk_meta(b, {source.begin() + 1, source.begin() + 6}, compressed ? 1 : 0);
+    io_chunk_meta(b, {source.begin() + 2, source.begin() + 4}, compressed ? 1 : 0);
     return b;
 }
 } // namespace
@@ -92,6 +100,9 @@ int main(int argc, char **argv) {
         toc().save(directory / "test.utoc");
         save(directory / "test.ucas", {'a', 'b', 'c', 'd'});
         save(directory / "test_s1.ucas", {'e', 'f', 'g', 'h'});
+        toc("A.bin", false, 5, 'X').save(directory / "changed.utoc");
+        save(directory / "changed.ucas", {'a', 'b', 'X', 'd'});
+        save(directory / "changed_s1.ucas", {'e', 'f', 'g', 'h'});
         return 0;
     }
     auto root =
@@ -112,6 +123,59 @@ int main(int argc, char **argv) {
         check(container.read(0) == std::vector<std::uint8_t>({'b', 'c', 'd', 'e', 'f'}),
               "Unaligned chunk crosses partitions");
         check(container.read(1) == std::vector<std::uint8_t>({'c', 'd'}), "Shared block subrange");
+        check(container.entries()[0].source_hash.size() == 40 &&
+                  container.entries()[0].to_json()["sourceHash"]["algorithm"] == "blake3-160",
+              "Stored source hash is exposed without claiming index-time verification");
+        check(container.metadata()["memberIntegrity"]["verification"] == "required-on-read",
+              "Member integrity contract is explicit in inventory metadata");
+        save(root / "test.ucas", {'a', 'b', 'X', 'd'});
+        error([&] { container.read(0); }, "container-integrity");
+        error([&] { compare_containers(container, container); }, "container-integrity");
+        save(root / "test.ucas", {'a', 'b', 'c', 'd'});
+        auto wrong_hash = toc();
+        wrong_hash.data[wrong_hash.data.size() - 66] ^= 1;
+        wrong_hash.save(io);
+        auto wrong_index = Container::open(io);
+        error([&] { wrong_index.read(0); }, "container-integrity");
+        check(wrong_index.read(1) == container.read(1), "Per-chunk verification uses its own source hash");
+        auto zero_hash = toc();
+        std::fill(zero_hash.data.end() - 66, zero_hash.data.end() - 46, 0);
+        zero_hash.save(io);
+        error([&] { Container::open(io).read(0); }, "container-integrity");
+        auto invalid_flags = toc();
+        invalid_flags.data[invalid_flags.data.size() - 34] = 4;
+        invalid_flags.save(io);
+        error([&] { Container::open(io); }, "container-format");
+        auto empty_chunk = toc();
+        std::fill(empty_chunk.data.begin() + 173, empty_chunk.data.begin() + 178, 0);
+        Bytes empty_meta;
+        io_chunk_meta(empty_meta, {});
+        std::copy(empty_meta.data.begin(), empty_meta.data.end(), empty_chunk.data.end() - 66);
+        empty_chunk.save(io);
+        auto empty_container = Container::open(io);
+        check(empty_container.entries()[0].source_hash == "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9",
+              "Empty source hash agrees with the official BLAKE3 empty-input vector");
+        check(empty_container.read(0).empty(), "Empty chunks still verify their source hash");
+        auto legacy_padding = toc();
+        legacy_padding.data[legacy_padding.data.size() - 46] = 0x42;
+        legacy_padding.save(io);
+        check(Container::open(io).read(0) == container.read(0),
+              "Unused legacy hash padding is not misrepresented as a 256-bit identity");
+        for (std::size_t cut = 1; cut <= 66; ++cut) {
+            auto truncated_meta = toc();
+            truncated_meta.data.resize(truncated_meta.data.size() - cut);
+            truncated_meta.save(io);
+            error([&] { Container::open(io); }, "bounds");
+        }
+        toc().save(io);
+        bool hash_cancel = false;
+        ContainerReadOptions cancel_hash;
+        cancel_hash.control.cancelled = [&] { return hash_cancel; };
+        cancel_hash.control.progress = [&](const auto &progress) {
+            if (progress.phase == "Hashing BLAKE3")
+                hash_cancel = true;
+        };
+        error([&] { container.read(0, cancel_hash); }, "cancelled");
         check(container.to_json()["coverage"] == "container-bytes", "Honest format coverage");
         check(container.metadata()["entryCount"] == container.entries().size() &&
                   !container.metadata().contains("entries"),
@@ -123,7 +187,7 @@ int main(int argc, char **argv) {
         check(summary == full, "Summary preserves existing container metadata");
         check(compare_containers(container, container)["unchanged"] == 2, "Decoded-byte self comparison");
         auto other = root / "other.utoc";
-        toc("Changed.bin").save(other);
+        toc("Changed.bin", false, 5, 'X').save(other);
         save(root / "other.ucas", {'a', 'b', 'X', 'd'});
         save(root / "other_s1.ucas", {'e', 'f', 'g', 'h'});
         auto difference = compare_containers(container, Container::open(other));
@@ -263,6 +327,12 @@ int main(int argc, char **argv) {
         auto wrong = reverse;
         wrong.decoder = [](auto &&...) { return std::size_t(0); };
         error([&] { compressed.read(0, wrong); }, "container-codec");
+        auto wrong_content = reverse;
+        wrong_content.decoder = [](const auto &, const auto *src, auto count, auto *dst, auto size) {
+            std::copy_n(src, std::min(count, size), dst);
+            return size;
+        };
+        error([&] { compressed.read(0, wrong_content); }, "container-integrity");
         for (auto fixture : {pak_plain(), pak_v10()}) {
             save(pak, fixture);
             auto pc = Container::open(pak);

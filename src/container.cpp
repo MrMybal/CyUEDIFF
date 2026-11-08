@@ -1,4 +1,5 @@
 #include <cyuediff/container.hpp>
+#include <cyuediff/content_hash.hpp>
 #include "archive.hpp"
 #include <algorithm>
 #include <cctype>
@@ -358,10 +359,18 @@ void Container::Impl::io_open(const Bytes &bytes, const ContainerOptions &option
     }
     auto directory_start = c.pos;
     c.skip(directory_size);
-    c.skip(std::uint64_t(n) * 33);
+    c.range(std::uint64_t(n) * 33);
+    for (auto &entry : entries) {
+        options.control.check();
+        entry.source_hash = c.hash(20);
+        // Legacy FIoChunkHash stores 20 meaningful bytes in a 32-byte record.
+        c.skip(12);
+        entry.storage_flags = static_cast<std::uint8_t>(c.number(1));
+        require((entry.storage_flags & ~3u) == 0, "Unsupported IoStore chunk storage flags");
+    }
     require(c.pos == bytes.size(), "Unexpected trailing IoStore TOC data");
-    diagnostics.push_back("Stored IoStore BLAKE3 chunk hashes are not verified; decoded-byte comparisons "
-                          "compute SHA-256 independently.");
+    diagnostics.push_back("Stored IoStore BLAKE3-160 source hashes are checked over complete decoded "
+                          "chunks on read. This does not authenticate the TOC or RSA signatures.");
     for (unsigned j = 0; j < partitions; ++j) {
         auto base = files.front();
         base.replace_extension();
@@ -639,15 +648,20 @@ const std::vector<fs::path> &Container::files() const {
     return impl_->files;
 }
 Json ContainerEntry::to_json() const {
-    return {{"id", id},
-            {"path", path},
-            {"offset", offset},
-            {"size", size},
-            {"storedBytes", stored_bytes},
-            {"blocks", blocks},
-            {"chunkType", chunk_type},
-            {"encrypted", encrypted},
-            {"deleted", deleted}};
+    Json result = {{"id", id},
+                   {"path", path},
+                   {"offset", offset},
+                   {"size", size},
+                   {"storedBytes", stored_bytes},
+                   {"blocks", blocks},
+                   {"chunkType", chunk_type},
+                   {"encrypted", encrypted},
+                   {"deleted", deleted}};
+    if (!source_hash.empty()) {
+        result["sourceHash"] = {{"algorithm", "blake3-160"}, {"expected", source_hash}};
+        result["storageFlags"] = storage_flags;
+    }
+    return result;
 }
 Json Container::metadata() const {
     Json paths = Json::array();
@@ -660,6 +674,11 @@ Json Container::metadata() const {
             {"files", paths},
             {"compressionMethods", impl_->methods},
             {"entryCount", impl_->entries.size()},
+            {"memberIntegrity",
+             {{"algorithm", impl_->kind == "iostore" ? "blake3-160" : "sha1"},
+              {"scope", impl_->kind == "iostore" ? "decoded-chunk" : "stored-member"},
+              {"verification", "required-on-read"},
+              {"signaturesAuthenticated", false}}},
             {"diagnostics", impl_->diagnostics},
             {"coverage", "container-bytes"}};
 }
@@ -762,6 +781,12 @@ std::vector<std::uint8_t> Container::read(std::size_t index, const ContainerRead
                 options.control.checkpoint("container-read", done, pe.raw);
             }
         }
+    }
+    if (i.kind == "iostore") {
+        options.control.checkpoint("container-integrity", 0, e.size);
+        if (blake3_bytes(result, options.control).substr(0, 40) != e.source_hash)
+            throw Error("container-integrity", "IoStore decoded chunk BLAKE3-160 mismatch");
+        options.control.checkpoint("container-integrity", e.size, e.size);
     }
     options.control.checkpoint("container-read", e.size, e.size);
     return result;
