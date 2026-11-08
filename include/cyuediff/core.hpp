@@ -188,6 +188,7 @@ struct MeshTriangle {
 };
 struct MeshSkin;
 struct MeshMorphs;
+class MeshRenderMorphs;
 struct MeshGeometry {
     std::vector<MeshVertex> vertices;
     std::vector<MeshInstance> instances;
@@ -196,10 +197,13 @@ struct MeshGeometry {
     Json attributes = Json::object(), bounds = Json::object();
     std::shared_ptr<const MeshSkin> skin;
     std::shared_ptr<const MeshMorphs> morphs;
+    std::shared_ptr<const MeshRenderMorphs> render_morphs;
     Json to_json() const;
 };
 struct MeshComparison {
     Json changes = Json::array();
+    bool complete = true;
+    std::vector<std::string> diagnostics;
     Json to_json() const;
 };
 MeshGeometry decode_mesh(const MeshSource &, const MeshDecodeOptions &options = {});

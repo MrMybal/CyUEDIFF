@@ -169,7 +169,7 @@ struct Cursor {
 struct Budget {
     const CookedSkeletalOptions &o;
     std::uint64_t vertices = 0, indices = 0, triangles = 0, sections = 0, influences = 0, output = 0;
-    std::uint64_t profiles = 0, overrides = 0;
+    std::uint64_t profiles = 0, overrides = 0, morphs = 0, morph_batches = 0, morph_deltas = 0;
     void add(std::uint64_t &counter, std::uint64_t n, std::uint64_t max, const char *s) {
         limit(counter <= max && n <= max - counter, s);
         counter += n;
@@ -622,7 +622,37 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
                 {"sha256", detail::hash_range(r.bytes, r.pos, ray_bytes, b.o.control)},
                 {"decoded", false}};
     r.pos += ray_bytes;
-    supported(!r.boolean(), "Compressed cooked morph buffers require another decoder");
+    if (r.boolean()) {
+        CompressedMorphOptions options;
+        options.profile = MorphCompressionProfile::unreal_5_3_windows;
+        options.control = b.o.control;
+        options.max_vertices = b.o.max_vertices;
+        options.max_morphs = b.o.max_morph_targets - static_cast<std::uint32_t>(b.morphs);
+        options.max_batches = b.o.max_morph_batches - static_cast<std::uint32_t>(b.morph_batches);
+        options.max_deltas = b.o.max_morph_deltas - b.morph_deltas;
+        options.max_data_bytes = b.o.max_read_bytes;
+        options.max_output_bytes = b.o.max_output_bytes - b.output;
+        auto buffer = std::make_shared<CompressedMorphBuffer>(
+            CompressedMorphBuffer::from_native_window(r.bytes, r.pos, r.end, n, options));
+        r.pos += buffer->consumed_bytes();
+        b.reserve(buffer->accounted_output_bytes() + 512);
+        b.morphs += buffer->morph_count();
+        b.morph_batches += buffer->batch_count();
+        for (std::size_t mi = 0; mi < buffer->morph_count(); ++mi) {
+            b.morph_deltas += buffer->delta_count(mi);
+            if (g)
+                b.reserve(buffer->delta_count(mi) * 256 + 1024);
+        }
+        if (mesh.morph_binding_unavailable.empty())
+            need(mesh.morph_names.size() == buffer->morph_count(),
+                 "Mapped MorphTargets count disagrees with native compression table");
+        for (const auto &name : mesh.morph_names)
+            b.reserve(name.size() + 64);
+        lod.morphs =
+            std::make_shared<MeshRenderMorphs>(buffer, mesh.morph_names, mesh.morph_binding_unavailable);
+        if (g)
+            g->render_morphs = lod.morphs;
+    }
     supported(r.count(b.o.max_sections) == 0, "Cooked skeletal vertex attributes require another decoder");
     // The native counting archive inherits FArchive's no-op FName operator.
     // Physical inline FNames and streamed FMemoryArchive FStrings are excluded
@@ -720,6 +750,8 @@ Json CookedSkeletalLod::to_json(bool include) const {
     j["weightProfiles"] = Json::array();
     for (const auto &profile : weight_profiles)
         j["weightProfiles"].push_back(profile.to_json(include));
+    if (morphs)
+        j["morphs"] = morphs->to_json(include);
     if (include && geometry)
         j["geometry"] = geometry->to_json();
     return j;
@@ -742,6 +774,7 @@ Json CookedSkeletalMesh::to_json(bool include) const {
             {"parsedNativeBytes", parsed_native_bytes},
             {"nativePrefix", native_prefix},
             {"materials", materials},
+            {"morphBinding", {{"names", morph_names}, {"unavailable", morph_binding_unavailable}}},
             {"bones", b},
             {"lods", l},
             {"tail",
@@ -823,6 +856,53 @@ CookedSkeletalMesh read_zen_skeletal_mesh(const Container &container, std::size_
     out.native_offset = object.offset + offset + consumed;
     Cursor r{bytes, out.native_offset, object.offset + object.size};
     Budget budget{o};
+    const auto morph_property = properties.find("/Script/Engine.SkeletalMesh.MorphTargets");
+    if (morph_property == properties.end())
+        out.morph_binding_unavailable =
+            "MorphTargets property is omitted; its producer defaults are unresolved";
+    else {
+        need(morph_property->value("type", std::string{}) == "ArrayProperty" &&
+                 morph_property->contains("value") && morph_property->at("value").is_array(),
+             "Invalid mapped MorphTargets property");
+        const auto &refs = morph_property->at("value");
+        limit(refs.size() <= o.max_morph_targets, "Mapped morph target inventory exceeds budget");
+        std::map<std::string, const ZenExport *> targets;
+        for (const auto &ref : refs)
+            if (ref.is_object() && ref.value("kind", std::string{}) == "export" && ref.contains("path") &&
+                ref.at("path").is_string()) {
+                const auto path = ref.at("path").get<std::string>();
+                budget.reserve(128 + path.size());
+                targets.emplace(path, nullptr);
+            }
+        for (const auto &candidate : package.exports) {
+            control.check();
+            const auto found = targets.find(candidate.path);
+            if (found != targets.end())
+                found->second = &candidate;
+        }
+        std::set<std::string> seen;
+        for (const auto &ref : refs) {
+            control.check();
+            const ZenExport *target = nullptr;
+            if (ref.is_object() && ref.value("kind", std::string{}) == "export" && ref.contains("path") &&
+                ref.at("path").is_string()) {
+                const auto found = targets.find(ref.at("path").get<std::string>());
+                if (found != targets.end())
+                    target = found->second;
+            }
+            if (!target || target->class_name != "/Script/Engine.MorphTarget" ||
+                target->outer_index != selected || (target->flags & 0x30)) {
+                out.morph_binding_unavailable = "MorphTargets includes an unresolved, external or custom "
+                                                "morph; native target names are unknown";
+                out.morph_names.clear();
+                break;
+            }
+            need(!target->name.empty() && seen.insert(folded(target->name)).second,
+                 "Empty or duplicate mapped MorphTarget identity");
+            budget.reserve(128 + target->name.size());
+            out.morph_names.push_back(target->name);
+        }
+    }
     const auto guid = r.boolean();
     Json object_guid = nullptr;
     if (guid)

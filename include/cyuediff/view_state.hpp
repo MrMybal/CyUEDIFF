@@ -280,6 +280,17 @@ inline void validate(const Json &v, std::string_view kind) {
                                                                  : 3);
                     known = true;
                 }
+        } else if (kind == "render-morph") {
+            string({"target", "filter"});
+            flag({"changedOnly"});
+            child("properties", "property");
+            if (key == "vertex") {
+                if (!x.is_null()) {
+                    require(x.is_number_integer());
+                    scalar(x, 0, 4294967295.);
+                }
+                known = true;
+            }
         } else if (kind == "asset") {
             child("meshMorphs", "property");
             flag({"meshMorphInspection"});
@@ -310,6 +321,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("pixelView", "texture");
             child("meshView", "mesh");
             child("meshSkinView", "graph-inspection");
+            child("meshRenderMorphView", "render-morph");
+            flag({"meshRenderMorphs"});
             flag({"meshSkin"});
             child("collisions", "collision");
             child("physics", "collision");
@@ -323,6 +336,8 @@ inline void validate(const Json &v, std::string_view kind) {
         }
         require(known);
     }
+    if (kind == "container")
+        require(!(v.value("meshSkin", false) && v.value("meshRenderMorphs", false)));
     if(kind=="skeleton")
         require(int(v.value("posePreview",false))+int(v.value("animationPreview",false))+int(v.value("attachmentsPreview",false))<=1);
     if(kind=="curves" && v.contains("rangeBegin") && v.contains("rangeEnd"))

@@ -30,6 +30,12 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     // No file is saved and no existing source asset is changed.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateSkinWeightProfiles(UObject *Asset, int32 Variant);
+    // Adds original morph deltas only to caller-prepared /Game/Corpus/Morph* copies; never saves.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static bool PreparePrivateMorphs(UObject *Asset, int32 Variant);
+    // Serializes a fresh actual native compressed buffer and measures source/API quantization.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportCompressedMorphReference(UObject *Asset);
     // Direct actual curve codec measurements, with complete compressed-buffer identity.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportCompressedCurvesReference(UObject *Asset);

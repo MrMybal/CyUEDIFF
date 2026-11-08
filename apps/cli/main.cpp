@@ -907,7 +907,7 @@ int run(const std::vector<std::string> &args) {
                                 "Selected skeletal LOD geometry is unavailable");
                 auto result = compare_meshes(*before.lods[lod].geometry, *after.lods[after_lod].geometry);
                 output = result.to_json();
-                exit_code = result.changes.empty() ? 0 : 1;
+                exit_code = !result.complete ? 2 : result.changes.empty() ? 0 : 1;
                 output["beforeMesh"] = before.to_json();
                 output["afterMesh"] = after.to_json();
                 output["beforeLod"] = lod;

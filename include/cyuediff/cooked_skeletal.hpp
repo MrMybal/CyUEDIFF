@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/zen.hpp>
 #include <cyuediff/mesh_skin.hpp>
+#include <cyuediff/render_morphs.hpp>
 #include <optional>
 namespace cyuediff {
 enum class CookedSkeletalProfile { unspecified, unreal_5_3_windows };
@@ -20,6 +21,9 @@ struct CookedSkeletalOptions {
     std::uint32_t max_weight_profiles = 64, max_profile_overrides = 1'000'000;
     std::uint32_t max_profile_name_bytes = 4096;
     NarrowStringEncoding narrow_string_encoding = NarrowStringEncoding::unspecified;
+    // Aggregate compressed morph tables/entries across loaded LODs.
+    std::uint32_t max_morph_targets = 4096, max_morph_batches = 1'000'000;
+    std::uint64_t max_morph_deltas = 4'000'000;
 };
 struct CookedSkeletalWeightProfile {
     std::string name, skin_profile_key;
@@ -47,6 +51,7 @@ struct CookedSkeletalLod {
     Json buffers = nullptr, bulk = nullptr;
     std::string unavailable;
     std::shared_ptr<const MeshGeometry> geometry;
+    std::shared_ptr<const MeshRenderMorphs> morphs;
     Json to_json(bool include_geometry = false) const;
 };
 struct CookedSkeletalMesh {
@@ -55,6 +60,8 @@ struct CookedSkeletalMesh {
     std::string tail_sha256;
     std::size_t export_index = 0;
     std::vector<MeshBone> bones;
+    std::vector<std::string> morph_names;
+    std::string morph_binding_unavailable;
     std::vector<CookedSkeletalLod> lods;
     Json native_prefix = Json::object(), materials = Json::array();
     Json to_json(bool include_geometry = false) const;
@@ -64,8 +71,9 @@ struct CookedSkeletalMesh {
 // Inline and streamed Zen bulk windows use mandatory whole used-chunk integrity.
 // Named alternate profiles preserve sparse stored replacements and expose complete
 // stored-slot profiles under distinct "profile:" keys beside the base "default".
-// Cloth, duplicate-vertex tables, compressed
-// morph buffers and custom vertex attributes currently require another decoder.
+// Compressed morph buffers retain exact stored render deltas and bind names only
+// through explicit MorphTargets references to native child UMorphTarget exports.
+// Cloth, duplicate-vertex tables and custom vertex attributes require another decoder.
 // Later object-native data remains an identified opaque tail. No Unreal execution.
 CookedSkeletalMesh read_zen_skeletal_mesh(const Container &, std::size_t package_entry,
                                           const ZenReadOptions &, const ContainerReadOptions &,

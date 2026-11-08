@@ -1,4 +1,5 @@
 #include "CyUEDiffReferenceLibrary.h"
+#include "HAL/IConsoleManager.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimBoneCompressionCodec.h"
 #include "Animation/AnimCurveCompressionCodec_CompressedRichCurve.h"
@@ -29,6 +30,10 @@
 #include "Rendering/SkeletalMeshLODImporterData.h"
 #include "LODUtilities.h"
 #include "Animation/SkinWeightProfile.h"
+#include "Animation/MorphTarget.h"
+#include "Rendering/SkeletalMeshModel.h"
+#include "Rendering/SkeletalMeshLODModel.h"
+#include "Rendering/MorphTargetVertexInfoBuffers.h"
 #include "Materials/Material.h"
 #include "MaterialDomain.h"
 #include "Serialization/JsonSerializer.h"
@@ -400,6 +405,136 @@ bool UCyUEDiffReferenceLibrary::PreparePrivateSkinWeightProfiles(UObject *Asset,
     Mesh->PostEditChange();
     FAssetCompilingManager::Get().FinishAllCompilation();
     return true;
+}
+bool UCyUEDiffReferenceLibrary::PreparePrivateMorphs(UObject *Asset, int32 Variant) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh || Variant < 0 || Variant > 1 ||
+        !Mesh->GetOutermost()->GetName().StartsWith(TEXT("/Game/Corpus/Morph")) ||
+        Mesh->GetMorphTargets().Num())
+        return false;
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    FSkeletalMeshImportData Source;
+    Mesh->LoadLODImportedData(0, Source);
+    if (!Source.Points.Num() || !Source.Influences.Num()) {
+        FMeshDescription Description;
+        Mesh->GetMeshDescription(0, Description);
+        Source = FSkeletalMeshImportData::CreateFromMeshDescription(Description);
+    }
+    if (Source.Points.Num() < 4 || Source.Points.Num() > 1000000 || Source.MorphTargets.Num() ||
+        !Source.Influences.Num())
+        return false;
+    const TArray<FString> Names = {TEXT("CySparse"), TEXT("CyWave"), TEXT("CyMixed"), TEXT("CySubPrecision")};
+    for (int32 Kind = 0; Kind < Names.Num(); ++Kind) {
+        FSkeletalMeshImportData Shape;
+        TSet<uint32> Modified;
+        const uint32 Step = Kind == 0 ? 3 : Kind == 1 ? 5 : Kind == 2 ? 1 : Source.Points.Num();
+        for (uint32 I = Kind == 1 ? 1 : 0; I < uint32(Source.Points.Num()); I += Step) {
+            const float Change = Variant && I % 97 == 0 ? 2.0f : 1.0f;
+            const FVector3f Delta = Kind == 3 ? FVector3f(.001f * Change, 0, 0)
+                                              : FVector3f((int32(I % 17) - 8) * .03125f * Change,
+                                                          (int32(I % 11) - 5) * .015625f, .0625f);
+            Modified.Add(I);
+            Shape.Points.Add(Source.Points[I] + Delta);
+        }
+        Source.MorphTargetNames.Add(Names[Kind]);
+        Source.MorphTargetModifiedPoints.Add(MoveTemp(Modified));
+        Source.MorphTargets.Add(MoveTemp(Shape));
+    }
+    Mesh->GetLODInfo(0)->BuildSettings.MorphThresholdPosition = 0.0f;
+    Mesh->SaveLODImportedData(0, Source);
+    Mesh->SetLODImportedDataVersions(0, ESkeletalMeshGeoImportVersions::LatestVersion,
+                                     ESkeletalMeshSkinningImportVersions::LatestVersion);
+    Mesh->SetUseLegacyMeshDerivedDataKey(false);
+    Mesh->InvalidateDeriveDataCacheGUID();
+    Mesh->Build();
+    Mesh->PostEditChange();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    Mesh->MarkPackageDirty();
+    return Mesh->GetMorphTargets().Num() == Names.Num();
+}
+FString UCyUEDiffReferenceLibrary::ExportCompressedMorphReference(UObject *Asset) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh)
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    const auto *Render = Mesh->GetResourceForRendering();
+    if (!Render)
+        return FString();
+    auto Out = MakeShared<FJsonObject>();
+    Out->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-morph-reference/1"));
+    Out->SetStringField(TEXT("scope"), TEXT("native-compression-input-quantization"));
+    const auto *Recompute = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SkinCache.RecomputeTangents"));
+    if (!Recompute)
+        return FString();
+    const int32 RecomputeMode = Recompute->GetInt();
+    Out->SetNumberField(TEXT("configuredRecomputeTangentsMode"), RecomputeMode);
+    Values LODs;
+    for (int32 LI = 0; LI < Render->LODRenderData.Num(); ++LI) {
+        const auto &LOD = Render->LODRenderData[LI];
+        FMorphTargetVertexInfoBuffers Buffer;
+        Buffer.InitMorphResources(SP_PCD3D_SM5, LOD.RenderSections, Mesh->GetMorphTargets(),
+                                  LOD.GetNumVertices(), LI,
+                                  Mesh->GetLODInfo(LI)->MorphTargetPositionErrorTolerance);
+        TArray<uint8> Bytes;
+        FMemoryWriter Writer(Bytes, true);
+        Writer << Buffer;
+        auto L = MakeShared<FJsonObject>();
+        L->SetNumberField(TEXT("vertices"), LOD.GetNumVertices());
+        L->SetNumberField(TEXT("positionPrecision"), Buffer.GetPositionPrecision());
+        L->SetNumberField(TEXT("normalPrecision"), Buffer.GetTangentZPrecision());
+        Values Serialized, Targets;
+        for (const uint8 V : Bytes)
+            Serialized.Add(Number(V));
+        L->SetArrayField(TEXT("nativeBytes"), Serialized);
+        for (const auto &Morph : Mesh->GetMorphTargets()) {
+            auto T = MakeShared<FJsonObject>();
+            T->SetStringField(TEXT("name"), Morph->GetName());
+            T->SetStringField(TEXT("object"), Morph->GetPathName());
+            T->SetBoolField(TEXT("usesBuiltinCompression"), Morph->UsesBuiltinMorphTargetCompression());
+            int32 Count = 0;
+            const auto *Deltas = Morph->GetMorphTargetDelta(LI, Count);
+            Values DeltaValues;
+            for (int32 I = 0; I < Count; ++I) {
+                const auto &D = Deltas[I];
+                auto V = MakeShared<FJsonObject>();
+                V->SetNumberField(TEXT("vertex"), D.SourceIdx);
+                V->SetField(TEXT("sourcePosition"), Vec3(D.PositionDelta));
+                V->SetField(TEXT("sourceNormal"), Vec3(D.TangentZDelta));
+                const auto Quantize = [](const FVector3f &Value, float Precision, bool Normal) {
+                    TArray<TSharedPtr<FJsonValue>> Result;
+                    const float Rcp = 1.0f / Precision;
+                    for (int K = 0; K < 3; ++K)
+                        Result.Add(Number(
+                            FMath::RoundToInt(FMath::Clamp(Value[K] * Rcp, Normal ? -32768.0f : -134217728.0f,
+                                                           Normal ? 32767.0f : 134217720.0f))));
+                    return MakeShared<FJsonValueArray>(Result);
+                };
+                V->SetField(TEXT("quantizedPosition"),
+                            Quantize(D.PositionDelta, Buffer.GetPositionPrecision(), false));
+                bool KeepNormal = false;
+                for (const auto &Section : LOD.RenderSections)
+                    if (D.SourceIdx >= Section.BaseVertexIndex &&
+                        D.SourceIdx - Section.BaseVertexIndex < Section.NumVertices)
+                        KeepNormal =
+                            !(RecomputeMode > 0 && (Section.bRecomputeTangent || RecomputeMode == 1));
+                V->SetBoolField(TEXT("normalRetained"), KeepNormal);
+                V->SetField(TEXT("quantizedNormal"),
+                            Quantize(KeepNormal ? D.TangentZDelta : FVector3f::ZeroVector,
+                                     Buffer.GetTangentZPrecision(), true));
+                DeltaValues.Add(Obj(V));
+            }
+            T->SetArrayField(TEXT("sourceDeltas"), DeltaValues);
+            Targets.Add(Obj(T));
+        }
+        L->SetArrayField(TEXT("targets"), Targets);
+        LODs.Add(Obj(L));
+    }
+    Out->SetArrayField(TEXT("lods"), LODs);
+    Out->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Out->SetStringField(TEXT("object"), Mesh->GetPathName());
+    FString Text;
+    FJsonSerializer::Serialize(Out, TJsonWriterFactory<>::Create(&Text));
+    return Text;
 }
 FString UCyUEDiffReferenceLibrary::ExportReference(UObject *Asset) {
     if (!Asset)

@@ -97,6 +97,28 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                     changed_morph_vertices.insert(i.vertex);
         }
     }
+    if (mesh && peer && (current.contains("renderMorphs") || remote.contains("renderMorphs"))) {
+        const Json empty = Json::object();
+        const auto &a = current.contains("renderMorphs") ? current["renderMorphs"] : empty;
+        const auto &b = remote.contains("renderMorphs") ? remote["renderMorphs"] : empty;
+        if (a.value("ready", true) && b.value("ready", true)) {
+            const auto &at = a.contains("targets") ? a["targets"] : empty;
+            const auto &bt = b.contains("targets") ? b["targets"] : empty;
+            std::set<std::string> names;
+            for (auto i = at.begin(); i != at.end(); ++i)
+                names.insert(i.key());
+            for (auto i = bt.begin(); i != bt.end(); ++i)
+                names.insert(i.key());
+            for (const auto &name : names) {
+                const auto &av = at.contains(name) ? at[name]["vertices"] : empty;
+                const auto &bv = bt.contains(name) ? bt[name]["vertices"] : empty;
+                for (const auto *values : {&av, &bv})
+                    for (auto i = values->begin(); i != values->end(); ++i)
+                        if (!av.contains(i.key()) || !bv.contains(i.key()) || av[i.key()] != bv[i.key()])
+                            changed_morph_vertices.insert(static_cast<std::uint32_t>(std::stoul(i.key())));
+            }
+        }
+    }
     auto different = [&](const char *table, std::uint32_t id) {
         auto key = std::to_string(id);
         return !peer || !remote.at(table).contains(key) ||

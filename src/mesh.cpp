@@ -1,3 +1,4 @@
+#include <cyuediff/render_morphs.hpp>
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/mesh_morphs.hpp>
 #include "mesh.hpp"
@@ -651,12 +652,21 @@ Json MeshGeometry::to_json() const {
         morphs->validate(*this);
         result["morphs"] = morphs->to_json();
     }
+    if (render_morphs)
+        result["renderMorphs"] = render_morphs->semantic_snapshot();
     return result;
 }
 Json MeshComparison::to_json() const {
-    return {{"schema", "cyuediff.mesh-diff/1"},
-            {"status", changes.empty() ? "identical" : "changed"},
-            {"changes", changes}};
+    Json out = {{"schema", "cyuediff.mesh-diff/1"},
+                {"status", !complete         ? "incomplete"
+                           : changes.empty() ? "identical"
+                                             : "changed"},
+                {"changes", changes}};
+    if (!complete) {
+        out["complete"] = false;
+        out["diagnostics"] = diagnostics;
+    }
+    return out;
 }
 const MeshSource &Package::mesh_source(const std::string &object, std::uint32_t lod) const {
     if (!object.empty())

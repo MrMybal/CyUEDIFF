@@ -4,6 +4,7 @@
 #include <cyuediff/texture_view.hpp>
 #include <cyuediff/mesh_view.hpp>
 #include <cyuediff/mesh_skin_view.hpp>
+#include <cyuediff/render_morph_view.hpp>
 #include <cyuediff/collision_view.hpp>
 #include <cyuediff/cooked_animation_view.hpp>
 #include <cyuediff/nanite_view.hpp>
@@ -33,6 +34,8 @@ class ContainerView {
         bool after = false;
         MeshView view;
         MeshSkinView skin;
+        RenderMorphView morphs;
+        bool morphs_available = false;
         bool skin_available = false, comparison_known = true;
     };
     NaniteView nanite_;
@@ -49,7 +52,7 @@ class ContainerView {
     bool collisions_present_ = false;
     std::vector<MeshRow> mesh_rows_;
     int mesh_ = 0;
-    bool mesh_skin_ = false;
+    bool mesh_skin_ = false, mesh_morphs_ = false;
     std::vector<PixelRow> pixel_rows_;
     int pixel_ = 0;
     std::vector<MemberRow> member_rows_;

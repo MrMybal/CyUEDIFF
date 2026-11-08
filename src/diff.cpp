@@ -1,3 +1,4 @@
+#include <cyuediff/render_morphs.hpp>
 #include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
 #include <cyuediff/core.hpp>
@@ -272,7 +273,25 @@ SkeletonComparison compare_skeletons(const Package &before, const Package &after
 }
 MeshComparison compare_meshes(const MeshGeometry &before, const MeshGeometry &after) {
     MeshComparison result;
-    walk(before.to_json(), after.to_json(), "", result.changes);
+    auto a = before.to_json(), b = after.to_json();
+    if ((before.render_morphs && !before.render_morphs->ready()) ||
+        (after.render_morphs && !after.render_morphs->ready())) {
+        result.complete = false;
+        result.diagnostics.push_back(
+            "Stored render morph identities are unavailable; morph differences are unknown.");
+        a.erase("renderMorphs");
+        b.erase("renderMorphs");
+    } else if (a.contains("renderMorphs") || b.contains("renderMorphs")) {
+        const Json empty = {{"schema", "cyuediff.render-morphs/1"},
+                            {"ready", true},
+                            {"scope", "stored-render-deltas"},
+                            {"targets", Json::object()}};
+        if (!a.contains("renderMorphs"))
+            a["renderMorphs"] = empty;
+        if (!b.contains("renderMorphs"))
+            b["renderMorphs"] = empty;
+    }
+    walk(a, b, "", result.changes);
     return result;
 }
 DiffResult compare(const Package &before, const Package &after, const OperationControl &control) {

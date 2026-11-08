@@ -130,6 +130,59 @@ def compare(actual, reference):
             'triangles': triangles, 'nonzeroInfluences': influences}
 
 
+def compare_morphs(actual, reference):
+    """Validate stored compression against optional Engine source-API quantization.
+
+    This checks emitted bytes and every stored index/quantized/decompressed value.
+    It does not evaluate blend weights or runtime normal recomputation.
+    """
+    if reference.get('schema') != 'cyuediff.unreal-morph-reference/1' or not reference.get('engine', '').startswith('5.3.'):
+        raise ValueError('Matching UE 5.3 native morph reference required')
+    if reference.get('scope') != 'native-compression-input-quantization':
+        raise ValueError('Unexpected morph reference scope')
+    if actual.get('schema') != 'cyuediff.cooked-skeletal-mesh/1' or actual.get('profile') != 'ue5.3-windows':
+        raise ValueError('Unexpected cooked skeletal schema/profile')
+    if actual['object'] != reference['object'] or len(actual['lods']) != len(reference['lods']):
+        raise ValueError('Morph object or LOD identities disagree')
+    values = entries = targets = batches = 0
+    for li, (lod, ref) in enumerate(zip(actual['lods'], reference['lods'])):
+        model = lod['morphs']
+        if not model['ready']:
+            raise ValueError('Named morph bindings unavailable')
+        native = model['buffer']
+        raw = bytes(ref['nativeBytes'])
+        if native['nativeBytes'] != len(raw) or native['nativeSha256'] != hashlib.sha256(raw).hexdigest():
+            raise ValueError('Cooked morph native bytes differ from actual Engine serialization')
+        if native['baseVertices'] != ref['vertices'] or len(model['targets']) != len(ref['targets']):
+            raise ValueError('Morph target/vertex counts disagree')
+        for key in ('positionPrecision', 'normalPrecision'):
+            if native[key] != ref[key]:
+                raise ValueError('Native morph precision differs')
+        for source, stored in zip(ref['targets'], model['targets']):
+            if not source.get('usesBuiltinCompression') or stored['name'] != source['name']:
+                raise ValueError('Unknown compression or morph name mismatch')
+            if any(not isinstance(d.get('normalRetained'), bool) for d in source['sourceDeltas']):
+                raise ValueError('Reference normal retention is unspecified')
+            expected = [d for d in source['sourceDeltas'] if any(d['quantizedPosition'] + d['quantizedNormal'])]
+            expected.sort(key=lambda d: d['vertex'])
+            if len(expected) != len(stored['deltas']):
+                raise ValueError('Stored morph delta count differs from nonzero quantized source')
+            targets += 1
+            for a, b in zip(expected, stored['deltas']):
+                for key in ('vertex', 'quantizedPosition', 'quantizedNormal'):
+                    if a[key] != b[key]:
+                        raise ValueError(f'LOD {li}, {source["name"]}: {key} differs')
+                values += 7
+                for key, quantized, precision in [('position', 'quantizedPosition', 'positionPrecision'), ('normal', 'quantizedNormal', 'normalPrecision')]:
+                    for value, q in zip(b[key], a[quantized]):
+                        if not math.isfinite(value) or not math.isclose(value, q * ref[precision], rel_tol=1e-7, abs_tol=1e-9):
+                            raise ValueError('Stored float32 morph delta differs')
+                        values += 1
+                entries += 1
+        batches += native['batches']
+    return {'values': values, 'storedMorphDeltas': entries, 'morphTargets': targets, 'morphBatches': batches}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for field in ('manifest', 'consumer', 'container', 'global-toc', 'schema', 'output-dir'):
@@ -142,8 +195,9 @@ def main():
     if not cases or len(cases) > 10000 or any(not re.fullmatch(r'[0-9a-fA-F]{24}', row['entry']) for row in cases):
         parser.error('Select 1..10000 explicit 24-hex package chunk IDs')
     references = [(manifest_path.parent / row['reference']).resolve() for row in cases]
+    morph_references = [(manifest_path.parent / row['morphReference']).resolve() if row.get('morphReference') else None for row in cases]
     protected = [args.consumer.resolve(), args.container.resolve(), args.global_toc.resolve(),
-                 args.schema.resolve(), manifest_path, *references]
+                 args.schema.resolve(), manifest_path, *references, *[p for p in morph_references if p]]
     for toc in (args.container, args.global_toc):
         protected.extend(p.resolve() for p in toc.parent.glob(toc.stem + '*.ucas'))
     schema = json.loads(args.schema.read_text(encoding='utf-8'))
@@ -175,6 +229,10 @@ def main():
             actual = json.loads(result.stdout)
             reference = json.loads(ref_path.read_text(encoding='utf-8'))
             evidence = compare(actual, reference)
+            if morph_references[i]:
+                morphs = compare_morphs(actual, json.loads(morph_references[i].read_text(encoding='utf-8')))
+                evidence['values'] += morphs.pop('values')
+                evidence.update(morphs)
             evidence.update(entry=row['entry'], object=actual['object'], referenceEngine=reference['engine'])
             reports.append(evidence)
             (output / f'{i:03d}.json').write_text(json.dumps(actual, indent=2), encoding='utf-8')
