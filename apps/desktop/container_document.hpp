@@ -17,6 +17,9 @@ struct ContainerSource {
     CookedMeshProfile mesh_profile = CookedMeshProfile::unspecified,
                       after_mesh_profile = CookedMeshProfile::unspecified;
     std::optional<bool> keep_mobile_min_lod_setting, after_keep_mobile_min_lod_setting;
+    NaniteProfile nanite_profile = NaniteProfile::unspecified,
+                  after_nanite_profile = NaniteProfile::unspecified;
+    bool nanite_attributes = true, after_nanite_attributes = true;
     CookedPhysicsProfile physics_profile = CookedPhysicsProfile::unspecified,
                          after_physics_profile = CookedPhysicsProfile::unspecified;
     CookedSkeletalProfile skeletal_profile = CookedSkeletalProfile::unspecified,
@@ -35,6 +38,10 @@ struct ContainerSource {
     bool compare_payloads = false;
     std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;
+};
+struct ContainerNanitePreview {
+    std::string object_path;
+    std::shared_ptr<const CookedNaniteResource> resource;
 };
 struct ContainerAnimationPreview {
     std::string object_path;
@@ -71,6 +78,7 @@ struct ContainerDocument {
     std::vector<std::string> collision_diagnostics;
     Json meshes = Json::array(), mesh_differences = Json::array();
     std::vector<ContainerMeshPreview> mesh_previews;
+    std::vector<ContainerNanitePreview> nanite_previews;
     std::vector<std::string> mesh_diagnostics;
     Json animations = Json::array();
     std::vector<ContainerAnimationPreview> animation_previews;

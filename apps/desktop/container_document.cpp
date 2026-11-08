@@ -30,6 +30,9 @@ Json ContainerDocument::report() const {
     for (const auto &d : pixel_differences)
         differences.push_back(
             {{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}});
+    Json nanite = Json::array();
+    for (const auto &p : nanite_previews)
+        nanite.push_back({{"object", p.object_path}, {"resource", p.resource->information()}});
     return {{"schema", "cyuediff.desktop-container/1"},
             {"animations", animations},
             {"animationDiagnostics", animation_diagnostics},
@@ -44,6 +47,7 @@ Json ContainerDocument::report() const {
             {"meshes", meshes},
             {"meshDifferences", mesh_differences},
             {"meshPreviews", mesh_previews.size()},
+            {"naniteResources", std::move(nanite)},
             {"meshDiagnostics", mesh_diagnostics},
             {"textures", textures},
             {"texturePreviews", std::move(pixels)},
@@ -300,12 +304,12 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
             if ((!skeletal && object.class_name != "/Script/Engine.StaticMesh") || (object.flags & 0x30))
                 continue;
             try {
-                auto append = [&](const auto &mesh) {
+                auto append = [&](const auto &mesh, std::uint64_t extra = 0) {
                     if (mesh.package_sha256 != document->zen->sha256)
                         throw Error("container-integrity",
                                     "Cooked mesh package changed during document preparation");
                     auto metadata = mesh.to_json();
-                    std::uint64_t bytes = metadata.dump().size() * 6;
+                    std::uint64_t bytes = metadata.dump().size() * 6 + extra;
                     std::vector<ContainerMeshPreview> previews;
                     std::vector<std::string> diagnostics;
                     for (std::size_t l = 0; l < mesh.lods.size(); ++l) {
@@ -362,7 +366,12 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                     native.control = control;
                     native.max_read_bytes = std::min(256ull * 1024 * 1024, source.max_payload_bytes * 4);
                     native.max_output_bytes = 256ull * 1024 * 1024 - mesh_output;
-                    append(read_zen_static_mesh(*document->input, found, zen, read, native, i));
+                    native.nanite.profile = source.nanite_profile;
+                    native.nanite.attributes = source.nanite_attributes;
+                    const auto mesh = read_zen_static_mesh(*document->input, found, zen, read, native, i);
+                    append(mesh, mesh.nanite ? mesh.nanite->accounted_output_bytes() : 0);
+                    if (mesh.nanite)
+                        document->nanite_previews.push_back({object.path, mesh.nanite});
                 }
             } catch (const Error &error) {
                 if (error.code == "cancelled" || error.code == "container-integrity")
@@ -454,6 +463,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             source.after_physics_profile != CookedPhysicsProfile::unspecified ||
             source.after_skeletal_profile != CookedSkeletalProfile::unspecified ||
             source.after_skeletal_mobile_lod.has_value() || source.after_skeletal_colors.has_value() ||
+            source.after_nanite_profile != NaniteProfile::unspecified || !source.after_nanite_attributes ||
             source.after_mesh_profile != CookedMeshProfile::unspecified ||
             source.after_keep_mobile_min_lod_setting.has_value())
             throw Error("desktop-container", "After container options require an after container");
@@ -481,6 +491,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     left.after_skeletal_profile = CookedSkeletalProfile::unspecified;
     left.after_skeletal_mobile_lod.reset();
     left.after_skeletal_colors.reset();
+    left.after_nanite_profile = NaniteProfile::unspecified;
+    left.after_nanite_attributes = true;
     left.after_mesh_profile = CookedMeshProfile::unspecified;
     left.after_keep_mobile_min_lod_setting.reset();
     left.compare_payloads = false;
@@ -502,6 +514,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     right.skeletal_profile = source.after_skeletal_profile;
     right.skeletal_mobile_lod = source.after_skeletal_mobile_lod;
     right.skeletal_colors = source.after_skeletal_colors;
+    right.nanite_profile = source.after_nanite_profile;
+    right.nanite_attributes = source.after_nanite_attributes;
     right.mesh_profile = source.after_mesh_profile;
     right.keep_mobile_min_lod_setting = source.after_keep_mobile_min_lod_setting;
     auto document = std::make_shared<ContainerDocument>(*load_single(left, codec, control));
@@ -550,6 +564,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
             document->collision_diagnostics = loaded->collision_diagnostics;
             document->meshes = loaded->meshes;
             document->mesh_previews = loaded->mesh_previews;
+            document->nanite_previews = loaded->nanite_previews;
             document->mesh_diagnostics = loaded->mesh_diagnostics;
             document->textures = loaded->textures;
             document->previews = loaded->previews;

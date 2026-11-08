@@ -84,7 +84,7 @@ inline void validate(const Json &v, std::string_view kind) {
             }
             flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics",
                   "animationPose", "binaryLayouts", "virtualizedPayloads", "mesh-native", "physics-native",
-                  "animation-native", "skeletal-native"});
+                  "animation-native", "skeletal-native", "nanite-native"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);
@@ -98,6 +98,8 @@ inline void validate(const Json &v, std::string_view kind) {
             flag({"diagnostics"});
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);
+        } else if (kind == "nanite-layout") {
+            columns("columns", 2);
         } else if (kind == "container-layout") {
             columns("memberColumns", 4);
             columns("objectColumns", 2);
@@ -173,7 +175,7 @@ inline void validate(const Json &v, std::string_view kind) {
                 scalar(x, 0, 1e9);
                 known = true;
             }
-        } else if(kind=="skeleton") {
+        } else if (kind == "skeleton") {
             flag({"posePreview","animationPreview","attachmentsPreview"});
             child("attachments","attachments");
             child("animation","graph-inspection");
@@ -184,7 +186,7 @@ inline void validate(const Json &v, std::string_view kind) {
             child("inspection","graph-inspection");
             child("canvas","canvas");
             child("metadata","property");
-        } else if(kind=="curves"){
+        } else if (kind == "curves") {
             string({"beforeObject","afterObject","lane","animationFamily"});
             if(key=="animationFamily")require(x=="float" || x=="transform");
             flag({"customRange"});
@@ -193,11 +195,11 @@ inline void validate(const Json &v, std::string_view kind) {
 
             child("inspection","graph-inspection");
             if(key=="time"){scalar(x,-std::numeric_limits<double>::max(),std::numeric_limits<double>::max());known=true;}
-        } else if(kind=="animation-pose"){
+        } else if (kind == "animation-pose") {
             string({"selected","filter"});
             child("camera","mesh");
             if(key=="positionTolerance"){scalar(x,0,std::numeric_limits<double>::max());known=true;}
-        } else if(kind=="animation-source"){
+        } else if (kind == "animation-source") {
             string({"beforeObject","afterObject"});
             child("inspection","graph-inspection");
             flag({"independentFrames"});
@@ -205,7 +207,7 @@ inline void validate(const Json &v, std::string_view kind) {
             if(key=="positionTolerance" || key=="scaleTolerance"){scalar(x,0,std::numeric_limits<double>::max());known=true;}
             if(key=="rotationToleranceDegrees"){scalar(x,0,180);known=true;}
             if(key=="component"){scalar(x,0,9);require(x.is_number_integer());known=true;}
-        } else if(kind=="attachments"){
+        } else if (kind == "attachments") {
             flag({"preview"});
             string({"beforeSource","afterSource"});
             child("inspection","graph-inspection");
@@ -261,6 +263,23 @@ inline void validate(const Json &v, std::string_view kind) {
                 scalar(x, 0, 180);
                 known = true;
             }
+        } else if (kind == "nanite") {
+            string({"filter"});
+            flag({"after", "clusterPreview", "attributes", "changedOnly", "compactSurface"});
+            child("layout", "nanite-layout");
+            child("properties", "property");
+            child("camera", "mesh");
+            for (const auto *name : {"page", "cluster", "vertex", "triangle", "node", "inspector"})
+                if (key == name) {
+                    require(x.is_number_integer());
+                    scalar(x, 0,
+                           key == "page"                         ? 16383
+                           : key == "cluster" || key == "vertex" ? 255
+                           : key == "triangle"                   ? 127
+                           : key == "node"                       ? 65535
+                                                                 : 3);
+                    known = true;
+                }
         } else if (kind == "asset") {
             child("meshMorphs", "property");
             flag({"meshMorphInspection"});
@@ -282,6 +301,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("after", "side");
             child("comparison", "diff");
         } else if (kind == "container") {
+            child("nanite", "nanite");
+            string({"beforeNanite", "afterNanite"}, true);
             child("animation", "cooked-animation");
             string({"beforeAnimation", "afterAnimation"}, true);
             child("layout", "container-layout");

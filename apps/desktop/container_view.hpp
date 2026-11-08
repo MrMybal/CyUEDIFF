@@ -6,6 +6,7 @@
 #include <cyuediff/mesh_skin_view.hpp>
 #include <cyuediff/collision_view.hpp>
 #include <cyuediff/cooked_animation_view.hpp>
+#include <cyuediff/nanite_view.hpp>
 namespace cyuediff::desktop {
 enum class ContainerAction { none, inspect, select_object };
 class ContainerView {
@@ -34,6 +35,10 @@ class ContainerView {
         MeshSkinView skin;
         bool skin_available = false, comparison_known = true;
     };
+    NaniteView nanite_;
+    int before_nanite_ = -1, after_nanite_ = -1;
+    bool nanite_present_ = false;
+    void bind_nanite();
     CookedAnimationView animation_;
     int before_animation_ = -1, after_animation_ = -1;
     bool animation_present_ = false;
@@ -85,11 +90,13 @@ class ContainerView {
     }
     void poll() {
         animation_.poll();
+        nanite_.poll();
     }
     bool busy() const {
-        return animation_.busy();
+        return animation_.busy() || nanite_.busy();
     }
     Json animation_report() const;
+    Json nanite_report() const;
     Json mesh_report() const;
     Json physics_report() const {
         return physics_present_ ? physics_.report() : Json(nullptr);

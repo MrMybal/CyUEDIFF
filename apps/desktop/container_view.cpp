@@ -26,11 +26,20 @@ cyui::Tone state_tone(const std::string &state) {
 } // namespace
 void ContainerView::register_translations() {
     CookedAnimationView::register_translations();
+    NaniteView::register_translations();
     MeshSkinView::register_translations();
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"Curve settings TOC before", "TOC des réglages de courbes avant"},
+        {{"Nanite resource unavailable", "Ressource Nanite indisponible"},
+         {"Before Nanite resource", "Ressource Nanite avant"},
+         {"After Nanite resource", "Ressource Nanite après"},
+         {"Cooked Nanite settings", "Réglages Nanite cooked"},
+         {"Before Nanite profile", "Profil Nanite avant"},
+         {"After Nanite profile", "Profil Nanite après"},
+         {"Decode Nanite attributes", "Décoder les attributs Nanite"},
+         {"Decode after Nanite attributes", "Décoder les attributs Nanite après"},
+         {"Curve settings TOC before", "TOC des réglages de courbes avant"},
          {"Curve settings TOC after", "TOC des réglages de courbes après"},
          {"Curve settings member before", "Membre des réglages de courbes avant"},
          {"Curve settings member after", "Membre des réglages de courbes après"},
@@ -333,6 +342,9 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     physics_.set_models(nullptr, nullptr, {}, {});
     collisions_present_ = false;
     collisions_.set_models(nullptr, nullptr, {}, {});
+    nanite_.set_resources(nullptr);
+    nanite_present_ = false;
+    before_nanite_ = after_nanite_ = -1;
     animation_.set_animations(nullptr);
     animation_present_ = false;
     before_animation_ = after_animation_ = -1;
@@ -564,6 +576,15 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
         bind_animation();
         if (animation_present_)
             initial_tab_ = 9;
+        before_nanite_ = document_->nanite_previews.empty() ? -1 : 0;
+        after_nanite_ = document_->after && !document_->after->nanite_previews.empty() ? 0 : -1;
+        nanite_present_ =
+            before_nanite_ >= 0 || after_nanite_ >= 0 ||
+            document_->source.nanite_profile != NaniteProfile::unspecified ||
+            (document_->after && document_->after->source.nanite_profile != NaniteProfile::unspecified);
+        bind_nanite();
+        if (nanite_present_)
+            initial_tab_ = 10;
         select_tab_ = true;
     } else {
         members_.clear();
@@ -572,10 +593,11 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 9 || (tab == 9 && !animation_present_) ||
-        (tab == 8 && !physics_present_) || (tab == 7 && !collisions_present_) ||
-        (tab == 6 && mesh_rows_.empty()) || (tab == 5 && pixel_rows_.empty()) ||
-        (tab == 2 && object_rows_.empty()) || (tab == 3 && !document_->after) ||
+    if (!document_ || tab < 0 || tab > 10 || (tab == 10 && !nanite_present_) ||
+        (tab == 9 && !animation_present_) || (tab == 8 && !physics_present_) ||
+        (tab == 7 && !collisions_present_) || (tab == 6 && mesh_rows_.empty()) ||
+        (tab == 5 && pixel_rows_.empty()) || (tab == 2 && object_rows_.empty()) ||
+        (tab == 3 && !document_->after) ||
         (tab == 4 && !document_->schema_manifest &&
          (!document_->after || !document_->after->schema_manifest)))
         return false;
@@ -638,6 +660,27 @@ void ContainerView::bind_animation() {
                            : nullptr;
     animation_.set_animations(before, after, document_ && document_->after != nullptr);
 }
+void ContainerView::bind_nanite() {
+    const auto a =
+        document_ && before_nanite_ >= 0 ? document_->nanite_previews.at(before_nanite_).resource : nullptr;
+    const auto b = document_ && document_->after && after_nanite_ >= 0
+                       ? document_->after->nanite_previews.at(after_nanite_).resource
+                       : nullptr;
+    nanite_.set_resources(a, b, document_ && document_->after != nullptr);
+}
+Json ContainerView::nanite_report() const {
+    if (!nanite_present_)
+        return nullptr;
+    auto result = nanite_.report();
+    result["beforeObject"] =
+        before_nanite_ >= 0 ? Json(document_->nanite_previews.at(before_nanite_).object_path) : Json(nullptr);
+    result["afterObject"] = after_nanite_ >= 0
+                                ? Json(document_->after->nanite_previews.at(after_nanite_).object_path)
+                                : Json(nullptr);
+    result["beforeDiagnostics"] = document_->mesh_diagnostics;
+    result["afterDiagnostics"] = document_->after ? Json(document_->after->mesh_diagnostics) : Json::array();
+    return result;
+}
 Json ContainerView::animation_report() const {
     if (!animation_present_)
         return nullptr;
@@ -678,6 +721,15 @@ Json ContainerView::view_state() const {
         result["meshSkin"] = mesh_skin_;
         if (mesh_rows_[mesh_].skin_available)
             result["meshSkinView"] = mesh_rows_[mesh_].skin.view_state();
+    }
+    if (nanite_present_) {
+        result["nanite"] = nanite_.view_state();
+        result["beforeNanite"] = before_nanite_ >= 0
+                                     ? Json(document_->nanite_previews.at(before_nanite_).object_path)
+                                     : Json(nullptr);
+        result["afterNanite"] = after_nanite_ >= 0
+                                    ? Json(document_->after->nanite_previews.at(after_nanite_).object_path)
+                                    : Json(nullptr);
     }
     if (animation_present_) {
         result["animation"] = animation_.view_state();
@@ -765,6 +817,28 @@ void ContainerView::restore_view_state(const Json &state) {
             bind_animation();
         if (state.contains("animation"))
             animation_.restore_view_state(state["animation"]);
+    }
+    if (nanite_present_) {
+        bool changed = false;
+        auto select = [&](const char *key, const ContainerDocument *side, int &index) {
+            if (!state.contains(key))
+                return;
+            int value = -1;
+            if (side && !state[key].is_null())
+                for (std::size_t i = 0; i < side->nanite_previews.size(); ++i)
+                    if (side->nanite_previews[i].object_path == state[key]) {
+                        value = int(i);
+                        break;
+                    }
+            changed = changed || index != value;
+            index = value;
+        };
+        select("beforeNanite", document_.get(), before_nanite_);
+        select("afterNanite", document_->after.get(), after_nanite_);
+        if (changed)
+            bind_nanite();
+        if (state.contains("nanite"))
+            nanite_.restore_view_state(state["nanite"]);
     }
     if (physics_present_ && state.contains("physics"))
         physics_.restore_view_state(state["physics"]);
@@ -1075,6 +1149,40 @@ ContainerAction ContainerView::draw(bool busy) {
             for (const auto &diagnostic : document_->after->animation_diagnostics)
                 ImGui::TextWrapped("%s: %s", cyui::tr("After").c_str(), diagnostic.c_str());
         animation_.draw();
+        ImGui::EndTabItem();
+    }
+    if (nanite_present_ && ImGui::BeginTabItem(cyui::trLabel("Nanite").c_str(), nullptr, flags(10))) {
+        active_tab_ = 10;
+        auto choose = [&](const char *label, const ContainerDocument *side, int &selected) {
+            const auto text = side && selected >= 0 ? side->nanite_previews[std::size_t(selected)].object_path
+                                                    : cyui::tr("Nanite resource unavailable");
+            if (ImGui::BeginCombo(cyui::trLabel(label).c_str(), text.c_str())) {
+                bool changed = false;
+                if (ImGui::Selectable(cyui::trLabel("Unavailable").c_str(), selected < 0)) {
+                    selected = -1;
+                    changed = true;
+                }
+                if (side)
+                    for (std::size_t i = 0; i < side->nanite_previews.size(); ++i)
+                        if (ImGui::Selectable(side->nanite_previews[i].object_path.c_str(),
+                                              selected == int(i))) {
+                            selected = int(i);
+                            changed = true;
+                        }
+                ImGui::EndCombo();
+                if (changed)
+                    bind_nanite();
+            }
+        };
+        choose("Before Nanite resource", document_.get(), before_nanite_);
+        if (document_->after)
+            choose("After Nanite resource", document_->after.get(), after_nanite_);
+        for (const auto &diagnostic : document_->mesh_diagnostics)
+            ImGui::TextWrapped("%s: %s", cyui::tr("Before").c_str(), diagnostic.c_str());
+        if (document_->after)
+            for (const auto &diagnostic : document_->after->mesh_diagnostics)
+                ImGui::TextWrapped("%s: %s", cyui::tr("After").c_str(), diagnostic.c_str());
+        nanite_.draw();
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

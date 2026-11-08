@@ -162,6 +162,8 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "nanite")
+                options.container_tab = 10;
             else if (name == "animations")
                 options.container_tab = 9;
             else if (name == "physics")
@@ -305,6 +307,25 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.after_container_parameters = true;
             } else
                 options.settings.physics_profile = 1;
+        } else if (argument == "--nanite-profile" || argument == "--after-nanite-profile") {
+            if (value() != "ue5.3-windows")
+                throw Error("desktop-option", "Supported Nanite profile: ue5.3-windows");
+            options.container_parameters = true;
+            if (argument == "--after-nanite-profile") {
+                options.settings.after_nanite_profile = 1;
+                options.after_container_parameters = true;
+            } else
+                options.settings.nanite_profile = 1;
+        } else if (argument == "--nanite-attributes" || argument == "--after-nanite-attributes") {
+            const auto enabled = value();
+            if (enabled != "0" && enabled != "1")
+                throw Error("desktop-option", "Nanite attribute setting must be 0 or 1");
+            options.container_parameters = true;
+            if (argument == "--after-nanite-attributes") {
+                options.settings.after_nanite_attributes = enabled == "1";
+                options.after_container_parameters = true;
+            } else
+                options.settings.nanite_attributes = enabled == "1";
         } else if (argument == "--mesh-profile" || argument == "--after-mesh-profile") {
             const auto profile = value();
             if (profile != "ue5.3-windows")
@@ -1123,7 +1144,8 @@ class Shell {
                 {"meshViews", current().container_view.mesh_report()},
                 {"collisionView", current().container_view.collision_report()},
                 {"physicsView", current().container_view.physics_report()},
-                {"animationView", current().container_view.animation_report()}};
+                {"animationView", current().container_view.animation_report()},
+                {"naniteView", current().container_view.nanite_report()}};
     }
     Json history_report() const {
 #ifdef CYUEDIFF_HAS_GIT
@@ -2021,6 +2043,52 @@ class Shell {
                                 .c_str());
                         cyui::endSection();
                     }
+                    if (current().layout.section("nanite-native", "Cooked Nanite settings",
+                                                 current().settings.nanite_profile ||
+                                                     current().settings.after_nanite_profile)) {
+                        const auto disabled = cyui::tr("Disabled");
+                        const char *profiles[] = {disabled.c_str(), "UE 5.3 Windows"};
+                        if (cyui::beginProperties("##nanite-context", 95)) {
+                            cyui::property(cyui::tr("Before Nanite profile").c_str());
+                            if (ImGui::Combo("##nanite-profile", &current().settings.nanite_profile, profiles,
+                                             2) &&
+                                current().settings.nanite_profile == 1) {
+                                if (!current().settings.mesh_profile)
+                                    current().settings.mesh_profile = 1;
+                                if (!current().settings.cooked_profile)
+                                    current().settings.cooked_profile = 1;
+                            }
+                            cyui::property(cyui::tr("Decode Nanite attributes").c_str());
+                            ImGui::Checkbox("##nanite-attributes", &current().settings.nanite_attributes);
+                            cyui::property(cyui::tr("After Nanite profile").c_str());
+                            if (ImGui::Combo("##after-nanite-profile",
+                                             &current().settings.after_nanite_profile, profiles, 2) &&
+                                current().settings.after_nanite_profile == 1) {
+                                if (!current().settings.after_mesh_profile)
+                                    current().settings.after_mesh_profile = 1;
+                                if (!current().settings.after_cooked_profile)
+                                    current().settings.after_cooked_profile = 1;
+                            }
+                            cyui::property(cyui::tr("Decode after Nanite attributes").c_str());
+                            ImGui::Checkbox("##after-nanite-attributes",
+                                            &current().settings.after_nanite_attributes);
+                            const auto unknown = cyui::tr("Unknown"), off = cyui::tr("Off"),
+                                       on = cyui::tr("On");
+                            const char *mobile[] = {unknown.c_str(), off.c_str(), on.c_str()};
+                            cyui::property(cyui::tr("Mobile min LOD").c_str());
+                            ImGui::Combo("##nanite-mobile-lod", &current().settings.mesh_mobile_lod, mobile,
+                                         3);
+                            cyui::property(cyui::tr("After mobile min LOD").c_str());
+                            ImGui::Combo("##after-nanite-mobile-lod",
+                                         &current().settings.after_mesh_mobile_lod, mobile, 3);
+                            cyui::endProperties();
+                        }
+                        ImGui::TextWrapped(
+                            "%s",
+                            cyui::tr("Use the producer r.StaticMesh.KeepMobileMinLODSettingOnDesktop value.")
+                                .c_str());
+                        cyui::endSection();
+                    }
                     if (current().layout.section("skeletal-native", "Cooked skeletal settings",
                                                  current().settings.skeletal_profile ||
                                                      current().settings.after_skeletal_profile)) {
@@ -2736,6 +2804,8 @@ int run(Options options) {
                "  [--after-skeletal-profile ue5.3-windows --after-skeletal-keep-mobile-min-lod 0|1 "
                "--after-has-vertex-colors 0|1]\n"
                "  [--physics-profile ue5.3-windows] [--after-physics-profile ue5.3-windows]\n"
+               "  [--nanite-profile ue5.3-windows --nanite-attributes 0|1 --container-tab nanite]\n"
+               "  [--after-nanite-profile ue5.3-windows --after-nanite-attributes 0|1]\n"
                "  [--mesh-profile ue5.3-windows --keep-mobile-min-lod 0|1]\n"
                "  [--after-mesh-profile ue5.3-windows --after-keep-mobile-min-lod 0|1]\n"
                "  [--container-tab "

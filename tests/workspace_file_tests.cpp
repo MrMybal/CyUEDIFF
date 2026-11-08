@@ -24,13 +24,27 @@ std::string bytes(const fs::path &p) {
 }
 void strip_animation(Json &j) {
     for (auto &d : j["documents"])
-        for (const char *key :
-             {"curve_settings_container", "after_curve_settings_container", "curve_settings_entry",
-              "after_curve_settings_entry", "after_container_entry", "bone_settings_container",
-              "skeleton_container", "after_bone_settings_container", "after_skeleton_container",
-              "bone_settings_entry", "skeleton_entry", "after_bone_settings_entry", "after_skeleton_entry",
-              "animation_profile", "after_animation_profile", "animation_interpolation",
-              "after_animation_interpolation"})
+        for (const char *key : {"curve_settings_container",
+                                "after_curve_settings_container",
+                                "curve_settings_entry",
+                                "after_curve_settings_entry",
+                                "after_container_entry",
+                                "bone_settings_container",
+                                "skeleton_container",
+                                "after_bone_settings_container",
+                                "after_skeleton_container",
+                                "bone_settings_entry",
+                                "skeleton_entry",
+                                "after_bone_settings_entry",
+                                "after_skeleton_entry",
+                                "animation_profile",
+                                "after_animation_profile",
+                                "animation_interpolation",
+                                "after_animation_interpolation",
+                                "nanite_profile",
+                                "after_nanite_profile",
+                                "nanite_attributes",
+                                "after_nanite_attributes"})
             d["settings"].erase(key);
 }
 template <class F> void rejects(F f) {
@@ -96,6 +110,25 @@ int main() {
         value.documents.push_back(cooked);
         value.active = 2;
         check(value.to_json().dump().find("NEVER_AUTO_LOAD") == std::string::npos, "Codec path is excluded");
+        cooked.settings.nanite_profile = 1;
+        cooked.settings.after_nanite_profile = 1;
+        cooked.settings.after_nanite_attributes = false;
+        value.documents[2] = cooked;
+        value.documents[2].container_tab = 10;
+        auto nanite_roundtrip = WorkspaceFile::from_json(value.to_json());
+        check(nanite_roundtrip.documents[2].settings.nanite_profile == 1 &&
+                  !nanite_roundtrip.documents[2].settings.after_nanite_attributes &&
+                  nanite_roundtrip.documents[2].container_tab == 10,
+              "Independent Nanite profiles and requested attributes round trip");
+        value.documents[2].container_tab = 4;
+        auto eleven = value.to_json();
+        eleven["schema"] = "cyuediff.workspace/11";
+        for (auto &d : eleven["documents"])
+            for (const auto *k :
+                 {"nanite_profile", "after_nanite_profile", "nanite_attributes", "after_nanite_attributes"})
+                d["settings"].erase(k);
+        check(WorkspaceFile::from_json(eleven).documents[2].settings.nanite_profile == 0,
+              "Version eleven does not invent Nanite reader bindings");
         save_workspace(path, value);
         auto read = read_workspace(path);
         check(read.active == 2 && read.documents.size() == 3, "Active index and document order round trip");
@@ -305,6 +338,10 @@ int main() {
         auto legacy_ten = animation_state;
         legacy_ten["schema"] = "cyuediff.workspace/10";
         for (auto &d : legacy_ten["documents"])
+            for (const auto *k :
+                 {"nanite_profile", "after_nanite_profile", "nanite_attributes", "after_nanite_attributes"})
+                d["settings"].erase(k);
+        for (auto &d : legacy_ten["documents"])
             for (const auto *key : {"curve_settings_container", "after_curve_settings_container",
                                     "curve_settings_entry", "after_curve_settings_entry"})
                 d["settings"].erase(key);
@@ -414,7 +451,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/11",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/12",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -436,7 +473,7 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(version_two);
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/11",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/12",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -462,7 +499,7 @@ int main() {
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/11",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/12",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

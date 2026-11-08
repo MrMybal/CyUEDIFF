@@ -137,3 +137,28 @@ cyuediff zen-nanite-diff BEFORE.utoc ID AFTER.utoc ID [explicit matching context
 The explicit CLI comparison flag automatically requests attribute decoding; a per-side `--nanite-attributes 0` or `--after-nanite-attributes 0` can deliberately retain unknown coverage. The default remains position/topology/material comparison. Exit codes remain 0 identical in scope, 1 supported changes and 2 incomplete/error. Bounds cover aggregate triangles, geometric keys, per-bucket duplicate signatures, transient vector growth and output references. Duplicate matching uses ordered maps rather than quadratic candidate scans; cancellation applies during indexing, signature matching and focused queries.
 
 The installed [comparison consumer](../examples/cooked_nanite_comparison_consumer/README.md) links only `CyUEDiff::Core`, reads two explicit complete resources with independent global/schema/mobile-LOD context and emits all scoped differences. Original whole-package tests cover each channel, cyclic/coincident-position correspondence, duplicate permutation/removal, residual ambiguity, color/UV repacking with identical values, mixed known/unknown channels, budgets and cancellation. The installed consumer additionally checks four original changed packages against newly dispatched actual shader outputs, incomplete requested coverage, real resident/streamed self-comparisons and a source-API-checked real geometric difference. Both source/dependency sets and hard-link aliases are protected. Dedicated Nanite desktop review remains in development.
+
+## CyUI and Windows desktop review — post-0.181 development
+
+The optional source-built `CyUEDiff::UI` library now provides `NaniteView` in `nanite_view.hpp`. It accepts immutable `CookedNaniteResource` models, prepares comparisons and wire packets on a cancellable latest-request worker, and performs no file reads while drawing. The installed Core SDK remains independent of CyUI; this view is consumed through the source-built UI target.
+
+The desktop **Nanite** tab retains a separate resource choice for each side, including different object names. Select explicit matching cooked/mesh/Nanite profiles, mappings and script objects in each source context; the producer's mobile-min-LOD fact remains required. GUI Nanite-profile selection initializes unset matching mesh/cooked profiles. It does not override an already selected profile. Reading retains the Nanite resource and render LODs from the same verified StaticMesh read and shared bulk cache, with aggregate accounted document output.
+
+The default wire displays only the full-leaf surface. **Selected cluster preview** inspects one stored cluster, including coarse hierarchy levels, without superimposing every level as one mesh. Added, removed and modified shading triangles use distinct colors and counts; the selected triangle is emphasized. The inspector offers focused resource/page/cluster facts, quantized/native-float vertices and stored shading, aligned before/after triangle corners, and stored hierarchy nodes. Numeric page/cluster/vertex/triangle/node selectors, search, changed-cluster filtering and next-change navigation complement the virtualized cluster list.
+
+A reported modified pair uses the Core's native references and canonical corner rotations. Exact identical resource encodings can use the same native triangle reference. Unchanged triangles in differently encoded resources are not assigned a guessed counterpart. Added/removed triangles compare to established absence; missing resources or unavailable channels do not create removals. Paired inspector presentation masks unknown semantic channels while the raw query report retains both independent results. Duplicate pairing ambiguity and incomplete coverage remain visible.
+
+The view prepares at most 200,000 wire edges and 100,000 cluster rows. Counts and comparisons retain their full documented scope. Display caps are explicit; numeric cluster selection remains available outside the clipped list. Backends without vertex-offset support use a 4,000-edge frame cap. The camera fits native cooker coordinates with Z up and supports orbit/pan/zoom. Compact layouts switch between surface and inspector. Workspace version 12 retains independent profiles/attribute choices, resource object paths, selections, filters, focused property state, camera and panel proportions.
+
+```powershell
+cyuediff_desktop.exe --container BEFORE.utoc --container-entry ID `
+  --after-container AFTER.utoc --after-container-entry ID `
+  --cooked-profile ue5.3 --after-cooked-profile ue5.3 `
+  --mesh-profile ue5.3-windows --after-mesh-profile ue5.3-windows `
+  --nanite-profile ue5.3-windows --after-nanite-profile ue5.3-windows `
+  --keep-mobile-min-lod 0 --after-keep-mobile-min-lod 0 `
+  --script-objects BEFORE/global.utoc --after-script-objects AFTER/global.utoc `
+  --schema BEFORE/context.json --after-schema AFTER/context.json --container-tab nanite
+```
+
+`--nanite-attributes 0|1` and `--after-nanite-attributes 0|1` control independent decoding (enabled by default when the profile is selected). The view's attribute-comparison checkbox changes comparison scope; it cannot recover channels that were not decoded. Controls and coverage messages are available in English and French. This is stored geometry/shading inspection and wire review; runtime Nanite LOD selection, GPU material evaluation and a rendered shaded scene remain outside this path.

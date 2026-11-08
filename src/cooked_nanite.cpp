@@ -517,32 +517,37 @@ Json CookedNaniteResource::information(const OperationControl &control) const {
     out["geometryKnown"] = geometry_known();
     return out;
 }
+std::size_t CookedNaniteResource::page_count() const {
+    return impl_->states.size();
+}
+Json CookedNaniteResource::page_metadata(std::size_t i, const OperationControl &control) const {
+    control.check();
+    need(i < impl_->states.size(), "Nanite page selection exceeds resource table");
+    const auto &s = impl_->states[i];
+    Json deps = Json::array();
+    for (unsigned j = 0; j < s.dependencies; ++j) {
+        control.check();
+        deps.push_back(impl_->dependencies[s.dependency_start + j]);
+    }
+    return Json({{"index", i},
+                 {"root", i < impl_->root_pages},
+                 {"bulkOffset", s.offset},
+                 {"bulkBytes", s.bytes},
+                 {"pageBytes", s.disk_bytes},
+                 {"dependencies", std::move(deps)},
+                 {"maxHierarchyDepth", s.depth},
+                 {"flags", s.flags},
+                 {"sha256", s.hash.empty() ? Json(nullptr) : Json(s.hash)},
+                 {"unavailable", s.unavailable.empty() ? Json(nullptr) : Json(s.unavailable)}});
+}
 Json CookedNaniteResource::catalog(const OperationControl &control) const {
     control.check();
     auto out = impl_->info;
     out["geometryKnown"] = geometry_known();
     out["rootOffsets"] = impl_->roots;
     out["pages"] = Json::array();
-    for (std::size_t i = 0; i < impl_->states.size(); ++i) {
-        control.check();
-        const auto &s = impl_->states[i];
-        Json deps = Json::array();
-        for (unsigned j = 0; j < s.dependencies; ++j) {
-            control.check();
-            deps.push_back(impl_->dependencies[s.dependency_start + j]);
-        }
-        out["pages"].push_back(
-            {{"index", i},
-             {"root", i < impl_->root_pages},
-             {"bulkOffset", s.offset},
-             {"bulkBytes", s.bytes},
-             {"pageBytes", s.disk_bytes},
-             {"dependencies", std::move(deps)},
-             {"maxHierarchyDepth", s.depth},
-             {"flags", s.flags},
-             {"sha256", s.hash.empty() ? Json(nullptr) : Json(s.hash)},
-             {"unavailable", s.unavailable.empty() ? Json(nullptr) : Json(s.unavailable)}});
-    }
+    for (std::size_t i = 0; i < impl_->states.size(); ++i)
+        out["pages"].push_back(page_metadata(i, control));
     out["geometry"] = impl_->geometry ? impl_->geometry->catalog(control) : Json(nullptr);
     return out;
 }

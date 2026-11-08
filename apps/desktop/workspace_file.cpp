@@ -182,6 +182,10 @@ Json WorkspaceFile::to_json() const {
         s["after_skeletal_colors"] = d.settings.after_skeletal_colors;
         s["physics_profile"] = d.settings.physics_profile;
         s["after_physics_profile"] = d.settings.after_physics_profile;
+        s["nanite_profile"] = d.settings.nanite_profile;
+        s["after_nanite_profile"] = d.settings.after_nanite_profile;
+        s["nanite_attributes"] = d.settings.nanite_attributes;
+        s["after_nanite_attributes"] = d.settings.after_nanite_attributes;
         s["mesh_profile"] = d.settings.mesh_profile;
         s["after_mesh_profile"] = d.settings.after_mesh_profile;
         s["mesh_mobile_lod"] = d.settings.mesh_mobile_lod;
@@ -192,7 +196,7 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/11"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/12"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
@@ -203,7 +207,7 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                  (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
                   (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
                    (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10" ||
-                    j["schema"] == "cyuediff.workspace/11")))) &&
+                    (j["schema"] == "cyuediff.workspace/11" || j["schema"] == "cyuediff.workspace/12"))))) &&
                 j.contains("active") && j.contains("documents"),
             "Unsupported workspace format");
     const auto &docs = j["documents"];
@@ -230,12 +234,15 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        const bool curve_extension = j["schema"] == "cyuediff.workspace/11";
+        const bool nanite_extension = j["schema"] == "cyuediff.workspace/12";
+        const bool curve_extension = j["schema"] == "cyuediff.workspace/11" || nanite_extension;
         const bool animation_extension = j["schema"] == "cyuediff.workspace/10" || curve_extension;
         const bool skeletal_extension = j["schema"] == "cyuediff.workspace/9" || animation_extension;
         const bool physics_extension = j["schema"] == "cyuediff.workspace/8" || skeletal_extension;
-        saved.container_tab =
-            number(d["containerTab"], -1, animation_extension ? 9 : (physics_extension ? 8 : 7));
+        saved.container_tab = number(d["containerTab"], -1,
+                                     nanite_extension      ? 10
+                                     : animation_extension ? 9
+                                                           : (physics_extension ? 8 : 7));
         const auto &s = d["settings"];
         const bool mesh_extension = j["schema"] == "cyuediff.workspace/7" || physics_extension;
         const bool payload_extension = j["schema"] == "cyuediff.workspace/6" || mesh_extension;
@@ -246,7 +253,7 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                                 (mesh_extension ? 4 : 0) + (physics_extension ? 2 : 0) +
                                 (skeletal_extension ? 6 : 0) +
                                 (animation_extension ? std::size(animation_strings) + 4 : 0) +
-                                (curve_extension ? std::size(curve_strings) : 0);
+                                (curve_extension ? std::size(curve_strings) : 0) + (nanite_extension ? 4 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
         require(s.is_object() && (pose_extension || (j["schema"] != "cyuediff.workspace/4" &&
@@ -327,6 +334,16 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         saved.settings.after_mesh_profile = number(s.value("after_mesh_profile", Json(0)), 0, 1);
         saved.settings.mesh_mobile_lod = number(s.value("mesh_mobile_lod", Json(0)), 0, 2);
         saved.settings.after_mesh_mobile_lod = number(s.value("after_mesh_mobile_lod", Json(0)), 0, 2);
+        if (nanite_extension) {
+            require(s.contains("nanite_profile") && s.contains("after_nanite_profile"),
+                    "Missing Nanite profile");
+            for (const auto *flag : {"nanite_attributes", "after_nanite_attributes"})
+                require(s.contains(flag) && s.at(flag).is_boolean(), "Invalid Nanite attribute setting");
+            saved.settings.nanite_profile = number(s.at("nanite_profile"), 0, 1);
+            saved.settings.after_nanite_profile = number(s.at("after_nanite_profile"), 0, 1);
+            saved.settings.nanite_attributes = s.at("nanite_attributes").get<bool>();
+            saved.settings.after_nanite_attributes = s.at("after_nanite_attributes").get<bool>();
+        }
         if (pose_extension) {
             for (const auto &field : pose_strings) {
                 require(s.contains(field.first), "Missing animation pose setting");

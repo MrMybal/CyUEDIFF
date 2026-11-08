@@ -12,6 +12,8 @@ class CookedNaniteResource {
     struct Impl;
     Json information(const OperationControl & = {}) const;
     Json catalog(const OperationControl & = {}) const;
+    std::size_t page_count() const;
+    Json page_metadata(std::size_t, const OperationControl & = {}) const;
     Json hierarchy_node(std::size_t, const OperationControl & = {}) const;
     std::size_t hierarchy_node_count() const;
     bool geometry_known() const;

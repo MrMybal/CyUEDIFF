@@ -19,6 +19,8 @@ struct Settings {
         after_skeletal_colors = 0;
     int physics_profile = 0, after_physics_profile = 0;
     int mesh_profile = 0, after_mesh_profile = 0, mesh_mobile_lod = 0, after_mesh_mobile_lod = 0;
+    int nanite_profile = 0, after_nanite_profile = 0;
+    bool nanite_attributes = true, after_nanite_attributes = true;
     std::string container_path, container_entry, script_objects, after_container_path, after_script_objects;
     std::string container_schema, after_container_schema;
     int animation_profile = 0, after_animation_profile = 0, animation_interpolation = 0,
@@ -75,6 +77,9 @@ struct Settings {
                 mesh_profile == 1 ? CookedMeshProfile::unreal_5_3_windows : CookedMeshProfile::unspecified;
             if (mesh_mobile_lod)
                 input.keep_mobile_min_lod_setting = mesh_mobile_lod == 2;
+            input.nanite_profile =
+                nanite_profile == 1 ? NaniteProfile::unreal_5_3_windows : NaniteProfile::unspecified;
+            input.nanite_attributes = nanite_attributes;
             input.skeletal_profile = skeletal_profile == 1 ? CookedSkeletalProfile::unreal_5_3_windows
                                                            : CookedSkeletalProfile::unspecified;
             if (skeletal_mobile_lod)
@@ -107,6 +112,9 @@ struct Settings {
                                                                    : CookedMeshProfile::unspecified;
                 if (after_mesh_mobile_lod)
                     input.after_keep_mobile_min_lod_setting = after_mesh_mobile_lod == 2;
+                input.after_nanite_profile = after_nanite_profile == 1 ? NaniteProfile::unreal_5_3_windows
+                                                                       : NaniteProfile::unspecified;
+                input.after_nanite_attributes = after_nanite_attributes;
                 input.after_skeletal_profile = after_skeletal_profile == 1
                                                    ? CookedSkeletalProfile::unreal_5_3_windows
                                                    : CookedSkeletalProfile::unspecified;
