@@ -2,6 +2,7 @@
 #include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
 #include <cyuediff/core.hpp>
+#include <cyuediff/mesh_overlaps.hpp>
 #include <cyuediff/collision.hpp>
 #include <cyuediff/skeleton.hpp>
 #include <cyuediff/attachments.hpp>
@@ -299,6 +300,35 @@ MeshComparison compare_meshes(const MeshGeometry &before, const MeshGeometry &af
             a["cloth"] = empty;
         if (!b.contains("cloth"))
             b["cloth"] = empty;
+    }
+    if (a.contains("vertexOverlaps") || b.contains("vertexOverlaps")) {
+        bool unavailable = false;
+        if (!a.contains("vertexOverlaps") || !b.contains("vertexOverlaps")) {
+            unavailable = true;
+            a.erase("vertexOverlaps");
+            b.erase("vertexOverlaps");
+        } else {
+            auto &x = a["vertexOverlaps"]["sections"], &y = b["vertexOverlaps"]["sections"];
+            std::vector<std::string> unknown;
+            for (auto i = x.begin(); i != x.end(); ++i)
+                if (!y.contains(i.key()))
+                    unknown.push_back(i.key());
+            for (auto i = y.begin(); i != y.end(); ++i)
+                if (!x.contains(i.key()))
+                    unknown.push_back(i.key());
+            if (!unknown.empty() || !before.vertex_overlaps->unavailable_sections.empty() ||
+                !after.vertex_overlaps->unavailable_sections.empty())
+                unavailable = true;
+            for (const auto &id : unknown) {
+                x.erase(id);
+                y.erase(id);
+            }
+        }
+        if (unavailable) {
+            result.complete = false;
+            result.diagnostics.push_back("Stored vertex overlap tables are unavailable for some sections; "
+                                         "those relations are unknown.");
+        }
     }
     walk(a, b, "", result.changes);
     return result;

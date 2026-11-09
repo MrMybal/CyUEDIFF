@@ -2,6 +2,7 @@
 #include <cyuediff/zen.hpp>
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/cloth.hpp>
+#include <cyuediff/mesh_overlaps.hpp>
 #include <cyuediff/render_morphs.hpp>
 #include <optional>
 namespace cyuediff {
@@ -27,6 +28,8 @@ struct CookedSkeletalOptions {
     std::uint64_t max_morph_deltas = 4'000'000;
     std::uint64_t max_cloth_mappings = 4'000'000;
     std::uint32_t max_cloth_influences = 5;
+    // Aggregate stored section-local duplicate indices across LODs.
+    std::uint32_t max_duplicate_indices = 12'000'000;
 };
 struct CookedSkeletalWeightProfile {
     std::string name, skin_profile_key;
@@ -44,7 +47,8 @@ struct CookedSkeletalSection {
     std::vector<std::uint16_t> bone_map;
     Json fields = Json::object();
     std::shared_ptr<const ClothSection> cloth;
-    Json to_json() const;
+    std::shared_ptr<const MeshSectionOverlaps> overlaps;
+    Json to_json(bool include_values = false) const;
 };
 struct CookedSkeletalLod {
     bool cooked_out = false, inlined = false;
@@ -79,7 +83,8 @@ struct CookedSkeletalMesh {
 // Compressed morph buffers retain exact stored render deltas and bind names only
 // through explicit MorphTargets references to native child UMorphTarget exports.
 // Stored cloth section/deformer mappings are typed and verified against the render buffer.
-// Duplicate-vertex tables and custom vertex attributes require another decoder.
+// Stored duplicate-vertex tables are bounded and retain section-local correspondence.
+// Custom vertex attributes require another decoder.
 // Later object-native data remains an identified opaque tail. No Unreal execution.
 CookedSkeletalMesh read_zen_skeletal_mesh(const Container &, std::size_t package_entry,
                                           const ZenReadOptions &, const ContainerReadOptions &,

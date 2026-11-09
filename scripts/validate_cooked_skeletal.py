@@ -276,6 +276,76 @@ def compare_cloth(actual, reference):
             'clothMappedVertices': mapped_vertices}
 
 
+def compare_overlaps(actual, reference):
+    """Exact native section overlap arrays, serializer bytes and resolved relations."""
+    if actual.get('schema') != 'cyuediff.cooked-skeletal-mesh/1' or actual.get('profile') != 'ue5.3-windows':
+        raise ValueError('Unexpected cooked skeletal schema/profile')
+    if reference.get('schema') != 'cyuediff.unreal-overlaps-reference/1' or not reference.get('engine', '').startswith('5.3.'):
+        raise ValueError('Matching UE 5.3 overlaps reference required')
+    if actual.get('object') != reference.get('object') or len(actual['lods']) != len(reference['lods']):
+        raise ValueError('Overlap object/LOD identity differs')
+    values = sections = vertices = indices = links = 0
+
+    def exact(a, b):
+        nonlocal values
+        if isinstance(b, list):
+            if not isinstance(a, list) or len(a) != len(b):
+                raise ValueError('Overlap array size differs')
+            for x, y in zip(a, b):
+                exact(x, y)
+        elif type(a) is not int or type(b) is not int or a != b:
+            raise ValueError('Overlap integer identity differs')
+        else:
+            values += 1
+
+    for lod, ref in zip(actual['lods'], reference['lods']):
+        if len(lod['sections']) != len(ref):
+            raise ValueError('Overlap section inventory differs')
+        model = lod['geometry'].get('vertexOverlaps', {})
+        if model.get('schema') != 'cyuediff.mesh-overlaps/1' or model.get('scope') != 'stored-section-vertex-overlaps':
+            raise ValueError('Unexpected overlap projection scope')
+        if set(model['sections']) != {str(i) for i in range(len(ref))}:
+            raise ValueError('Overlap semantic section inventory differs')
+        for si, (section, expected) in enumerate(zip(lod['sections'], ref)):
+            raw = section['vertexOverlaps']
+            if raw.get('scope') != 'stored-section-vertex-overlaps' or any(raw.get(k) is not False for k in ('coincidenceVerified', 'symmetryVerified', 'runtimeTangentsEvaluated')):
+                raise ValueError('Unexpected overlap semantic claims')
+            for field in ('firstVertex', 'vertices', 'indices', 'windows'):
+                exact(raw[field], expected[field])
+            exact(raw['indicesStored'], len(expected['indices']))
+            exact(raw['windowsStored'], len(expected['windows']))
+            native = struct.pack('<i', len(raw['indices']))
+            native += b''.join(struct.pack('<I', value) for value in raw['indices'])
+            native += struct.pack('<i', len(raw['windows']))
+            native += b''.join(struct.pack('<II', *window) for window in raw['windows'])
+            exact(list(native), expected['nativeBytes'])
+            if hashlib.sha256(native).hexdigest() != raw['serializedSha256']:
+                raise ValueError('Overlap native serialization hash differs')
+            start, count = raw['firstVertex'], raw['vertices']
+            rows = {}
+            if len(raw['windows']) != max(1, count) or not raw['indices']:
+                raise ValueError('Overlap native dimensions differ')
+            for vi, (length, offset) in enumerate(raw['windows'][:count]):
+                if offset > len(raw['indices']) or length > len(raw['indices']) - offset:
+                    raise ValueError('Overlap native window exceeds data')
+                local = raw['indices'][offset:offset + length]
+                if any(value < 0 or value >= count for value in local):
+                    raise ValueError('Overlap index exceeds section')
+                rows[str(start + vi)] = sorted(start + value for value in local)
+                links += length
+            actual_rows = model['sections'][str(si)]
+            exact(actual_rows['firstVertex'], start)
+            if set(actual_rows['vertices']) != set(rows):
+                raise ValueError('Overlap vertex inventory differs')
+            for vertex, neighbors in rows.items():
+                exact(actual_rows['vertices'][vertex], neighbors)
+            sections += 1
+            vertices += count
+            indices += len(raw['indices'])
+    return {'values': values, 'overlapSections': sections, 'overlapVertices': vertices,
+            'overlapIndices': indices, 'overlapLinks': links}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for field in ('manifest', 'consumer', 'container', 'global-toc', 'schema', 'output-dir'):
@@ -290,8 +360,9 @@ def main():
     references = [(manifest_path.parent / row['reference']).resolve() for row in cases]
     morph_references = [(manifest_path.parent / row['morphReference']).resolve() if row.get('morphReference') else None for row in cases]
     cloth_references = [(manifest_path.parent / row['clothReference']).resolve() if row.get('clothReference') else None for row in cases]
+    overlap_references = [(manifest_path.parent / row['overlapsReference']).resolve() if row.get('overlapsReference') else None for row in cases]
     protected = [args.consumer.resolve(), args.container.resolve(), args.global_toc.resolve(),
-                 args.schema.resolve(), manifest_path, *references, *[p for p in morph_references + cloth_references if p]]
+                 args.schema.resolve(), manifest_path, *references, *[p for p in morph_references + cloth_references + overlap_references if p]]
     for toc in (args.container, args.global_toc):
         protected.extend(p.resolve() for p in toc.parent.glob(toc.stem + '*.ucas'))
     schema = json.loads(args.schema.read_text(encoding='utf-8'))
@@ -331,6 +402,10 @@ def main():
                 cloth = compare_cloth(actual, json.loads(cloth_references[i].read_text(encoding='utf-8')))
                 evidence['values'] += cloth.pop('values')
                 evidence.update(cloth)
+            if overlap_references[i]:
+                overlaps = compare_overlaps(actual, json.loads(overlap_references[i].read_text(encoding='utf-8')))
+                evidence['values'] += overlaps.pop('values')
+                evidence.update(overlaps)
             evidence.update(entry=row['entry'], object=actual['object'], referenceEngine=reference['engine'])
             reports.append(evidence)
             (output / f'{i:03d}.json').write_text(json.dumps(actual, indent=2), encoding='utf-8')

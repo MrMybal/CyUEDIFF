@@ -154,6 +154,21 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
             }
         }
     }
+    std::set<std::uint32_t> changed_overlap_vertices;
+    if (mesh && peer && current.contains("vertexOverlaps") && remote.contains("vertexOverlaps")) {
+        const auto &a = current["vertexOverlaps"]["sections"], &b = remote["vertexOverlaps"]["sections"];
+        for (auto section = a.begin(); section != a.end(); ++section) {
+            if (!b.contains(section.key()))
+                continue; // Stripped/unavailable relations cannot prove removals.
+            const auto &x = section.value()["vertices"], &y = b[section.key()]["vertices"];
+            for (auto v = x.begin(); v != x.end(); ++v)
+                if (!y.contains(v.key()) || v.value() != y[v.key()])
+                    changed_overlap_vertices.insert(static_cast<std::uint32_t>(std::stoul(v.key())));
+            for (auto v = y.begin(); v != y.end(); ++v)
+                if (!x.contains(v.key()))
+                    changed_overlap_vertices.insert(static_cast<std::uint32_t>(std::stoul(v.key())));
+        }
+    }
     auto different = [&](const char *table, std::uint32_t id) {
         auto key = std::to_string(id);
         return !peer || !remote.at(table).contains(key) ||
@@ -197,7 +212,9 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                     if (!peer_edges.count(key))
                         change = after ? ChangeKind::added : ChangeKind::removed;
                     else {
-                        bool changed = changed_cloth_vertices.count(key.first) ||
+                        bool changed = changed_overlap_vertices.count(key.first) ||
+                                       changed_overlap_vertices.count(key.second) ||
+                                       changed_cloth_vertices.count(key.first) ||
                                        changed_cloth_vertices.count(key.second) ||
                                        changed_morph_vertices.count(key.first) ||
                                        changed_morph_vertices.count(key.second) ||

@@ -35,6 +35,11 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     static bool PreparePrivateCloth(UObject *Asset, int32 Variant);
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportClothReference(UObject *Asset);
+    // Private source UV variant and read-only native overlap reference; caller owns saving.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static bool PreparePrivateOverlaps(UObject *Asset, int32 Variant);
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportOverlapsReference(UObject *Asset);
     // Adds original morph deltas only to caller-prepared /Game/Corpus/Morph* copies; never saves.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateMorphs(UObject *Asset, int32 Variant);

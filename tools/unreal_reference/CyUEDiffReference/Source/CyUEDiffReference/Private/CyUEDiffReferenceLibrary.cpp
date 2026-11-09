@@ -567,6 +567,78 @@ FString UCyUEDiffReferenceLibrary::ExportClothReference(UObject *Asset) {
     FJsonSerializer::Serialize(Out, Writer);
     return Result;
 }
+bool UCyUEDiffReferenceLibrary::PreparePrivateOverlaps(UObject *Asset, int32 Variant) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh || Variant < 0 || Variant > 1 ||
+        !Mesh->GetOutermost()->GetName().StartsWith(TEXT("/Game/Corpus/Overlap")))
+        return false;
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    FSkeletalMeshImportData Source;
+    Mesh->LoadLODImportedData(0, Source);
+    if (!Source.Points.Num() || !Source.Influences.Num()) {
+        FMeshDescription Description;
+        Mesh->GetMeshDescription(0, Description);
+        Source = FSkeletalMeshImportData::CreateFromMeshDescription(Description);
+    }
+    if (!Source.Wedges.Num() || Source.Wedges.Num() > 1000000 || !Source.Influences.Num())
+        return false;
+    if (Variant)
+        Source.Wedges[0].UVs[0].X += .125f;
+    Mesh->SaveLODImportedData(0, Source);
+    Mesh->SetLODImportedDataVersions(0, ESkeletalMeshGeoImportVersions::LatestVersion,
+                                     ESkeletalMeshSkinningImportVersions::LatestVersion);
+    Mesh->SetUseLegacyMeshDerivedDataKey(false);
+    Mesh->InvalidateDeriveDataCacheGUID();
+    Mesh->Build();
+    Mesh->PostEditChange();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    Mesh->MarkPackageDirty();
+    return Mesh->GetResourceForRendering() != nullptr;
+}
+FString UCyUEDiffReferenceLibrary::ExportOverlapsReference(UObject *Asset) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh)
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    const auto *Render = Mesh->GetResourceForRendering();
+    if (!Render)
+        return FString();
+    auto Out = MakeShared<FJsonObject>();
+    Out->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-overlaps-reference/1"));
+    Out->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Out->SetStringField(TEXT("object"), Mesh->GetPathName());
+    Values LODs;
+    for (const auto &LOD : Render->LODRenderData) {
+        Values Sections;
+        for (const auto &Section : LOD.RenderSections) {
+            auto S = MakeShared<FJsonObject>();
+            S->SetNumberField(TEXT("firstVertex"), Section.BaseVertexIndex);
+            S->SetNumberField(TEXT("vertices"), Section.NumVertices);
+            auto &Buffer = const_cast<FDuplicatedVerticesBuffer &>(Section.DuplicatedVerticesBuffer);
+            Values Data, Windows;
+            for (auto V : Buffer.DupVertData)
+                Data.Add(Number(V));
+            for (auto V : Buffer.DupVertIndexData)
+                Windows.Add(Array({Number(V.Length), Number(V.Index)}));
+            S->SetArrayField(TEXT("indices"), Data);
+            S->SetArrayField(TEXT("windows"), Windows);
+            TArray<uint8> Bytes;
+            FMemoryWriter Writer(Bytes, true);
+            Writer << Buffer;
+            Values Raw;
+            for (auto V : Bytes)
+                Raw.Add(Number(V));
+            S->SetArrayField(TEXT("nativeBytes"), Raw);
+            Sections.Add(Obj(S));
+        }
+        LODs.Add(MakeShared<FJsonValueArray>(Sections));
+    }
+    Out->SetArrayField(TEXT("lods"), LODs);
+    FString Result;
+    auto Writer = TJsonWriterFactory<>::Create(&Result);
+    FJsonSerializer::Serialize(Out, Writer);
+    return Result;
+}
 bool UCyUEDiffReferenceLibrary::PreparePrivateMorphs(UObject *Asset, int32 Variant) {
     auto *Mesh = Cast<USkeletalMesh>(Asset);
     if (!Mesh || Variant < 0 || Variant > 1 ||

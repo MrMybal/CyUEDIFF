@@ -170,7 +170,7 @@ struct Budget {
     const CookedSkeletalOptions &o;
     std::uint64_t vertices = 0, indices = 0, triangles = 0, sections = 0, influences = 0, output = 0;
     std::uint64_t profiles = 0, overrides = 0, morphs = 0, morph_batches = 0, morph_deltas = 0,
-                  cloth_mappings = 0;
+                  cloth_mappings = 0, duplicate_indices = 0, duplicate_links = 0;
     void add(std::uint64_t &counter, std::uint64_t n, std::uint64_t max, const char *s) {
         limit(counter <= max && n <= max - counter, s);
         counter += n;
@@ -292,7 +292,42 @@ void section(Cursor &r, CookedSkeletalLod &lod, const std::vector<std::string> &
     cloth->asset_lod = r.i32();
     cloth->validate(b.o.max_vertices, b.o.max_cloth_influences, b.o.control);
     s.cloth = std::move(cloth);
-    supported((strips & 1) != 0, "Skeletal duplicate-vertex table requires another decoder");
+    if ((strips & 1) == 0) {
+        auto overlap = std::make_shared<MeshSectionOverlaps>();
+        overlap->section = static_cast<std::uint32_t>(lod.sections.size());
+        overlap->first_vertex = s.first_vertex;
+        overlap->vertices = s.vertices;
+        const auto begin = r.pos;
+        const auto count = r.count(b.o.max_duplicate_indices);
+        need(count != 0, "Overlap array has no required native allocation dummy");
+        r.range(std::uint64_t(count) * 4);
+        b.add(b.duplicate_indices, count, b.o.max_duplicate_indices,
+              "Skeletal LODs exceed duplicate index budget");
+        b.reserve(sizeof(MeshSectionOverlaps) + std::uint64_t(count) * 48);
+        overlap->indices.reserve(count);
+        for (unsigned i = 0; i < count; ++i) {
+            b.o.control.check();
+            overlap->indices.push_back(r.u32());
+        }
+        const auto windows = r.count(std::max(1u, b.o.max_vertices));
+        need(windows == std::max(1u, s.vertices), "Overlap windows disagree with section vertices");
+        r.range(std::uint64_t(windows) * 8);
+        b.reserve(std::uint64_t(windows) * 128);
+        overlap->windows.reserve(windows);
+        for (unsigned i = 0; i < windows; ++i) {
+            b.o.control.check();
+            const auto length = r.u32(), offset = r.u32();
+            if (i < s.vertices) { // A zero-vertex section's allocation dummy is never indexed.
+                b.add(b.duplicate_links, length, b.o.max_duplicate_indices,
+                      "Skeletal LODs exceed resolved duplicate index budget");
+                b.reserve(std::uint64_t(length) * 64);
+            }
+            overlap->windows.push_back({length, offset});
+        }
+        overlap->validate(b.o.max_vertices, b.o.control, b.o.max_duplicate_indices);
+        overlap->serialized_sha256 = detail::hash_range(r.bytes, begin, r.pos - begin, b.o.control);
+        s.overlaps = std::move(overlap);
+    }
     const auto disabled = r.boolean();
     s.fields = {{"stripFlags", strips},
                 {"recomputeTangents", tangent},
@@ -680,7 +715,7 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
             need(k <= count && offset <= raw_bytes &&
                      std::uint64_t(count) * (bone_bytes + weight_bytes) <= raw_bytes - offset,
                  "Profile replacement exceeds stored vertex influence slots");
-            b.reserve(128 + std::uint64_t(k) * sizeof(MeshInfluence) + std::uint64_t(count) * 64);
+            b.reserve(128 + std::uint64_t(k) * sizeof(MeshInfluence) + std::uint64_t(count) * 48);
             Cursor bi{r.bytes, raw + offset, raw + raw_bytes},
                 wi{r.bytes, raw + offset + std::uint64_t(count) * bone_bytes, raw + raw_bytes},
                 oi{r.bytes, ids + record * id_stride, ids + ids_size},
@@ -792,6 +827,17 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
     need(covered_indices == ni, "Skeletal indices have no owning section");
     if (g) {
         skin->validate(b.o.control);
+        auto overlaps = std::make_shared<MeshVertexOverlaps>();
+        for (unsigned si = 0; si < lod.sections.size(); ++si) {
+            const auto &section = lod.sections[si];
+            if (section.overlaps) {
+                section.overlaps->validate(n, b.o.control, b.o.max_duplicate_indices);
+                overlaps->sections.push_back(section.overlaps);
+            } else
+                overlaps->unavailable_sections.push_back(si);
+        }
+        if (!overlaps->sections.empty())
+            g->vertex_overlaps = overlaps;
         g->skin = skin;
         g->bounds = {{"min", low}, {"max", high}};
         g->attributes = {{"source", "cooked-skeletal-render-lod"},
@@ -841,10 +887,12 @@ Json CookedSkeletalWeightProfile::to_json(bool include) const {
     }
     return out;
 }
-Json CookedSkeletalSection::to_json() const {
+Json CookedSkeletalSection::to_json(bool include) const {
     Json out = {{"material", material},        {"firstIndex", first_index}, {"triangles", triangles},
                 {"firstVertex", first_vertex}, {"vertices", vertices},      {"maxInfluences", max_influences},
                 {"boneMap", bone_map},         {"fields", fields}};
+    if (overlaps)
+        out["vertexOverlaps"] = overlaps->to_json(include);
     if (cloth && cloth->has_stored_data())
         out["cloth"] = cloth->to_json();
     return out;
@@ -852,7 +900,7 @@ Json CookedSkeletalSection::to_json() const {
 Json CookedSkeletalLod::to_json(bool include) const {
     Json s = Json::array();
     for (const auto &v : sections)
-        s.push_back(v.to_json());
+        s.push_back(v.to_json(include));
     Json j = {{"cookedOut", cooked_out},     {"inlined", inlined},
               {"stripFlags", strip_flags},   {"requiredBones", required_bones},
               {"activeBones", active_bones}, {"sections", s},

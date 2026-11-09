@@ -321,7 +321,7 @@ int main(int argc, char **argv) {
         refused([&] { read(bad, o); }, "cooked-skeletal-layout");
         bad = f;
         bad.storage.package.data[bad.section + 1] = 0;
-        refused([&] { read(bad, o); }, "cooked-skeletal-feature");
+        refused([&] { read(bad, o); }, "cooked-skeletal-layout");
         bad = cooked_skeletal_fixture(true);
         bad.storage.package.patch(static_cast<int>(bad.lookup), 0xffffff01u);
         refused([&] { read(bad, o); }, "cooked-skeletal-layout");

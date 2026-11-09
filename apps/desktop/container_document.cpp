@@ -1,3 +1,4 @@
+#include <cyuediff/mesh_overlaps.hpp>
 #include "container_document.hpp"
 #include <algorithm>
 #include <map>
@@ -328,6 +329,14 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                                  std::uint64_t(g.triangles.size()) * sizeof(MeshTriangle);
                         for (const auto &v : g.instances)
                             bytes += v.uvs.size() * sizeof(std::array<float, 2>);
+                        if (g.vertex_overlaps) {
+                            for (const auto &s : g.vertex_overlaps->sections) {
+                                bytes += sizeof(MeshSectionOverlaps) + s->indices.size() * 48 +
+                                         s->windows.size() * 128;
+                                for (const auto &w : s->windows)
+                                    bytes += std::uint64_t(w.length) * 64;
+                            }
+                        }
                         if (g.cloth) {
                             bytes += sizeof(MeshCloth) + g.cloth->buffer.size() * sizeof(ClothMapping) +
                                      g.cloth->index_mapping.size() * sizeof(ClothBufferIndex);

@@ -104,3 +104,8 @@ The selected UE 5.3 Windows reader now exposes immutable compressed morph buffer
 ## Cooked cloth mapping inspection — post-0.181 development
 
 Stored UE 5.3 Windows cloth section bindings, per-LOD-bias render vertex mappings and matching native render buffers now have a reusable typed Core model, geometric difference projection and EN/FR desktop inspector. Section/bias/vertex selection, filters, change navigation, incident-edge highlights and focused binding/coefficient values persist in workspaces. Actual cooked references validate the selected mapping scope. Physical cloth assets/configuration, simulation bounds/runtime evaluation, further native/plugin/producer coverage and final distribution remain open. See [CLOTH.md](CLOTH.md). This is local source development and does not publish a new release.
+
+
+### Retained skeletal vertex-overlap tables — post-0.181 development
+
+The selected UE 5.3 Windows Core/CLI/SDK reader now exposes typed raw section-local overlap arrays, exact native fingerprints, focused render-vertex queries and scoped relation differences. Aggregate raw/resolved limits prevent window expansion; stripped tables remain unavailable. Desktop wires highlight changed known relations through the existing EN/FR mesh views. See [MESH_OVERLAPS.md](MESH_OVERLAPS.md). Custom skeletal attributes, physical cloth assets, broader native/plugin/producer/runtime coverage and final distribution remain open; this milestone does not complete the full product goal or imply a new archive/push/release.

@@ -94,8 +94,12 @@ Independent validation uses seven newly cooked private mesh copies, including un
 
 ## Compressed render morphs — post-0.181 development
 
-Loaded LODs now decode their native compressed morph buffer and bind target names through the mapped `MorphTargets` references to native owned `UMorphTarget` exports. Sparse decoded position/normal contributions, preserved empty targets, exact native metadata and an EN/FR desktop inspector are available. Unknown names produce incomplete morph comparisons, with no invented removals. See [the full Core/CLI/SDK/UI contract and evidence](COMPRESSED_MORPHS.md). Cloth, duplicate-vertex tables and custom attributes remain outside this decoder.
+Loaded LODs now decode their native compressed morph buffer and bind target names through the mapped `MorphTargets` references to native owned `UMorphTarget` exports. Sparse decoded position/normal contributions, preserved empty targets, exact native metadata and an EN/FR desktop inspector are available. Unknown names produce incomplete morph comparisons, with no invented removals. See [the full Core/CLI/SDK/UI contract and evidence](COMPRESSED_MORPHS.md). Subsequent cloth and duplicate-vertex additions are described below; custom attributes remain outside this decoder.
 
 ## Stored cloth deformer mappings — post-0.181 development
 
 The reader now retains typed section/LOD-bias cloth mappings and asset binding indices/GUID words, validates the separate 64-byte render buffer and streaming metadata, and compares active mapping changes. Core/CLI/SDK and the EN/FR desktop expose focused section/render-vertex inspection and persistent navigation. Padding/inactive unused data remain in raw reports and fingerprints. Physical cloth asset data, simulation bounds and runtime deformation are not inferred. See [the complete cloth contract](CLOTH.md).
+
+## Stored duplicate-vertex tables — post-0.181 development
+
+Unstripped section-local duplicate-vertex arrays are now typed, bounded and checked against their render section. Core/CLI/SDK compare resolved relations independently of buffer packing, and desktop wireframes mark known relation changes. Stripped tables remain unavailable instead of becoming empty relations. See [the contract, validation and limits](MESH_OVERLAPS.md).
