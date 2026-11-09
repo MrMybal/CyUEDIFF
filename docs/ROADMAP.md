@@ -119,3 +119,8 @@ The selected UE 5.3 Windows reader now exposes finite float32/float16/UNorm8 cha
 ### Hybrid reflected/native struct bindings — 0.183 source development
 
 Explicit schema/context `struct_tails` and version-four manifests bind certified reflected prefixes followed by declarative native data with shared bounds/budgets and complete opaque fallback. Real UE 5.3.2 physical cloth/configuration before/after evidence checks 588,898 values plus exact native tether/raw transition bytes through an installed Core-only consumer. EN/FR generic property review is available; large nested-value navigation, dedicated physical geometry/bounds, semantic transitions and broader source/native producer coverage remain open. See [HYBRID_STRUCTS.md](HYBRID_STRUCTS.md). The verified 0.182 archive remains unchanged; this does not publish a new build.
+
+
+### Paged property navigation
+
+The original large-object expanded-table limit now has a practical source/cooked browser: direct-child pages, raw JSON-pointer scopes, tag fields, parent/root controls, last-page/index access and retained workspace selection. Original source projections and actual cooked physical-cloth values exercise this path. See [PROPERTY_BROWSER.md](PROPERTY_BROWSER.md). The parser/profile and dedicated physical/runtime/distribution workstreams remain separate.

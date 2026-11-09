@@ -1,6 +1,7 @@
 #pragma once
 #include "container_document.hpp"
 #include <cyuediff/property_view.hpp>
+#include <cyuediff/property_browser_view.hpp>
 #include <cyuediff/texture_view.hpp>
 #include <cyuediff/mesh_view.hpp>
 #include <cyuediff/mesh_skin_view.hpp>
@@ -71,6 +72,9 @@ class ContainerView {
     std::string property_notice_;
     Json object_data_, after_object_data_, schema_details_;
     PropertyView inspection_, properties_, values_, comparison_, schema_;
+    PropertyBrowserView property_browser_;
+    bool browse_properties_ = false;
+    std::pair<const Json *, const Json *> property_snapshots() const;
     void rebuild_members();
     void rebuild_objects();
 
@@ -89,9 +93,10 @@ class ContainerView {
         property_mode_ = value;
     }
     const PropertyTable &property_table() const {
-        return values_.table();
+        return browse_properties_ ? property_browser_.properties().table() : values_.table();
     }
     Json property_report() const;
+    bool set_property_scope(const std::string &, std::size_t first = 0);
     bool set_pixel_preview(const std::string &, bool after, const cyui::ImageData &);
     bool set_pixel_difference(const ContainerTextureDifference &, const cyui::ImageData &);
     std::size_t pixel_count() const {

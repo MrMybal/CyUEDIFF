@@ -147,7 +147,31 @@ int main() {
                        row.after == "99" && row.change == ChangeKind::modified;
             }))
             throw std::runtime_error("Named typed property difference");
+        if (!view.set_property_scope("/DemoAsset.Health") ||
+            view.property_report()["browser"]["selected"]["before"] != "42" ||
+            view.property_report()["browser"]["selected"]["after"] != "99")
+            throw std::runtime_error("Bounded nested-value selection");
+        const auto browser_state = view.view_state();
+        ContainerView browser_restored;
+        browser_restored.set_document(mapped_pair);
+        browser_restored.restore_view_state(browser_state);
+        if (browser_restored.view_state() != browser_state ||
+            browser_restored.property_report() != view.property_report())
+            throw std::runtime_error("Browser scope is restored with its object");
+        auto bad_scope = browser_state;
+        bad_scope["objectFilter"] = "missing";
+        bad_scope["propertyBrowser"]["scope"] = "/~2";
+        try {
+            browser_restored.restore_view_state(bad_scope);
+            throw std::runtime_error("Expected invalid scope");
+        } catch (const Error &e) {
+            if (e.code != "view-state" || browser_restored.view_state() != browser_state)
+                throw std::runtime_error("Invalid browser scope mutates no owner state");
+        }
         view.set_document(mapped_partial);
+        if (!view.set_property_scope("/DemoAsset.Health") ||
+            view.property_report()["browser"]["selected"]["change"] != "Unchanged")
+            throw std::runtime_error("Unknown peer is not removed while browsing");
         if (view.property_report()["comparing"] || !view.property_report()["available"] ||
             std::any_of(view.property_table().rows.begin(), view.property_table().rows.end(),
                         [](const PropertyRow &row) { return row.change == ChangeKind::removed; }))

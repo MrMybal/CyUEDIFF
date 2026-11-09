@@ -28,6 +28,7 @@ bool PropertyView::select_row(std::size_t index) {
         std::find(visible_.begin(), visible_.end(), static_cast<int>(index)) == visible_.end())
         return false;
     selected_ = static_cast<int>(index);
+    scroll_selection_ = true;
     return true;
 }
 
@@ -43,8 +44,6 @@ void PropertyView::rebuild() {
         selected_ = -1;
 }
 void PropertyView::set_values(const Json *before, const Json *after, bool comparing) {
-    layout_.restore(Json::object(), "property-layout");
-    comparing_ = comparing;
     if (!comparing) {
         if (before)
             after = before;
@@ -53,7 +52,14 @@ void PropertyView::set_values(const Json *before, const Json *after, bool compar
     }
     PropertyTableOptions options;
     options.escape_non_bmp = sizeof(ImWchar) == 2;
-    table_ = property_table(before, after, options);
+    set_table(property_table(before, after, options), comparing);
+}
+void PropertyView::set_table(PropertyTable table, bool comparing) {
+    if (table.rows.size() > 1'000'000)
+        throw Error("property-view-limit", "Prepared property table exceeds its row budget");
+    layout_.restore(Json::object(), "property-layout");
+    comparing_ = comparing;
+    table_ = std::move(table);
     filter_ = {};
     changed_only_ = comparing;
     selected_ = -1;
@@ -84,6 +90,7 @@ void PropertyView::restore_view_state(const Json &state) {
             for (auto i : visible_)
                 if (table_.rows[i].path == state["selected"].get<std::string>()) {
                     selected_ = i;
+                    scroll_selection_ = true;
                     break;
                 }
     }
@@ -122,6 +129,11 @@ void PropertyView::draw(const char *id) {
         ImGui::TableHeadersRow();
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(visible_.size()));
+        if (scroll_selection_ && selected_ >= 0) {
+            const auto at = std::find(visible_.begin(), visible_.end(), selected_);
+            if (at != visible_.end())
+                clipper.IncludeItemByIndex(static_cast<int>(at - visible_.begin()));
+        }
         while (clipper.Step())
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
                 const auto &row = table_.rows[visible_[i]];
@@ -133,6 +145,10 @@ void PropertyView::draw(const char *id) {
                 if (ImGui::Selectable("##property-row", selected_ == visible_[i],
                                       ImGuiSelectableFlags_SpanAllColumns))
                     selected_ = visible_[i];
+                if (scroll_selection_ && selected_ == visible_[i]) {
+                    ImGui::SetScrollHereY(.5f);
+                    scroll_selection_ = false;
+                }
                 cyui::tooltip(row.path.c_str());
                 ImGui::SameLine();
                 ImGui::SetCursorPosX(x);
@@ -159,9 +175,14 @@ void PropertyView::draw(const char *id) {
     if (ImGui::BeginChild("##property-preview", ImVec2(0, 0), ImGuiChildFlags_Borders)) {
         if (const auto *row = selected_row()) {
             cyui::sectionTitle(cyui::tr("Property preview").c_str());
-            ImGui::PushTextWrapPos();
-            ImGui::TextUnformatted(row->path.empty() ? "/" : row->path.c_str());
-            ImGui::PopTextWrapPos();
+            if (row->path.size() > 128) {
+                ImGui::TextUnformatted(row->label.c_str());
+                cyui::tooltip(row->path.c_str());
+            } else {
+                ImGui::PushTextWrapPos();
+                ImGui::TextUnformatted(row->path.empty() ? "/" : row->path.c_str());
+                ImGui::PopTextWrapPos();
+            }
             if (cyui::button(cyui::trLabel("Copy path").c_str()))
                 ImGui::SetClipboardText(row->path.empty() ? "/" : row->path.c_str());
             auto copy = [&](const char *label, const std::string &value, bool present) {

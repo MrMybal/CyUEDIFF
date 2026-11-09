@@ -31,7 +31,8 @@ void ContainerView::register_translations() {
     RenderMorphView::register_translations();
     ClothView::register_translations();
     VertexAttributeView::register_translations();
-    PropertyView::register_translations();
+    PropertyBrowserView::register_translations();
+    cyui::registerTranslations("fr", {{"Browse by level", "Parcourir par niveau"}});
     cyui::registerTranslations(
         "fr",
         {{"Nanite resource unavailable", "Ressource Nanite indisponible"},
@@ -304,6 +305,9 @@ bool ContainerView::select_object(std::size_t index) {
                                ? &row.before_values
                                : (!row.after_values.is_null() ? &row.after_values : nullptr),
                            nullptr, false);
+    const auto snapshots = property_snapshots();
+    property_browser_.set_values(snapshots.first, snapshots.second, properties_comparing_);
+    browse_properties_ = values_.table().truncated;
     property_notice_.clear();
     if (document_->after && property_available_ && !properties_comparing_)
         property_notice_ = !row.before_values.is_null() ? "Before properties only; after values are unknown."
@@ -339,6 +343,8 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     property_notice_.clear();
     object_data_ = after_object_data_ = schema_details_ = nullptr;
     values_ = PropertyView{};
+    property_browser_ = PropertyBrowserView{};
+    browse_properties_ = false;
     properties_ = PropertyView{};
     schema_ = PropertyView{};
     member_rows_.clear();
@@ -670,18 +676,53 @@ Json ContainerView::mesh_report() const {
                         {"attributes", r.attributes_available ? r.attributes.report() : Json(nullptr)}});
     return rows;
 }
+std::pair<const Json *, const Json *> ContainerView::property_snapshots() const {
+    if (object_ < 0)
+        return {nullptr, nullptr};
+    const auto &row = object_rows_[object_];
+    const auto a = row.before_values.is_null() ? nullptr : &row.before_values;
+    const auto b = row.after_values.is_null() ? nullptr : &row.after_values;
+    return properties_comparing_ ? std::make_pair(a, b)
+                                 : std::make_pair(a ? a : b, static_cast<const Json *>(nullptr));
+}
+bool ContainerView::set_property_scope(const std::string &scope, std::size_t first) {
+    const auto snapshots = property_snapshots();
+    if (!property_available_ || !property_browser_.navigate(snapshots.first, snapshots.second, scope, first))
+        return false;
+    browse_properties_ = true;
+    return true;
+}
 Json ContainerView::property_report() const {
     auto status = [](const Json &read) -> Json {
         return read.is_null() ? Json("unbound") : read.at("status");
     };
     const auto *row = object_ >= 0 ? &object_rows_[object_] : nullptr;
-    return {{"available", row && property_available_},
-            {"comparing", row && properties_comparing_},
-            {"mode", property_mode_ ? "properties" : "object"},
-            {"beforeStatus", row ? status(row->before_read) : Json(nullptr)},
-            {"afterStatus", row ? status(row->after_read) : Json(nullptr)},
-            {"visibleProperties", row ? values_.visible_count() : 0},
-            {"displayTruncated", row && values_.table().truncated}};
+    Json result = {
+        {"available", row && property_available_},
+        {"comparing", row && properties_comparing_},
+        {"mode", property_mode_ ? "properties" : "object"},
+        {"beforeStatus", row ? status(row->before_read) : Json(nullptr)},
+        {"afterStatus", row ? status(row->after_read) : Json(nullptr)},
+        {"visibleProperties",
+         row ? (browse_properties_ ? property_browser_.properties().visible_count() : values_.visible_count())
+             : 0},
+        {"displayTruncated", row && property_table().truncated},
+        {"browsing", browse_properties_}};
+    if (row && browse_properties_) {
+        const auto &page = property_browser_.page();
+        const auto selected = property_browser_.properties().selected_row();
+        result["browser"] = {{"scope", page.scope},
+                             {"first", page.first},
+                             {"totalChildren", page.total_children},
+                             {"array", page.array},
+                             {"available", page.available},
+                             {"selected", selected ? Json{{"path", selected->path},
+                                                          {"before", selected->before},
+                                                          {"after", selected->after},
+                                                          {"change", change_name(selected->change)}}
+                                                   : Json(nullptr)}};
+    }
+    return result;
 }
 void ContainerView::bind_animation() {
     const auto before = document_ && before_animation_ >= 0
@@ -741,6 +782,10 @@ Json ContainerView::view_state() const {
                    {"values", values_.view_state()},
                    {"comparison", comparison_.view_state()},
                    {"schema", schema_.view_state()}};
+    if (property_available_) {
+        result["browseProperties"] = browse_properties_;
+        result["propertyBrowser"] = property_browser_.view_state();
+    }
     if (!pixel_rows_.empty() && pixel_ >= 0 && std::size_t(pixel_) < pixel_rows_.size()) {
         result["pixel"] = pixel_rows_[pixel_].key;
         result["pixelAfter"] = pixel_rows_[pixel_].after;
@@ -822,12 +867,22 @@ void ContainerView::restore_view_state(const Json &state) {
         property_available_ = properties_comparing_ = property_mode_ = false;
         properties_ = PropertyView{};
         values_ = PropertyView{};
+        property_browser_ = PropertyBrowserView{};
+        browse_properties_ = false;
         if (schema_details_.is_object())
             schema_details_.erase("selectedObject");
         schema_.set_values(&schema_details_, nullptr, false);
     }
     if (state.contains("propertyMode"))
         property_mode_ = property_available_ && state["propertyMode"].get<bool>();
+    if (property_available_) {
+        const auto snapshots = property_snapshots();
+        if (state.contains("propertyBrowser"))
+            property_browser_.restore_view_state(snapshots.first, snapshots.second,
+                                                 state.at("propertyBrowser"));
+        if (state.contains("browseProperties"))
+            browse_properties_ = state.at("browseProperties").get<bool>();
+    }
     auto restore = [&](const char *key, PropertyView &v) {
         if (state.contains(key))
             v.restore_view_state(state[key]);
@@ -1089,9 +1144,14 @@ ContainerAction ContainerView::draw(bool busy) {
                     if (property_mode_) {
                         if (!property_notice_.empty())
                             cyui::callout(cyui::Tone::info, cyui::tr(property_notice_.c_str()).c_str());
-                        if (property_available_)
-                            values_.draw("##cooked-values");
-                        else
+                        if (property_available_) {
+                            ImGui::Checkbox(cyui::trLabel("Browse by level").c_str(), &browse_properties_);
+                            if (browse_properties_) {
+                                const auto snapshots = property_snapshots();
+                                property_browser_.draw(snapshots.first, snapshots.second, "##cooked-browser");
+                            } else
+                                values_.draw("##cooked-values");
+                        } else
                             cyui::emptyState(
                                 cyui::tr("No decoded properties").c_str(),
                                 cyui::tr("Supply a matching schema context and inspect the member.").c_str());

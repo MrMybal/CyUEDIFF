@@ -1,4 +1,5 @@
 #include <cyuediff/visual_diff.hpp>
+#include <cyuediff/property_page.hpp>
 #include <algorithm>
 #include <set>
 namespace cyuediff {
@@ -230,6 +231,171 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
             }
     };
     visit(before, after, "", 0);
+    return result;
+}
+
+PropertyPage property_page(const Json *before, const Json *after, const std::string &scope,
+                           const PropertyPageOptions &options) {
+    if (!options.page_size || options.page_size > 512 || !options.max_compare_nodes ||
+        options.max_compare_nodes > 64'000'000 || scope.size() > 4096 ||
+        std::count(scope.begin(), scope.end(), '/') > 128)
+        throw Error("property-page-limit", "Invalid property page limits or scope");
+    options.control.check();
+    Json::json_pointer pointer;
+    try {
+        pointer = Json::json_pointer(scope);
+    } catch (const Json::exception &) {
+        throw Error("property-page-scope", "Invalid property JSON pointer");
+    }
+    auto resolve = [&](const Json *root) -> const Json * {
+        if (!root)
+            return nullptr;
+        try {
+            return &root->at(pointer);
+        } catch (const Json::exception &) {
+            return nullptr;
+        }
+    };
+    const auto a = resolve(before), b = resolve(after);
+    PropertyPage result;
+    result.scope = scope;
+    result.available = a || b;
+    if (!result.available)
+        return result;
+    std::size_t work = 0;
+    std::function<bool(const Json &, const Json &, unsigned)> equal;
+    equal = [&](const Json &x, const Json &y, unsigned depth) -> bool {
+        if (++work > options.max_compare_nodes || depth > 128)
+            throw Error("property-page-limit", "Property page comparison exceeds its budget");
+        if ((work & 1023) == 0)
+            options.control.checkpoint("property-page", work);
+        if (&x == &y)
+            return true;
+        if (x.type() != y.type())
+            return x.is_number() && y.is_number() && x == y;
+        if (!x.is_structured())
+            return x == y;
+        if (x.size() != y.size())
+            return false;
+        auto i = x.begin(), j = y.begin();
+        for (; i != x.end(); ++i, ++j) {
+            if (x.is_object() && i.key() != j.key())
+                return false;
+            if (!equal(*i, *j, depth + 1))
+                return false;
+        }
+        return true;
+    };
+    auto append = [&](const Json *x, const Json *y, const std::string &path, const std::string &label,
+                      unsigned depth) {
+        options.control.check();
+        if (path.size() > 4096)
+            throw Error("property-page-limit", "Child path exceeds its scope budget");
+        auto bounded_type = [&](const Json *value) {
+            auto name = type(value);
+            if (name.size() > 2048) {
+                std::size_t end = 2048;
+                while (end && (static_cast<unsigned char>(name[end]) & 0xc0) == 0x80)
+                    --end;
+                name.resize(end);
+                name += "...";
+            }
+            return name;
+        };
+        auto tx = bounded_type(x), ty = bounded_type(y);
+        auto vx = field(x, "value"), vy = field(y, "value");
+        const bool unwrap = (!x || (!tx.empty() && vx)) && (!y || (!ty.empty() && vy));
+        auto xv = unwrap ? vx : x, yv = unwrap ? vy : y;
+        auto t = unwrap ? (tx == ty || ty.empty() ? tx
+                           : tx.empty()           ? ty
+                                                  : tx + " -> " + ty)
+                        : std::string(yv   ? yv->type_name()
+                                      : xv ? xv->type_name()
+                                           : "null");
+        auto change = !x                 ? (y ? ChangeKind::added : ChangeKind::unchanged)
+                      : !y               ? ChangeKind::removed
+                      : equal(*x, *y, 0) ? ChangeKind::unchanged
+                                         : ChangeKind::modified;
+        PropertyRow row{path,
+                        t,
+                        text(xv, 2048, options.escape_non_bmp),
+                        text(yv, 2048, options.escape_non_bmp),
+                        change,
+                        depth,
+                        bool(x),
+                        bool(y)};
+        row.label = label;
+        result.table.rows.push_back(std::move(row));
+        result.expandable.push_back((x && x->is_structured()) || (y && y->is_structured()));
+    };
+    append(a, b, scope, scope.empty() ? "/" : Json::json_pointer(scope).back(), 0);
+    auto av = field(a, "value"), bv = field(b, "value");
+    result.unwrapped =
+        !options.serialization_fields && (!a || (!type(a).empty() && av)) && (!b || (!type(b).empty() && bv));
+    const auto x = result.unwrapped ? av : a, y = result.unwrapped ? bv : b;
+    const auto base = scope + (result.unwrapped ? "/value" : "");
+    const bool object = (!x || x->is_object()) && (!y || y->is_object());
+    result.array = (!x || x->is_array()) && (!y || y->is_array());
+    if (!object && !result.array)
+        return result;
+    if (result.array)
+        result.total_children = std::max(x ? x->size() : 0, y ? y->size() : 0);
+    else {
+        const Json empty = Json::object();
+        const auto &left = x ? *x : empty, &right = y ? *y : empty;
+        auto l = left.begin(), rr = right.begin();
+        while (l != left.end() || rr != right.end()) {
+            if ((result.total_children & 1023) == 0)
+                options.control.check();
+            if (++result.total_children > 2'000'000)
+                throw Error("property-page-limit", "Property page child count exceeds its budget");
+            if (rr == right.end() || (l != left.end() && l.key() < rr.key()))
+                ++l;
+            else if (l == left.end() || rr.key() < l.key())
+                ++rr;
+            else {
+                ++l;
+                ++rr;
+            }
+        }
+    }
+    if (result.total_children > 2'000'000)
+        throw Error("property-page-limit", "Property page child count exceeds its budget");
+    result.first =
+        result.total_children
+            ? std::min(options.first, ((result.total_children - 1) / options.page_size) * options.page_size)
+            : 0;
+    const auto last = std::min(result.total_children, result.first + options.page_size);
+    if (result.array) {
+        for (auto i = result.first; i < last; ++i)
+            append(x && i < x->size() ? &x->at(i) : nullptr, y && i < y->size() ? &y->at(i) : nullptr,
+                   base + "/" + std::to_string(i), std::to_string(i), 1);
+    } else {
+        const Json empty = Json::object();
+        const auto &left = x ? *x : empty, &right = y ? *y : empty;
+        auto l = left.begin(), rr = right.begin();
+        std::size_t index = 0;
+        while (index < last) {
+            if ((index & 1023) == 0)
+                options.control.check();
+            const Json *lv = nullptr, *rv = nullptr;
+            std::string key;
+            if (rr == right.end() || (l != left.end() && l.key() < rr.key())) {
+                key = l.key();
+                lv = &*l++;
+            } else if (l == left.end() || rr.key() < l.key()) {
+                key = rr.key();
+                rv = &*rr++;
+            } else {
+                key = l.key();
+                lv = &*l++;
+                rv = &*rr++;
+            }
+            if (index++ >= result.first)
+                append(lv, rv, base + "/" + escape(key), key, 1);
+        }
+    }
+    options.control.checkpoint("property-page", work, work);
     return result;
 }
 } // namespace cyuediff

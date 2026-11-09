@@ -12,7 +12,14 @@ void AssetView::set_animation_socket_poses(const AnimationSocketPose *a, const A
     animation_sockets_.set_socket_poses(a,b,comparing);sockets_bound_=a||b;sockets_preview_=false;
 }
 void AssetView::register_translations() {
-    PropertyView::register_translations();
+    PropertyBrowserView::register_translations();
+    cyui::registerTranslations("fr",
+                               {{"Browse by level", "Parcourir par niveau"},
+                                {"Stored properties", "Propriétés enregistrées"},
+                                {"Native fields", "Champs natifs"},
+                                {"Opaque metadata", "Métadonnées opaques"},
+                                {"Some values are unknown; inspecting one snapshot.",
+                                 "Certaines valeurs sont inconnues ; inspection d'un seul instantané."}});
     AnimationMetadataView::register_translations();
     AttachmentsView::register_translations();
     AnimationSourceView::register_translations();
@@ -220,6 +227,11 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     before_ = std::move(before);
     after_ = std::move(after);
     selected_ = 0;
+    property_browser_ = PropertyBrowserView{};
+    browse_properties_ = false;
+    browser_object_.clear();
+    browser_root_ = 0;
+    bound_browser_root_ = -1;
     comparison_ = (before_ && after_) || (compare_missing_side && (before_ || after_));
     properties_after_ = !before_;
     auto prepare_inspection = [](const std::shared_ptr<const Package> &package) {
@@ -267,6 +279,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
                 break;
             }
 
+    bind_property_browser();
     collisions_.set_packages(before_.get(), after_.get(), comparison_);
     skeleton_.set_packages(before_.get(), after_.get(), comparison_);
     animations_.set_packages(before_.get(),after_.get(),comparison_);
@@ -368,6 +381,69 @@ void AssetView::set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, 
     morphs_.set_values(before_morphs.is_null() ? nullptr : &before_morphs,
                        after_morphs.is_null() ? nullptr : &after_morphs, comparison_);
 }
+AssetView::BrowserInputs AssetView::property_browser_inputs() const {
+    const auto &selected = properties_after_ ? after_ : before_;
+    if (!selected || selected_ >= selected->exports.size())
+        return {};
+    const auto &path = selected->exports[selected_].path;
+    auto find = [&](const auto &package) -> const ObjectExport * {
+        if (package)
+            for (const auto &entry : package->exports)
+                if (entry.path == path)
+                    return &entry;
+        return nullptr;
+    };
+    const auto a = find(before_), b = find(after_);
+    auto value = [&](const ObjectExport *entry) -> const Json * {
+        if (!entry)
+            return nullptr;
+        return browser_root_ == 0   ? &entry->properties
+               : browser_root_ == 1 ? &entry->native_data
+                                    : &entry->opaque;
+    };
+    auto known = [&](const ObjectExport *entry) {
+        if (!entry || browser_root_ == 2)
+            return true;
+        if (browser_root_ == 1)
+            return !entry->native_data.empty();
+        return entry->coverage == "properties" || entry->coverage == "empty";
+    };
+    BrowserInputs result{value(a), value(b), comparison_ && known(a) && known(b),
+                         comparison_ && (!known(a) || !known(b))};
+    if (!result.comparing) {
+        const auto local = properties_after_ ? result.after : result.before;
+        result.before = local ? local : result.before ? result.before : result.after;
+        result.after = nullptr;
+    }
+    return result;
+}
+void AssetView::bind_property_browser() {
+    const auto &package = properties_after_ ? after_ : before_;
+    const auto path =
+        package && selected_ < package->exports.size() ? package->exports[selected_].path : std::string{};
+    if (path == browser_object_ && browser_after_ == properties_after_ &&
+        bound_browser_root_ == browser_root_)
+        return;
+    browser_object_ = path;
+    browser_after_ = properties_after_;
+    bound_browser_root_ = browser_root_;
+    const auto input = property_browser_inputs();
+    property_browser_.set_values(input.before, input.after, input.comparing);
+    const auto &views = properties_after_ ? after_inspection_ : before_inspection_;
+    if (selected_ < views.size() && views[selected_].table().truncated)
+        browse_properties_ = true;
+}
+bool AssetView::set_property_scope(const std::string &scope, std::size_t first, int root) {
+    if (root < 0 || root > 2)
+        return false;
+    browser_root_ = root;
+    bind_property_browser();
+    const auto input = property_browser_inputs();
+    if (!property_browser_.navigate(input.before, input.after, scope, first))
+        return false;
+    browse_properties_ = true;
+    return true;
+}
 Json AssetView::view_state() const {
     const auto &p = properties_after_ ? after_ : before_;
     const auto &t = texture_after_ ? after_textures_ : before_textures_;
@@ -376,6 +452,10 @@ Json AssetView::view_state() const {
         {"selected", p && selected_ < p->exports.size() ? Json(p->exports[selected_].path) : Json(nullptr)},
         {"propertiesAfter", properties_after_},
         {"rawProperties", raw_properties_},
+        {"browseProperties", browse_properties_},
+        {"browserRoot", browser_root_},
+        {"browserObject", browser_object_},
+        {"propertyBrowser", property_browser_.view_state()},
         {"graphAfter", graph_after_},
         {"materialAfter", material_after_},
         {"textureAfter", texture_after_},
@@ -517,6 +597,16 @@ void AssetView::restore_view_state(const Json &state) {
                     views[i].restore_view_state(*it);
             }
     }
+    if (state.contains("browserRoot"))
+        browser_root_ = state.at("browserRoot").get<int>();
+    bind_property_browser();
+    if (state.contains("browseProperties"))
+        browse_properties_ = state.at("browseProperties").get<bool>();
+    if (state.contains("browserObject") && state.at("browserObject") == browser_object_ &&
+        state.contains("propertyBrowser")) {
+        const auto input = property_browser_inputs();
+        property_browser_.restore_view_state(input.before, input.after, state.at("propertyBrowser"));
+    }
     if (state.contains("comparison")) {
         const auto &v = state["comparison"];
         if (v.contains("split"))
@@ -610,8 +700,24 @@ void AssetView::draw(const char *id, bool show_language) {
                                           ImGuiWindowFlags_HorizontalScrollbar))
                         ImGui::TextUnformatted(inspection[selected_].c_str());
                     ImGui::EndChild();
-                } else
-                    (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
+                } else {
+                    bind_property_browser();
+                    ImGui::Checkbox(cyui::trLabel("Browse by level").c_str(), &browse_properties_);
+                    if (browse_properties_) {
+                        const auto stored = cyui::tr("Stored properties"), native = cyui::tr("Native fields"),
+                                   opaque = cyui::tr("Opaque metadata");
+                        const char *roots[] = {stored.c_str(), native.c_str(), opaque.c_str()};
+                        if (ImGui::Combo("##property-browser-root", &browser_root_, roots, 3))
+                            bind_property_browser();
+                        const auto input = property_browser_inputs();
+                        if (input.unknown)
+                            cyui::callout(
+                                cyui::Tone::info,
+                                cyui::tr("Some values are unknown; inspecting one snapshot.").c_str());
+                        property_browser_.draw(input.before, input.after);
+                    } else
+                        (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
+                }
                 layout_.end_table();
             }
             ImGui::EndTabItem();

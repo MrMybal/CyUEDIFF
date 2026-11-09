@@ -8,6 +8,8 @@ This source/API milestone adds explicit hybrid struct bindings: a certified refl
 
 The public C++ option/context structures gain `struct_tails`; rebuild hosts against the matching headers and library. The minor-version increase keeps this SDK contract distinct from 0.182 under CMake's same-minor compatibility rule. The latest verified local Windows archive remains 0.182.0; this source change does not replace, upload or publish that archive. See [the contract and evidence](docs/HYBRID_STRUCTS.md).
 
+Paged source/cooked property inspection adds direct-child pages, nested/tag scopes, explicit index navigation and persistent EN/FR selection. Verified with original large fixtures, actual cloth/configuration captures and an independently installed Core consumer; the prior 0.182 archive is unchanged.
+
 ## 0.182.0 — Local development preview
 
 This source version includes the post-0.181 native readers, comparisons and desktop inspection work. The Windows x64 CLI/desktop and reusable Core/Git SDK are verified as a local archive. This task does not upload binaries, publish a GitHub Release or claim a new hosted CI run. The public website is managed separately.

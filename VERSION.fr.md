@@ -8,6 +8,8 @@ Ce jalon des sources et de l’API ajoute des liaisons de structures hybrides ex
 
 Les structures C++ publiques d’options/contexte gagnent `struct_tails` ; recompilez les hôtes avec les en-têtes et la bibliothèque correspondants. Le changement de version mineure distingue ce contrat SDK de 0.182 selon la règle de compatibilité CMake. La dernière archive Windows locale vérifiée reste 0.182.0 ; cette modification des sources ne la remplace, ne la téléverse et ne la publie pas. Voir [le contrat et les preuves](docs/HYBRID_STRUCTS.md).
 
+L’inspection source/cooked paginée ajoute des pages d’éléments directs, chemins imbriqués/balises, accès par indice et sélection EN/FR persistante. Vérification sur de gros jeux originaux, captures réelles de tissu/configuration et consommateur Core installé séparément ; l’archive 0.182 précédente reste inchangée.
+
 ## 0.182.0 — Aperçu de développement local
 
 Cette version des sources regroupe les lecteurs natifs, comparaisons et vues desktop ajoutés après 0.181. La CLI, l’application Windows x64 et les SDK réutilisables Core/Git sont vérifiés dans une archive locale. Cette tâche ne téléverse pas de binaires, ne publie pas de release GitHub et ne prétend pas avoir exécuté une nouvelle CI hébergée. La vitrine publique est gérée séparément.

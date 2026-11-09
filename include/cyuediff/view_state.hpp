@@ -108,6 +108,29 @@ inline void validate(const Json &v, std::string_view kind) {
             child("layout", "shell-layout");
             child("asset", "asset");
             child("container", "container");
+        } else if (kind == "property-browser") {
+            string({"scope"});
+            if (key == "scope") {
+                require(x.get_ref<const std::string &>().size() <= 4096);
+                const auto &scope = x.get_ref<const std::string &>();
+                std::size_t depth = 0;
+                for (char c : scope)
+                    if (c == '/')
+                        ++depth;
+                require(depth <= 128);
+                try {
+                    (void)Json::json_pointer(scope);
+                } catch (const Json::exception &) {
+                    require(false);
+                }
+            }
+            flag({"serializationFields"});
+            child("properties", "property");
+            if (key == "first") {
+                require(x.is_number_integer());
+                scalar(x, 0, 2'000'000);
+                known = true;
+            }
         } else if (kind == "property") {
             child("layout", "property-layout");
             string({"filter"});
@@ -314,6 +337,14 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
         } else if (kind == "asset") {
+            child("propertyBrowser", "property-browser");
+            flag({"browseProperties"});
+            string({"browserObject"});
+            if (key == "browserRoot") {
+                require(x.is_number_integer());
+                scalar(x, 0, 2);
+                known = true;
+            }
             child("meshMorphs", "property");
             flag({"meshMorphInspection"});
             child("meshSkin", "property");
@@ -334,6 +365,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("after", "side");
             child("comparison", "diff");
         } else if (kind == "container") {
+            child("propertyBrowser", "property-browser");
+            flag({"browseProperties"});
             child("nanite", "nanite");
             string({"beforeNanite", "afterNanite"}, true);
             child("animation", "cooked-animation");
