@@ -83,8 +83,9 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
             flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics",
-                  "animationPose", "binaryLayouts", "virtualizedPayloads", "mesh-native", "physics-native",
-                  "animation-native", "skeletal-native", "nanite-native", "physical-cloth-native"});
+                  "animationPose", "binaryLayouts", "virtualizedPayloads", "sourceLimits", "mesh-native",
+                  "physics-native", "animation-native", "skeletal-native", "nanite-native",
+                  "physical-cloth-native"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);

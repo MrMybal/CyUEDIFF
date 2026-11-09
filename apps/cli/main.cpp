@@ -21,6 +21,7 @@
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/binary_layout.hpp>
 #include <cyuediff/tagged_types.hpp>
+#include <cyuediff/source_limits.hpp>
 #include <cmath>
 #include <locale>
 #include <sstream>
@@ -57,6 +58,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff layouts DESCRIPTION.json [--out REPORT.json]\n"
                "  inspect/diff/git-inspect/git-diff accept --layouts DESCRIPTION.json.\n"
                "  diff/git-diff accept independent --after-layouts DESCRIPTION.json.\n"
+               "  Source commands accept --max-properties COUNT and --max-property-bytes BYTES.\n"
+               "  Comparisons accept independent --after-max-properties and --after-max-property-bytes.\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "
                "ROOT] [--out FILE]\n"
                "  cyuediff diff BEFORE AFTER [--project PROJECT] [--before-project PROJECT] "
@@ -283,6 +286,10 @@ int run(const std::vector<std::string> &args) {
                                           "--position-tolerance",
                                           "--max-packages",
                                           "--max-exports",
+                                          "--max-properties",
+                                          "--max-property-bytes",
+                                          "--after-max-properties",
+                                          "--after-max-property-bytes",
                                           "--layouts",
                                           "--after-layouts",
                                           "--payload-root",
@@ -400,10 +407,64 @@ int run(const std::vector<std::string> &args) {
     }
     if (positional.size() != required)
         throw Error("arguments", "Wrong number of arguments; use --help");
+    const std::set<std::string> source_commands = {"inspect",
+                                                   "textconv",
+                                                   "diff",
+                                                   "graph",
+                                                   "texture",
+                                                   "mesh",
+                                                   "collision-preview",
+                                                   "skeleton-animation",
+                                                   "preview",
+                                                   "image-diff",
+                                                   "hdr-diff",
+                                                   "material",
+                                                   "material-diff",
+                                                   "geometry",
+                                                   "mesh-diff",
+                                                   "export-mesh",
+                                                   "curves",
+                                                   "curves-diff",
+                                                   "curve-value",
+                                                   "curve-value-diff",
+                                                   "curve-components",
+                                                   "animation",
+                                                   "animation-diff",
+                                                   "animation-frame",
+                                                   "animation-frame-diff",
+                                                   "animation-pose",
+                                                   "animation-pose-diff",
+                                                   "animation-socket-pose",
+                                                   "animation-socket-pose-diff",
+                                                   "skeleton",
+                                                   "skeleton-diff",
+                                                   "skeleton-pose",
+                                                   "skeleton-pose-diff",
+                                                   "socket-pose",
+                                                   "socket-pose-diff",
+                                                   "attachments",
+                                                   "attachments-diff",
+                                                   "skeleton-animation-diff",
+                                                   "collision",
+                                                   "collision-diff",
+                                                   "git-inspect",
+                                                   "git-diff"};
+    const bool source_read = source_commands.count(command) != 0;
+    const bool source_compare =
+        source_read &&
+        (command == "diff" || (command.size() > 5 && command.compare(command.size() - 5, 5, "-diff") == 0));
     const bool image_command = command == "preview" || command == "image-diff" || command == "hdr-diff";
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (key == "--max-properties" || key == "--max-property-bytes" || key == "--after-max-properties" ||
+            key == "--after-max-property-bytes") {
+            if (!source_read)
+                throw Error("arguments", "Source read limits require a source decode command");
+            if (key.rfind("--after-", 0) == 0 && !source_compare)
+                throw Error("arguments", "Independent source limits require a source comparison");
+            continue;
+        }
         if (source_types) {
             if (key != "--out" && key != "--layouts" && key != "--codec")
                 throw Error("arguments", "Unsupported source type preparation option: " + key);
@@ -624,6 +685,21 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments", "Out of range value for " + key);
         return static_cast<std::uint32_t>(value);
     };
+    SourceReadLimits before_limits;
+    if (flags.contains("--max-properties"))
+        before_limits.max_properties = integer_option("--max-properties", SourceReadLimits::maximum_work);
+    if (flags.contains("--max-property-bytes"))
+        before_limits.max_property_bytes = integer_option(
+            "--max-property-bytes", static_cast<std::uint32_t>(SourceReadLimits::maximum_bytes));
+    before_limits.validate();
+    auto after_limits = before_limits;
+    if (flags.contains("--after-max-properties"))
+        after_limits.max_properties =
+            integer_option("--after-max-properties", SourceReadLimits::maximum_work);
+    if (flags.contains("--after-max-property-bytes"))
+        after_limits.max_property_bytes = integer_option(
+            "--after-max-property-bytes", static_cast<std::uint32_t>(SourceReadLimits::maximum_bytes));
+    after_limits.validate();
     auto real_option = [&](const std::string &key, double fallback, double minimum, double maximum) {
         if (!flags.contains(key))
             return fallback;
@@ -677,6 +753,7 @@ int run(const std::vector<std::string> &args) {
     auto read = [&](const std::string &input, const std::string &project_key, ReadOptions options) {
         const auto &selected_layouts = project_key == "--after-project" ? after_layouts : before_layouts;
         options.decoders = project_key == "--after-project" ? after_decoders : before_decoders;
+        (project_key == "--after-project" ? after_limits : before_limits).apply(options);
         options.narrow_string_encoding = selected_layouts ? selected_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
         auto project = path_option(project_key);
         if (project.empty())
@@ -726,9 +803,11 @@ int run(const std::vector<std::string> &args) {
     fs::path png_destination;
     int exit_code = 0;
     ReadOptions options;
+    before_limits.apply(options);
     options.decoders = before_decoders;
     options.narrow_string_encoding = before_layouts ? before_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     auto after_read_options = options;
+    after_limits.apply(after_read_options);
     after_read_options.decoders = after_decoders;
     after_read_options.narrow_string_encoding = after_layouts ? after_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     if (command == "layouts") {
@@ -1607,6 +1686,9 @@ int run(const std::vector<std::string> &args) {
         if (flags.contains("--metadata"))
             options.properties = options.fingerprints = false;
         auto package = read(positional[0], "--project", options);
+        if (command == "textconv" && package.source_read_limit_failed)
+            throw Error("source-read-limits",
+                        "A source read limit/count guard failed; text conversion is unavailable");
         if (command == "graph")
             output = package.blueprint_snapshot();
         else if (command == "texture")
@@ -1635,6 +1717,8 @@ int run(const std::vector<std::string> &args) {
         else
             output = (command == "textconv" || flags.contains("--snapshot")) ? package.semantic_snapshot()
                                                                              : package.to_json();
+        if (package.source_read_limit_failed)
+            output["sourceReadLimitFailed"] = true;
         if (!package.complete_input)
             exit_code = 2;
     } else if (image_command) {
@@ -1826,6 +1910,8 @@ int run(const std::vector<std::string> &args) {
                                       : Json{{"path", context.resolve(positional[1]).u8string()}};
     } else
         throw Error("arguments", "Unknown command " + command);
+    if (source_read && (!before_limits.is_default() || !after_limits.is_default()))
+        output["readLimits"] = {{"before", before_limits.to_json()}, {"after", after_limits.to_json()}};
     if (!source_types && (before_layouts || after_layouts)) {
         output["layoutContexts"] = {{"beforeSha256", before_layouts ? before_layouts->sha256() : std::string{}},
                                     {"afterSha256", after_layouts ? after_layouts->sha256() : std::string{}},

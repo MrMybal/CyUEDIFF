@@ -428,3 +428,8 @@ The selected UE 5.3 Windows reader now exposes finite float32/float16/UNorm8 cha
 ## Physical cloth — 0.184 development
 
 The explicitly selected UE 5.3 physical-cloth profile now binds owned Core models to an EN/FR object/LOD inspector and reference-pose wire preview. Independent contexts, focused tether/vertex differences and workspace version 13 are available. See [PHYSICAL_CLOTH.md](PHYSICAL_CLOTH.md) for limits and launch options.
+
+
+## Source read policies — 0.187
+
+Explicit source work/window limits are available in Core, CLI and EN/FR desktop, with independent after policies and workspace format 14 retention. Versions 1–13 preserve their original default policy. A failed limit/count guard keeps inspection fingerprints/diagnostics and prevents invented semantic removals in a paired comparison. The selected real Humanoid source can use a deliberately larger work policy; dedicated source physical projection, defaults, broader acceptance and final delivery remain open. See [SOURCE_READ_LIMITS.md](SOURCE_READ_LIMITS.md).

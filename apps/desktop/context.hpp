@@ -6,6 +6,9 @@ struct Settings {
     std::string before, after, project, engine, codec, repository, lfs_objects, after_project, after_engine;
     std::string layouts, after_layouts;
     bool inherit_after_layouts = true;
+    int max_properties = 100'000, max_property_bytes = 32 * 1024 * 1024;
+    int after_max_properties = 100'000, after_max_property_bytes = 32 * 1024 * 1024;
+    bool inherit_after_source_limits = true;
     std::string payload_root, after_payload_root;
     bool inherit_after_payload_root = true;
     std::string pose_before_skeleton, pose_after_skeleton, pose_before_object, pose_after_object,
@@ -150,6 +153,13 @@ struct Settings {
         result.layouts = fs::u8path(layouts);
         result.after_layouts = inherit_after_layouts ? fs::path{} : fs::u8path(after_layouts);
         result.inherit_after_layouts = inherit_after_layouts;
+        result.source_limits = {static_cast<std::uint32_t>(max_properties),
+                                static_cast<std::uint64_t>(max_property_bytes)};
+        result.after_source_limits = {static_cast<std::uint32_t>(after_max_properties),
+                                      static_cast<std::uint64_t>(after_max_property_bytes)};
+        result.source_limits.validate();
+        result.after_source_limits.validate();
+        result.inherit_after_source_limits = inherit_after_source_limits;
         result.after_project = fs::u8path(after_project);
         result.after_engine_root = fs::u8path(after_engine);
         if (pose_enabled) {

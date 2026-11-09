@@ -31,3 +31,8 @@ A null input pointer means **known absence**, allowing additions/removals. Unkno
 Defaults are 128 children (maximum 512), 2,048 input bytes per scalar string preview, 4,096-byte scope/child paths, 128 scope/comparison levels and four million comparison nodes. Direct-child inventory is limited to two million. The UI uses a sixteen-million-node comparison budget. Exact deep classification is bounded and cancellable even when only one page is materialized. Limits fail explicitly; they do not silently declare equality or publish a partly classified page. The UI retains the current page after a failed navigation and displays the diagnostic.
 
 This is stored-value navigation. It neither decodes additional Unreal serializers nor reconstructs missing defaults, evaluates simulations or replaces dedicated geometry/animation inspectors. Private actual corpus captures remain outside the source distribution.
+
+
+## Large source presentation — 0.187
+
+The asset host starts large source objects in this scoped browser instead of preparing oversized expanded/raw/text views. UI JSON is bounded to 4 MiB and 50,000 lines per input; it is either complete or explicitly unavailable, never truncated asset data. Core values, nested paths and CLI JSON export retain the full decoded content. See [SOURCE_READ_LIMITS.md](SOURCE_READ_LIMITS.md).

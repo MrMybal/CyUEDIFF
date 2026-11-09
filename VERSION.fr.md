@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.187.0 — Politiques de lecture source
+
+Les limites de travail/taille source sont explicites dans le Core, la CLI et l’interface EN/FR, avec valeurs après indépendantes et conservation dans les espaces de travail 14. Un échec de limite/compteur rend la comparaison sémantique non vérifiable au lieu d’inventer des suppressions. Les politiques choisies gardent leur provenance sans créer de changements d’asset. Utilisez les en-têtes/bibliothèques 0.187 correspondants après les ajouts à Package/DiffResult. La dernière archive Windows locale vérifiée reste 0.182. Voir [SOURCE_READ_LIMITS.md](docs/SOURCE_READ_LIMITS.md).
+
 ## 0.186.0 — Métadonnées explicites des types source
 
 Des contextes immuables et liés au profil complètent les identités absentes des anciennes maps/sets balisées. `source-types` prépare un catalogue depuis un USMAP explicite et des types racines sélectionnés ; les contrôles existants de la CLI/Git et de l’interface EN/FR le conservent par côté. Les balises restent intactes avec `resolvedType` à côté ; contradictions, alias ambigus et sérialiseurs natifs sans liaison restent indisponibles. Les propriétés/suites natives du tissu Cube réel sont accessibles, sans résolution des valeurs par défaut ni projection de géométrie physique source. Le Humanoid plus grand dépasse encore le budget source par défaut. Recompilez avec les en-têtes/bibliothèques 0.186 correspondants après les ajouts à `DecoderRegistry` et `Package`. La dernière archive Windows locale vérifiée reste 0.182. Voir [le contrat](docs/TAGGED_TYPES.md).

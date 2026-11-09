@@ -121,6 +121,8 @@ AnimationComparison compare_animation_models(const Package &before, const Packag
 std::string DiffResult::status() const {
     if (!complete_input)
         return "incomplete";
+    if (source_read_limit_failed)
+        return "unverified";
     if (!changes.empty() || !graph_changes.empty() || !texture_changes.empty() || !mesh_changes.empty() ||
         !material_changes.empty() || !collision_changes.empty() || !skeleton_changes.empty())
         return "changed";
@@ -129,19 +131,22 @@ std::string DiffResult::status() const {
     return binary_changed ? "binary-only" : "identical";
 }
 Json DiffResult::to_json() const {
-    return {{"schema", "cyuediff.diff/1"},
-            {"status", status()},
-            {"binaryComparisonAvailable", binary_comparison_available},
-            {"binaryChanged", binary_comparison_available ? Json(binary_changed) : Json(nullptr)},
-            {"completeInput", complete_input},
-            {"changes", changes},
-            {"graphChanges", graph_changes},
-            {"textureChanges", texture_changes},
-            {"meshChanges", mesh_changes},
-            {"materialChanges", material_changes},
-            {"collisionChanges", collision_changes},
-            {"skeletonChanges", skeleton_changes},
-            {"diagnostics", diagnostics}};
+    Json result = {{"schema", "cyuediff.diff/1"},
+                   {"status", status()},
+                   {"binaryComparisonAvailable", binary_comparison_available},
+                   {"binaryChanged", binary_comparison_available ? Json(binary_changed) : Json(nullptr)},
+                   {"completeInput", complete_input},
+                   {"changes", changes},
+                   {"graphChanges", graph_changes},
+                   {"textureChanges", texture_changes},
+                   {"meshChanges", mesh_changes},
+                   {"materialChanges", material_changes},
+                   {"collisionChanges", collision_changes},
+                   {"skeletonChanges", skeleton_changes},
+                   {"diagnostics", diagnostics}};
+    if (source_read_limit_failed)
+        result["sourceReadLimitFailed"] = true;
+    return result;
 }
 std::string MaterialComparison::status() const {
     return !complete ? "incomplete" : (changes.empty() ? "identical" : "changed");
@@ -355,6 +360,13 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
     result.binary_comparison_available = !before.fingerprints.empty() && !after.fingerprints.empty();
     if (result.binary_comparison_available)
         result.binary_changed = before.fingerprints != after.fingerprints;
+    result.source_read_limit_failed = before.source_read_limit_failed || after.source_read_limit_failed;
+    if (result.source_read_limit_failed) {
+        result.diagnostics.push_back(
+            "A source read limit/count guard failed; semantic differences are unavailable. Review source "
+            "diagnostics and read limits. Binary fingerprints remain available.");
+        return result;
+    }
     walk(before.semantic_snapshot(), after.semantic_snapshot(), "", result.changes, control);
     walk(before.blueprint_snapshot(), after.blueprint_snapshot(), "", result.graph_changes, control);
     walk(before.texture_snapshot(), after.texture_snapshot(), "", result.texture_changes, control);

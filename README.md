@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Application license</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.186.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
+      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.187.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
       <p><sub>Windows x64 desktop<br>No public application release yet</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspect Unreal Engine assets and understand what changed **without launching Unreal Editor**. CyUEDiff provides a Windows desktop application, a JSON command-line tool and a reusable C++17 reader for Unreal developers, technical artists and tool authors.
 
-> **IN DEVELOPMENT · 0.186.0**
+> **IN DEVELOPMENT · 0.187.0**
 >
 > This source version provides explicit, evolving format coverage. Unknown data keeps its diagnostics and byte fingerprints. Read the [version notes, supported platforms and known limitations](VERSION.md) before choosing a workflow.
 
@@ -59,6 +59,7 @@ These are real desktop and embeddable CyUI captures using original generated dem
 - **Large property inspection:** paged source/cooked values, nested scopes, serialization fields, direct index navigation and retained workspace selection. [Browser contract](docs/PROPERTY_BROWSER.md).
 - **Physical cloth Core/CLI:** selected UE 5.3 stored physical geometry, twelve-slot bones, tethers, interpreted transitions, named differences, reference-pose wrap queries and explicit render-source bounds. The EN/FR desktop offers independent physical LODs, focused vertex/tether differences, stored configuration and reference-pose wire previews. [Scope and limits](docs/PHYSICAL_CLOTH.md).
 - **Hybrid native structures:** explicitly bind a reflected property prefix followed by a declarative native tail, with named fields, shared budgets and opaque recovery. Selected physical cloth properties and stored tethers are checked independently; transition records remain raw. [Contract](docs/HYBRID_STRUCTS.md). Source catalogues also support certified tagged prefixes followed by native tails, with independent before/after contexts.
+- **Deliberate source read limits:** independent work/byte policies in CLI and EN/FR desktop, retained per document. Limit/count failures make semantic comparison unverified, while binary facts remain available. [Contract](docs/SOURCE_READ_LIMITS.md).
 - **Explicit source type metadata:** root-selected USMAP contexts complete legacy map/set struct identities while preserving stored tags, qualified owners, static dimensions and per-side provenance. Native formats still require certified layouts. [Contract and limits](docs/TAGGED_TYPES.md).
 - **Extensible readers:** bounded native decoder callbacks and declarative binary layouts with explicit version profiles; local virtualized editor payload stores require full raw BLAKE3 verification. Loading supports cooperative cancellation, progress and a verified package cache.
 - **Reusable block deltas:** generate, compose and reconstruct file/block differences with SHA-256 verification. This is a separate binary reconstruction API; remote object hosting and synchronization are not implemented.

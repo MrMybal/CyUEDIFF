@@ -134,6 +134,10 @@ Json type_json(const Type &t) {
     }
     return j;
 }
+bool read_limit_failed(const Error &error) {
+    return error.code == "limit" || error.code == "decoder-limit" || error.code == "layout-limit" ||
+           error.code == "text-limit";
+}
 struct Tag {
     std::string name, guid;
     Type type;
@@ -604,7 +608,7 @@ class PropertyReader {
   public:
     PropertyReader(Archive &ar, const Package &package, const ObjectExport &entry, const ReadOptions &o)
         : a(ar), p(package), object(entry), options(o) {}
-    bool partial = false;
+    bool partial = false, limit_failed = false;
     Json properties(std::uint64_t end, unsigned depth = 0, bool root = true, const std::string &owner = {}) {
         depth_check(depth);
         Archive::ReadLimit script_limit(a, end);
@@ -655,6 +659,7 @@ class PropertyReader {
             } catch (const Error &e) {
                 if (e.code == "cancelled")
                     throw;
+                limit_failed = limit_failed || read_limit_failed(e);
                 partial = true;
                 ++opaque_properties_;
                 entry.erase("value");
@@ -689,6 +694,11 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                                  {"profileMatched", types.matches(p.summary)},
                                  {"defaultsResolved", false}};
     }
+    const ReadOptions defaults;
+    if (options.max_properties != defaults.max_properties ||
+        options.max_property_bytes != defaults.max_property_bytes)
+        p.source_read_limits = {{"maxProperties", options.max_properties},
+                                {"maxPropertyBytes", options.max_property_bytes}};
     const auto &s = p.summary;
     header.seek(s.name_offset);
     p.names.reserve(s.name_count);
@@ -799,6 +809,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
         auto start = base + entry.script_start;
         auto end = entry.script_end ? base + entry.script_end : base + entry.size;
         if (end - start > options.max_property_bytes) {
+            p.source_read_limit_failed = true;
             entry.coverage = "opaque";
             entry.opaque["export"] = opaque_range(*data, base, entry.size, options);
             p.diagnostics.push_back(entry.path + ": script stream exceeds property byte limit");
@@ -808,6 +819,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
             data->seek(start);
             PropertyReader reader(*data, p, entry, options);
             entry.properties = reader.properties(end);
+            p.source_read_limit_failed = p.source_read_limit_failed || reader.limit_failed;
             if (entry.script_end && data->tell() != end)
                 throw Error("script-range", "Property terminator does not match script range", data->tell());
             entry.coverage = reader.partial ? "partial-properties" : "properties";
@@ -830,6 +842,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                 } catch (const Error &error) {
                     if (error.code == "cancelled")
                         throw;
+                    p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(error);
                     extension_native = true;
                     entry.native_coverage = "opaque";
                     p.diagnostics.push_back(entry.path + ": native " + error.code + ": " + error.what());
@@ -847,6 +860,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                 } catch (const Error &error) {
                     if (error.code == "cancelled")
                         throw;
+                    p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(error);
                     entry.native_coverage = "opaque";
                     p.diagnostics.push_back(entry.path + ": " + error.code + ": " + error.what());
                     data->seek(consumed);
@@ -867,6 +881,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                 } catch (const Error &error) {
                     if (error.code == "cancelled")
                         throw;
+                    p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(error);
                     entry.native_coverage = "opaque";
                     p.diagnostics.push_back(entry.path + ": native " + error.code + " at " +
                                             std::to_string(error.offset) + ": " + error.what());
@@ -887,6 +902,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                 } catch (const Error &error) {
                     if (error.code == "cancelled")
                         throw;
+                    p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(error);
                     entry.native_coverage = "opaque";
                     std::string diagnostic = error.code + ": " + error.what();
                     TextureSource texture;
@@ -915,6 +931,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                 } catch (const Error &error) {
                     if (error.code == "cancelled")
                         throw;
+                    p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(error);
                     entry.native_coverage = "opaque";
                     MeshSource source;
                     source.object_path = entry.path;
@@ -941,6 +958,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                 } catch (const Error &error) {
                     if (error.code == "cancelled")
                         throw;
+                    p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(error);
                     entry.native_coverage = "opaque";
                     p.diagnostics.push_back(entry.path + ": " + error.code + ": " + error.what());
                     data->seek(consumed);
@@ -951,6 +969,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
         } catch (const Error &e) {
             if (e.code == "cancelled")
                 throw;
+            p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(e);
             entry.properties = Json::object();
             entry.coverage = "opaque";
             entry.opaque["export"] = opaque_range(*data, base, entry.size, options);
@@ -1078,6 +1097,10 @@ Json Package::to_json() const {
                    {"fingerprints", fingerprints},
                    {"completeInput", complete_input},
                    {"diagnostics", diagnostics}};
+    if (source_read_limit_failed)
+        result["sourceReadLimitFailed"] = true;
+    if (!source_read_limits.is_null())
+        result["sourceReadLimits"] = source_read_limits;
     if (!source_type_context.is_null())
         result["sourceTypeContext"] = source_type_context;
     return result;

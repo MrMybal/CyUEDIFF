@@ -1,8 +1,58 @@
+#include "json_text.hpp"
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/mesh_morphs.hpp>
 #include <cyuediff/asset_view.hpp>
 #include <cyuediff/animation_pose_view.hpp>
 #include "diff_style.hpp"
+#include <iomanip>
+#include <ostream>
+#include <streambuf>
+namespace cyuediff::detail {
+namespace {
+struct PresentationTextLimit {};
+class PresentationTextBuffer final : public std::streambuf {
+    std::string text_;
+    std::size_t lines_ = 1;
+    void append(const char *data, std::size_t size) {
+        if (size > presentation_json_bytes - text_.size())
+            throw PresentationTextLimit{};
+        const auto lines = static_cast<std::size_t>(std::count(data, data + size, '\n'));
+        if (lines > presentation_json_lines - lines_)
+            throw PresentationTextLimit{};
+        lines_ += lines;
+        text_.append(data, size);
+    }
+    std::streamsize xsputn(const char *data, std::streamsize size) override {
+        if (size > 0)
+            append(data, static_cast<std::size_t>(size));
+        return size;
+    }
+    int_type overflow(int_type c) override {
+        if (!traits_type::eq_int_type(c, traits_type::eof())) {
+            const auto value = traits_type::to_char_type(c);
+            append(&value, 1);
+        }
+        return traits_type::not_eof(c);
+    }
+
+  public:
+    std::string take() {
+        return std::move(text_);
+    }
+};
+} // namespace
+std::string presentation_json(const Json &value) {
+    PresentationTextBuffer buffer;
+    std::ostream output(&buffer);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    try {
+        output << std::setw(2) << value;
+        return buffer.take();
+    } catch (const PresentationTextLimit &) {
+        return {};
+    }
+}
+} // namespace cyuediff::detail
 namespace cyuediff {
 void AssetView::set_animation_poses(const AnimationPose *before, const AnimationPose *after, bool comparing) {
     animation_pose_.set_poses(before,after,comparing);
@@ -218,11 +268,22 @@ void AssetView::register_translations() {
          {"This graph is incomplete. Some pins or connections could not be resolved.",
           "Ce graphe est incomplet. Certains pins ou connexions n'ont pas pu être résolus."},
          {"Graph diagnostics", "Diagnostics du graphe"},
+         {"Whole-document text exceeds the display limits. Use scoped properties or export JSON with the "
+          "CLI.",
+          "Le texte complet dépasse les limites d’affichage. Utilisez les propriétés par niveau ou exportez "
+          "le JSON avec la CLI."},
+         {"Raw JSON exceeds the display limits. Use scoped properties or export JSON with the CLI.",
+          "Le JSON brut dépasse les limites d’affichage. Utilisez les propriétés par niveau ou exportez le "
+          "JSON avec la CLI."},
          {"Empty package", "Package vide"},
          {"This package has no exported objects.", "Ce package ne contient aucun objet exporté."}});
 }
 void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after,
                              bool compare_missing_side) {
+    if (before && after && (before->source_read_limit_failed || after->source_read_limit_failed))
+        throw Error("source-read-limits",
+                    "A source read limit/count guard failed; semantic review is unavailable.");
+
     layout_.restore(Json::object(), "asset-layout");
     before_ = std::move(before);
     after_ = std::move(after);
@@ -238,10 +299,15 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
         std::vector<std::string> result;
         if (package)
             for (const auto &entry : package->exports) {
+                if (detail::presentation_json(entry.properties).empty() ||
+                    detail::presentation_json(entry.native_data).empty()) {
+                    result.emplace_back();
+                    continue;
+                }
                 Json data = {{"properties", entry.properties}, {"opaque", entry.opaque}};
                 if (!entry.native_data.empty())
                     data["native"] = entry.native_data;
-                result.push_back(data.dump(2));
+                result.push_back(detail::presentation_json(data));
             }
         return result;
     };
@@ -260,6 +326,31 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
         if (local)
             for (const auto &entry : local->exports) {
                 auto it = objects.find(entry.path);
+                const auto &raw = after ? after_properties_ : before_properties_;
+                const auto &peer_raw = after ? before_properties_ : after_properties_;
+                const auto local_index = static_cast<std::size_t>(&entry - local->exports.data());
+                const auto peer_index =
+                    it == objects.end() ? 0 : static_cast<std::size_t>(it->second - peer->exports.data());
+                if (raw[local_index].empty() || (it != objects.end() && peer_raw[peer_index].empty())) {
+                    const auto *a = &entry.properties;
+                    const auto *b = it == objects.end() ? nullptr : &it->second->properties;
+                    if (after)
+                        std::swap(a, b);
+                    if (!comparison_)
+                        a = b = &entry.properties;
+                    PropertyTableOptions options;
+                    options.max_rows = 1;
+                    options.escape_non_bmp = sizeof(ImWchar) == 2;
+                    auto table = property_table(a, b, options);
+                    if (comparison_ && it != objects.end() && !table.rows.empty() &&
+                        (entry.native_data != it->second->native_data || entry.opaque != it->second->opaque))
+                        table.rows[0].change = ChangeKind::modified;
+                    PropertyView view;
+                    view.set_table(std::move(table), comparison_);
+                    views.push_back(std::move(view));
+                    browse_properties_ = true;
+                    continue;
+                }
                 auto a = data(entry), b = it == objects.end() ? Json{} : data(*it->second);
                 const Json *match = it == objects.end() ? nullptr : &b;
                 PropertyView view;
@@ -317,14 +408,31 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     after_graph_.set_package(after_ ? *after_ : empty, after_peer, true);
     document_ = {};
     diff_state_ = {};
+    text_comparison_available_ = false;
     if (comparison_) {
-        auto snapshot = [](const auto &package) {
-            return package ? package->semantic_snapshot().dump(2) : Json{{"absent", true}}.dump(2);
+        auto small = [](const auto &raw) {
+            std::size_t size = 0;
+            for (const auto &text : raw) {
+                if (text.empty() || text.size() > detail::presentation_json_bytes - size)
+                    return false;
+                size += text.size();
+            }
+            return true;
         };
-        document_.setTexts(snapshot(before_), snapshot(after_), cyui::CodeLanguage::json);
-        if (!document_.hunks().empty()) {
-            diff_state_.hunk = 0;
-            diff_state_.focus = document_.hunks().front();
+        if (small(before_properties_) && small(after_properties_)) {
+            auto snapshot = [](const auto &package) {
+                return detail::presentation_json(package ? package->semantic_snapshot()
+                                                         : Json{{"absent", true}});
+            };
+            const auto before = snapshot(before_), after = snapshot(after_);
+            if (!before.empty() && !after.empty()) {
+                document_.setTexts(before, after, cyui::CodeLanguage::json);
+                text_comparison_available_ = true;
+                if (!document_.hunks().empty()) {
+                    diff_state_.hunk = 0;
+                    diff_state_.focus = document_.hunks().front();
+                }
+            }
         }
     }
 }
@@ -697,8 +805,15 @@ void AssetView::draw(const char *id, bool show_language) {
                 ImGui::Checkbox(cyui::trLabel("Raw JSON").c_str(), &raw_properties_);
                 if (raw_properties_) {
                     if (ImGui::BeginChild("##properties", {}, ImGuiChildFlags_None,
-                                          ImGuiWindowFlags_HorizontalScrollbar))
-                        ImGui::TextUnformatted(inspection[selected_].c_str());
+                                          ImGuiWindowFlags_HorizontalScrollbar)) {
+                        if (inspection[selected_].empty())
+                            ImGui::TextWrapped("%s",
+                                               cyui::tr("Raw JSON exceeds the display limits. Use scoped "
+                                                        "properties or export JSON with the CLI.")
+                                                   .c_str());
+                        else
+                            ImGui::TextUnformatted(inspection[selected_].c_str());
+                    }
                     ImGui::EndChild();
                 } else {
                     bind_property_browser();
@@ -831,7 +946,12 @@ void AssetView::draw(const char *id, bool show_language) {
         if (comparison_ &&
             ImGui::BeginTabItem(cyui::trLabel("Comparison").c_str(), nullptr, flags(AssetTab::comparison))) {
             active_tab_ = AssetTab::comparison;
-            cyui::diffViewer("##semantic-diff", diff_state_, document_, ImGui::GetContentRegionAvail());
+            if (text_comparison_available_)
+                cyui::diffViewer("##semantic-diff", diff_state_, document_, ImGui::GetContentRegionAvail());
+            else
+                ImGui::TextWrapped("%s", cyui::tr("Whole-document text exceeds the display limits. Use "
+                                                  "scoped properties or export JSON with the CLI.")
+                                             .c_str());
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

@@ -137,3 +137,8 @@ The optional container `beforeNanite`/`afterNanite` fields store exact object pa
 ## Physical cloth extension
 
 Version 13 adds separate before/after physical-cloth profiles, tab 11 and validated physical object/LOD/mode/vertex/filter/camera state. Versions 1–12 migrate with physical readers disabled. Missing saved objects or out-of-range LODs stay unavailable; no replacement scope is selected implicitly.
+
+
+## Source read policies — 0.187
+
+Explicit source work/window limits are available in Core, CLI and EN/FR desktop, with independent after policies and workspace format 14 retention. Versions 1–13 preserve their original default policy. A failed limit/count guard keeps inspection fingerprints/diagnostics and prevents invented semantic removals in a paired comparison. The selected real Humanoid source can use a deliberately larger work policy; dedicated source physical projection, defaults, broader acceptance and final delivery remain open. See [SOURCE_READ_LIMITS.md](SOURCE_READ_LIMITS.md).

@@ -1,3 +1,4 @@
+#include "../ui/json_text.hpp"
 #include <cyuediff/asset_view.hpp>
 #include <iostream>
 using namespace cyuediff;
@@ -115,6 +116,36 @@ int main() {
                     }
                 }
             }
+        auto limited = std::make_shared<Package>(*after);
+        limited->source_read_limit_failed = true;
+        const auto previous = view.view_state();
+        bool refused = false;
+        try {
+            view.set_packages(before, limited);
+        } catch (const Error &error) {
+            refused = error.code == "source-read-limits";
+        }
+        check(refused && view.view_state() == previous,
+              "An unavailable budget peer cannot create property removals or change the existing UI state");
+        AssetView single_limited;
+        single_limited.set_packages(limited);
+        Json escaped = {
+            {"name", "caf\u00e9"}, {"quoted", "\"\n"}, {"integer", 9007199254740993ll}, {"real", 1.25}};
+        check(detail::presentation_json(escaped) == escaped.dump(2),
+              "Bounded display serialization preserves exact ordinary JSON text");
+        auto many_lines = Json::array();
+        for (std::size_t i = 0; i < detail::presentation_json_lines; ++i)
+            many_lines.push_back(0);
+        check(detail::presentation_json(many_lines).empty(),
+              "Line-limited JSON never becomes a truncated value");
+        auto huge = std::make_shared<Package>(*before);
+        huge->exports[0].properties["Large"] = {{"type", "StrProperty"},
+                                                {"value", std::string(4 * 1024 * 1024, 'x')}};
+        AssetView huge_view;
+        huge_view.set_packages(huge, huge);
+        check(!huge_view.text_comparison_available() &&
+                  huge_view.view_state()["browseProperties"].get<bool>(),
+              "A large valid package keeps scoped inspection without constructing an oversized text diff");
         ImGui::DestroyContext();
         std::cout << checks << " loose asset browser checks, " << frames << " frames passed\n";
     } catch (const std::exception &e) {

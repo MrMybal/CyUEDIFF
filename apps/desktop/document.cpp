@@ -106,6 +106,11 @@ Json Document::report() const {
                    {"afterMesh", mesh(after_mesh)},
                    {"diagnostics", diagnostics},
                    {"animationPose", animation_pose_report(*this)}};
+    const auto &after_limits =
+        request.inherit_after_source_limits ? request.source_limits : request.after_source_limits;
+    if (!request.source_limits.is_default() || !after_limits.is_default())
+        result["readLimits"] = {{"before", request.source_limits.to_json()},
+                                {"after", after_limits.to_json()}};
     if (!layout_contexts.is_null()) result["layoutContexts"] = layout_contexts;
 #ifdef CYUEDIFF_HAS_GIT
     result["git"] = git ? git->to_json() : Json(nullptr);
@@ -122,11 +127,16 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     request.control.checkpoint("Opening document");
     ReadOptions read;
     read.control = request.control;
+    request.source_limits.apply(read);
+    request.after_source_limits.validate();
     auto document = std::make_shared<Document>();
     document->request = request;
     document->request.cache.reset();
     document->request.control = {}; // Do not retain session callbacks in a completed document.
     if (request.container) {
+        if (!request.source_limits.is_default() || !request.after_source_limits.is_default() ||
+            !request.inherit_after_source_limits)
+            throw Error("desktop-read-limits", "Source read limits require loose or Git packages");
         if (!request.layouts.empty() || !request.after_layouts.empty() || !request.inherit_after_layouts)
             throw Error("desktop-layouts", "Cooked structures use inline schema context layouts");
         if (request.git || !request.before.empty() || !request.after.empty())
@@ -152,6 +162,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     if (before_layouts) read.decoders = before_layouts->decoder_registry(layout_options);
     read.narrow_string_encoding = before_layouts ? before_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     auto after_read = read;
+    if (!request.inherit_after_source_limits)
+        request.after_source_limits.apply(after_read);
     after_read.narrow_string_encoding = after_layouts ? after_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
     after_read.decoders = after_layouts == before_layouts ? read.decoders :
         (after_layouts ? after_layouts->decoder_registry(layout_options) : nullptr);
@@ -260,6 +272,10 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
             document->diff = compare(*document->before, *document->after, request.control);
         }
     }
+    if (document->before && document->after &&
+        (document->before->source_read_limit_failed || document->after->source_read_limit_failed))
+        throw Error("source-read-limits", "A source read limit/count guard failed; adjust the source limits "
+                                          "or repair the input before reviewing semantic differences.");
     prepare_animation_poses(*document, request, read, after_read);
     if (!request.previews)
         return document;

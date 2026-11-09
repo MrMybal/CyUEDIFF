@@ -163,6 +163,11 @@ Json WorkspaceFile::to_json() const {
             s[field.first] = d.settings.*field.second;
         s["inherit_after_payload_root"] = d.settings.inherit_after_payload_root;
         s["inherit_after_layouts"] = d.settings.inherit_after_layouts;
+        s["max_properties"] = d.settings.max_properties;
+        s["max_property_bytes"] = d.settings.max_property_bytes;
+        s["after_max_properties"] = d.settings.after_max_properties;
+        s["after_max_property_bytes"] = d.settings.after_max_property_bytes;
+        s["inherit_after_source_limits"] = d.settings.inherit_after_source_limits;
         for (const auto &field : flags)
             s[field.first] = d.settings.*field.second;
         for (const auto &field : pose_strings)
@@ -198,22 +203,22 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/13"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/14"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
 WorkspaceFile WorkspaceFile::from_json(const Json &j) {
-    require(
-        j.is_object() && j.size() == 3 && j.contains("schema") &&
-            (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
-             j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
-             (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
-              (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
-               (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10" ||
-                (j["schema"] == "cyuediff.workspace/11" ||
-                 (j["schema"] == "cyuediff.workspace/12" || j["schema"] == "cyuediff.workspace/13")))))) &&
-            j.contains("active") && j.contains("documents"),
-        "Unsupported workspace format");
+    require(j.is_object() && j.size() == 3 && j.contains("schema") &&
+                (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
+                 j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
+                 (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
+                  (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
+                   (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10" ||
+                    (j["schema"] == "cyuediff.workspace/11" ||
+                     (j["schema"] == "cyuediff.workspace/12" || j["schema"] == "cyuediff.workspace/13" ||
+                      j["schema"] == "cyuediff.workspace/14")))))) &&
+                j.contains("active") && j.contains("documents"),
+            "Unsupported workspace format");
     const auto &docs = j["documents"];
     require(docs.is_array() && !docs.empty() && docs.size() <= 8,
             "Workspace requires one to eight documents");
@@ -238,7 +243,9 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        const bool physical_cloth_extension = j["schema"] == "cyuediff.workspace/13";
+        const bool source_limits_extension = j["schema"] == "cyuediff.workspace/14";
+        const bool physical_cloth_extension =
+            j["schema"] == "cyuediff.workspace/13" || source_limits_extension;
         const bool nanite_extension = j["schema"] == "cyuediff.workspace/12" || physical_cloth_extension;
         const bool curve_extension = j["schema"] == "cyuediff.workspace/11" || nanite_extension;
         const bool animation_extension = j["schema"] == "cyuediff.workspace/10" || curve_extension;
@@ -253,19 +260,33 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         const bool mesh_extension = j["schema"] == "cyuediff.workspace/7" || physics_extension;
         const bool payload_extension = j["schema"] == "cyuediff.workspace/6" || mesh_extension;
         const bool layout_extension = j["schema"] == "cyuediff.workspace/5" || payload_extension;
-        const auto old_fields = std::size(strings) + std::size(flags) + 3 +
-                                (layout_extension ? std::size(layout_strings) + 1 : 0) +
-                                (payload_extension ? std::size(payload_strings) + 1 : 0) +
-                                (mesh_extension ? 4 : 0) + (physics_extension ? 2 : 0) +
-                                (skeletal_extension ? 6 : 0) +
-                                (animation_extension ? std::size(animation_strings) + 4 : 0) +
-                                (curve_extension ? std::size(curve_strings) : 0) +
-                                (nanite_extension ? 4 : 0) + (physical_cloth_extension ? 2 : 0);
+        const auto old_fields =
+            std::size(strings) + std::size(flags) + 3 +
+            (layout_extension ? std::size(layout_strings) + 1 : 0) +
+            (payload_extension ? std::size(payload_strings) + 1 : 0) + (mesh_extension ? 4 : 0) +
+            (physics_extension ? 2 : 0) + (skeletal_extension ? 6 : 0) +
+            (animation_extension ? std::size(animation_strings) + 4 : 0) +
+            (curve_extension ? std::size(curve_strings) : 0) + (nanite_extension ? 4 : 0) +
+            (physical_cloth_extension ? 2 : 0) + (source_limits_extension ? 5 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
         require(s.is_object() && (pose_extension || (j["schema"] != "cyuediff.workspace/4" &&
                                                      !layout_extension && s.size() == old_fields)),
                 "Unexpected workspace settings");
+        if (source_limits_extension) {
+            for (const char *key : {"max_properties", "max_property_bytes", "after_max_properties",
+                                    "after_max_property_bytes", "inherit_after_source_limits"})
+                require(s.contains(key), "Missing source read limits setting");
+            saved.settings.max_properties = number(s["max_properties"], 1, SourceReadLimits::maximum_work);
+            saved.settings.after_max_properties =
+                number(s["after_max_properties"], 1, SourceReadLimits::maximum_work);
+            saved.settings.max_property_bytes =
+                number(s["max_property_bytes"], 1, static_cast<int>(SourceReadLimits::maximum_bytes));
+            saved.settings.after_max_property_bytes =
+                number(s["after_max_property_bytes"], 1, static_cast<int>(SourceReadLimits::maximum_bytes));
+            require(s["inherit_after_source_limits"].is_boolean(), "Invalid source limit inheritance");
+            saved.settings.inherit_after_source_limits = s["inherit_after_source_limits"].get<bool>();
+        }
         if (payload_extension) {
             for (const auto &field : payload_strings) {
                 require(s.contains(field.first), "Missing workspace payload store setting");

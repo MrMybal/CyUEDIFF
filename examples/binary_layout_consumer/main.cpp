@@ -1,4 +1,5 @@
 #include <cyuediff/binary_layout.hpp>
+#include <cyuediff/source_limits.hpp>
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/string_encoding.hpp>
 #include <cstring>
@@ -93,18 +94,66 @@ Json run(const std::vector<std::string> &args) {
         const auto value = catalog.decode(input, "Record");
         return {{"value", value}, {"consumedBytes", input.position()}, {"remainingBytes", input.remaining()}};
     }
-    if ((args.size() == 3 || args.size() == 5) && args[0] == "package") {
-        auto open = [&](const std::string &catalog_path, const std::string &asset) {
+    if (args.size() >= 3 && args[0] == "package") {
+        std::vector<std::string> files;
+        std::map<std::string, std::string> flags;
+        for (std::size_t i = 1; i < args.size(); ++i) {
+            const auto &key = args[i];
+            if (key.rfind("--", 0) != 0) {
+                files.push_back(key);
+                continue;
+            }
+            if (key != "--max-properties" && key != "--max-property-bytes" &&
+                key != "--after-max-properties" && key != "--after-max-property-bytes")
+                throw Error("consumer-arguments", "Unknown source read policy option");
+            if (i + 1 == args.size() || !flags.emplace(key, args[i + 1]).second)
+                throw Error("consumer-arguments", "Missing or duplicate source limit option");
+            ++i;
+        }
+        if (files.size() != 2 && files.size() != 4)
+            throw Error("consumer-arguments", "Select a catalogue/source pair or two pairs");
+        auto number = [&](const std::string &key, std::uint64_t fallback, std::uint64_t maximum) {
+            const auto it = flags.find(key);
+            if (it == flags.end())
+                return fallback;
+            std::uint64_t value = 0;
+            if (it->second.empty())
+                throw Error("consumer-arguments", "Empty source limit");
+            for (char c : it->second) {
+                if (c < '0' || c > '9' || value > (maximum - std::uint64_t(c - '0')) / 10)
+                    throw Error("consumer-arguments", "Invalid source limit");
+                value = value * 10 + std::uint64_t(c - '0');
+            }
+            if (!value || value > maximum)
+                throw Error("consumer-arguments", "Source limit exceeds its finite range");
+            return value;
+        };
+        SourceReadLimits before_limits;
+        before_limits.max_properties = static_cast<std::uint32_t>(
+            number("--max-properties", before_limits.max_properties, SourceReadLimits::maximum_work));
+        before_limits.max_property_bytes =
+            number("--max-property-bytes", before_limits.max_property_bytes, SourceReadLimits::maximum_bytes);
+        auto after_limits = before_limits;
+        after_limits.max_properties = static_cast<std::uint32_t>(
+            number("--after-max-properties", after_limits.max_properties, SourceReadLimits::maximum_work));
+        after_limits.max_property_bytes = number(
+            "--after-max-property-bytes", after_limits.max_property_bytes, SourceReadLimits::maximum_bytes);
+        if (files.size() == 2 &&
+            (flags.count("--after-max-properties") || flags.count("--after-max-property-bytes")))
+            throw Error("consumer-arguments", "After limits require an after source");
+        auto open = [&](const std::string &catalog_path, const std::string &asset,
+                        const SourceReadLimits &limits) {
             const auto catalog = BinaryLayouts::read(fs::u8path(catalog_path));
             ReadOptions options;
+            limits.apply(options);
             options.decoders = catalog.decoder_registry();
             options.narrow_string_encoding = catalog.narrow_string_encoding();
             return Package::open(fs::u8path(asset), options);
         };
-        const auto before = open(args[1], args[2]);
+        const auto before = open(files[0], files[1], before_limits);
         Json result = {{"before", before.to_json()}};
-        if (args.size() == 5) {
-            const auto after = open(args[3], args[4]);
+        if (files.size() == 4) {
+            const auto after = open(files[2], files[3], after_limits);
             result["after"] = after.to_json();
             result["comparison"] = compare(before, after).to_json();
         }

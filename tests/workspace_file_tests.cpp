@@ -22,6 +22,12 @@ std::string bytes(const fs::path &p) {
     std::ifstream f(p, std::ios::binary);
     return {std::istreambuf_iterator<char>(f), {}};
 }
+void strip_limits(Json &j) {
+    for (auto &d : j["documents"])
+        for (const char *key : {"max_properties", "max_property_bytes", "after_max_properties",
+                                "after_max_property_bytes", "inherit_after_source_limits"})
+            d["settings"].erase(key);
+}
 void strip_animation(Json &j) {
     for (auto &d : j["documents"])
         for (const char *key : {"curve_settings_container",
@@ -130,8 +136,39 @@ int main() {
                   physical_saved.documents[2].settings.after_physical_cloth_profile == 1 &&
                   physical_saved.documents[2].container_tab == 11,
               "Physical profiles and tab round trip independently");
+        auto thirteen = physical;
+        thirteen["schema"] = "cyuediff.workspace/13";
+        strip_limits(thirteen);
+        auto migrated_limits = WorkspaceFile::from_json(thirteen);
+        check(migrated_limits.documents[0].settings.max_properties == 100000 &&
+                  migrated_limits.documents[0].settings.max_property_bytes == 32 * 1024 * 1024 &&
+                  migrated_limits.documents[0].settings.inherit_after_source_limits,
+              "Version thirteen retains default source read limits");
+        auto limits = physical;
+        limits["documents"][0]["settings"]["max_properties"] = 2000000;
+        limits["documents"][0]["settings"]["after_max_properties"] = 100000;
+        limits["documents"][0]["settings"]["inherit_after_source_limits"] = false;
+        auto limits_request = WorkspaceFile::from_json(limits).documents[0].settings.request();
+        check(limits_request.source_limits.max_properties == 2000000 &&
+                  limits_request.after_source_limits.max_properties == 100000 &&
+                  !limits_request.inherit_after_source_limits,
+              "Independent per-document source read policies round trip");
+        for (const auto &key :
+             {"max_properties", "after_max_properties", "max_property_bytes", "after_max_property_bytes"})
+            for (const Json &bad : std::vector<Json>{0, -1, 1.5, "2", true, std::uint64_t(1) << 40}) {
+                auto invalid = limits;
+                invalid["documents"][0]["settings"][key] = bad;
+                rejects([&] { WorkspaceFile::from_json(invalid); });
+            }
+        auto invalid_limits = limits;
+        invalid_limits["documents"][0]["settings"].erase("max_property_bytes");
+        rejects([&] { WorkspaceFile::from_json(invalid_limits); });
+        invalid_limits = limits;
+        invalid_limits["documents"][0]["settings"]["inherit_after_source_limits"] = 1;
+        rejects([&] { WorkspaceFile::from_json(invalid_limits); });
         auto twelve = physical;
         twelve["schema"] = "cyuediff.workspace/12";
+        strip_limits(twelve);
         for (auto &doc : twelve["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -147,6 +184,7 @@ int main() {
         rejects([&] { WorkspaceFile::from_json(invalid_physical); });
         auto eleven = value.to_json();
         eleven["schema"] = "cyuediff.workspace/11";
+        strip_limits(eleven);
         for (auto &doc : eleven["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -365,6 +403,7 @@ int main() {
               "Curve dependency contexts and scalar state persist independently");
         auto legacy_ten = animation_state;
         legacy_ten["schema"] = "cyuediff.workspace/10";
+        strip_limits(legacy_ten);
         for (auto &doc : legacy_ten["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -388,6 +427,7 @@ int main() {
         auto legacy_nine = animation_state;
         strip_animation(legacy_nine);
         legacy_nine["schema"] = "cyuediff.workspace/9";
+        strip_limits(legacy_nine);
         for (auto &doc : legacy_nine["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -412,6 +452,7 @@ int main() {
         auto legacy_eight = value.to_json();
         strip_animation(legacy_eight);
         legacy_eight["schema"] = "cyuediff.workspace/8";
+        strip_limits(legacy_eight);
         for (auto &doc : legacy_eight["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -428,6 +469,7 @@ int main() {
         auto legacy_seven = value.to_json();
         strip_animation(legacy_seven);
         legacy_seven["schema"] = "cyuediff.workspace/7";
+        strip_limits(legacy_seven);
         for (auto &doc : legacy_seven["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -442,6 +484,7 @@ int main() {
         auto legacy_six = value.to_json();
         strip_animation(legacy_six);
         legacy_six["schema"] = "cyuediff.workspace/6";
+        strip_limits(legacy_six);
         for (auto &doc : legacy_six["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -457,6 +500,7 @@ int main() {
         auto legacy_five = value.to_json();
         strip_animation(legacy_five);
         legacy_five["schema"] = "cyuediff.workspace/5";
+        strip_limits(legacy_five);
         for (auto &doc : legacy_five["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -473,6 +517,7 @@ int main() {
         auto legacy_four = value.to_json();
         strip_animation(legacy_four);
         legacy_four["schema"] = "cyuediff.workspace/4";
+        strip_limits(legacy_four);
         for (auto &doc : legacy_four["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -499,6 +544,7 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(legacy_three);
         legacy_three["schema"] = "cyuediff.workspace/3";
+        strip_limits(legacy_three);
         for (auto &doc : legacy_three["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -511,7 +557,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/13",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/14",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -533,11 +579,12 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(version_two);
         version_two["schema"] = "cyuediff.workspace/2";
+        strip_limits(version_two);
         for (auto &doc : version_two["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
         }
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/13",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/14",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -558,6 +605,7 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(legacy);
         legacy["schema"] = "cyuediff.workspace/1";
+        strip_limits(legacy);
         for (auto &doc : legacy["documents"]) {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
@@ -567,7 +615,7 @@ int main() {
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/13",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/14",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

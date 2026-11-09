@@ -70,6 +70,7 @@ AssetTab tab(const std::string &name) {
 }
 Options parse_one(const std::vector<std::string> &args) {
     Options options;
+    bool limits_parameters = false, after_work_limit = false, after_byte_limit = false;
     bool git_options = false, pose_parameters = false, pose_shared_frame = false,
          pose_before_frame = false, pose_after_frame = false;
     auto source_frame = [](const std::string &text) {
@@ -425,7 +426,22 @@ Options parse_one(const std::vector<std::string> &args) {
             options.settings.after_project = value();
         else if (argument == "--after-engine-root")
             options.settings.after_engine = value();
-        else if (argument == "--layouts")
+        else if (argument == "--max-properties" || argument == "--max-property-bytes" ||
+                 argument == "--after-max-properties" || argument == "--after-max-property-bytes") {
+            limits_parameters = true;
+            const auto parsed = source_frame(value());
+            if (argument == "--max-properties")
+                options.settings.max_properties = parsed;
+            else if (argument == "--max-property-bytes")
+                options.settings.max_property_bytes = parsed;
+            else if (argument == "--after-max-properties") {
+                options.settings.after_max_properties = parsed;
+                after_work_limit = true;
+            } else {
+                options.settings.after_max_property_bytes = parsed;
+                after_byte_limit = true;
+            }
+        } else if (argument == "--layouts")
             options.settings.layouts = value();
         else if (argument == "--after-layouts") {
             options.settings.after_layouts = value();
@@ -474,6 +490,21 @@ Options parse_one(const std::vector<std::string> &args) {
             options.settings.after = argument;
         else
             throw Error("desktop-option", "Too many package paths");
+    }
+    if (limits_parameters) {
+        if (options.settings.source == 2 || options.browse || options.history ||
+            options.settings.before.empty())
+            throw Error("desktop-option", "Source read limits require loose or Git package inputs");
+        if (after_work_limit || after_byte_limit) {
+            if (options.settings.source != 1 && options.settings.after.empty())
+                throw Error("desktop-option", "Independent source limits require an after package");
+            options.settings.inherit_after_source_limits = false;
+            if (!after_work_limit)
+                options.settings.after_max_properties = options.settings.max_properties;
+            if (!after_byte_limit)
+                options.settings.after_max_property_bytes = options.settings.max_property_bytes;
+        }
+        options.settings.request();
     }
     if(pose_parameters) {
         if(options.settings.source==2 || options.browse || options.settings.before.empty())throw Error("desktop-option","Source pose options require loose or Git package inputs");
@@ -632,18 +663,27 @@ void register_translations() {
     CatalogView::register_translations();
     cyui::registerTranslations(
         "fr",
-        {{"Skeleton paths use each animation revision and its historical project mounts.", "Les chemins des squelettes utilisent la révision de chaque animation et ses montages de projet historiques."},
+        {{"Skeleton paths use each animation revision and its historical project mounts.",
+          "Les chemins des squelettes utilisent la révision de chaque animation et ses montages de projet "
+          "historiques."},
          {"Evaluate source hierarchy pose", "Évaluer la pose hiérarchique source"},
          {"Animation Skeleton binding", "Association du squelette d’animation"},
-         {"Skeleton before", "Squelette avant"}, {"Skeleton after", "Squelette après"},
-         {"Frame before", "Frame avant"}, {"Frame after", "Frame après"},
+         {"Skeleton before", "Squelette avant"},
+         {"Skeleton after", "Squelette après"},
+         {"Frame before", "Frame avant"},
+         {"Frame after", "Frame après"},
          {"Independent pose frames", "Frames de pose indépendantes"},
-         {"Choose Skeleton before", "Choisir le squelette avant"}, {"Choose Skeleton after", "Choisir le squelette après"},
+         {"Choose Skeleton before", "Choisir le squelette avant"},
+         {"Choose Skeleton after", "Choisir le squelette après"},
          {"Stored owner selections", "Choix des objets enregistrés"},
-         {"Model before", "Modèle avant"}, {"Model after", "Modèle après"},
-         {"Rig object before", "Objet avant"}, {"Rig object after", "Objet après"},
-         {"Empty selectors require a sole stored object.", "Les sélecteurs vides exigent un seul objet enregistré."},
-         {"Choose Skeleton paths, then Load to prepare the selected frames.", "Choisissez les squelettes, puis Charger pour préparer les frames sélectionnées."},
+         {"Model before", "Modèle avant"},
+         {"Model after", "Modèle après"},
+         {"Rig object before", "Objet avant"},
+         {"Rig object after", "Objet après"},
+         {"Empty selectors require a sole stored object.",
+          "Les sélecteurs vides exigent un seul objet enregistré."},
+         {"Choose Skeleton paths, then Load to prepare the selected frames.",
+          "Choisissez les squelettes, puis Charger pour préparer les frames sélectionnées."},
          {"CyUEDiff preferences", "Préférences CyUEDiff"},
          {"CyUEDiff session", "Session CyUEDiff"},
          {"Restore previous session on startup", "Restaurer la session précédente au démarrage"},
@@ -688,8 +728,18 @@ void register_translations() {
          {"After payload store", "Dépôt après"},
          {"Use before store after", "Réutiliser le dépôt avant"},
          {"Choose a local payload store, then Load.", "Choisir un dépôt local de ressources, puis Charger."},
+         {"Source read limits", "Limites de lecture source"},
+         {"Before work", "Travail avant"},
+         {"Before bytes", "Octets avant"},
+         {"After work", "Travail après"},
+         {"After bytes", "Octets après"},
+         {"Use before limits after", "Réutiliser les limites avant"},
+         {"Reset read limits", "Réinitialiser les limites"},
+         {"Larger source limits can use more memory. Apply with Load.",
+          "Des limites source plus grandes peuvent utiliser plus de mémoire. Appliquer avec Charger."},
          {"Native structure layouts", "Formats des structures natives"},
-         {"Before layout file", "Description avant"}, {"After layout file", "Description après"},
+         {"Before layout file", "Description avant"},
+         {"After layout file", "Description après"},
          {"Use before layouts after", "Réutiliser les descriptions avant"},
          {"Choose a layout JSON file, then Load.", "Indiquez un fichier JSON de description, puis chargez."},
          {"Empty after context inherits the before context.",
@@ -2283,6 +2333,50 @@ class Shell {
                         cyui::textDim("%s", cyui::tr("Choose a layout JSON file, then Load.").c_str());
                         cyui::endSection();
                     }
+                    if (current().layout.section("sourceLimits", "Source read limits", false, false, false)) {
+                        auto &settings = current().settings;
+                        auto input_limit = [&](const char *label, const char *id, int &value, int maximum,
+                                               int step) {
+                            cyui::property(cyui::tr(label).c_str());
+                            if (ImGui::InputInt(id, &value, step, step))
+                                value = std::clamp(value, 1, maximum);
+                        };
+                        if (cyui::beginProperties("##source-read-limits", 105)) {
+                            input_limit("Before work", "##before-work", settings.max_properties,
+                                        SourceReadLimits::maximum_work, 100000);
+                            input_limit("Before bytes", "##before-bytes", settings.max_property_bytes,
+                                        static_cast<int>(SourceReadLimits::maximum_bytes), 1024 * 1024);
+                            cyui::endProperties();
+                        }
+                        cyui::toggleSwitch(cyui::trLabel("Use before limits after").c_str(),
+                                           &settings.inherit_after_source_limits);
+                        {
+                            cyui::ScopedDisabled inherited(settings.inherit_after_source_limits);
+                            if (cyui::beginProperties("##after-source-read-limits", 105)) {
+                                input_limit("After work", "##after-work",
+                                            (settings.inherit_after_source_limits
+                                                 ? settings.max_properties
+                                                 : settings.after_max_properties),
+                                            SourceReadLimits::maximum_work, 100000);
+                                input_limit("After bytes", "##after-bytes",
+                                            (settings.inherit_after_source_limits
+                                                 ? settings.max_property_bytes
+                                                 : settings.after_max_property_bytes),
+                                            static_cast<int>(SourceReadLimits::maximum_bytes), 1024 * 1024);
+                                cyui::endProperties();
+                            }
+                        }
+                        if (cyui::button(cyui::trLabel("Reset read limits").c_str())) {
+                            settings.max_properties = settings.after_max_properties = 100000;
+                            settings.max_property_bytes = settings.after_max_property_bytes =
+                                32 * 1024 * 1024;
+                            settings.inherit_after_source_limits = true;
+                        }
+                        ImGui::TextWrapped(
+                            "%s",
+                            cyui::tr("Larger source limits can use more memory. Apply with Load.").c_str());
+                        cyui::endSection();
+                    }
                     if (current().settings.source == 1 &&
                         current().layout.section("lfs", "LFS cache (optional)")) {
                         if (cyui::beginProperties("##lfs", 76)) {
@@ -2803,6 +2897,9 @@ int run(Options options) {
                "REPO_PATH]\n"
                "  [--payload-root DIRECTORY] [--after-payload-root DIRECTORY | --no-after-payload-root]\n"
                "  [--layouts JSON] [--after-layouts JSON | --no-after-layouts] : native wire descriptions\n"
+               "  [--max-properties COUNT] [--max-property-bytes BYTES] : source read limits\n"
+               "  [--after-max-properties COUNT] [--after-max-property-bytes BYTES] : independent after "
+               "limits\n"
                "  [--after-project FILE] [--after-engine-root DIR] : independent after context\n"
                "  [--pose-before-skeleton FILE] [--pose-after-skeleton FILE] : loose or Git source hierarchy "
                "poses\n"

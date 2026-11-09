@@ -227,6 +227,8 @@ struct Package {
     std::vector<std::string> diagnostics;
     bool complete_input = true;
     Json source_type_context = nullptr;
+    Json source_read_limits = nullptr;
+    bool source_read_limit_failed = false;
     static Package open(const fs::path &file, const ReadOptions &options = {});
     std::string reference(std::int32_t index) const;
     Json semantic_snapshot() const;
@@ -250,6 +252,7 @@ struct DiffResult {
     Json collision_changes = Json::array();
     Json skeleton_changes = Json::array();
     std::vector<std::string> diagnostics;
+    bool source_read_limit_failed = false;
     std::string status() const;
     Json to_json() const;
 };

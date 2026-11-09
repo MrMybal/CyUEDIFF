@@ -25,6 +25,7 @@ class AssetView {
     std::shared_ptr<const Package> before_, after_;
     cyui::DiffDocument document_;
     cyui::DiffState diff_state_;
+    bool text_comparison_available_ = false;
     cyui::TextFilter filter_;
     std::size_t selected_ = 0;
     bool properties_after_ = false, comparison_ = false, raw_properties_ = false;
@@ -64,12 +65,16 @@ class AssetView {
     // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
     Json view_state() const;
     bool set_property_scope(const std::string &, std::size_t first = 0, int root = 0);
+    bool text_comparison_available() const {
+        return text_comparison_available_;
+    }
     const PropertyBrowserView &property_browser() const {
         return property_browser_;
     }
     void restore_view_state(const Json &);
     static void register_translations();
     // compare_missing_side enables an addition/removal diff when one side is absent.
+    // Paired reads that failed a source limit/count guard reject before changing the view.
     void set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after = {},
                       bool compare_missing_side = false);
     // Prepared by the host worker; drawing never resolves an external Skeleton.

@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-animation-pose-desktop-',dir=
  state={'asset':{'animationPose':{'selected':'arm~/track','filter':'arm','positionTolerance':.5,'camera':{'target':[20,20,20],'distance':80,'yaw':.5,'pitch':.3}},'animationPosePreview':True}}
  d=run(*base,'--pose-before-frame','1','--pose-after-frame','2','--document-action','view-state:'+json.dumps(state),'--save-workspace',workspace)
  saved=json.loads(workspace.read_text(encoding='utf-8'));setting=saved['documents'][0]['settings']
- assert saved['schema']=='cyuediff.workspace/13' and setting['pose_enabled'] and setting['pose_before_frame']==1 and setting['pose_after_frame']==2 and setting['pose_independent_frames']
+ assert saved['schema']=='cyuediff.workspace/14' and setting['pose_enabled'] and setting['pose_before_frame']==1 and setting['pose_after_frame']==2 and setting['pose_independent_frames']
  actual=saved['documents'][0]['viewState']['asset']['animationPose'];assert actual['selected']=='arm~/track' and actual['positionTolerance']==.5
  previous=workspace.read_bytes();reopened=run('--workspace',workspace);assert pose(reopened)['complete'] and pose(reopened)['after']['frame']==2 and workspace.read_bytes()==previous
  assert reopened['workspace']['documents'][0]['viewState']['asset']['animationPose']==actual

@@ -17,9 +17,11 @@ package LAYOUTS_JSON ASSET [AFTER_LAYOUTS_JSON AFTER_ASSET]
 cooked CONTEXT_JSON TOC ENTRY_ID GLOBAL_TOC
 ```
 
-The `raw` mode selects the named `Record` layout. `package` returns snapshots and an optional comparison; `cooked` uses the context's explicit profile, USMAP and inline descriptions. Inputs are read-only. The example limits raw inputs to 16 MiB and uses the public reader defaults for packages/containers. It is a minimal host integration, not automatic schema or plugin serializer discovery.
+The `raw` mode selects the named `Record` layout. `package` returns snapshots and an optional comparison; `cooked` uses the context's explicit profile, USMAP and inline descriptions. Inputs are read-only. The example limits raw inputs to 16 MiB and uses the public reader defaults for packages/containers unless explicit package read limits are supplied. It is a minimal host integration, not automatic schema or plugin serializer discovery.
 
 The repository's `scripts/validate_binary_layouts.py` compares this independently built consumer with CLI outputs, a Python fixture decoder and Python's codepage implementations.
 
 
-Source catalogues may select `prefix: "tagged-properties"` for certified struct decoders. The existing `package` form reads those prefixes and native tails, including independent before/after catalogues, without Engine/plugin runtime dependencies. See [hybrid structures](../../docs/HYBRID_STRUCTS.md) and the installed `validate_tagged_hybrids.py` reference validator. Missing legacy map struct identities and class defaults remain unavailable.
+Source catalogues may select `prefix: "tagged-properties"` for certified struct decoders. The existing `package` form reads those prefixes and native tails, including independent before/after catalogues, without Engine/plugin runtime dependencies. See [hybrid structures](../../docs/HYBRID_STRUCTS.md) and the installed `validate_tagged_hybrids.py` reference validator. Explicit matching source type metadata can complete legacy map struct identities; class defaults remain unresolved.
+
+`package` also accepts `--max-properties`, `--max-property-bytes` and independent `--after-max-properties` / `--after-max-property-bytes`. They use the finite public `SourceReadLimits` policy; non-default effective limits accompany package reports and failed guards make semantic comparison unverified. See [source read limits](../../docs/SOURCE_READ_LIMITS.md).

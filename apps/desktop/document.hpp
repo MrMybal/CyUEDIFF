@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/cache.hpp>
+#include <cyuediff/source_limits.hpp>
 #include <cyuediff/animation_pose.hpp>
 #include <cyuediff/animation_socket_pose.hpp>
 #include <cyuediff/hdr.hpp>
@@ -38,6 +39,8 @@ struct LoadRequest {
     bool inherit_after_layouts = true;
     fs::path payload_root, after_payload_root;
     bool inherit_after_payload_root = true;
+    SourceReadLimits source_limits, after_source_limits;
+    bool inherit_after_source_limits = true;
 };
 struct Preview {
     std::string object_path;

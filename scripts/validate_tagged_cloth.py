@@ -18,12 +18,16 @@ def need(ok, message):
         raise ValueError(message)
 
 
-def compare(actual, reference, mesh, context_sha256):
+def compare(actual, reference, mesh, context_sha256, read_limits=None):
     need(reference.get('schema') == 'cyuediff.unreal-physical-cloth-geometry-reference/1' and reference.get('engine', '').startswith('5.3.2-'), 'Select an actual UE 5.3.2 API reference')
     for key,value in [('ue4Version',522),('ue5Version',1009),('licenseeVersion',0)]:
         need(type(actual.get('summary',{}).get(key)) is int and actual['summary'][key] == value, 'Source archive profile differs')
     context=actual.get('sourceTypeContext',{})
     need(context.get('sha256') == context_sha256 and context.get('profileMatched') is True and context.get('defaultsResolved') is False, 'Explicit type context provenance differs')
+    need(actual.get('sourceReadLimits') == read_limits, 'Source read limit provenance differs')
+    if read_limits is not None:
+        need(type(actual['sourceReadLimits']) is dict and all(type(actual['sourceReadLimits'].get(k)) is int for k in ['maxProperties','maxPropertyBytes']), 'Source policy requires exact integer values')
+    need(actual.get('sourceReadLimitFailed',False) is False, 'A source limit/count guard failed')
     objects = actual['snapshot']['objects']
     need(objects[mesh]['class'] == '/Script/Engine.SkeletalMesh', 'Selected source mesh identity differs')
     ref_mesh = reference['object'].replace(':', '.', 1)
@@ -125,11 +129,19 @@ def compare(actual, reference, mesh, context_sha256):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ['manifest','consumer','layouts','mapping','output-dir']: parser.add_argument('--'+name,required=True,type=Path)
+    parser.add_argument('--max-properties',type=int)
+    parser.add_argument('--max-property-bytes',type=int)
     args=parser.parse_args(); manifest=args.manifest.resolve(strict=True); catalog=args.layouts.resolve(strict=True); consumer=args.consumer.resolve(strict=True)
     document=json.loads(manifest.read_text(encoding='utf-8')); need(document.get('schema') == 'cyuediff.tagged-cloth-validation/1','Unexpected source validation manifest')
     cases=document['cases']; need(0<len(cases)<=1000,'Select explicit source/reference pairs')
     mapping=args.mapping.resolve(strict=True)
     inputs={manifest,catalog,consumer,mapping,Path(__file__).resolve()}
+    limits={'maxProperties':100000,'maxPropertyBytes':33554432}; consumer_options=[]
+    for flag,key,maximum in [('max-properties','maxProperties',4000000),('max-property-bytes','maxPropertyBytes',268435456)]:
+        value=getattr(args,flag.replace('-','_'))
+        if value is not None:
+            need(1<=value<=maximum,'Source read limit outside its finite range');limits[key]=value;consumer_options.extend(['--'+flag,str(value)])
+    expected_limits=None if limits=={'maxProperties':100000,'maxPropertyBytes':33554432} else limits
     pairs=[]
     for case in cases:
         asset=(manifest.parent/case['asset']).resolve(strict=True); ref=(manifest.parent/case['reference']).resolve(strict=True)
@@ -144,9 +156,9 @@ def main():
     need(context.get('usmapSha256') == digest(mapping),'Mapping fingerprint differs')
     try:
         for i,(asset,ref,mesh) in enumerate(pairs):
-            result=subprocess.run([str(consumer),'package',str(catalog),str(asset)],capture_output=True,timeout=120)
+            result=subprocess.run([str(consumer),'package',str(catalog),str(asset),*consumer_options],capture_output=True,timeout=120)
             need(result.returncode==0,result.stderr.decode('utf-8','replace') or 'Source consumer failed')
-            projection=json.loads(result.stdout)['before']; stats=compare(projection,json.loads(ref.read_text(encoding='utf-8')),mesh,identity); results.append(stats)
+            projection=json.loads(result.stdout)['before']; stats=compare(projection,json.loads(ref.read_text(encoding='utf-8')),mesh,identity,expected_limits); results.append(stats)
             (output/('%03d.json'%i)).write_text(json.dumps(projection,indent=2)+'\n',encoding='utf-8',newline='\n')
     finally:
         need(all(digest(Path(p))==h for p,h in hashes.items()),'Protected inputs changed')

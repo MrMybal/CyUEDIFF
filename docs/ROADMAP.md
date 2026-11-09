@@ -139,3 +139,8 @@ Certified source struct prefixes/tails now share the Core's existing tagged pars
 ## Explicit source metadata — 0.186
 
 Selected USMAP roots now supply immutable type completion for older tagged maps/sets through the public Core, CLI preparation and existing EN/FR per-side catalogue controls. The actual Cube source validates stored fields/native tails; the Humanoid still exceeds the default source work budget. Constructor defaults, dedicated source physical projection/render correspondence, broader producer acceptance, report-memory work and final updated delivery remain open. See [TAGGED_TYPES.md](TAGGED_TYPES.md).
+
+
+## Source read policies — 0.187
+
+Explicit source work/window limits are available in Core, CLI and EN/FR desktop, with independent after policies and workspace format 14 retention. Versions 1–13 preserve their original default policy. A failed limit/count guard keeps inspection fingerprints/diagnostics and prevents invented semantic removals in a paired comparison. The selected real Humanoid source can use a deliberately larger work policy; dedicated source physical projection, defaults, broader acceptance and final delivery remain open. See [SOURCE_READ_LIMITS.md](SOURCE_READ_LIMITS.md).
