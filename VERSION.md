@@ -2,9 +2,31 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
-## 0.181.0 — In development
+## 0.182.0 — Local development preview
 
-This is the source project version declared in `CMakeLists.txt`. Core, CLI and the optional desktop use the same version. No GitHub application release or public desktop download is available. The [website](https://mrmybal.github.io/CyUEDIFF/?lang=en) is published separately.
+This source version includes the post-0.181 native readers, comparisons and desktop inspection work. The Windows x64 CLI/desktop and reusable Core/Git SDK are verified as a local archive. This task does not upload binaries, publish a GitHub Release or claim a new hosted CI run. The public website is managed separately.
+
+### Main additions
+
+- Explicit UE 5.3 Windows cooked texture mips, static/skeletal render LODs, native Chaos collision geometry and compressed animation/curve values, with independent source contexts and verified bulk windows.
+- Selected native Nanite geometry/shading inspection, scoped surface correspondence, hierarchy/cluster queries and EN/FR desktop review.
+- Named cooked alternate weights and compressed render morphs, stored cloth deformer mappings, retained section overlap tables and float32/float16/UNorm8 custom vertex channels, with focused typed Core APIs and persistent desktop inspectors.
+- Matching-source UHT metadata preparation, reflected declaration prefixes, required IoStore source integrity and bounded support for additional selected container layouts.
+- A bundled bilingual offline HTML reader, current native/context guidance and original cooked attribute captures, with local styles/scripts/images.
+- A versioned CMake package, machine-readable component/workspace metadata and a Core SDK that excludes source-only interface headers. The archive verifier builds its examples from the extracted package and audits all installed header dependencies.
+
+### Availability and limits
+
+The current Windows development build is checked locally with MSVC 2022 and Direct3D 11/WARP. The default archive requires the matching Microsoft Visual C++ x64 runtime and a separate Git installation for Git features. UI libraries are available from source with the host's CyUI checkout; the installed SDK exports Core and optionally Git. Linux/macOS desktop builds are unavailable. The earlier hosted Windows/Ubuntu evidence applies to 0.181, not to an unpushed 0.182 build.
+
+Readers use explicit engine/build/platform profiles and matching mappings. Supported stored values and pixels/geometry differ from final shader, skinning, cloth simulation or animation graph evaluation. Arbitrary plugin serializers, physical cloth assets/configurations, additional native/producer profiles and the remaining coverage listed in [the completion record](docs/COMPLETION.md) are not declared finished. Private assets, Engine implementation, codecs owned by the host and generated reference data are excluded from the archive.
+
+See [distribution checks](docs/DISTRIBUTION.md), [current validation](docs/VALIDATION.md), [desktop usage](docs/DESKTOP.md) and [format scope](docs/ROADMAP.md).
+
+## 0.181.0 — Earlier source milestone
+
+
+This was the preceding source project version; the notes below describe that historical milestone. No GitHub application release or public desktop download is available. The [website](https://mrmybal.github.io/CyUEDIFF/?lang=en) is published separately.
 
 ### Changes in this source version
 

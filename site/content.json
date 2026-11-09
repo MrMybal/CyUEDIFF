@@ -10,7 +10,7 @@
       "nav.menu": "Open navigation",
       "nav.language": "Language",
       "nav.chapters": "Page chapters",
-      "hero.status": "Development preview · 0.181",
+      "hero.status": "Development preview · 0.182",
       "hero.description": "Inspect Unreal assets. Understand what changed.",
       "hero.body": "Open and compare serialized asset data without launching Unreal Editor. Explore the desktop app, or embed the reader in your own tools.",
       "hero.explore": "Explore the app",
@@ -75,12 +75,12 @@
       "geometry.meshBody": "Navigate a source wireframe and frame modified edges. Export supported base geometry to OBJ.",
       "geometry.meshCaption": "Desktop · source geometry comparison",
       "geometry.collisionTitle": "Stored collision shapes",
-      "geometry.collisionBody": "Compare reflected spheres, boxes, capsules and convex source data in synchronized body-local views. Cooked physics payloads remain opaque.",
+      "geometry.collisionBody": "Compare reflected spheres, boxes, capsules and convex sources in synchronized body-local views. Selected UE 5.3 Windows native Chaos data has a separate cooked inspector with explicit profiles.",
       "geometry.collisionCaption": "Collision review · shapes and body-local wireframes",
       "geometry.morphTitle": "Read the deformation data.",
       "geometry.morphBody": "Modern MeshDescription readers expose source bones, exact raw weight profiles and named morph position/split-normal deltas. Inspect their changes without claiming a runtime skinned preview.",
       "geometry.morphCaption": "Desktop · typed source morph inspection",
-      "geometry.scope": "Modern skeletal geometry and morph readers are fixture-validated. Broader real-project coverage, legacy/cooked skin buffers and Nanite remain work in progress.",
+      "geometry.scope": "Modern source skeletal/morph readers retain their documented fixture/corpus limits. Selected UE 5.3 Windows cooked skin, compressed morph, cloth mapping, named vertex and Nanite inspections require matching explicit contexts.",
       "motion.kicker": "SKELETONS, ANIMATION & CURVES",
       "motion.title": "Inspect what was stored.",
       "motion.body": "Read reference hierarchies, source bone tracks and rich curves. Compare named values, choose stored frames and inspect explicit Skeleton-bound affine poses.",
@@ -91,7 +91,7 @@
       "motion.curveTitle": "Keys, tangents and weights.",
       "motion.curveBody": "Inspect stored rich-curve keys and supported weighted segments. Select a time or a range, compare sampled values and keep unavailable intervals explicit.",
       "motion.curveCaption": "Rich curves · stored keys and weighted segment comparison",
-      "motion.note": "Source-data review does not provide compressed animation playback, runtime retargeting or skinned mesh rendering.",
+      "motion.note": "Selected UE 5.3 Windows cooked compressed transforms and curves have a separate fractional sampler. Stored-data review does not evaluate runtime retargeting, blending or skinned mesh rendering.",
       "history.kicker": "REVISIONS & PACKAGED DATA",
       "history.title": "Pick the context. Keep the provenance.",
       "history.body": "Open loose packages, local Git/LFS revisions or supported Pak/IoStore members. Select independent project, engine and schema contexts for each side.",
@@ -138,7 +138,7 @@
       "download.kicker": "TRY CYUEDIFF",
       "download.title": "Start with a closer look.",
       "download.body": "A Windows desktop preview, a command-line tool and a C++ SDK. MIT for original CyUEDiff code; dependencies retain their own licenses.",
-      "download.local": "Local preview build · Windows x64 · 0.181.0",
+      "download.local": "Local preview build · Windows x64 · 0.182.0",
       "download.localNote": "This archive is available in this local preview. It has not been published as a GitHub release.",
       "download.button": "Download the Windows preview",
       "download.source": "Get the source code",
@@ -168,7 +168,8 @@
       "motion.poseCaption": "Prepared source pose · explicit Skeleton binding",
       "history.compareTitle": "Inspect the structured difference.",
       "history.compareBody": "The Comparison view brings serialized snapshots side by side, with search and change navigation. Export the Core result as JSON for your own review workflows.",
-      "history.compareCaption": "Desktop · side-by-side snapshot comparison"
+      "history.compareCaption": "Desktop · side-by-side snapshot comparison",
+      "guide.shot.attributes": "Original cooked-format example: a named vertex channel and the selected stored value before/after."
     },
     "fr": {
       "meta.title": "CyUEDiff — Un autre regard sur vos assets Unreal",
@@ -180,7 +181,7 @@
       "nav.menu": "Ouvrir la navigation",
       "nav.language": "Langue",
       "nav.chapters": "Chapitres de la page",
-      "hero.status": "Version de développement · 0.181",
+      "hero.status": "Version de développement · 0.182",
       "hero.description": "Inspectez vos assets Unreal. Comprenez ce qui change.",
       "hero.body": "Ouvrez et comparez les données sérialisées sans lancer Unreal Editor. Explorez l’application ou intégrez le lecteur à vos propres outils.",
       "hero.explore": "Découvrir l’application",
@@ -245,12 +246,12 @@
       "geometry.meshBody": "Explorez un filaire source et cadrez ses arêtes modifiées. Exportez la géométrie de base prise en charge en OBJ.",
       "geometry.meshCaption": "Application · comparaison de géométrie source",
       "geometry.collisionTitle": "Formes de collision enregistrées",
-      "geometry.collisionBody": "Comparez sphères, boîtes, capsules et sources convexes réfléchies dans des vues synchronisées, locales au corps. Les payloads physiques cooked restent opaques.",
+      "geometry.collisionBody": "Comparez sphères, boîtes, capsules et sources convexes réfléchies dans des vues synchronisées, locales au corps. Les données Chaos natives UE 5.3 Windows sélectionnées ont un inspecteur cuit distinct avec des profils explicites.",
       "geometry.collisionCaption": "Inspection des collisions · formes et filaires locaux au corps",
       "geometry.morphTitle": "Lisez les données de déformation.",
       "geometry.morphBody": "Les lecteurs MeshDescription modernes exposent les os sources, les profils de poids bruts exacts et les deltas de morph nommés, de position et de normales par coin. Inspectez leurs différences sans simulation de skinning à l’exécution.",
       "geometry.morphCaption": "Application · inspection typée des morphs sources",
-      "geometry.scope": "Les lecteurs modernes de géométrie squelettique et de morphs sont validés sur des fixtures. La couverture de projets réels, les buffers de skinning legacy/cooked et Nanite restent en développement.",
+      "geometry.scope": "Les lecteurs sources squelettiques/morphs modernes conservent leurs limites documentées de fixtures et de corpus. Les inspections UE 5.3 Windows sélectionnées de skin cuit, morphs compressés, mappings cloth, attributs nommés et Nanite exigent des contextes explicites compatibles.",
       "motion.kicker": "SQUELETTES, ANIMATION & COURBES",
       "motion.title": "Inspectez ce qui a été enregistré.",
       "motion.body": "Lisez les hiérarchies de référence, les pistes osseuses sources et les rich curves. Comparez les valeurs nommées, choisissez des frames enregistrées et inspectez des poses affines liées à un Skeleton explicite.",
@@ -261,7 +262,7 @@
       "motion.curveTitle": "Clés, tangentes et poids.",
       "motion.curveBody": "Inspectez les clés des rich curves et leurs segments pondérés pris en charge. Choisissez un temps ou une plage, comparez les valeurs échantillonnées et identifiez les intervalles indisponibles.",
       "motion.curveCaption": "Rich curves · clés enregistrées et comparaison des segments pondérés",
-      "motion.note": "L’inspection des sources ne remplace pas la lecture d’animations compressées, le retargeting à l’exécution ou le rendu de meshes skinnés.",
+      "motion.note": "Les transformations et courbes compressées cuites UE 5.3 Windows sélectionnées ont un échantillonneur fractionnaire distinct. L’inspection des données stockées n’évalue pas le retargeting à l’exécution, le blending ou le rendu skinné.",
       "history.kicker": "RÉVISIONS & DONNÉES PACKAGÉES",
       "history.title": "Choisissez le contexte. Gardez la provenance.",
       "history.body": "Ouvrez des packages libres, des révisions Git/LFS locales ou des membres Pak/IoStore pris en charge. Sélectionnez des contextes de projet, de moteur et de schéma indépendants pour chaque côté.",
@@ -308,7 +309,7 @@
       "download.kicker": "ESSAYER CYUEDIFF",
       "download.title": "Commencez par regarder de plus près.",
       "download.body": "Une application Windows en développement, un outil en ligne de commande et un SDK C++. Le code original CyUEDiff est sous licence MIT ; les dépendances conservent leurs licences.",
-      "download.local": "Build d’aperçu local · Windows x64 · 0.181.0",
+      "download.local": "Build d’aperçu local · Windows x64 · 0.182.0",
       "download.localNote": "Cette archive est disponible dans cet aperçu local. Elle n’a pas été publiée comme release GitHub.",
       "download.button": "Télécharger l’aperçu Windows",
       "download.source": "Obtenir le code source",
@@ -338,7 +339,8 @@
       "motion.poseCaption": "Pose source préparée · liaison Skeleton explicite",
       "history.compareTitle": "Examinez la différence structurée.",
       "history.compareBody": "La vue Comparaison rapproche les snapshots sérialisés, avec recherche et navigation dans les modifications. Exportez le résultat du Core en JSON pour vos propres méthodes de revue.",
-      "history.compareCaption": "Application · comparaison de snapshots côte à côte"
+      "history.compareCaption": "Application · comparaison de snapshots côte à côte",
+      "guide.shot.attributes": "Exemple binaire original au format cuit : un canal de sommets et la valeur sélectionnée avant/après."
     }
   },
   "shots": {
@@ -357,6 +359,7 @@
     "curves": "motion.curveCaption",
     "containers": "history.containerCaption",
     "comparison": "history.compareCaption",
-    "pose": "motion.poseCaption"
+    "pose": "motion.poseCaption",
+    "cooked-attributes": "guide.shot.attributes"
   }
 }

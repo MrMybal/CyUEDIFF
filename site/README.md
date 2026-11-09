@@ -20,7 +20,7 @@ For the current **local-only** Windows download preview:
 python site/tools/build.py --include-local-build
 ```
 
-This explicit option verifies the local archive against `build-native/morph-delivery-181.json`, copies it into the generated `downloads/` directory and labels it as a local preview build. It does not create a GitHub release. A normal build omits the archive and clearly says that no public release is available. The builder only replaces a marked, owned output directory below a workspace `build*` directory; rebuilding without this flag removes a previously included local archive.
+This explicit option verifies the local archive against the current `build-native/distribution-VERSION.json` record, copies it into the generated `downloads/` directory and labels it as a local preview build. The record must identify a successfully validated archive of the current source version. `--local-build-record PATH` can select that record explicitly. It does not create a GitHub release. A normal build omits the archive and clearly says that no public release is available. The builder only replaces a marked, owned output directory below a workspace `build*` directory; rebuilding without this flag removes a previously included local archive.
 
 ## Files and maintenance
 
@@ -32,6 +32,7 @@ This explicit option verifies the local archive against `build-native/morph-deli
 - `assets/screenshots/`: authentic full-frame PNG captures in both languages, without added promotional overlays.
 - `assets/capture-manifest.json`: original-fixture provenance and SHA-256 of each capture.
 - `tools/build.py`: emits a ready-to-serve static bundle with content-hashed stylesheet/script URLs.
+- `tools/capture_cooked.py`: appends original cooked vertex-attribute captures without changing other images. The complete capture command invokes it after the existing scenes.
 - `tools/check.py`: validates translations, resources, fragments, image provenance, archive integrity and optional local HTTP delivery.
 
 The image dialog supports previous/next arrows and Escape, with focus returned to the original trigger. Tabs support arrow keys, Home and End. The GitHub link remains visible in the mobile header. The first desktop screen uses the full application capture with `object-fit: contain`, without cropping. Animations respect reduced-motion preferences.
@@ -66,3 +67,5 @@ The [Publish website workflow](../.github/workflows/pages.yml) builds and checks
 Public URLs: [English](https://mrmybal.github.io/CyUEDIFF/?lang=en) and [French](https://mrmybal.github.io/CyUEDIFF/?lang=fr). When application releases become available, update the download metadata/copy using the actual published artifact URLs and checksums.
 
 Original website code and demonstration assets follow the repository MIT license. Application third-party notices remain applicable to any included app archive.
+
+The generated HTML bundle can also be installed with the desktop archive by configuring `CYUEDIFF_OFFLINE_MANUAL_DIR` to a normal build output made without `--include-local-build`. The package checks matching version metadata and local resources; a nested downloadable archive is not installed. Current native/context/offline chapters use the same reader and language selector. The guide image dialog handles dynamically rendered chapters after switching languages. Screenshot provenance records preserve each capture’s actual version, including older unchanged overview images. No publication is performed by these commands.

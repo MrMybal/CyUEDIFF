@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Application license</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.181.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
+      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.182.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
       <p><sub>Windows x64 desktop<br>No public application release yet</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspect Unreal Engine assets and understand what changed **without launching Unreal Editor**. CyUEDiff provides a Windows desktop application, a JSON command-line tool and a reusable C++17 reader for Unreal developers, technical artists and tool authors.
 
-> **IN DEVELOPMENT · 0.181.0**
+> **IN DEVELOPMENT · 0.182.0**
 >
 > This source version provides explicit, evolving format coverage. Unknown data keeps its diagnostics and byte fingerprints. Read the [version notes, supported platforms and known limitations](VERSION.md) before choosing a workflow.
 
@@ -47,14 +47,15 @@ These are real desktop and embeddable CyUI captures using original generated dem
 
 - **Readable asset differences:** searchable typed properties, stable object references, structured Blueprint pin texts, stored material graphs and instance parameters, with explicit partial/opaque coverage.
 - **Source image and geometry review:** supported Texture2D LDR/HDR sources and mips, pixel/sample differences, modern MeshDescription wireframes, geometry differences and base-geometry OBJ export. Modern skeletal source bones, raw weight profiles and named morph deltas are fixture-validated.
+- **Selected cooked native assets:** explicit UE 5.3 Windows texture mips, static/skeletal render LODs and native Chaos geometry, with verified bulk windows, named differences and EN/FR desktop inspectors. [Textures](docs/COOKED_TEXTURES.md) · [Meshes](docs/COOKED_MESHES.md) · [Physics](docs/COOKED_PHYSICS.md).
 - **Selected cooked skeletal weights:** source-built UE 5.3 Windows render LODs now include named alternate raw weight profiles, sparse stored replacements, named bone differences and EN/FR desktop inspection, checked against actual native override API results. [Reader contract](docs/COOKED_SKELETAL.md).
 - **Cooked render morphs:** source builds decode named UE 5.3 Windows compressed position/normal deltas, compare sparse render vertices and provide an EN/FR desktop inspector with persistent target/vertex selection. Real cooked buffers are checked against matching Engine reference exports. [Coverage and limits](docs/COMPRESSED_MORPHS.md).
 - **Cooked cloth mappings:** source builds inspect UE 5.3 Windows section bindings and stored render-to-simulation correspondences, compare active mapping changes and provide an EN/FR section/vertex inspector. Physical simulation and cloth asset decoding remain separate. [Contract and limits](docs/CLOTH.md).
 - **Cooked vertex overlaps:** source builds inspect retained UE 5.3 Windows skeletal seam correspondences, compare stored relations and highlight affected mesh edges. Stripped tables remain unavailable. [Contract and limits](docs/MESH_OVERLAPS.md).
 - **Cooked vertex attributes:** source builds inspect named float32/float16/UNorm8 skeletal channels, compare decoded vectors and provide an EN/FR channel/vertex inspector with persistent selection. [Contract and limits](docs/VERTEX_ATTRIBUTES.md).
 - **Selected cooked Nanite inspection:** opt-in UE 5.3 Windows whole-resource positions, oriented topology, materials and stored shading attributes through Core/CLI/SDK, with scoped full-leaf surface differences and independent native shader references. Source-built EN/FR desktop review adds full-leaf/cluster wires, aligned corner attributes, stored hierarchy inspection and persistent independent contexts.
-- **Stored motion data:** reference/retarget skeleton poses, sockets, supported local animation keys, explicitly Skeleton-bound source joint/socket origins and rich curves with supported weighted evaluation. These are inspections of stored source data.
-- **Project and revision context:** separate before/after project and engine roots, local Git history/LFS reads, supported Pak 10/11 and IoStore TOC 3–5 members, cooked Zen tables and explicitly mapped USMAP properties.
+- **Stored motion data:** reference/retarget skeleton poses, sockets, supported local animation keys, explicitly Skeleton-bound source joint/socket origins and rich curves with supported weighted evaluation. Selected UE 5.3 Windows per-track compressed transforms and compatible compressed curves also support fractional sampling and dedicated EN/FR review. These inspect stored data without runtime retargeting, blending or skinned rendering. [Cooked animation](docs/COOKED_ANIMATIONS.md).
+- **Project and revision context:** separate before/after project and engine roots, local Git history/LFS reads, supported Pak 10/11 and IoStore TOC 3–8 members (with explicit supported storage arrangements), cooked Zen tables and explicitly mapped USMAP properties.
 - **Extensible readers:** bounded native decoder callbacks and declarative binary layouts with explicit version profiles; local virtualized editor payload stores require full raw BLAKE3 verification. Loading supports cooperative cancellation, progress and a verified package cache.
 - **Reusable block deltas:** generate, compose and reconstruct file/block differences with SHA-256 verification. This is a separate binary reconstruction API; remote object hosting and synchronization are not implemented.
 
@@ -73,7 +74,7 @@ Link `CyUEDiff::Core` through `add_subdirectory`, or install the SDK and use `fi
 
 ## Installation
 
-**No public application release is available yet.** Build from source using the instructions below. Core/CLI builds pass hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
+**No public application release is available yet.** Build from source using the instructions below. The earlier 0.181 Core/CLI milestone passed hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled; the unpushed 0.182 preview has local Windows validation. Its local archive includes a bilingual offline HTML manual and version/component metadata. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
 
 Windows builds using the default dynamic MSVC runtime need the matching Microsoft Visual C++ x64 runtime. Git features require a separate Git 2.45+ installation; loose-file inspection does not. Keep an extracted CPack archive together with its documentation and license notices. See [distribution and runtime requirements](docs/DISTRIBUTION.md).
 

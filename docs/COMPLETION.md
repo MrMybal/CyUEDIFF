@@ -11,13 +11,13 @@ The product goal is the originally requested reusable Unreal inspection/diff eng
 - [ ] Containers and reliability: verify stored integrity where specified, supply supported decompression paths, preserve bounded I/O/cancellation and reject damaged input before publishing decoded results. Validate all supported container versions and storage arrangements.
 - [ ] Corpus: use authorized local engine/project/build inputs read-only, acquire or derive matching mapping evidence, compare against independent implementations where possible and retain hashes before/after. Synthetic fixtures remain identified as such.
 - [ ] Desktop: every completed reader has a practical inspection/diff path, EN/FR labels, useful missing/unsupported diagnostics and retained context/navigation. Complete outstanding dialog/layout and cooked-view bindings.
-- [ ] Delivery: locally verified Windows executable/CLI/SDK archive with matching notices/manuals, extraction/startup/SDK-consumer checks, security scan and accurate platform/version/release status. Public release publication follows explicit owner authorization.
+- [x] Delivery: locally verified Windows executable/CLI/SDK archive with matching notices/manuals, extraction/startup/SDK-consumer checks, security scan and accurate platform/version/release status. Public release publication follows explicit owner authorization.
 
 ## Current facts
 
-Version 0.181.0 already supplies the foundational Core, optional Git adapter, source readers, declarative native layouts, container and Zen tables, explicit schema reads, source visuals, local virtualized resources, multiple documents, workspaces and file/block reconstruction. The public website, bilingual README and MIT license are published. Hosted Windows/Ubuntu Core Git-on/off and secret checks pass at commit d0ad51c. The detailed format contracts and remaining reader coverage are tracked in ROADMAP.md.
+Version 0.182.0 is now a locally verified Windows development archive with CLI/desktop, Core/Git SDK and a bilingual offline HTML manual. The other workstreams below still require their remaining acceptance evidence; this does not complete the full product goal. The previous 0.181.0 milestone already supplies the foundational Core, optional Git adapter, source readers, declarative native layouts, container and Zen tables, explicit schema reads, source visuals, local virtualized resources, multiple documents, workspaces and file/block reconstruction. The public website, bilingual README and MIT license are published. Hosted Windows/Ubuntu Core Git-on/off and secret checks pass at commit d0ad51c. The detailed format contracts and remaining reader coverage are tracked in ROADMAP.md.
 
-## Active work
+## Reader work log (chronological)
 
 1. Completed locally: required IoStore BLAKE3-160 source integrity, with original/corrupt fixtures, 4,696 verified real chunks, CLI/desktop propagation, Core-only SDK validation and unchanged original inputs. See the post-0.181 validation record.
 2. Serialized struct/class declaration prefixes are implemented locally: reusable Core projection, named inspection/diffs, exact profile gates and independent validation of 123 declarations in 33 real editor assets. Broader schema derivation, inherited defaults and arbitrary plugin-native serializers remain open. See REFLECTION.md.
@@ -88,7 +88,7 @@ Seventy-seven original UI checks render 27 CyUI frames across EN/FR, five themes
 
 Seven captured desktop cases include two actual independently validated meshes, self/changed/cluster/hierarchy views, EN/FR and a compact window, plus original changed-color fixtures. Thirty-nine checks match focused real positions to the actual Engine CPU strip references and focused attributes to actual unchanged Engine HLSL references. The real full-leaf grid contains 32,768 triangles and draws all 98,304 prepared edges. All 256 protected corpus/reference files remain unchanged. A freshly installed Core-only consumer verifies eight focused page queries against the complete catalog and repeats correspondence for 67,450 actual native triangles and 45,316 shader-verified shading vertices; maximum normal component difference is 5.960464477539063e-8. UI headers remain separate from this Core-only SDK.
 
-All 140 Core suites and all 216 Windows desktop/Git/native suites pass. Visual inspection prompted compact status/selection controls and an explicit inspector/surface switch in narrow views. The published 0.181 archive remains unchanged. Broader native/plugin/producer coverage, cooked morph/cloth/alternate weights, runtime semantics and final distribution remain open in the full product goal. This milestone does not imply a new archive, push or public release.
+All 140 Core suites and all 216 Windows desktop/Git/native suites pass. Visual inspection prompted compact status/selection controls and an explicit inspector/surface switch in narrow views. The previous local 0.181 archive remains unchanged. Broader native/plugin/producer coverage, cooked morph/cloth/alternate weights, runtime semantics and final distribution remain open in the full product goal. This milestone does not imply a new archive, push or public release.
 
 ### Named native cooked skeletal profiles — post-0.181 development
 
@@ -117,3 +117,12 @@ The selected UE 5.3 Windows Core/CLI/SDK reader now exposes typed raw section-lo
 ### Named cooked vertex attributes — post-0.181 development
 
 The selected UE 5.3 Windows reader now exposes finite float32/float16/UNorm8 channels with one to four components, exact owned bytes and focused typed values. Core/CLI/SDK compare decoded named values independently of encoding. The EN/FR desktop adds channel/vertex search, change navigation, focused vectors, incident edge highlights and persisted state; unknown peer coverage stays incomplete. See [VERTEX_ATTRIBUTES.md](VERTEX_ATTRIBUTES.md). Further native/plugin/producer/runtime coverage, physical cloth assets and final distribution remain open; this addition does not complete the full product goal or imply a push/release.
+
+
+## Local 0.182 delivery acceptance
+
+The Windows x64 ZIP passes full extraction, notices/host-data exclusions, version/component metadata, CLI/desktop startup, workspace-12 and preference/session restart, damaged-session preservation, exact-version CMake discovery, all 46 public headers and extracted SDK examples. Independent original Git fixtures reconstruct exact historical bytes without source-checkout history or ownership exceptions. The bundled existing HTML reader has 12 chapters in each language and 34 authentic captures with retained per-image provenance; its local resources, content hashes, EN/FR interaction, zoom/Escape/focus and mobile layout are checked. Direct `file://` navigation remains unexercised because the verification browser permits HTTP/HTTPS only.
+
+An additionally compiled consumer from the extracted SDK reproduces 422,940 actual UE 5.3.2 geometry/attribute reference values across five meshes and seven LODs. Six native EN/FR captures from the extracted application retain the expected changed vertices. All 23 inputs protected by these archive corpus checks remain unchanged. Security checks report zero findings in 779 publishable files and all local refs. See [the validation record](VALIDATION.md#local-0182-windows-distribution).
+
+This checks local delivery only. Further native/plugin/producer profiles, physical cloth assets/configuration, simulation correspondence bounds and the other unchecked workstreams still need their documented implementation/acceptance. No push, hosted CI run, public binary upload or release is implied.

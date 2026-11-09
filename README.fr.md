@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.181.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.182.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.181.0**
+> **EN DÉVELOPPEMENT · 0.182.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -47,14 +47,15 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 
 - **Différences d’assets lisibles** : propriétés typées consultables par recherche, références d’objets stables, textes structurés des pins Blueprint, graphes de matériau et paramètres d’instance enregistrés, avec une couverture partielle ou opaque explicitée.
 - **Inspection des images et géométries sources** : sources et mips Texture2D LDR/HDR pris en charge, différences de pixels/échantillons, filaires MeshDescription modernes, différences de géométrie et export OBJ de la géométrie de base. Les os sources modernes, profils de poids bruts et deltas de morph nommés sont validés sur des jeux de test synthétiques.
+- **Assets natifs cuits ciblés :** mips de textures, LOD de rendu statiques/squelettiques et géométries Chaos natives UE 5.3 Windows explicites, avec fenêtres bulk vérifiées, différences nommées et inspecteurs desktop EN/FR. [Textures](docs/COOKED_TEXTURES.md) · [Meshes](docs/COOKED_MESHES.md) · [Physique](docs/COOKED_PHYSICS.md).
 - **Poids squelettiques cooked ciblés :** dans la version compilée depuis les sources, les LOD de rendu UE 5.3 Windows incluent les profils de poids alternatifs nommés, leurs remplacements sparsifiés, les différences par os et l’inspection desktop EN/FR, vérifiés avec l’API native d’application des profils. [Contrat du lecteur](docs/COOKED_SKELETAL.md).
 - **Morphs de rendu cooked :** les sources décodent les deltas compressés de position/normale nommés UE 5.3 Windows, comparent les sommets de rendu et proposent un inspecteur desktop EN/FR avec sélection persistante de la cible et du sommet. Les buffers réellement cuits sont vérifiés avec les références du moteur correspondant. [Couverture et limites](docs/COMPRESSED_MORPHS.md).
 - **Correspondances de tissu cooked :** les sources inspectent les liaisons de section et les correspondances de rendu vers la simulation UE 5.3 Windows, comparent les valeurs actives et proposent un inspecteur EN/FR par section et sommet. La simulation physique et le décodage des assets de tissu restent distincts. [Contrat et limites](docs/CLOTH.md).
 - **Sommets dupliqués cuits :** les builds depuis les sources inspectent les correspondances de coutures conservées des meshes squelettiques UE 5.3 Windows, comparent les relations stockées et surlignent les arêtes affectées. Les tables retirées à la cuisson restent indisponibles. [Contrat et limites](docs/MESH_OVERLAPS.md).
 - **Attributs de sommets cuits :** les builds depuis les sources inspectent les canaux squelettiques nommés float32/float16/UNorm8, comparent les vecteurs décodés et proposent un inspecteur EN/FR avec sélection persistante. [Contrat et limites](docs/VERTEX_ATTRIBUTES.md).
 - **Inspection Nanite cooked ciblée :** lecture optionnelle UE 5.3 Windows des positions, triangles orientés, matériaux et attributs stockés via Core/CLI/SDK, avec différences de surface de pleine résolution et références shader indépendantes. La vue desktop EN/FR compilée depuis les sources ajoute les filaires de pleine résolution et par cluster, les attributs des coins alignés, la hiérarchie stockée et les contextes indépendants persistants.
-- **Données de mouvement enregistrées** : poses de référence/retarget des squelettes, sockets, clés d’animation locales prises en charge, origines de joints/sockets sources liées à un Skeleton explicite et rich curves avec évaluation pondérée prise en charge. Ces vues inspectent les données sources enregistrées.
-- **Contexte de projet et de révision** : racines de projet et moteur distinctes avant/après, historique Git et contenu LFS locaux, membres Pak 10/11 et IoStore TOC 3–5 pris en charge, tables Zen cooked et propriétés USMAP associées explicitement.
+- **Données de mouvement enregistrées** : poses de référence/retarget des squelettes, sockets, clés d’animation locales prises en charge, origines de joints/sockets sources liées à un Skeleton explicite et rich curves avec évaluation pondérée prise en charge. Les transformations compressées par piste et courbes compressées compatibles UE 5.3 Windows sélectionnées permettent aussi un échantillonnage fractionnaire et une inspection EN/FR dédiée. Ces vues inspectent les données stockées sans retargeting à l’exécution, blending ou rendu skinné. [Animation cuite](docs/COOKED_ANIMATIONS.md).
+- **Contexte de projet et de révision** : racines de projet et moteur distinctes avant/après, historique Git et contenu LFS locaux, membres Pak 10/11 et IoStore TOC 3–8 pris en charge (selon les modes de stockage explicitement compatibles), tables Zen cooked et propriétés USMAP associées explicitement.
 - **Lecteurs extensibles** : callbacks natifs bornés et descriptions binaires déclaratives avec profils de version explicites ; les magasins locaux de payloads d’éditeur virtualisés exigent une vérification BLAKE3 complète des octets bruts. Le chargement propose une annulation coopérative, une progression et un cache de packages vérifié.
 - **Deltas de blocs réutilisables** : génération, composition et reconstruction de différences de fichiers/blocs avec vérification SHA-256. Cette API de reconstruction binaire est distincte ; l’hébergement distant des objets et leur synchronisation ne sont pas implémentés.
 
@@ -73,7 +74,7 @@ Liez `CyUEDiff::Core` avec `add_subdirectory`, ou installez le SDK et utilisez `
 
 ## Installation
 
-**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Les builds Core/CLI passent la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
+**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; l’aperçu 0.182 non poussé dispose d’une validation locale Windows. Son archive locale comprend un manuel HTML hors ligne bilingue et les métadonnées de version/composants. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
 
 Les builds Windows utilisant le runtime MSVC dynamique par défaut nécessitent le runtime Microsoft Visual C++ x64 correspondant. Les fonctions Git nécessitent une installation séparée de Git 2.45+ ; l’inspection de fichiers libres n’en dépend pas. Conservez les archives CPack extraites avec leur documentation et leurs notices de licence. Voir les [conditions de distribution et d’exécution](docs/DISTRIBUTION.md).
 

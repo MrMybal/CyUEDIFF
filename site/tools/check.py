@@ -43,7 +43,7 @@ for name,page in pages.items():
         assert target.is_relative_to(out) and target.is_file(),(name,ref)
         if url.fragment and target.suffix=='.html':assert unquote(url.fragment) in pages[target.name].ids,(name,ref)
         checks+=1
-    assert page.zoom==0 or page.zoom>=16
+    assert page.zoom>=16 if name=='index.html' else page.zoom>=1
 content=json.loads((source/'content.json').read_text(encoding='utf-8'))
 assert content['translations']['en'].keys()==content['translations']['fr'].keys()
 for lang,entries in content['translations'].items():
@@ -61,7 +61,10 @@ for item in captures['records']:
     assert data[:8]==b'\x89PNG\r\n\x1a\n'
     checks+=1
 for name in content['shots']:
-    for lang in ('en','fr'):assert (out/f'assets/screenshots/{name}-{lang}.png').is_file()
+    for lang in ('en','fr'):
+        filename=f'{name}-{lang}.png'
+        assert (out/'assets/screenshots'/filename).is_file()
+        assert filename in {r['file'] for r in captures['records']},'Missing capture provenance: '+filename
 if manifest['download']:
     info=manifest['download'];data=(out/info['href']).read_bytes()
     assert len(data)==info['bytes'] and hashlib.sha256(data).hexdigest()==info['sha256']

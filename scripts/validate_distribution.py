@@ -3,6 +3,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
+from html.parser import HTMLParser
+from urllib.parse import unquote, urlsplit
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
@@ -34,25 +37,89 @@ with ZipFile(archive) as package:
  if len(parents)!=1:raise RuntimeError('Expected one package root')
  package.extractall(target)
 prefix=target/next(iter(parents))
+info_path=prefix/'share/CyUEDiff/build-info.json'
+info=json.loads(info_path.read_text(encoding='utf-8')) if info_path.is_file() else None
+if info:
+ if info.get('schema')!='cyuediff.build-info/1' or not re.fullmatch(r'\d+\.\d+\.\d+',info.get('version','')):raise RuntimeError('Invalid package build metadata')
+ if info.get('channel')!='development' or info.get('license')!='MIT' or info['components'].get('uiSdk') is not False:raise RuntimeError('Unexpected package scope')
+ if not any(p.parent.name=='CyUEDiff' and p.parent.parent.name=='cmake' for p in prefix.rglob('CyUEDiffConfigVersion.cmake')):raise RuntimeError('Missing installed CMake version contract')
+print('Package metadata: '+(info['version']+' '+info['channel'] if info else 'legacy archive without build metadata'))
+
 for name in ('LICENSE','THIRD_PARTY_NOTICES.md','licenses/nlohmann/LICENSE.MIT','licenses/stb/LICENSE','licenses/bcdec/LICENSE','licenses/bcdec/UPSTREAM.json','licenses/blake3/LICENSE_CC0','licenses/blake3/LICENSE_A2','licenses/blake3/UPSTREAM.json'):
  if not (prefix/'share/CyUEDiff'/name).is_file():raise RuntimeError('Missing notice: '+name)
 for file in prefix.rglob('*.cmake'):
  if str(root).replace('\\','/') in file.read_text(encoding='utf-8').replace('\\','/'):raise RuntimeError('SDK exports a source checkout path')
-for header in (prefix/'include/cyuediff').glob('*.hpp'):
- if '#include <cyui/' in header.read_text(encoding='utf-8'):raise RuntimeError('Core SDK contains UI-dependent header: '+header.name)
+public_headers=sorted((prefix/'include/cyuediff').glob('*.hpp'))
+for header in public_headers:
+ text=header.read_text(encoding='utf-8')
+ if '#include <cyui/' in text or (info and header.name.endswith('_view.hpp')):raise RuntimeError('Core SDK contains UI-dependent header: '+header.name)
+ for dependency in re.findall(r'^\s*#\s*include\s*<cyuediff/([^>]+)>',text,re.MULTILINE):
+  if not (prefix/'include/cyuediff'/dependency).is_file():raise RuntimeError('Missing public dependency '+dependency+' required by '+header.name)
+print(str(len(public_headers))+' installed headers have complete Core/Git include dependencies')
+if info and info['components'].get('desktop') and not info['components'].get('manual'):
+ raise RuntimeError('The desktop development archive must include its prepared HTML manual')
+if info and info['components'].get('manual'):
+ manual=prefix/'share/CyUEDiff/manual'
+ manual_manifest=json.loads((manual/'asset-manifest.json').read_text(encoding='utf-8'))
+ assert manual_manifest['version']==info['version'] and manual_manifest['download'] is None and not (manual/'downloads').exists()
+ for asset in manual_manifest['assets'].values():
+  data=(manual/asset).read_bytes();assert hashlib.sha256(data).hexdigest()[:12] in asset
+ content_script=(manual/manual_manifest['assets']['content']).read_text(encoding='utf-8')
+ assert content_script.startswith('window.CYUE_SITE = ') and content_script.rstrip().endswith(';')
+ manual_data=json.loads(content_script[len('window.CYUE_SITE = '):].rstrip().removesuffix(';'))
+ assert manual_data['translations']['en'].keys()==manual_data['translations']['fr'].keys()
+ assert [x['id'] for x in manual_data['guide']['en']]==[x['id'] for x in manual_data['guide']['fr']]
+ class ManualPage(HTMLParser):
+  def handle_starttag(self,tag,attrs):
+   data=dict(attrs)
+   for key in ('src','href'):
+    if key not in data:continue
+    ref=urlsplit(data[key])
+    if tag in ('script','img','link') and (ref.scheme or ref.netloc):raise RuntimeError('Offline manual has an external runtime resource')
+    if ref.scheme or ref.netloc:continue
+    name=unquote(ref.path)
+    if not name:return
+    dependency=(manual/name).resolve()
+    assert dependency.is_relative_to(manual.resolve()) and dependency.is_file(),data[key]
+   if tag=='script' and data.get('type')=='module':raise RuntimeError('Offline manual requires a module server')
+ for page in ('index.html','guide.html'):
+  ManualPage().feed((manual/page).read_text(encoding='utf-8'))
+ app=(manual/manual_manifest['assets']['app']).read_text(encoding='utf-8')
+ assert 'fetch(' not in app and 'import(' not in app
+ captures=json.loads((manual/'assets/capture-manifest.json').read_text(encoding='utf-8'))
+ assert captures['privateProjectData'] is False
+ for image in captures['records']:
+  assert hashlib.sha256((manual/'assets/screenshots'/image['file']).read_bytes()).hexdigest()==image['sha256']
+ assert (prefix/'START_HERE.txt').is_file()
+ print('Offline HTML manual validated: '+str(len(manual_data['guide']['en']))+' chapters per language, '+str(len(captures['records']))+' authentic captures and complete local resources')
+
 
 env={key.upper() if os.name=='nt' else key:value for key,value in os.environ.items()}
+if os.name=='nt':
+ env['MSBUILDDISABLENODEREUSE']='1'
+ (target/'temp').mkdir()
+ env['TEMP']=env['TMP']=str(target/'temp')
 suffix='.exe' if os.name=='nt' else ''
 cli=prefix/'bin'/('cyuediff'+suffix)
 if os.name!='nt':cli.chmod(0o755)
 result=subprocess.run([str(cli),'--help'],capture_output=True,check=True,env=env,timeout=20)
 if b'CyUEDiff' not in result.stdout:raise RuntimeError('CLI did not start')
+if info:
+ version=subprocess.run([str(cli),'--version'],capture_output=True,check=True,env=env,timeout=20).stdout.decode('utf-8').strip()
+ if version!=info['version']:raise RuntimeError('CLI version differs from package metadata')
 desktop=prefix/'bin'/('cyuediff_desktop'+suffix)
+if info:
+ assert info['components']['core'] and info['components']['cli'] and info['components']['desktop']==desktop.is_file()
+ assert info['components']['git']==(prefix/'include/cyuediff/git.hpp').is_file()
 if desktop.is_file():
  workspace_file=target/'workspace.json';workspace_report=target/'workspace-report.json'
  subprocess.run([str(desktop),'--smoke','--no-preferences','--save-workspace',str(workspace_file),'--report',str(workspace_report)],check=True,env=env,timeout=45)
  saved_workspace=json.loads(workspace_file.read_text(encoding='utf-8'))
- assert saved_workspace['schema']=='cyuediff.workspace/8' and len(saved_workspace['documents'])==1
+ expected_workspace=info['workspaceSchema'] if info else 'cyuediff.workspace/8'
+ assert saved_workspace['schema']==expected_workspace and len(saved_workspace['documents'])==1
+ if info:
+  first_report=json.loads(workspace_report.read_text(encoding='utf-8'))
+  assert first_report['version']==info['version'] and first_report['releaseChannel']==info['channel'] and first_report['license']==info['license']
  saved_workspace['documents'][0]['viewState']={'asset':{'filter':'installed pending state'},'layout':{'sidebarWidth':500,'project':True}}
  workspace_file.write_text(json.dumps(saved_workspace),encoding='utf-8')
  original_workspace=workspace_file.read_bytes()
@@ -90,6 +157,31 @@ if args.consumer:
  cmake=shutil.which('cmake')
  if not cmake and os.name=='nt':cmake=str(Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe')
  if not cmake:raise RuntimeError('CMake is required for --consumer')
+ if info:
+  audit_source=target/'header-audit-source';audit_source.mkdir()
+  includes='\n'.join('#include <cyuediff/'+h.name+'>' for h in public_headers)
+  (audit_source/'main.cpp').write_text(includes+'''
+#include <iostream>
+int main(int argc,char **argv){
+ using namespace cyuediff;
+ if(argc==3&&std::string(argv[1])=="--blake3"){std::cout<<blake3_file(fs::u8path(argv[2]));return 0;}
+ MeshVertexAttribute attribute("Original",VertexAttributeFormat::float32,1,{0,0,0,63});
+ MeshSectionOverlaps overlaps;overlaps.vertices=3;overlaps.indices={1,0};overlaps.windows={{1,0},{1,1},{0,2}};
+ overlaps.validate(3);
+ if(attribute.vertex(0)!=std::vector<float>{.5f}||overlaps.neighbors(0)!=std::vector<std::uint32_t>{1})return 1;
+ std::cout<<Json({{"verified",true},{"attribute",attribute.to_json(true)}}).dump();return 0;
+}
+''',encoding='utf-8')
+  (audit_source/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.20)\nproject(InstalledHeaders LANGUAGES CXX)\nfind_package(CyUEDiff '+info['version']+' EXACT CONFIG REQUIRED)\nadd_executable(installed_headers main.cpp)\ntarget_link_libraries(installed_headers PRIVATE CyUEDiff::Core)\ntarget_compile_features(installed_headers PRIVATE cxx_std_17)\n',encoding='utf-8')
+  audit_build=target/'header-audit-build';configure=[cmake,'-S',str(audit_source),'-B',str(audit_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
+  subprocess.run(configure,check=True,env=env)
+  subprocess.run([cmake,'--build',str(audit_build),'--config','Release','--parallel','2'],check=True,env=env)
+  audit_exe=audit_build/'Release'/('installed_headers'+suffix) if os.name=='nt' else audit_build/'installed_headers'
+  audit=json.loads(subprocess.run([str(audit_exe)],capture_output=True,check=True,env=env,timeout=20).stdout)
+  assert audit['verified']
+  print('All installed public headers compile against the exact package version; latest typed Core APIs execute independently')
+
  morph_build=target/'mesh-morph-consumer'
  configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/mesh_morph_consumer'),'-B',str(morph_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
@@ -127,7 +219,7 @@ if args.consumer:
  assert checked_layout['verified'] and checked_layout['value']['strength']==42
  print('Installed declarative layout consumer verified descriptions and string encodings')
  binary_build=target/'binary-delta-consumer'
- configure=[cmake,'-S',str(root/'examples/binary_delta_consumer'),'-B',str(binary_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/binary_delta_consumer'),'-B',str(binary_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(binary_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -141,7 +233,7 @@ if args.consumer:
  assert binary_data['maximumStreamChunk']<=1024*1024 and binary_data['compactBytes']<binary_data['manifestBytes']
  print('Installed binary delta Core consumer verified JSON, compact, composed and streamed bytes')
  build=target/'consumer'
- configure=[cmake,'-S',str(root/'examples/catalog_consumer'),'-B',str(build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/catalog_consumer'),'-B',str(build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -154,10 +246,15 @@ if args.consumer:
  if not data.get('assets'):raise RuntimeError('Installed Core consumer did not list fixture')
  if not (prefix/'include/cyuediff/container.hpp').is_file():raise RuntimeError('Missing container API in SDK')
  container_build=target/'container-consumer'
- configure=[cmake,'-S',str(root/'examples/container_consumer'),'-B',str(container_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/container_consumer'),'-B',str(container_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(container_build),'--config','Release','--parallel','2'],check=True,env=env)
+ def member_meta(path):
+  if not info:return bytes(33) # Legacy archives predate required source integrity.
+  digest=subprocess.run([str(audit_exe),'--blake3',path.name],cwd=path.parent,capture_output=True,check=True,env=env,timeout=20).stdout.decode('ascii').strip()
+  if not re.fullmatch(r'[0-9a-f]{64}',digest):raise RuntimeError('Invalid installed BLAKE3 result')
+  return bytes.fromhex(digest[:40])+bytes(13)
  # Original, uncompressed one-chunk TOC fixture, independent of the source checkout at runtime.
  import struct
  header=bytearray(144);header[:16]=b'-==--==--==--==-';header[16]=5
@@ -165,13 +262,22 @@ if args.consumer:
  struct.pack_into('<Q',header,88,0xffffffffffffffff)
  chunk=bytes(11)+bytes([2])+bytes(5)+(4).to_bytes(5,'big')
  block=bytes(5)+(4).to_bytes(3,'little')+(4).to_bytes(3,'little')+bytes(1)
- toc=target/'consumer.utoc';toc.write_bytes(header+chunk+block+bytes(33));toc.with_suffix('.ucas').write_bytes(b'core')
+ toc=target/'consumer.utoc';toc.with_suffix('.ucas').write_bytes(b'core');toc.write_bytes(header+chunk+block+member_meta(toc.with_suffix('.ucas')))
  executable=container_build/'Release'/('container_consumer'+suffix) if os.name=='nt' else container_build/'container_consumer'
  result=subprocess.run([str(executable),str(toc)],capture_output=True,check=True,env=env,timeout=20)
  if json.loads(result.stdout).get('firstMemberSha256')!=hashlib.sha256(b'core').hexdigest():raise RuntimeError('Installed container consumer failed')
+ if info:
+  original_toc=toc.read_bytes();toc.with_suffix('.ucas').write_bytes(b'Core')
+  corrupt=subprocess.run([str(executable),str(toc)],capture_output=True,env=env,timeout=20)
+  if corrupt.returncode==0 or b'BLAKE3-160' not in corrupt.stderr:raise RuntimeError('Installed container consumer accepted damaged chunk')
+  toc.with_suffix('.ucas').write_bytes(b'core')
+  verified=json.loads(subprocess.run([str(executable),str(toc)],capture_output=True,check=True,env=env,timeout=20).stdout)
+  assert verified['firstMemberSha256']==hashlib.sha256(b'core').hexdigest() and toc.read_bytes()==original_toc
+  print('Installed container consumer verifies required BLAKE3-160 and rejects damaged payloads')
+
  if not (prefix/'include/cyuediff/zen.hpp').is_file():raise RuntimeError('Missing cooked Zen API in SDK')
  zen_build=target/'zen-consumer'
- configure=[cmake,'-S',str(root/'examples/zen_consumer'),'-B',str(zen_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/zen_consumer'),'-B',str(zen_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(zen_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -187,14 +293,14 @@ if args.consumer:
  header=bytearray(144);header[:16]=b'-==--==--==--==-';header[16]=5
  struct.pack_into('<9I',header,20,144,1,1,12,0,32,65536,0,1);struct.pack_into('<Q',header,88,0xffffffffffffffff)
  block=bytes(5)+len(payload).to_bytes(3,'little')*2+bytes(1)
- toc=target/'zen-consumer.utoc';toc.write_bytes(header+bytes(11)+bytes([1])+bytes(5)+len(payload).to_bytes(5,'big')+block+bytes(33));toc.with_suffix('.ucas').write_bytes(payload)
+ toc=target/'zen-consumer.utoc';toc.with_suffix('.ucas').write_bytes(payload);toc.write_bytes(header+bytes(11)+bytes([1])+bytes(5)+len(payload).to_bytes(5,'big')+block+member_meta(toc.with_suffix('.ucas')))
  executable=zen_build/'Release'/('zen_consumer'+suffix) if os.name=='nt' else zen_build/'zen_consumer'
  result=subprocess.run([str(executable),str(toc),'ue5.3'],capture_output=True,check=True,env=env,timeout=20)
  parsed=json.loads(result.stdout);body=parsed['packages'][0]['snapshot']['objects']['/Game/Consumer.Consumer']['opaque']
  if body['sha256']!=hashlib.sha256(b'core').hexdigest():raise RuntimeError('Installed cooked Zen consumer failed')
  if not (prefix/'include/cyuediff/schema.hpp').is_file():raise RuntimeError('Missing USMAP API in SDK')
  schema_build=target/'schema-consumer'
- configure=[cmake,'-S',str(root/'examples/schema_consumer'),'-B',str(schema_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/schema_consumer'),'-B',str(schema_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(schema_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -374,7 +480,7 @@ if args.consumer:
  print('Installed calendar/argument-data and native temporal/bounds SDK consumers validated')
 
  image_build=target/'image-consumer'
- configure=[cmake,'-S',str(root/'examples/image_consumer'),'-B',str(image_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/image_consumer'),'-B',str(image_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(image_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -386,7 +492,7 @@ if args.consumer:
  print('Installed independent LDR/HDR image SDK consumer validated')
 
  collision_build=target/'collision-consumer'
- configure=[cmake,'-S',str(root/'examples/collision_consumer'),'-B',str(collision_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/collision_consumer'),'-B',str(collision_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(collision_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -399,7 +505,7 @@ if args.consumer:
  print('Installed independent collision Core consumer validated')
 
  skeleton_build=target/'skeleton-consumer'
- configure=[cmake,'-S',str(root/'examples/skeleton_consumer'),'-B',str(skeleton_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/skeleton_consumer'),'-B',str(skeleton_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(skeleton_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -421,7 +527,7 @@ if args.consumer:
  if skeleton_data['missingSocketOrigin']['complete']:raise RuntimeError('Omitted socket location was incorrectly defaulted')
  print('Installed independent skeleton/animation/attachment/socket origin Core consumer validated')
  animation_build=target/'animation-consumer'
- configure=[cmake,'-S',str(root/'examples/animation_consumer'),'-B',str(animation_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/animation_consumer'),'-B',str(animation_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(animation_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -434,7 +540,7 @@ if args.consumer:
  if source['independentFrameComparison']['beforeFrame']!=0 or source['independentFrameComparison']['afterFrame']!=1 or source['independentFrameComparison']['status']!='changed':raise RuntimeError('Installed independent animation frame comparison failed')
  print('Installed independent animation source Core consumer validated')
  pose_build=target/'animation-pose-consumer'
- configure=[cmake,'-S',str(root/'examples/animation_pose_consumer'),'-B',str(pose_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/animation_pose_consumer'),'-B',str(pose_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(pose_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -448,7 +554,7 @@ if args.consumer:
  if pose_data['afterSocketOrigins']['sockets']['Rig.Grip']['position']!=[14.,6.,3.] or pose_data['socketComparison']['changedSockets']!=1 or pose_data['socketComparison']['sockets']['Rig.Grip']['distance']!=5.:raise RuntimeError('Installed source socket displacement comparison failed')
  print('Installed independent Skeleton-bound animation pose/socket Core consumer validated')
  curve_build=target/'curve-consumer'
- configure=[cmake,'-S',str(root/'examples/curve_consumer'),'-B',str(curve_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
+ configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/curve_consumer'),'-B',str(curve_build),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_PREFIX_PATH='+str(prefix)]
  if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
  subprocess.run(configure,check=True,env=env)
  subprocess.run([cmake,'--build',str(curve_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -468,18 +574,33 @@ if args.consumer:
 
 
  if (prefix/'include/cyuediff/git.hpp').is_file():
+  git_program=shutil.which('git')
+  if not git_program:raise RuntimeError('Git is required for the extracted Git SDK checks')
+  git_fixture=target/'git-fixture';empty_template=target/'git-template';empty_hooks=target/'git-hooks'
+  empty_template.mkdir();empty_hooks.mkdir();empty_attributes=target/'git-attributes';empty_attributes.write_bytes(b'')
+  git_base=[git_program,'-c','core.hooksPath='+str(empty_hooks),'-c','core.attributesFile='+str(empty_attributes),'-c','core.autocrlf=false','-c','commit.gpgsign=false','-c','gc.auto=0']
+  subprocess.run([*git_base,'init','--quiet','--template='+str(empty_template),'--initial-branch=codex/distribution-fixture',str(git_fixture)],check=True,env=env)
+  def fixture_git(*arguments):return subprocess.run([*git_base,'-C',str(git_fixture),*arguments],check=True,capture_output=True,env=env).stdout
+  assert Path(fixture_git('rev-parse','--show-toplevel').decode('utf-8').strip()).resolve()==git_fixture.resolve()
+  fixture_git('config','user.name','CyUEDiff distribution fixture')
+  fixture_git('config','user.email','fixture@example.invalid')
+  fixture_readme=git_fixture/'README.md'
+  original=b''.join(('Original SDK fixture line %06d\n'%i).encode('ascii') for i in range(4096))
+  fixture_readme.write_bytes(original);fixture_git('add','--','README.md');fixture_git('commit','--quiet','-m','Original distribution fixture')
+  fixture_readme.write_bytes(original.replace(b'line 002048',b'line changed-002048',1));fixture_git('add','--','README.md');fixture_git('commit','--quiet','-m','Changed distribution fixture')
+  git_protected={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in git_fixture.rglob('*') if p.is_file()}
   git_build=target/'git-consumer'
-  configure=[cmake,'-S',str(root/'examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+  configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/git_consumer'),'-B',str(git_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
   if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
   subprocess.run(configure,check=True,env=env)
   subprocess.run([cmake,'--build',str(git_build),'--config','Release','--parallel','2'],check=True,env=env)
   git_executable=git_build/'Release'/('git_compare'+suffix) if os.name=='nt' else git_build/'git_compare'
-  result=subprocess.run([str(git_executable),str(root),'HEAD'],capture_output=True,check=True,env=env,timeout=30)
+  result=subprocess.run([str(git_executable),str(git_fixture),'HEAD'],capture_output=True,check=True,env=env,timeout=30)
   history=json.loads(result.stdout)
   if history.get('schema')!='cyuediff.git-history/1' or not history.get('commits') or history['commits'][0]['id']!=history['head']:raise RuntimeError('Installed Git history consumer failed')
   print('Installed Git SDK history consumer validated')
   git_pose_build=target/'git-animation-pose-consumer'
-  configure=[cmake,'-S',str(root/'examples/git_animation_pose_consumer'),'-B',str(git_pose_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+  configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/git_animation_pose_consumer'),'-B',str(git_pose_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
   if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
   subprocess.run(configure,check=True,env=env)
   subprocess.run([cmake,'--build',str(git_pose_build),'--config','Release','--parallel','2'],check=True,env=env)
@@ -488,22 +609,29 @@ if args.consumer:
   if b'BEFORE_SKELETON AFTER_SKELETON' not in result.stdout:raise RuntimeError('Installed Git animation pose consumer failed to start')
   print('Installed Git-bound animation pose SDK consumer compiled and started')
   git_binary_build=target/'git-binary-delta-consumer'
-  configure=[cmake,'-S',str(root/'examples/git_binary_delta_consumer'),'-B',str(git_binary_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
+  configure=[cmake,'-S',str(prefix/'share/CyUEDiff/examples/git_binary_delta_consumer'),'-B',str(git_binary_build),'-DCMAKE_PREFIX_PATH='+str(prefix)]
   if args.static_runtime:configure.append('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
   subprocess.run(configure,check=True,env=env)
   subprocess.run([cmake,'--build',str(git_binary_build),'--config','Release','--parallel','2'],check=True,env=env)
   git_binary_executable=git_binary_build/'Release'/('git_binary_delta_consumer'+suffix) if os.name=='nt' else git_binary_build/'git_binary_delta_consumer'
   git_binary_temp=target/'git-binary-temporary';git_binary_temp.mkdir()
-  git_binary_result=subprocess.run([str(git_binary_executable),str(root),'HEAD~1','HEAD','README.md',str(git_binary_temp)],capture_output=True,check=True,env=env,timeout=90)
+  git_binary_result=subprocess.run([str(git_binary_executable),str(git_fixture),'HEAD~1','HEAD','README.md',str(git_binary_temp)],capture_output=True,check=True,env=env,timeout=90)
   git_binary_data=json.loads(git_binary_result.stdout)
   assert git_binary_data['verified'] and git_binary_data['summary']['before']['present'] and git_binary_data['summary']['after']['present']
   assert git_binary_data['compactVerified'] and git_binary_data['streamVerified']
   assert git_binary_data['fileGenerationVerified'] and git_binary_data['compactSinkVerified']
   assert not list(git_binary_temp.iterdir())
   print('Installed Git binary delta consumer reconstructed exact historical README bytes')
+  assert set(git_protected)=={p for p in git_fixture.rglob('*') if p.is_file()} and all(hashlib.sha256(p.read_bytes()).hexdigest()==h for p,h in git_protected.items())
+  print('Original standalone Git fixture remains unchanged; no source checkout history was used')
 
 
 
 
 print('Archive notices, absence of host data, extracted CLI'+(', desktop WARP' if desktop.is_file() else '')+(' and installed catalogue/container/cooked/schema/image/collision/skeleton/animation/animation-pose/curve consumers' if args.consumer else '')+' validated')
+record={'schema':'cyuediff.distribution-validation/1','version':info['version'] if info else None,
+ 'archive':str(archive),'sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'bytes':archive.stat().st_size,
+ 'validated':True,'extraction':str(prefix),'consumers':args.consumer,'staticRuntime':args.static_runtime,
+ 'publicHeaders':len(public_headers),'desktop':desktop.is_file(),'manual':bool(info and info['components'].get('manual'))}
+(target/'validation.json').write_text(json.dumps(record,indent=2)+'\n',encoding='utf-8',newline='\n')
 print('Validated extraction retained in '+str(target))

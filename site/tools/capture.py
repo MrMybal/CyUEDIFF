@@ -3,11 +3,13 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
+VERSION = re.search(r'project\(CyUEDiff VERSION (\d+\.\d+\.\d+)',(ROOT/'CMakeLists.txt').read_text(encoding='utf-8'))[1]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--build', type=Path, default=ROOT / 'build-native')
 p.add_argument('--refresh-views', action='store_true')
@@ -27,9 +29,13 @@ def run(args, **kwargs):
         raise RuntimeError(result.stderr.decode('utf-8', 'replace'))
     return result.stdout.decode('utf-8', 'replace')
 
+assert run([binary/'cyuediff.exe','--version']).strip()==VERSION, 'Build the current source version before capturing'
+
 views = work / 'views'
-if a.refresh_views or not (views / 'report.json').exists():
-    run([binary / 'cyuediff_visual_navigation_tests.exe', '--capture-dir', views], cwd=ROOT)
+views_version=work/'views-version.txt'
+if a.refresh_views or not (views/'report.json').exists() or not views_version.is_file() or views_version.read_text(encoding='utf-8').strip()!=VERSION:
+    run([binary/'cyuediff_visual_navigation_tests.exe','--capture-dir',views],cwd=ROOT)
+    views_version.write_text(VERSION+'\n',encoding='utf-8',newline='\n')
 for name in ('rich_curve_eval', 'mesh_morph', 'mesh_skin', 'workspace', 'collision', 'schema_native'):
     run([binary / ('cyuediff_' + name + '_tests.exe'), '--write-fixtures', samples], cwd=ROOT)
 cli = binary / 'cyuediff.exe'
@@ -46,8 +52,8 @@ if (repo / '.git').exists() and not marker.exists():
 def git(*args):
     return run(['git', '-c', 'safe.directory=' + repo.as_posix(), '-C', repo, *args]).strip()
 if not (repo / '.git').exists():
-    marker.write_text('Original CyUEDiff website demo repository\n', encoding='utf-8')
-    git('init', '-q', '-b', 'main')
+    marker.write_text('Original CyUEDiff website demo repository\n', encoding='utf-8',newline='\n')
+    git('init', '-q', '-b', 'codex/site-demo')
     for key, value in [('user.name', 'Demo'), ('user.email', 'demo@invalid.example'), ('commit.gpgSign', 'false'), ('core.hooksPath', 'missing-hooks')]:
         git('config', key, value)
     (repo / 'Content').mkdir(exist_ok=True)
@@ -65,7 +71,7 @@ def capture(name, locale, args, state=None):
     if state:
         command += ['--document-action', 'view-state:' + json.dumps(state, separators=(',', ':'))]
     run(command, cwd=work)
-    records.append({'file': destination.name, 'origin': 'Windows desktop with original encoded test fixtures', 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
+    records.append({'file': destination.name, 'version': VERSION, 'origin': 'Windows desktop with original encoded test fixtures', 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
 
 for locale in ('en', 'fr'):
     capture('overview', locale, ['--before', 'samples/curve-0-1013.uasset', '--after', 'samples/curve-1-1013.uasset', '--view', 'curves'], {'asset': {'curves': {'time': .5, 'inspection': {'selected': middle, 'changedOnly': True, 'properties': {'changedOnly': True, 'selected': '/value'}}}}})
@@ -79,6 +85,7 @@ for locale in ('en', 'fr'):
         source = views / ('mid-grey-' + locale + '-' + scene + '.png')
         destination = assets / (output + '-' + locale + '.png')
         shutil.copyfile(source, destination)
-        records.append({'file': destination.name, 'origin': 'Actual CyUI component, original in-memory demo snapshots', 'scene': scene, 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
-(assets.parent / 'capture-manifest.json').write_text(json.dumps({'version': '0.181.0', 'privateProjectData': False, 'records': records}, indent=2) + '\n', encoding='utf-8')
-print(f'Prepared {len(records)} public original-fixture captures')
+        records.append({'file': destination.name, 'version': VERSION, 'origin': 'Actual CyUI component, original in-memory demo snapshots', 'scene': scene, 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
+(assets.parent / 'capture-manifest.json').write_text(json.dumps({'version': VERSION, 'privateProjectData': False, 'records': records}, indent=2) + '\n', encoding='utf-8',newline='\n')
+subprocess.run([os.sys.executable,str(ROOT/'site/tools/capture_cooked.py'),'--build',str(a.build.resolve())],check=True,env=env)
+print(f'Prepared {len(records)+2} public original-fixture captures')

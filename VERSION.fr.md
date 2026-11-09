@@ -2,9 +2,31 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
-## 0.181.0 — En développement
+## 0.182.0 — Aperçu de développement local
 
-Il s’agit de la version du projet source déclarée dans `CMakeLists.txt`. Le Core, la CLI et l’application optionnelle utilisent la même version. Il n’existe pas de release GitHub de l’application ou de téléchargement desktop public. La [vitrine](https://mrmybal.github.io/CyUEDIFF/?lang=fr) est publiée séparément.
+Cette version des sources regroupe les lecteurs natifs, comparaisons et vues desktop ajoutés après 0.181. La CLI, l’application Windows x64 et les SDK réutilisables Core/Git sont vérifiés dans une archive locale. Cette tâche ne téléverse pas de binaires, ne publie pas de release GitHub et ne prétend pas avoir exécuté une nouvelle CI hébergée. La vitrine publique est gérée séparément.
+
+### Principaux ajouts
+
+- Lecture explicite UE 5.3 Windows des mips de textures cuits, des LODs de rendu statiques/squelettiques, des géométries de collision Chaos natives et des valeurs d’animations/courbes compressées, avec contextes indépendants et fenêtres bulk vérifiées.
+- Inspection sélectionnée des géométries et attributs Nanite natifs, correspondance de surfaces, requêtes de hiérarchie/clusters et vues desktop EN/FR.
+- Profils de poids cuits nommés, morphs de rendu compressés, correspondances de tissu enregistrées, tables de sommets dupliqués conservées et canaux personnalisés float32/float16/UNorm8, avec API Core typée et inspecteurs persistants.
+- Préparation de métadonnées UHT depuis les sources correspondantes, préfixes de déclarations réfléchies, intégrité IoStore obligatoire et prise en charge bornée d’autres structures sélectionnées de conteneurs.
+- Le lecteur HTML hors ligne bilingue inclus, les chapitres de contexte natif à jour et des captures originales d’attributs cuits, avec styles/scripts/images locaux.
+- Package CMake versionné, métadonnées de composants/format d’espace de travail et SDK Core excluant les en-têtes d’interface réservés aux sources. Le vérificateur compile les exemples extraits et contrôle toutes les dépendances des en-têtes installés.
+
+### Disponibilité et limites
+
+Le build Windows de développement actuel est vérifié localement avec MSVC 2022 et Direct3D 11/WARP. L’archive par défaut nécessite le runtime Microsoft Visual C++ x64 correspondant et une installation séparée de Git pour les fonctions Git. Les bibliothèques d’interface se compilent depuis les sources avec le checkout CyUI de l’hôte ; le SDK installé exporte le Core et éventuellement Git. Aucun desktop Linux/macOS n’est disponible. Les anciennes preuves de CI Windows/Ubuntu concernent 0.181 et ne valident pas un build 0.182 non poussé.
+
+Les lecteurs utilisent des profils explicites de moteur/build/plateforme et des mappings correspondants. Les valeurs, pixels et géométries stockés diffèrent d’une évaluation finale de shaders, de skinning, de simulation de tissu ou de graphe d’animation. Les sérialiseurs arbitraires de plugins, les assets/configurations physiques de tissu, d’autres profils natifs/producteurs et les éléments du [suivi de complétude](docs/COMPLETION.md) ne sont pas déclarés terminés. Les assets privés, l’implémentation du moteur, les codecs appartenant à l’hôte et les références générées sont exclus de l’archive.
+
+Voir les [contrôles de distribution](docs/DISTRIBUTION.md), la [validation actuelle](docs/VALIDATION.md), le [guide desktop](docs/DESKTOP.md) et les [formats couverts](docs/ROADMAP.md).
+
+## 0.181.0 — Ancien jalon des sources
+
+
+Il s’agissait de la version précédente des sources ; les notes ci-dessous décrivent ce jalon historique. Il n’existe pas de release GitHub de l’application ou de téléchargement desktop public. La [vitrine](https://mrmybal.github.io/CyUEDIFF/?lang=fr) est publiée séparément.
 
 ### Changements de cette version des sources
 

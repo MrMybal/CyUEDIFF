@@ -22,6 +22,11 @@
     // All guide markup is authored locally and shipped in the static bundle.
     container.innerHTML = guide.map(part => `<section id="${part.id}"><h2>${part.title}</h2>${part.html}</section>`).join('') +
       `<p><a href="https://github.com/MrMybal/CyUEDIFF/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener noreferrer">${text('guide.reference')} ↗</a></p>`;
+    if (selectedShot && !selectedShot.isConnected) {
+      const key = selectedShot.dataset.caption;
+      selectedShot = Array.from(container.querySelectorAll('[data-zoom]')).find(button => button.dataset.caption === key) || null;
+      gallery = Array.from(container.querySelectorAll('[data-zoom]'));
+    }
     const nav = document.querySelector('[data-guide-nav]');
     nav.setAttribute('aria-label', text('guide.chapters'));
     nav.innerHTML = guide.map(part => `<a href="#${part.id}">${part.title}</a>`).join('');
@@ -109,7 +114,10 @@
     if (!dialog.open) { dialog.showModal(); document.body.classList.add('lightbox-open'); }
     updateLightbox();
   }
-  document.querySelectorAll('[data-zoom]').forEach(button => button.addEventListener('click', () => openShot(button)));
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-zoom]');
+    if (button) openShot(button);
+  });
   function moveShot(direction) {
     if (!gallery.length) return;
     selectedShot = gallery[(gallery.indexOf(selectedShot) + direction + gallery.length) % gallery.length];

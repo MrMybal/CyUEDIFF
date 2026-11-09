@@ -32,6 +32,10 @@
 using namespace cyuediff;
 namespace {
 int run(const std::vector<std::string> &args) {
+    if (args.size() == 1 && args[0] == "--version") {
+        std::cout << CYUEDIFF_VERSION << '\n';
+        return 0;
+    }
     if (args.empty() || args[0] == "--help" || args[0] == "help") {
         std::cout
             << "CyUEDiff " CYUEDIFF_VERSION " - standalone Unreal package reader\n"

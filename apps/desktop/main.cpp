@@ -2964,39 +2964,48 @@ int run(Options options) {
             shell.protect(options);
             if (!options.capture.empty())
                 write_png(options.capture, renderer.capture());
-            Json report = {{"schema", "cyuediff.desktop/1"},
-                           {"status", shell.result_error().empty() ? "ready" : "failed"},
-                           {"error", shell.result_error()},
-                           {"frames", frames},
-                           {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
-                           {"renderer", "Direct3D11 WARP"},
-                           {"theme", cyui::currentThemeKey()},
-                           {"locale", cyui::locale()},
-                           {"view", options.view},
-                           {"preferences",
-                            {{"enabled", !options.preferences.empty()},
-                             {"loaded", saved.loaded},
-                             {"saved", preferences_saved},
-                             {"diagnostic", options.preferences_diagnostic},
-                             {"values", [&] {
-                                 auto value = shell.preferences();
-                                 value.window = window.placement();
-                                 return value.to_json();
-                             }()}}},
-                           {"session", {{"enabled", shell.restore_session()},
-                                        {"path", options.session_path.u8string()},
-                                        {"loaded", saved_session.loaded}, {"restored", session_restored},
-                                        {"saved", session_saved}, {"diagnostic", options.session_diagnostic}}},
-                           {"window", {{"restored", window.placement_restored},
-                                       {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
-                           {"uploadedPreviews", shell.images()},
-                           {"browser", shell.browser_report()},
-                           {"history", shell.history_report()},
-                           {"workspace", shell.workspace_report()},
-                           {"workspaceFile", shell.workspace_file_report()},
-                           {"containerView", shell.container_view_report()},
-                           {"document", shell.session().document() ? shell.session().document()->report()
-                                                                   : Json(nullptr)}};
+            Json report = {
+                {"schema", "cyuediff.desktop/1"},
+                {"version", CYUEDIFF_VERSION},
+                {"releaseChannel", "development"},
+                {"license", "MIT"},
+                {"status", shell.result_error().empty() ? "ready" : "failed"},
+                {"error", shell.result_error()},
+                {"frames", frames},
+                {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
+                {"renderer", "Direct3D11 WARP"},
+                {"theme", cyui::currentThemeKey()},
+                {"locale", cyui::locale()},
+                {"view", options.view},
+                {"preferences",
+                 {{"enabled", !options.preferences.empty()},
+                  {"loaded", saved.loaded},
+                  {"saved", preferences_saved},
+                  {"diagnostic", options.preferences_diagnostic},
+                  {"values",
+                   [&] {
+                       auto value = shell.preferences();
+                       value.window = window.placement();
+                       return value.to_json();
+                   }()}}},
+                {"session",
+                 {{"enabled", shell.restore_session()},
+                  {"path", options.session_path.u8string()},
+                  {"loaded", saved_session.loaded},
+                  {"restored", session_restored},
+                  {"saved", session_saved},
+                  {"diagnostic", options.session_diagnostic}}},
+                {"window",
+                 {{"restored", window.placement_restored},
+                  {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
+                {"uploadedPreviews", shell.images()},
+                {"browser", shell.browser_report()},
+                {"history", shell.history_report()},
+                {"workspace", shell.workspace_report()},
+                {"workspaceFile", shell.workspace_file_report()},
+                {"containerView", shell.container_view_report()},
+                {"document",
+                 shell.session().document() ? shell.session().document()->report() : Json(nullptr)}};
             if (!options.report.empty()) {
                 std::ofstream file(options.report, std::ios::binary);
                 file << report.dump(2) << '\n';
