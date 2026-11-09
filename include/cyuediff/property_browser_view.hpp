@@ -6,6 +6,7 @@ namespace cyuediff {
 class PropertyBrowserView {
     PropertyPage page_;
     PropertyView properties_;
+    ValueCoverage coverage_;
     bool comparing_ = false, serialization_fields_ = false;
     std::int64_t jump_ = 0;
     std::string error_;
@@ -13,7 +14,7 @@ class PropertyBrowserView {
 
   public:
     static void register_translations();
-    void set_values(const Json *, const Json *, bool comparing);
+    void set_values(const Json *, const Json *, bool comparing, const ValueCoverage &coverage = {});
     bool navigate(const Json *, const Json *, const std::string &, std::size_t first = 0);
     bool open_selected(const Json *, const Json *);
     bool go_to_index(const Json *, const Json *, std::size_t);

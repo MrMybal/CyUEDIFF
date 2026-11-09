@@ -5,6 +5,7 @@
 namespace cyuediff {
 class CollisionView {
     Json before_, after_;
+    ValueCoverage source_coverage_;
     std::vector<std::string> bodies_, shapes_, preview_errors_;
     std::string body_, shape_;
     PropertyView properties_;

@@ -11,6 +11,8 @@ const char *change_name(ChangeKind change) {
         return "Removed";
     case ChangeKind::modified:
         return "Modified";
+    case ChangeKind::unknown:
+        return "Unknown";
     default:
         return "Unchanged";
     }
@@ -32,6 +34,9 @@ void ChangeCounts::add(ChangeKind change) {
         break;
     case ChangeKind::modified:
         ++modified;
+        break;
+    case ChangeKind::unknown:
+        ++unknown;
         break;
     default:
         ++unchanged;
@@ -103,10 +108,206 @@ std::string text(const Json *v, std::size_t limit, bool escape_non_bmp) {
 }
 std::string type(const Json *v) {
     auto descriptor = field(v, "type");
-    if (descriptor && descriptor->is_string())
-        return descriptor->get<std::string>();
-    auto name = field(descriptor, "name");
-    return name && name->is_string() ? name->get<std::string>() : std::string{};
+    const auto name = descriptor && descriptor->is_string() ? descriptor : field(descriptor, "name");
+    if (!name || !name->is_string())
+        return {};
+    const auto &text = name->get_ref<const std::string &>();
+    return text.size() > 8 && text.compare(text.size() - 8, 8, "Property") == 0 ? text : std::string{};
+}
+bool opaque_value(const Json *v) {
+    return v && !type(v).empty() && !v->contains("value") && v->contains("opaque");
+}
+bool skipped_value(const Json *v) {
+    if (!v || !v->is_object() || type(v).empty())
+        return false;
+    auto i = v->find("serializationFlags");
+    return i != v->end() && i->is_number_integer() &&
+           (!i->is_number_unsigned() || i->get<std::uint64_t>() <= 63) && i->get<std::int64_t>() >= 0 &&
+           (i->get<unsigned>() & 0x20);
+}
+bool same_opaque(const Json *a, const Json *b) {
+    if (!opaque_value(a) || !opaque_value(b))
+        return false;
+    const auto &x = a->at("opaque"), &y = b->at("opaque");
+    if (!x.is_object() || !y.is_object() || !x.contains("bytes") || !y.contains("bytes") ||
+        !x.contains("sha256") || !y.contains("sha256") || !x["sha256"].is_string() ||
+        !y["sha256"].is_string())
+        return false;
+    if (!x["bytes"].is_number_integer() || !y["bytes"].is_number_integer() ||
+        (!x["bytes"].is_number_unsigned() && x["bytes"].get<std::int64_t>() < 0) ||
+        (!y["bytes"].is_number_unsigned() && y["bytes"].get<std::int64_t>() < 0))
+        return false;
+    for (const auto *key : {"type", "guid", "serializationFlags", "extensions"}) {
+        const auto u = field(a, key), v = field(b, key);
+        if (bool(u) != bool(v) || (u && *u != *v))
+            return false;
+    }
+    const auto u = field(a, "resolvedType"), v = field(b, "resolvedType");
+    if ((u ? *u : a->at("type")) != (v ? *v : b->at("type")))
+        return false;
+    const auto &hash = x["sha256"].get_ref<const std::string &>();
+    return hash.size() == 64 && hash.find_first_not_of("0123456789abcdef") == std::string::npos &&
+           x["bytes"] == y["bytes"] && x["sha256"] == y["sha256"];
+}
+class CoverageIndex {
+    std::set<std::string> before_, after_, unknown_, ignored_, raw_;
+
+  public:
+    explicit CoverageIndex(const ValueCoverage &v) {
+        std::size_t count = 0, bytes = 0;
+        auto load = [&](const auto &paths, auto &set) {
+            for (const auto &path : paths) {
+                if (++count > 400'000 || path.size() > 65536 || path.size() > 64 * 1024 * 1024 - bytes)
+                    throw Error("property-coverage-limit", "Property coverage exceeds its budget");
+                bytes += path.size();
+                try {
+                    Json::json_pointer validated(path);
+                    (void)validated;
+                } catch (const Json::exception &) {
+                    throw Error("property-coverage-scope", "Invalid property coverage pointer");
+                }
+                set.insert(path);
+            }
+        };
+        load(v.before_unavailable, before_);
+        load(v.after_unavailable, after_);
+        load(v.comparison_unavailable, unknown_);
+        load(v.ignored, ignored_);
+        load(v.raw, raw_);
+    }
+    static bool covers(const std::set<std::string> &set, std::string path) {
+        for (;;) {
+            if (set.count(path))
+                return true;
+            const auto slash = path.find_last_of('/');
+            if (slash == std::string::npos)
+                break;
+            path.resize(slash);
+        }
+        return false;
+    }
+    static bool intersects(const std::set<std::string> &set, const std::string &path) {
+        if (covers(set, path))
+            return true;
+        const auto prefix = path + "/";
+        auto i = set.lower_bound(prefix);
+        return i != set.end() && i->compare(0, prefix.size(), prefix) == 0;
+    }
+    bool unavailable(const std::string &p, bool after) const { return covers(after ? after_ : before_, p); }
+    bool comparison(const std::string &p) const { return covers(unknown_, p); }
+    bool uncertain(const std::string &p) const {
+        return intersects(before_, p) || intersects(after_, p) || intersects(unknown_, p);
+    }
+    bool ignored(const std::string &p) const { return covers(ignored_, p); }
+    bool context_intersects(const std::string &p) const { return intersects(ignored_, p); }
+    bool raw(const std::string &p) const { return covers(raw_, p); }
+    bool uncertain_at(const std::string &p) const {
+        return covers(before_, p) || covers(after_, p) || covers(unknown_, p);
+    }
+    bool empty_ignored() const { return ignored_.empty(); }
+    bool equal(const Json *a, const Json *b, const std::string &path, std::size_t &work, std::size_t max,
+               const OperationControl &control, unsigned depth = 0, bool known_only = false) const {
+        if (ignored(path) || (known_only && uncertain_at(path)))
+            return true;
+        if (++work > max || depth > 256)
+            throw Error("property-view-limit", "Property comparison exceeds its budget");
+        if (!(work & 1023))
+            control.checkpoint("property-values", work);
+        if (!a || !b)
+            return a == b;
+        if (a == b)
+            return true;
+        if (a->type() != b->type())
+            return a->is_number() && b->is_number() && *a == *b;
+        if (a->is_object()) {
+            auto i = a->begin(), j = b->begin();
+            while (i != a->end() || j != b->end()) {
+                if (j == b->end() || (i != a->end() && i.key() < j.key())) {
+                    if (!equal(&*i, nullptr, path + "/" + escape(i.key()), work, max, control, depth + 1,
+                               known_only))
+                        return false;
+                    ++i;
+                } else if (i == a->end() || j.key() < i.key()) {
+                    if (!equal(nullptr, &*j, path + "/" + escape(j.key()), work, max, control, depth + 1,
+                               known_only))
+                        return false;
+                    ++j;
+                } else {
+                    if (!equal(&*i, &*j, path + "/" + escape(i.key()), work, max, control, depth + 1,
+                               known_only))
+                        return false;
+                    ++i;
+                    ++j;
+                }
+            }
+            return true;
+        }
+        if (a->is_array()) {
+            if (a->size() != b->size())
+                return false;
+            for (std::size_t i = 0; i < a->size(); ++i)
+                if (!equal(&(*a)[i], &(*b)[i], path + "/" + std::to_string(i), work, max, control, depth + 1,
+                           known_only))
+                    return false;
+            return true;
+        }
+        return *a == *b;
+    }
+    bool available(const Json *v, const std::string &p, bool after, bool raw = false) const {
+        return !unavailable(p, after) && (raw || (!opaque_value(v) && !skipped_value(v))) &&
+               (v || !comparison(p));
+    }
+};
+bool raw_context(const Json *root, const std::string &path, const CoverageIndex &coverage) {
+    if (coverage.raw(path))
+        return true;
+    if (!root)
+        return false;
+    const Json *current = root;
+    bool hybrid_data = false;
+    std::size_t first = path.empty() ? 0 : 1;
+    while (first && first <= path.size() && current) {
+        const auto last = path.find('/', first);
+        auto key = path.substr(first, last == std::string::npos ? std::string::npos : last - first);
+        std::string token;
+        for (std::size_t i = 0; i < key.size(); ++i) {
+            if (key[i] == '~' && i + 1 < key.size() && (key[i + 1] == '0' || key[i + 1] == '1'))
+                token += key[++i] == '0' ? '~' : '/';
+            else
+                token += key[i];
+        }
+        if (hybrid_data) {
+            if (token != "properties")
+                return true;
+            hybrid_data = false;
+        } else if (current->is_object() && current->contains("decoder") &&
+                   (*current)["decoder"].is_string() && current->contains("data") && token == "data") {
+            if (current->value("prefix", Json{}) != "tagged-properties")
+                return true;
+            hybrid_data = true;
+        } else if (!type(current).empty() && token != "value")
+            return true;
+        if (current->is_object()) {
+            auto i = current->find(token);
+            current = i == current->end() ? nullptr : &*i;
+        } else if (current->is_array()) {
+            std::size_t index = 0;
+            bool valid = !token.empty();
+            for (char c : token) {
+                if (c < '0' || c > '9' || index > current->size() / 10) {
+                    valid = false;
+                    break;
+                }
+                index = index * 10 + static_cast<unsigned>(c - '0');
+            }
+            current = valid && index < current->size() ? &(*current)[index] : nullptr;
+        } else
+            current = nullptr;
+        if (last == std::string::npos)
+            break;
+        first = last + 1;
+    }
+    return false;
 }
 } // namespace
 GraphChanges graph_changes(const Json *before, const Json *after) {
@@ -139,27 +340,61 @@ GraphChanges graph_changes(const Json *before, const Json *after) {
 }
 PropertyTable property_table(const Json *before, const Json *after, const PropertyTableOptions &options) {
     if (!options.max_rows || options.max_rows > 1000000 || options.max_depth > 128 ||
-        !options.max_text_bytes || options.max_text_bytes > 65536)
+        !options.max_text_bytes || options.max_text_bytes > 65536 || !options.max_compare_nodes ||
+        options.max_compare_nodes > 64'000'000)
         throw Error("property-view-limit", "Invalid property table limits");
+    options.control.check();
+    CoverageIndex coverage(options.coverage);
+    std::size_t work = 0;
     PropertyTable result;
-    std::function<void(const Json *, const Json *, const std::string &, unsigned)> visit;
-    visit = [&](const Json *a, const Json *b, const std::string &path, unsigned depth) {
+    std::function<void(const Json *, const Json *, const std::string &, const std::string &, unsigned, bool)>
+        visit;
+    visit = [&](const Json *a, const Json *b, const std::string &path, const std::string &source,
+                unsigned depth, bool metadata) {
         if (result.rows.size() >= options.max_rows) {
             result.truncated = true;
             return;
         }
-        auto ta = type(a), tb = type(b);
+        const bool ra = metadata || raw_context(before, source, coverage),
+                   rb = metadata || raw_context(after, source, coverage);
+        auto ta = ra ? std::string{} : type(a), tb = rb ? std::string{} : type(b);
         auto av = field(a, "value"), bv = field(b, "value");
-        bool unwrap = (!a || (!ta.empty() && av)) && (!b || (!tb.empty() && bv));
+        bool unwrap = (!a || (!ta.empty() && (av || opaque_value(a) || skipped_value(a)))) &&
+                      (!b || (!tb.empty() && (bv || opaque_value(b) || skipped_value(b))));
+        const auto value_path = source + (unwrap ? "/value" : "");
+        const bool ka = coverage.available(a, value_path, false, ra),
+                   kb = coverage.available(b, value_path, true, rb);
         auto x = unwrap ? av : a, y = unwrap ? bv : b;
         std::string label_type;
         if (unwrap)
             label_type = ta == tb || tb.empty() ? ta : ta.empty() ? tb : ta + " -> " + tb;
         else
             label_type = y ? y->type_name() : x ? x->type_name() : "null";
-        result.rows.push_back({path, label_type, text(x, options.max_text_bytes, options.escape_non_bmp),
-                               text(y, options.max_text_bytes, options.escape_non_bmp), classify_change(a, b),
-                               depth, bool(a), bool(b)});
+        const bool uncertain = metadata ? coverage.uncertain_at(source) : coverage.uncertain(source);
+        auto change =
+            !ka || !kb ? ChangeKind::unknown
+            : coverage.equal(a, b, source, work, options.max_compare_nodes, options.control, 0, true)
+                ? (uncertain ? ChangeKind::unknown : ChangeKind::unchanged)
+            : !a ? ChangeKind::added
+            : !b ? ChangeKind::removed
+                 : ChangeKind::modified;
+        if (!ra && !rb && same_opaque(a, b) && !coverage.uncertain(source))
+            change = ChangeKind::unchanged;
+        result.rows.push_back({path, label_type,
+                               ka ? text(x, options.max_text_bytes, options.escape_non_bmp) : "Unavailable",
+                               kb ? text(y, options.max_text_bytes, options.escape_non_bmp) : "Unavailable",
+                               change, depth, bool(a), bool(b)});
+        result.rows.back().before_available = ka;
+        result.rows.back().after_available = kb;
+        result.rows.back().source_path = source;
+        result.rows.back().context_only =
+            change != ChangeKind::unknown &&
+            (coverage.ignored(source) ||
+             (change == ChangeKind::unchanged && a && b && *a != *b && coverage.context_intersects(source)));
+        if (!ka)
+            x = nullptr;
+        if (!kb)
+            y = nullptr;
         auto &display = result.rows.back().label;
         auto slash = path.find_last_of('/');
         auto token =
@@ -176,7 +411,8 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
             auto metadata = [&](const Json *source, Json &target) {
                 if (source)
                     for (auto i = source->begin(); i != source->end(); ++i)
-                        if (i.key() != "value" && (i.key() != "type" || type_changed))
+                        if (i.key() != "value" && i.key() != "resolvedType" &&
+                            (i.key() != "type" || type_changed))
                             target[i.key()] = i.value();
             };
             metadata(a, am);
@@ -185,7 +421,7 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
                 if (depth >= options.max_depth)
                     result.truncated = true;
                 else
-                    visit(a ? &am : nullptr, b ? &bm : nullptr, path + "/@tag", depth + 1);
+                    visit(a ? &am : nullptr, b ? &bm : nullptr, path + "/@tag", source, depth + 1, true);
             }
         }
         bool object = (!x || x->is_object()) && (!y || y->is_object());
@@ -209,13 +445,16 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
                     break;
                 }
                 if (r == right.end() || (l != left.end() && l.key() < r.key())) {
-                    visit(&*l, nullptr, path + "/" + escape(l.key()), depth + 1);
+                    visit(&*l, nullptr, path + "/" + escape(l.key()), value_path + "/" + escape(l.key()),
+                          depth + 1, false);
                     ++l;
                 } else if (l == left.end() || r.key() < l.key()) {
-                    visit(nullptr, &*r, path + "/" + escape(r.key()), depth + 1);
+                    visit(nullptr, &*r, path + "/" + escape(r.key()), value_path + "/" + escape(r.key()),
+                          depth + 1, false);
                     ++r;
                 } else {
-                    visit(&*l, &*r, path + "/" + escape(l.key()), depth + 1);
+                    visit(&*l, &*r, path + "/" + escape(l.key()), value_path + "/" + escape(l.key()),
+                          depth + 1, false);
                     ++l;
                     ++r;
                 }
@@ -227,10 +466,10 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
                     break;
                 }
                 visit(x && i < x->size() ? &x->at(i) : nullptr, y && i < y->size() ? &y->at(i) : nullptr,
-                      path + "/" + std::to_string(i), depth + 1);
+                      path + "/" + std::to_string(i), value_path + "/" + std::to_string(i), depth + 1, false);
             }
     };
-    visit(before, after, "", 0);
+    visit(before, after, "", "", 0, false);
     return result;
 }
 
@@ -241,6 +480,8 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
         std::count(scope.begin(), scope.end(), '/') > 128)
         throw Error("property-page-limit", "Invalid property page limits or scope");
     options.control.check();
+    CoverageIndex coverage(options.coverage);
+    std::size_t work = 0;
     Json::json_pointer pointer;
     try {
         pointer = Json::json_pointer(scope);
@@ -259,32 +500,18 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
     const auto a = resolve(before), b = resolve(after);
     PropertyPage result;
     result.scope = scope;
-    result.available = a || b;
+    result.available = a || b || coverage.uncertain(scope);
     if (!result.available)
         return result;
-    std::size_t work = 0;
-    std::function<bool(const Json &, const Json &, unsigned)> equal;
-    equal = [&](const Json &x, const Json &y, unsigned depth) -> bool {
-        if (++work > options.max_compare_nodes || depth > 128)
-            throw Error("property-page-limit", "Property page comparison exceeds its budget");
-        if ((work & 1023) == 0)
-            options.control.checkpoint("property-page", work);
-        if (&x == &y)
-            return true;
-        if (x.type() != y.type())
-            return x.is_number() && y.is_number() && x == y;
-        if (!x.is_structured())
-            return x == y;
-        if (x.size() != y.size())
-            return false;
-        auto i = x.begin(), j = y.begin();
-        for (; i != x.end(); ++i, ++j) {
-            if (x.is_object() && i.key() != j.key())
-                return false;
-            if (!equal(*i, *j, depth + 1))
-                return false;
+
+    const auto page_equal = [&](const Json *a, const Json *b, const std::string &path) {
+        try {
+            return coverage.equal(a, b, path, work, options.max_compare_nodes, options.control, 0, true);
+        } catch (const Error &e) {
+            if (e.code == "property-view-limit")
+                throw Error("property-page-limit", e.what());
+            throw;
         }
-        return true;
     };
     auto append = [&](const Json *x, const Json *y, const std::string &path, const std::string &label,
                       unsigned depth) {
@@ -302,9 +529,14 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
             }
             return name;
         };
-        auto tx = bounded_type(x), ty = bounded_type(y);
+        const bool rx = raw_context(before, path, coverage), ry = raw_context(after, path, coverage);
+        auto tx = rx ? std::string{} : bounded_type(x), ty = ry ? std::string{} : bounded_type(y);
         auto vx = field(x, "value"), vy = field(y, "value");
-        const bool unwrap = (!x || (!tx.empty() && vx)) && (!y || (!ty.empty() && vy));
+        const bool unwrap = (!x || (!tx.empty() && (vx || opaque_value(x) || skipped_value(x)))) &&
+                            (!y || (!ty.empty() && (vy || opaque_value(y) || skipped_value(y))));
+        const auto value_path = path + (unwrap ? "/value" : "");
+        const bool kx = coverage.available(x, value_path, false, rx),
+                   ky = coverage.available(y, value_path, true, ry);
         auto xv = unwrap ? vx : x, yv = unwrap ? vy : y;
         auto t = unwrap ? (tx == ty || ty.empty() ? tx
                            : tx.empty()           ? ty
@@ -312,28 +544,41 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
                         : std::string(yv   ? yv->type_name()
                                       : xv ? xv->type_name()
                                            : "null");
-        auto change = !x                 ? (y ? ChangeKind::added : ChangeKind::unchanged)
-                      : !y               ? ChangeKind::removed
-                      : equal(*x, *y, 0) ? ChangeKind::unchanged
-                                         : ChangeKind::modified;
+        const bool uncertain = coverage.uncertain(path);
+        auto change = !kx || !ky               ? ChangeKind::unknown
+                      : page_equal(x, y, path) ? (uncertain ? ChangeKind::unknown : ChangeKind::unchanged)
+                      : !x                     ? ChangeKind::added
+                      : !y                     ? ChangeKind::removed
+                                               : ChangeKind::modified;
+        if (!rx && !ry && same_opaque(x, y) && !coverage.uncertain(path))
+            change = ChangeKind::unchanged;
         PropertyRow row{path,
                         t,
-                        text(xv, 2048, options.escape_non_bmp),
-                        text(yv, 2048, options.escape_non_bmp),
+                        kx ? text(xv, 2048, options.escape_non_bmp) : "Unavailable",
+                        ky ? text(yv, 2048, options.escape_non_bmp) : "Unavailable",
                         change,
                         depth,
                         bool(x),
                         bool(y)};
+        row.before_available = kx;
+        row.after_available = ky;
+        row.source_path = path;
+        row.context_only = change != ChangeKind::unknown &&
+                           (coverage.ignored(path) || (change == ChangeKind::unchanged && x && y &&
+                                                       *x != *y && coverage.context_intersects(path)));
         row.label = label;
         result.table.rows.push_back(std::move(row));
-        result.expandable.push_back((x && x->is_structured()) || (y && y->is_structured()));
+        result.expandable.push_back((kx && x && x->is_structured()) || (ky && y && y->is_structured()));
     };
     append(a, b, scope, scope.empty() ? "/" : Json::json_pointer(scope).back(), 0);
+    const bool ra = raw_context(before, scope, coverage), rb = raw_context(after, scope, coverage);
     auto av = field(a, "value"), bv = field(b, "value");
-    result.unwrapped =
-        !options.serialization_fields && (!a || (!type(a).empty() && av)) && (!b || (!type(b).empty() && bv));
-    const auto x = result.unwrapped ? av : a, y = result.unwrapped ? bv : b;
+    result.unwrapped = !options.serialization_fields &&
+                       (!a || (!ra && !type(a).empty() && (av || opaque_value(a) || skipped_value(a)))) &&
+                       (!b || (!rb && !type(b).empty() && (bv || opaque_value(b) || skipped_value(b))));
     const auto base = scope + (result.unwrapped ? "/value" : "");
+    const auto x = coverage.available(a, base, false, ra) ? (result.unwrapped ? av : a) : nullptr,
+               y = coverage.available(b, base, true, rb) ? (result.unwrapped ? bv : b) : nullptr;
     const bool object = (!x || x->is_object()) && (!y || y->is_object());
     result.array = (!x || x->is_array()) && (!y || y->is_array());
     if (!object && !result.array)

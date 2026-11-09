@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-tagged-types-cli-',dir=Path.c
         global checks
         p=subprocess.run([exe,*map(str,args)],env=env,capture_output=True,timeout=45)
         assert p.returncode==code,(args,p.returncode,p.stderr.decode('utf-8','replace'));checks+=1
-        return json.loads(p.stderr if code==2 else p.stdout) if p.stderr or p.stdout else None
+        return json.loads(p.stderr if p.stderr else p.stdout) if p.stderr or p.stdout else None
     generated=run('source-types',root/'types.usmap',522,1004,'DemoAsset')
     assert set(generated)=={'format','layouts','taggedTypes'} and generated['taggedTypes']['schemas']['DemoAsset']['properties']['Samples']['arraySize']==2
     prepared=root/'prepared.json';run('source-types',root/'types.usmap',522,1004,'DemoAsset','--layouts',root/'base.json','--out',prepared)
@@ -29,8 +29,9 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-tagged-types-cli-',dir=Path.c
     assert decoded['sourceTypeContext']['profileMatched'] and not decoded['sourceTypeContext']['defaultsResolved']
     changed=run('diff',before,after,'--layouts',catalog,code=1)
     assert any(x['path'].endswith('/properties/Mode/value') for x in changed['changes'])
-    paired=run('diff',before,after,'--layouts',catalog,'--after-layouts',root/'base.json',code=1)
-    assert paired['layoutContexts']['contextChanged']
+    paired=run('diff',before,after,'--layouts',catalog,'--after-layouts',root/'base.json',code=2)
+    assert paired['layoutContexts']['contextChanged'] and paired['status']=='unverified' and paired['unavailableScopes']
+    assert not any('/Native/value/' in row['path'] and row['op']=='remove' for row in paired['changes'])
     run('inspect',before,'--layouts',catalog,'--out',catalog,code=2)
     assert all(hashlib.sha256(p.read_bytes()).hexdigest()==h for p,h in hashes.items());checks+=1
 print(str(checks)+' tagged type CLI checks passed')

@@ -254,6 +254,8 @@ struct DiffResult {
     Json skeleton_changes = Json::array();
     std::vector<std::string> diagnostics;
     bool source_read_limit_failed = false;
+    Json unavailable_scopes = Json::array();
+    Json source_contexts = nullptr;
     std::string status() const;
     Json to_json() const;
 };
@@ -261,6 +263,7 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
 struct MaterialComparison {
     Json changes = Json::array();
     bool complete = false;
+    Json unavailable_scopes = Json::array();
     std::string status() const;
     Json to_json() const;
 };

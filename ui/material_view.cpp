@@ -1,5 +1,6 @@
 #include <cyuediff/material_view.hpp>
 #include "diff_style.hpp"
+#include "../src/source_availability.hpp"
 #include <algorithm>
 #include <map>
 namespace cyuediff {
@@ -9,16 +10,30 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
     selected_ = 0;
     auto model = package.material_snapshot();
     auto other = peer ? peer->material_snapshot() : Json{};
+    detail::SourceCoverage coverage;
+    if (peer) {
+        auto raw = after ? detail::source_coverage(*peer, package) : detail::source_coverage(package, *peer);
+        coverage = detail::projection_coverage(raw, after ? *peer : package, after ? package : *peer,
+                                               after ? other : model, after ? model : other, "materials");
+    }
+    auto pointer = [](const std::string &key) {
+        std::string out;
+        for (char c : key)
+            out += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+        return out;
+    };
     for (auto graph = model.at("graphs").begin(); graph != model.at("graphs").end(); ++graph) {
         Document prepared;
         prepared.path = graph.key();
         prepared.complete = graph.value().at("complete");
         prepared.outputs_known = graph.value().at("outputDefinitionsComplete");
         prepared.diagnostics = graph.value().at("diagnostics").get<std::vector<std::string>>();
+        prepared.comparison_unavailable = peer && coverage.intersects("/graphs/" + pointer(graph.key()));
+        const bool comparing = peer && !prepared.comparison_unavailable;
         GraphChanges delta;
         const Json *match =
             peer && other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
-        if (peer) {
+        if (comparing) {
             delta = after ? graph_changes(match, &graph.value()) : graph_changes(&graph.value(), match);
             prepared.counts = delta.node_counts;
             prepared.comparing = true;
@@ -29,11 +44,11 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
         for (auto node = graph.value().at("nodes").begin(); node != graph.value().at("nodes").end(); ++node) {
             cyui::Node item;
             item.id = next++;
-            if (peer)
+            if (comparing)
                 prepared.changes[item.id] = delta.nodes.at(node.key());
             item.label = node.value().at("title");
-            inspection.push_back(
-                {item.id, node.key(), item.label, peer ? delta.nodes.at(node.key()) : ChangeKind::unchanged});
+            inspection.push_back({item.id, node.key(), item.label,
+                                  comparing ? delta.nodes.at(node.key()) : ChangeKind::unchanged});
             item.colorIndex = node.key() == "$result" ? 4 : (node.value().at("comment") == true ? 6 : 0);
             item.position = {node.value().at("position").at("x").get<double>(),
                              node.value().at("position").at("y").get<double>()};
@@ -76,8 +91,9 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
         }
         const auto *local_nodes = &graph.value().at("nodes");
         const auto *peer_nodes = match ? &match->at("nodes") : nullptr;
-        prepared.inspector.set_nodes(after ? peer_nodes : local_nodes, after ? local_nodes : peer_nodes,
-                                     std::move(inspection), peer != nullptr);
+        prepared.inspector.set_nodes(comparing ? (after ? peer_nodes : local_nodes) : local_nodes,
+                                     comparing ? (after ? local_nodes : peer_nodes) : local_nodes,
+                                     std::move(inspection), comparing);
         documents_.push_back(std::move(prepared));
     }
     for (auto instance = model.at("instances").begin(); instance != model.at("instances").end(); ++instance) {
@@ -86,7 +102,9 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
         prepared.instance = true;
         prepared.complete = instance.value().at("complete");
         prepared.parent = instance.value().at("parent");
-        prepared.comparing = peer != nullptr;
+        prepared.comparison_unavailable =
+            peer && coverage.intersects("/instances/" + pointer(instance.key()));
+        prepared.comparing = peer && !prepared.comparison_unavailable;
         Json empty = Json::object();
         const auto &local = instance.value().at("parameters");
         const auto &remote = peer && other.at("instances").contains(instance.key())
@@ -105,8 +123,12 @@ void MaterialView::set_package(const Package &package, const Package *peer, bool
         };
         collect(after ? remote : local, a);
         collect(after ? local : remote, b);
-        if (!peer)
+        if (!prepared.comparing) {
+            a.clear();
+            b.clear();
+            collect(local, a);
             b = a;
+        }
         std::map<std::string, bool> all;
         for (const auto &p : a)
             all[p.first] = true;
@@ -265,6 +287,11 @@ void MaterialView::draw(const char *id) {
         ImGui::EndCombo();
     }
     auto &document = documents_[selected_];
+    if (document.comparison_unavailable)
+        cyui::callout(cyui::Tone::info,
+                      cyui::tr("Comparison is unavailable for this view because source values are unread or "
+                               "use incompatible decoders. Inspect each revision or use scoped properties.")
+                          .c_str());
     if (!document.complete)
         cyui::callout(cyui::Tone::warning, cyui::tr("Some material data could not be resolved.").c_str());
     if (!document.diagnostics.empty() && layout_.section("diagnostics", "Graph diagnostics", false, true)) {

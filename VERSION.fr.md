@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.189.0 — Disponibilité des comparaisons source
+
+Les comparaisons source conservent les champs lisibles et signalent les valeurs illisibles ou projections de décodeurs incompatibles comme non vérifiées. Les propriétés EN/FR distinguent valeur indisponible, contexte et absence réelle ; les vues de graphes/matériaux/squelettes/collisions évitent les faux retraits, et une géométrie non préparée ne devient plus une suppression. Les API dédiées de comparaison source partagent cette couverture. Recompilez avec les en-têtes/bibliothèques 0.189 correspondants. La dernière archive Windows vérifiée reste la 0.182. Voir [le contrat](docs/SOURCE_AVAILABILITY.md).
+
 ## 0.188.0 — Tissus physiques source
 
 Les assets source balisés UE 5.3 sélectionnés utilisent le modèle physique autonome, les requêtes/différences/export OBJ en CLI et un onglet de bureau réutilisable EN/FR. Les catalogues de types/structures indépendants conservent leur provenance exacte ; les valeurs par défaut de classes/maps restent indéterminées. Recompilez avec les en-têtes et bibliothèques 0.188 correspondants après les ajouts à Package, DecoderRegistry, PhysicalClothAsset et AssetView. La dernière archive Windows locale vérifiée reste la 0.182. Voir [le contrat des tissus source](docs/SOURCE_PHYSICAL_CLOTH.md).

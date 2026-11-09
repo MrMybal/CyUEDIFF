@@ -18,6 +18,7 @@ Package fixture() {
     p.source = "SyntheticNavigation.uasset";
     ObjectExport graph;
     graph.path = graph.name = "EventGraph";
+    graph.coverage = "properties"; // This fixture supplies a complete decoded tag inventory.
     graph.properties = {{"GraphGuid", {{"value", std::string(32, '1')}}},
                         {"Nodes", {{"value", Json::array({"EventGraph.Input", "EventGraph.Output"})}}}};
     p.exports.push_back(graph);

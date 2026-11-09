@@ -88,6 +88,8 @@ Package package() {
         node.properties = {{"NodeGuid", {{"value", guid(i ? 20 : 10)}}}, {"NodePosX", {{"value", i * 256}}}};
         p.exports.push_back(node);
     }
+    for (auto &entry : p.exports)
+        entry.coverage = "properties";
     return p;
 }
 Bytes payload(int owner, unsigned pin, int peer, unsigned peer_pin, bool map = false,

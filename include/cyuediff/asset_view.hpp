@@ -18,6 +18,9 @@
 #include <memory>
 #include <optional>
 namespace cyuediff {
+namespace detail {
+struct SourceCoverage;
+}
 // The host owns the window/backend and loads packages outside its render loop.
 // No platform window, Unreal dependency or file I/O is introduced by draw().
 enum class AssetTab {
@@ -35,6 +38,9 @@ enum class AssetTab {
 };
 class AssetView {
     ViewLayout layout_;
+    std::shared_ptr<const detail::SourceCoverage> source_coverage_;
+    bool source_text_unavailable_ = false;
+    ValueCoverage value_coverage(const std::string &, int root = -1) const;
     std::shared_ptr<const Package> before_, after_;
     cyui::DiffDocument document_;
     cyui::DiffState diff_state_;
@@ -50,6 +56,7 @@ class AssetView {
     struct BrowserInputs {
         const Json *before = nullptr, *after = nullptr;
         bool comparing = false, unknown = false;
+        ValueCoverage coverage;
     };
     BrowserInputs property_browser_inputs() const;
     void bind_property_browser();
@@ -83,6 +90,7 @@ class AssetView {
     // Owner-thread snapshot/restore after binding the current data and previews; no file I/O.
     Json view_state() const;
     bool set_property_scope(const std::string &, std::size_t first = 0, int root = 0);
+    Json source_comparison_coverage() const;
     bool text_comparison_available() const {
         return text_comparison_available_;
     }
@@ -110,6 +118,9 @@ class AssetView {
     bool set_texture_difference(const std::string &before_path, const std::string &after_path,
                                 const cyui::ImageData &, const HdrImageComparison &);
     bool clear_texture_preview(const std::string &object_path, bool after = false);
+    bool mesh_comparison_available() const {
+        return comparison_ && (before_geometry_ || !before_) && (after_geometry_ || !after_);
+    }
     void set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after = false);
     AssetTab active_tab() const { return requested_tab_.value_or(active_tab_); }
     void select_tab(AssetTab tab) { requested_tab_ = tab; }

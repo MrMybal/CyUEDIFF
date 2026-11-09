@@ -3,7 +3,11 @@
 #include <algorithm>
 namespace cyuediff {
 void PropertyView::register_translations() {
-    cyui::registerTranslations("fr", {{"Property preview", "Aperçu de la propriété"},
+    cyui::registerTranslations("fr", {{"Unavailable", "Indisponible"},
+                                      {"Unknown", "Indéterminé"},
+                                      {"Context", "Contexte"},
+                                      {"Changed or unknown", "Modifiées ou indéterminées"},
+                                      {"Property preview", "Aperçu de la propriété"},
                                       {"Copy path", "Copier le chemin"},
                                       {"Copy before preview", "Copier l'aperçu avant"},
                                       {"Copy after preview", "Copier l'aperçu après"},
@@ -43,7 +47,8 @@ void PropertyView::rebuild() {
     if (std::find(visible_.begin(), visible_.end(), selected_) == visible_.end())
         selected_ = -1;
 }
-void PropertyView::set_values(const Json *before, const Json *after, bool comparing) {
+void PropertyView::set_values(const Json *before, const Json *after, bool comparing,
+                              const ValueCoverage &coverage) {
     if (!comparing) {
         if (before)
             after = before;
@@ -51,6 +56,7 @@ void PropertyView::set_values(const Json *before, const Json *after, bool compar
             before = after;
     }
     PropertyTableOptions options;
+    options.coverage = coverage;
     options.escape_non_bmp = sizeof(ImWchar) == 2;
     set_table(property_table(before, after, options), comparing);
 }
@@ -60,6 +66,8 @@ void PropertyView::set_table(PropertyTable table, bool comparing) {
     layout_.restore(Json::object(), "property-layout");
     comparing_ = comparing;
     table_ = std::move(table);
+    has_unknown_ = std::any_of(table_.rows.begin(), table_.rows.end(),
+                               [](const PropertyRow &r) { return r.change == ChangeKind::unknown; });
     filter_ = {};
     changed_only_ = comparing;
     selected_ = -1;
@@ -99,7 +107,9 @@ void PropertyView::draw(const char *id) {
     cyui::ScopedID scope(id);
     bool update = cyui::filterBox("##property-filter", filter_);
     if (comparing_)
-        update = ImGui::Checkbox(cyui::trLabel("Changed only").c_str(), &changed_only_) || update;
+        update = ImGui::Checkbox(cyui::trLabel(has_unknown_ ? "Changed or unknown" : "Changed only").c_str(),
+                                 &changed_only_) ||
+                 update;
     if (update)
         rebuild();
     if (table_.truncated)
@@ -157,15 +167,18 @@ void PropertyView::draw(const char *id) {
                 ImGui::TextUnformatted(row.type.c_str());
                 cyui::tooltip(row.type.c_str());
                 ImGui::TableSetColumnIndex(2);
-                ImGui::TextUnformatted(row.before.c_str());
-                cyui::tooltip(row.before.c_str());
+                const auto before = row.before_available ? row.before : cyui::tr("Unavailable");
+                ImGui::TextUnformatted(before.c_str());
+                cyui::tooltip(before.c_str());
                 if (comparing_) {
                     ImGui::TableSetColumnIndex(3);
-                    ImGui::TextUnformatted(row.after.c_str());
-                    cyui::tooltip(row.after.c_str());
+                    const auto after = row.after_available ? row.after : cyui::tr("Unavailable");
+                    ImGui::TextUnformatted(after.c_str());
+                    cyui::tooltip(after.c_str());
                     ImGui::TableSetColumnIndex(4);
                     ImGui::PushStyleColor(ImGuiCol_Text, detail::change_color(row.change));
-                    ImGui::TextUnformatted(cyui::tr(change_name(row.change)).c_str());
+                    ImGui::TextUnformatted(
+                        cyui::tr(row.context_only ? "Context" : change_name(row.change)).c_str());
                     ImGui::PopStyleColor();
                 }
             }
@@ -184,7 +197,7 @@ void PropertyView::draw(const char *id) {
                 ImGui::PopTextWrapPos();
             }
             if (cyui::button(cyui::trLabel("Copy path").c_str()))
-                ImGui::SetClipboardText(row->path.empty() ? "/" : row->path.c_str());
+                ImGui::SetClipboardText(row->source_path.empty() ? "/" : row->source_path.c_str());
             auto copy = [&](const char *label, const std::string &value, bool present) {
                 const auto translated = cyui::trLabel(label);
                 const auto &style = ImGui::GetStyle();
@@ -197,17 +210,22 @@ void PropertyView::draw(const char *id) {
                     ImGui::SetClipboardText(value.c_str());
                 cyui::tooltip(cyui::tr("Copies the displayed preview.").c_str());
             };
-            copy(comparing_ ? "Copy before preview" : "Copy value preview", row->before, row->before_present);
+            copy(comparing_ ? "Copy before preview" : "Copy value preview", row->before,
+                 row->before_present && row->before_available);
             if (comparing_)
-                copy("Copy after preview", row->after, row->after_present);
+                copy("Copy after preview", row->after, row->after_present && row->after_available);
             if (cyui::beginProperties("##preview-values")) {
                 cyui::property(cyui::tr("Type").c_str());
                 ImGui::TextUnformatted(row->type.c_str());
                 cyui::property(cyui::tr(comparing_ ? "Before" : "Value").c_str());
-                ImGui::TextWrapped("%s", row->before_present ? row->before.c_str() : "—");
+                ImGui::TextWrapped("%s", !row->before_available ? cyui::tr("Unavailable").c_str()
+                                         : row->before_present  ? row->before.c_str()
+                                                                : "—");
                 if (comparing_) {
                     cyui::property(cyui::tr("After").c_str());
-                    ImGui::TextWrapped("%s", row->after_present ? row->after.c_str() : "—");
+                    ImGui::TextWrapped("%s", !row->after_available ? cyui::tr("Unavailable").c_str()
+                                             : row->after_present  ? row->after.c_str()
+                                                                   : "—");
                 }
                 cyui::endProperties();
             }

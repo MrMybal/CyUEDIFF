@@ -16,7 +16,7 @@ class BlueprintView {
         std::vector<cyui::Node> nodes;
         std::map<cyui::ItemId, ChangeKind> changes;
         ChangeCounts counts;
-        bool comparing = false;
+        bool comparing = false, comparison_unavailable = false;
         std::vector<cyui::NodeLink> links;
         cyui::NodeState state;
         GraphInspector inspector;
@@ -33,6 +33,7 @@ class BlueprintView {
     void set_package(const Package &package, const Package *peer = nullptr, bool after = false);
     bool select_node(const std::string &graph, const std::string &node);
     bool next_changed_node(bool previous = false);
+    bool comparison_available() const { return !graphs_.empty() && graphs_[selected_].comparing; }
     bool empty() const {
         return graphs_.empty();
     }

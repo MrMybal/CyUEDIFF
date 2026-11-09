@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/skeleton.hpp>
+#include <set>
 #include <cyuediff/animation_metadata_view.hpp>
 #include <cyuediff/attachments_view.hpp>
 #include <cyuediff/reference_pose_viewport.hpp>
@@ -8,6 +9,8 @@ namespace cyuediff {
 // Owned snapshots; hierarchy and typed details are prepared when binding/selecting.
 class SkeletonView {
     Json before_, after_, animation_before_, animation_after_;
+    std::set<std::string> unavailable_objects_;
+    bool comparison_unavailable_ = false;
     AnimationMetadataView animation_;
     AttachmentsView attachments_;
     bool attachments_preview_ = false;
@@ -64,6 +67,7 @@ class SkeletonView {
         return after ? selected_after_ : selected_before_;
     }
     std::size_t rendered_pose_joints() const { return pose_view_.rendered_joints(); }
+    bool comparison_available() const { return comparing_ && !comparison_unavailable_; }
     bool empty() const { return objects_.empty(); }
     bool select_object(const std::string &);
     bool select_bone(const std::string &);

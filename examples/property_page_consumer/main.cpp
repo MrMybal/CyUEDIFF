@@ -21,13 +21,29 @@ std::optional<cyuediff::Json> read(const std::string &name) {
 }
 int run(const std::vector<std::string> &args) {
     using namespace cyuediff;
-    if (args.size() != 4) {
-        std::cerr << "Usage: property_page_consumer BEFORE.json|- AFTER.json|- JSON_POINTER FIRST\n";
+    if (args.size() < 4 || args.size() > 5) {
+        std::cerr << "Usage: property_page_consumer BEFORE.json|- AFTER.json|- JSON_POINTER FIRST "
+                     "[COVERAGE.json]\n";
         return 2;
     }
     try {
         const auto a = read(args[0]), b = read(args[1]);
         PropertyPageOptions options;
+        if (args.size() == 5) {
+            auto masks = read(args[4]);
+            if (!masks || !masks->is_object())
+                throw Error("input", "Expected an object of JSON pointer masks");
+            auto load = [&](const char *key, auto &out) {
+                auto i = masks->find(key);
+                if (i != masks->end())
+                    out = i->get<std::vector<std::string>>();
+            };
+            load("beforeUnavailable", options.coverage.before_unavailable);
+            load("afterUnavailable", options.coverage.after_unavailable);
+            load("comparisonUnavailable", options.coverage.comparison_unavailable);
+            load("ignored", options.coverage.ignored);
+            load("raw", options.coverage.raw);
+        }
         const auto &text = args[3];
         const auto parsed = std::from_chars(text.data(), text.data() + text.size(), options.first);
         if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
@@ -44,6 +60,10 @@ int run(const std::vector<std::string> &args) {
                             {"change", change_name(row.change)},
                             {"beforePresent", row.before_present},
                             {"afterPresent", row.after_present},
+                            {"beforeAvailable", row.before_available},
+                            {"afterAvailable", row.after_available},
+                            {"contextOnly", row.context_only},
+                            {"sourcePath", row.source_path},
                             {"expandable", page.expandable[i]}});
         }
         std::cout

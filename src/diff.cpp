@@ -7,6 +7,7 @@
 #include <cyuediff/collision.hpp>
 #include <cyuediff/skeleton.hpp>
 #include <cyuediff/attachments.hpp>
+#include "source_availability.hpp"
 namespace cyuediff {
 namespace {
 std::string pointer_token(const std::string &input) {
@@ -22,27 +23,59 @@ std::string pointer_token(const std::string &input) {
     return out;
 }
 void walk(const Json &before, const Json &after, const std::string &path, Json &changes,
-          const OperationControl &control = {}) {
+          const OperationControl &control = {}, const detail::SourceCoverage *coverage = nullptr) {
     control.check();
-    if (before == after)
+    if ((coverage && coverage->excludes(path)) || before == after)
         return;
     if (before.is_object() && after.is_object()) {
         for (auto it = before.begin(); it != before.end(); ++it) {
             auto child = path + "/" + pointer_token(it.key());
+            if (coverage && coverage->excludes(child))
+                continue;
+
             if (!after.contains(it.key()))
                 changes.push_back({{"op", "remove"}, {"path", child}, {"before", it.value()}});
             else
-                walk(it.value(), after.at(it.key()), child, changes, control);
+                walk(it.value(), after.at(it.key()), child, changes, control, coverage);
         }
         for (auto it = after.begin(); it != after.end(); ++it)
-            if (!before.contains(it.key()))
+            if (!before.contains(it.key()) &&
+                !(coverage && coverage->excludes(path + "/" + pointer_token(it.key()))))
                 changes.push_back(
                     {{"op", "add"}, {"path", path + "/" + pointer_token(it.key())}, {"after", it.value()}});
-    } else if (before.is_array() && after.is_array() && before.size() == after.size()) {
-        for (std::size_t i = 0; i < before.size(); ++i)
-            walk(before[i], after[i], path + "/" + std::to_string(i), changes, control);
+    } else if (before.is_array() && after.is_array() &&
+               (before.size() == after.size() || (coverage && coverage->intersects(path)))) {
+        for (std::size_t i = 0; i < std::min(before.size(), after.size()); ++i)
+            walk(before[i], after[i], path + "/" + std::to_string(i), changes, control, coverage);
+        for (std::size_t i = after.size(); i < before.size(); ++i) {
+            control.check();
+            auto child = path + "/" + std::to_string(i);
+            if (!coverage || !coverage->excludes(child))
+                changes.push_back({{"op", "remove"}, {"path", child}, {"before", before[i]}});
+        }
+        for (std::size_t i = before.size(); i < after.size(); ++i) {
+            control.check();
+            auto child = path + "/" + std::to_string(i);
+            if (!coverage || !coverage->excludes(child))
+                changes.push_back({{"op", "add"}, {"path", child}, {"after", after[i]}});
+        }
     } else
         changes.push_back({{"op", "replace"}, {"path", path}, {"before", before}, {"after", after}});
+}
+detail::SourceCoverage source_projection_coverage(const Package &before, const Package &after, const Json &a,
+                                                  const Json &b, const std::string &domain,
+                                                  const OperationControl &control = {}) {
+    control.check();
+    if (before.source_read_limit_failed || after.source_read_limit_failed) {
+        detail::SourceCoverage result;
+        result.suppressed.insert("");
+        result.unavailable.push_back({{"domain", domain}, {"path", ""}, {"reason", "source-read-limits"}});
+        return result;
+    }
+    detail::SourceCoverageOptions options;
+    options.control = control;
+    return detail::projection_coverage(detail::source_coverage(before, after, options), before, after, a, b,
+                                       domain, control);
 }
 } // namespace
 std::string CurveComparison::status() const {
@@ -121,7 +154,7 @@ AnimationComparison compare_animation_models(const Package &before, const Packag
 std::string DiffResult::status() const {
     if (!complete_input)
         return "incomplete";
-    if (source_read_limit_failed)
+    if (source_read_limit_failed || !unavailable_scopes.empty())
         return "unverified";
     if (!changes.empty() || !graph_changes.empty() || !texture_changes.empty() || !mesh_changes.empty() ||
         !material_changes.empty() || !collision_changes.empty() || !skeleton_changes.empty())
@@ -136,6 +169,8 @@ Json DiffResult::to_json() const {
                    {"binaryComparisonAvailable", binary_comparison_available},
                    {"binaryChanged", binary_comparison_available ? Json(binary_changed) : Json(nullptr)},
                    {"completeInput", complete_input},
+                   {"projectionComparisonComplete",
+                    complete_input && !source_read_limit_failed && unavailable_scopes.empty()},
                    {"changes", changes},
                    {"graphChanges", graph_changes},
                    {"textureChanges", texture_changes},
@@ -146,17 +181,24 @@ Json DiffResult::to_json() const {
                    {"diagnostics", diagnostics}};
     if (source_read_limit_failed)
         result["sourceReadLimitFailed"] = true;
+    if (!unavailable_scopes.empty())
+        result["unavailableScopes"] = unavailable_scopes;
+    if (!source_contexts.is_null())
+        result["sourceContexts"] = source_contexts;
     return result;
 }
 std::string MaterialComparison::status() const {
     return !complete ? "incomplete" : (changes.empty() ? "identical" : "changed");
 }
 Json MaterialComparison::to_json() const {
-    return {{"schema", "cyuediff.material-diff/1"},
-            {"status", status()},
-            {"complete", complete},
-            {"scope", "serialized material graph and stored instance parameters"},
-            {"changes", changes}};
+    Json result = {{"schema", "cyuediff.material-diff/1"},
+                   {"status", status()},
+                   {"complete", complete},
+                   {"scope", "serialized material graph and stored instance parameters"},
+                   {"changes", changes}};
+    if (!unavailable_scopes.empty())
+        result["unavailableScopes"] = unavailable_scopes;
+    return result;
 }
 MaterialComparison compare_materials(const Package &before, const Package &after) {
     auto a = before.material_snapshot(), b = after.material_snapshot();
@@ -171,18 +213,24 @@ MaterialComparison compare_materials(const Package &before, const Package &after
     };
     MaterialComparison result;
     result.complete = before.complete_input && after.complete_input && complete(a) && complete(b);
-    walk(a, b, "", result.changes);
+    auto coverage = source_projection_coverage(before, after, a, b, "materials");
+    result.unavailable_scopes = coverage.unavailable;
+    result.complete = result.complete && coverage.unavailable.empty();
+    walk(a, b, "", result.changes, {}, &coverage);
     return result;
 }
 std::string CollisionComparison::status() const {
     return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
 }
 Json CollisionComparison::to_json() const {
-    return {{"schema", "cyuediff.collision-diff/1"},
-            {"status", status()},
-            {"complete", complete},
-            {"scope", "stored reflected collision shapes and body references"},
-            {"changes", changes}};
+    Json result = {{"schema", "cyuediff.collision-diff/1"},
+                   {"status", status()},
+                   {"complete", complete},
+                   {"scope", "stored reflected collision shapes and body references"},
+                   {"changes", changes}};
+    if (!unavailable_scopes.empty())
+        result["unavailableScopes"] = unavailable_scopes;
+    return result;
 }
 CollisionComparison compare_collisions(const Package &before, const Package &after,
                                        const CollisionOptions &options) {
@@ -191,7 +239,10 @@ CollisionComparison compare_collisions(const Package &before, const Package &aft
     const auto a = collision_snapshot(before, normalized), b = collision_snapshot(after, normalized);
     CollisionComparison result;
     result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>();
-    walk(a, b, "", result.changes, options.control);
+    auto coverage = source_projection_coverage(before, after, a, b, "collisions", options.control);
+    result.unavailable_scopes = coverage.unavailable;
+    result.complete = result.complete && coverage.unavailable.empty();
+    walk(a, b, "", result.changes, options.control, &coverage);
     return result;
 }
 CollisionComparison compare_collisions(const ZenPackage &before, const ZenPackage &after,
@@ -250,11 +301,14 @@ std::string SkeletonComparison::status() const {
     return !complete ? "incomplete" : changes.empty() ? "identical" : "changed";
 }
 Json SkeletonComparison::to_json() const {
-    return {{"schema", "cyuediff.skeleton-diff/1"},
-            {"complete", complete},
-            {"status", status()},
-            {"scope", "stored hierarchy, reference/retarget poses and remaining native fingerprints"},
-            {"changes", changes}};
+    Json result = {{"schema", "cyuediff.skeleton-diff/1"},
+                   {"complete", complete},
+                   {"status", status()},
+                   {"scope", "stored hierarchy, reference/retarget poses and remaining native fingerprints"},
+                   {"changes", changes}};
+    if (!unavailable_scopes.empty())
+        result["unavailableScopes"] = unavailable_scopes;
+    return result;
 }
 SkeletonComparison compare_skeletons(const Package &before, const Package &after,
                                      const SkeletonOptions &options) {
@@ -275,7 +329,10 @@ SkeletonComparison compare_skeletons(const Package &before, const Package &after
     };
     result.complete = a.at("complete").get<bool>() && b.at("complete").get<bool>() && verified_tails(a) &&
                       verified_tails(b);
-    walk(a, b, "", result.changes, options.control);
+    auto coverage = source_projection_coverage(before, after, a, b, "skeletons", options.control);
+    result.unavailable_scopes = coverage.unavailable;
+    result.complete = result.complete && coverage.unavailable.empty();
+    walk(a, b, "", result.changes, options.control, &coverage);
     return result;
 }
 MeshComparison compare_meshes(const MeshGeometry &before, const MeshGeometry &after) {
@@ -360,6 +417,20 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
     result.binary_comparison_available = !before.fingerprints.empty() && !after.fingerprints.empty();
     if (result.binary_comparison_available)
         result.binary_changed = before.fingerprints != after.fingerprints;
+    auto context = [](const Package &p) {
+        return Json{{"archive",
+                     {{"ue4Version", p.summary.ue4_version},
+                      {"ue5Version", p.summary.ue5_version},
+                      {"licenseeVersion", p.summary.licensee_version},
+                      {"savedEngine", p.summary.saved_engine},
+                      {"customVersions", p.summary.custom_versions}}},
+                    {"decoderContextSha256", p.decoder_context_sha256},
+                    {"sourceTypeContext", p.source_type_context}};
+    };
+    auto ca = context(before), cb = context(after);
+    if (ca != cb || !before.decoder_context_sha256.empty() || !after.decoder_context_sha256.empty() ||
+        !before.source_type_context.is_null() || !after.source_type_context.is_null())
+        result.source_contexts = {{"before", ca}, {"after", cb}, {"changed", ca != cb}};
     result.source_read_limit_failed = before.source_read_limit_failed || after.source_read_limit_failed;
     if (result.source_read_limit_failed) {
         result.diagnostics.push_back(
@@ -367,21 +438,44 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
             "diagnostics and read limits. Binary fingerprints remain available.");
         return result;
     }
-    walk(before.semantic_snapshot(), after.semantic_snapshot(), "", result.changes, control);
-    walk(before.blueprint_snapshot(), after.blueprint_snapshot(), "", result.graph_changes, control);
-    walk(before.texture_snapshot(), after.texture_snapshot(), "", result.texture_changes, control);
-    walk(before.mesh_snapshot(), after.mesh_snapshot(), "", result.mesh_changes, control);
-    walk(before.material_snapshot(), after.material_snapshot(), "", result.material_changes, control);
+    detail::SourceCoverageOptions coverage_options;
+    coverage_options.control = control;
+    auto coverage = detail::source_coverage(before, after, coverage_options);
+    result.unavailable_scopes = coverage.unavailable;
+    auto projection = [&](const Json &a, const Json &b, Json &changes, const std::string &domain) {
+        auto masked = detail::projection_coverage(coverage, before, after, a, b, domain, control);
+        for (const auto &scope : masked.unavailable)
+            result.unavailable_scopes.push_back(scope);
+        walk(a, b, "", changes, control, &masked);
+        return masked;
+    };
+    auto a = before.semantic_snapshot(), b = after.semantic_snapshot();
+    auto textures = projection(Json{{"schema", "cyuediff.textures/1"}, {"textures", a.at("textures")}},
+                               Json{{"schema", "cyuediff.textures/1"}, {"textures", b.at("textures")}},
+                               result.texture_changes, "textures");
+    auto meshes = projection(a.at("meshes"), b.at("meshes"), result.mesh_changes, "meshes");
+    auto materials = projection(a.at("materials"), b.at("materials"), result.material_changes, "materials");
+    for (const auto *pair : {&textures, &meshes, &materials}) {
+        const auto prefix = pair == &textures ? "" : pair == &meshes ? "/meshes" : "/materials";
+        for (const auto &path : pair->suppressed)
+            coverage.suppressed.insert(prefix + path);
+    }
+    walk(a, b, "", result.changes, control, &coverage);
+    projection(before.blueprint_snapshot(), after.blueprint_snapshot(), result.graph_changes, "blueprint");
     CollisionOptions collision_options;
     collision_options.control = control;
     collision_options.source_indices = false;
-    walk(collision_snapshot(before, collision_options), collision_snapshot(after, collision_options), "",
-         result.collision_changes, control);
+    projection(collision_snapshot(before, collision_options), collision_snapshot(after, collision_options),
+               result.collision_changes, "collisions");
     SkeletonOptions skeleton_options;
     skeleton_options.source_indices = false;
     skeleton_options.control = control;
-    walk(skeleton_snapshot(before, skeleton_options), skeleton_snapshot(after, skeleton_options), "",
-         result.skeleton_changes, control);
+    projection(skeleton_snapshot(before, skeleton_options), skeleton_snapshot(after, skeleton_options),
+               result.skeleton_changes, "skeletons");
+    if (!result.unavailable_scopes.empty())
+        result.diagnostics.push_back(
+            "Some source values or dependent projections are unavailable; known stored changes and opaque "
+            "byte fingerprints are retained without inferring removals from unread peers.");
     result.diagnostics.push_back(
         "Opaque hashes identify changed bytes. Texture source metadata is projected separately; "
         "pixel comparison is available through image-diff for supported sources. "

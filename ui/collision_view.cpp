@@ -1,5 +1,6 @@
 #include <cyuediff/collision_view.hpp>
 #include "diff_style.hpp"
+#include "../src/source_availability.hpp"
 #include <algorithm>
 #include <set>
 namespace cyuediff {
@@ -27,7 +28,25 @@ void CollisionView::bind(bool retain) {
     }
     shapes_.assign(keys.begin(), keys.end());
     viewport_.select(body_, shape_);
-    properties_.set_values(selected(before_), selected(after_), comparing_);
+    ValueCoverage coverage;
+    auto escape = [](const std::string &s) {
+        std::string out;
+        for (char c : s)
+            out += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+        return out;
+    };
+    const auto prefix =
+        body_.empty() ? std::string{}
+                      : "/bodies/" + escape(body_) + (shape_.empty() ? "" : "/shapes/" + escape(shape_));
+    for (const auto &path : source_coverage_.comparison_unavailable) {
+        if (path == prefix || (prefix.size() > path.size() && prefix.compare(0, path.size(), path) == 0 &&
+                               prefix[path.size()] == '/'))
+            coverage.comparison_unavailable.push_back("");
+        else if (path.size() > prefix.size() && path.compare(0, prefix.size(), prefix) == 0 &&
+                 path[prefix.size()] == '/')
+            coverage.comparison_unavailable.push_back(path.substr(prefix.size()));
+    }
+    properties_.set_values(selected(before_), selected(after_), comparing_, coverage);
     if (retain)
         properties_.restore_view_state(saved);
 }
@@ -37,6 +56,14 @@ void CollisionView::set_packages(const Package *before, const Package *after, bo
     before_ = before ? collision_snapshot(*before, options) : Json(nullptr);
     after_ = after ? collision_snapshot(*after, options) : Json(nullptr);
     comparing_ = comparing || (before && after);
+    source_coverage_ = {};
+    if (before && after) {
+        const auto raw = detail::source_coverage(*before, *after);
+        const auto coverage =
+            detail::projection_coverage(raw, *before, *after, before_, after_, "collisions");
+        source_coverage_.comparison_unavailable.assign(coverage.suppressed.begin(),
+                                                       coverage.suppressed.end());
+    }
     preview_errors_.clear();
     auto preview = [&](const Package *package, const char *side) {
         try {
@@ -53,6 +80,7 @@ void CollisionView::set_packages(const Package *before, const Package *after, bo
 }
 void CollisionView::set_models(Json before, Json after, CollisionWireframe before_preview,
                                CollisionWireframe after_preview, bool comparing) {
+    source_coverage_ = {};
     before_ = std::move(before);
     after_ = std::move(after);
     comparing_ = comparing || (!before_.is_null() && !after_.is_null());
@@ -64,7 +92,10 @@ void CollisionView::bind_models(CollisionWireframe before_preview, CollisionWire
     complete_ = (!before || before_.at("complete").get<bool>()) &&
                 (!after || after_.at("complete").get<bool>()) &&
                 (comparing_ ? before && after : before || after);
-    viewport_.set_models(std::move(before_preview), std::move(after_preview), &before_, &after_, comparing_);
+    viewport_.set_models(std::move(before_preview), std::move(after_preview), &before_, &after_, comparing_,
+                         source_coverage_);
+    if (!source_coverage_.comparison_unavailable.empty())
+        complete_ = false;
     std::set<std::string> keys;
     for (const auto *model : {&before_, &after_})
         if (!model->is_null())
@@ -87,7 +118,8 @@ Json CollisionView::report() const {
              {{"unchanged", changes.unchanged},
               {"added", changes.added},
               {"removed", changes.removed},
-              {"modified", changes.modified}}}};
+              {"modified", changes.modified},
+              {"unknown", changes.unknown}}}};
 }
 bool CollisionView::empty() const {
     if (!bodies_.empty())
@@ -158,6 +190,11 @@ void CollisionView::restore_view_state(const Json &state) {
         properties_.restore_view_state(state["properties"]);
 }
 void CollisionView::draw(const char *id) {
+    if (!source_coverage_.comparison_unavailable.empty())
+        cyui::callout(cyui::Tone::info,
+                      cyui::tr("Comparison is unavailable for this view because source values are unread or "
+                               "use incompatible decoders. Inspect each revision or use scoped properties.")
+                          .c_str());
     cyui::ScopedID scope(id);
     if (empty()) {
         cyui::emptyState(cyui::tr("No stored collision bodies").c_str(),

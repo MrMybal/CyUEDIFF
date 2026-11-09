@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.189.0 — Source comparison availability
+
+Source comparisons retain known fields while marking unread values and incompatible decoder projections as unverified. Scoped EN/FR properties distinguish unavailable values, context and actual absence; dependent graph/material/skeleton/collision visuals avoid invented removals, and pending mesh previews no longer imply deletion. Dedicated source material/collision/skeleton diffs share coverage. Rebuild against matching 0.189 headers/library. The last verified Windows archive remains 0.182. See [the availability contract](docs/SOURCE_AVAILABILITY.md).
+
 ## 0.188.0 — Source physical cloth
 
 Selected UE 5.3 tagged source assets now use the owned physical cloth model, CLI queries/differences/OBJ export and reusable EN/FR desktop tab. Per-side type/native catalogues retain exact provenance; unresolved class/map defaults remain unavailable. Rebuild against matching 0.188 headers/libraries after the Package, DecoderRegistry, PhysicalClothAsset and AssetView additions. The last verified local Windows archive remains 0.182. See [the source physical contract](docs/SOURCE_PHYSICAL_CLOTH.md).

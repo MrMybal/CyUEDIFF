@@ -215,6 +215,7 @@ int main() {
               "Missing mesh refuses camera actions");
         Package graphs;
         ObjectExport graph;
+        graph.coverage = "properties"; // This fixture supplies a complete decoded tag inventory.
         graph.path = graph.name = "Graph";
         graph.properties = {{"GraphGuid", {{"value", std::string(32, '1')}}},
                             {"Nodes", {{"value", Json::array({"Graph.A"})}}}};
@@ -225,6 +226,7 @@ int main() {
         node.outer_index = 1;
         node.class_name = "K2Node";
         node.native_coverage = "pins";
+        node.coverage = "properties";
         node.properties = {{"NodeGuid", {{"value", std::string(32, 'a')}}}};
         node.native_data = {{"kind", "edgraph-node"}, {"pins", Json::object()}};
         graphs.exports.push_back(node);
@@ -265,11 +267,13 @@ int main() {
         check(!unchanged_graph.next_changed_node(), "Unchanged graph has no changed-node target");
         Package materials;
         ObjectExport material;
+        material.coverage = "properties";
         material.path = material.name = "M";
         material.class_name = "/Script/Engine.Material";
         material.properties = {{"Expressions", {{"value", Json::array({"M.Node"})}}}};
         materials.exports.push_back(material);
         ObjectExport expression;
+        expression.coverage = "properties";
         expression.path = "M.Node";
         expression.class_name = "/Script/Engine.MaterialExpressionScalarParameter";
         expression.outer_index = 1;

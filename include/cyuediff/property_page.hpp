@@ -5,6 +5,7 @@ struct PropertyPageOptions {
     std::size_t first = 0, page_size = 128, max_compare_nodes = 4'000'000;
     bool serialization_fields = false, escape_non_bmp = false;
     OperationControl control;
+    ValueCoverage coverage;
 };
 struct PropertyPage {
     std::string scope;

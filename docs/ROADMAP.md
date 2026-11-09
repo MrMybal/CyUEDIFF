@@ -148,3 +148,5 @@ Explicit source work/window limits are available in Core, CLI and EN/FR desktop,
 ## Typed source physical cloth — 0.188
 
 Implemented the explicit source overload of the shared physical model, focused CLI operations/OBJ/differences, installed consumer and EN/FR source tab with independent object/profile selection and workspace state. Actual Cube/Humanoid stored geometry/native transitions and reference-pose wraps have independent API evidence. Class/default inventories, runtime simulation and broader source render correspondence remain separate acceptance work.
+
+Source development 0.189 adds [availability-aware source comparisons](SOURCE_AVAILABILITY.md): known stored changes survive opaque peers without invented value removals. Per-component visual guards remain conservative; broader serializers/defaults, producer certification, memory and final Windows delivery are still open.

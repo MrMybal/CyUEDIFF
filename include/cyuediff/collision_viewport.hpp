@@ -21,7 +21,7 @@ class CollisionViewport {
 
   public:
     void set_models(CollisionWireframe before, CollisionWireframe after, const Json *before_snapshot,
-                    const Json *after_snapshot, bool comparing);
+                    const Json *after_snapshot, bool comparing, const ValueCoverage &coverage = {});
     void select(const std::string &body, const std::string &shape = {});
     void set_changed_only(bool);
     bool focus_changes();

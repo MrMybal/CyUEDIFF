@@ -63,13 +63,14 @@ int main() {
                   restored.view_state().at("browserRoot") == 1,
               "Native scope/root restore together");
         auto partial = std::make_shared<Package>(*after);
-        partial->exports[0].coverage = "partial-properties";
+        partial->exports[0].coverage = "opaque";
         partial->exports[0].properties = Json::object();
         restored.set_packages(before, partial);
         check(restored.set_property_scope("/items/value/40000"),
               "Known source can be inspected with an unread peer");
         for (const auto &row : restored.property_browser().page().table.rows)
-            check(row.change == ChangeKind::unchanged, "Partial peers cannot invent removals");
+            check(row.change == ChangeKind::unknown && !row.after_available,
+                  "Unread peers retain readable values without invented removals");
         auto stale = state;
         stale["selected"] = "Missing";
         restored.set_packages(inserted, after);

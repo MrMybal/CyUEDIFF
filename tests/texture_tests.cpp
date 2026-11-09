@@ -135,6 +135,8 @@ Package package(const fs::path &path, std::uint32_t w = 2, std::uint32_t h = 1, 
                              {"BlockDataOffsets", {{"value", Json::array({0})}}}}}}},
                          {"SRGB", {{"value", true}}}};
     p.exports.push_back(object);
+    for (auto &entry : p.exports)
+        entry.coverage = "properties";
     return p;
 }
 TextureSource decode_native(const Package &p) {

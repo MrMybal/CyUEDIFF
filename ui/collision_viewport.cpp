@@ -1,5 +1,6 @@
 #include <cyuediff/collision_viewport.hpp>
 #include "diff_style.hpp"
+#include "../src/source_availability.hpp"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -53,10 +54,19 @@ void include(CollisionBounds &out, const CollisionBounds &other) {
 }
 } // namespace
 void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe after, const Json *a,
-                                   const Json *b, bool comparing) {
+                                   const Json *b, bool comparing, const ValueCoverage &coverage) {
     changes_.clear();
     stored_changes_.clear();
     comparing_ = comparing;
+    detail::SourceCoverage unavailable;
+    for (const auto &path : coverage.comparison_unavailable)
+        unavailable.suppressed.insert(path);
+    auto escaped = [](const std::string &s) {
+        std::string out;
+        for (char c : s)
+            out += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+        return out;
+    };
     std::set<std::pair<std::string, std::string>> ready_before, ready_after;
     for (const auto &s : before.shapes)
         if (s.ready())
@@ -71,7 +81,10 @@ void CollisionViewport::set_models(CollisionWireframe before, CollisionWireframe
                 continue;
             const auto *x = shape_value(a, s.body, s.identity), *y = shape_value(b, s.body, s.identity);
             const bool known = (x || collection_known(a, s)) && (y || collection_known(b, s));
-            const auto stored = comparing && known ? classify_change(x, y) : ChangeKind::unchanged;
+            const auto stored = comparing && unavailable.intersects("/bodies/" + escaped(s.body))
+                                    ? ChangeKind::unknown
+                                : comparing && known ? classify_change(x, y)
+                                                     : ChangeKind::unchanged;
             stored_changes_[key] = stored;
             const bool ready = (!x || ready_before.count(key)) && (!y || ready_after.count(key));
             changes_[key] = ready ? stored : ChangeKind::unchanged;

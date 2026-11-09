@@ -2,12 +2,12 @@
 #include <cyuediff/core.hpp>
 #include <map>
 namespace cyuediff {
-enum class ChangeKind { unchanged, added, removed, modified };
+enum class ChangeKind { unchanged, added, removed, modified, unknown };
 const char *change_name(ChangeKind);
 // A null pointer represents absence, distinct from a present JSON null.
 ChangeKind classify_change(const Json *before, const Json *after);
 struct ChangeCounts {
-    std::size_t unchanged = 0, added = 0, removed = 0, modified = 0;
+    std::size_t unchanged = 0, added = 0, removed = 0, modified = 0, unknown = 0;
     void add(ChangeKind);
     std::size_t changed() const {
         return added + removed + modified;
@@ -25,12 +25,23 @@ struct PropertyRow {
     unsigned depth = 0;
     bool before_present = false, after_present = false;
     std::string label;
+    bool before_available = true, after_available = true;
+    bool context_only = false;
+    std::string source_path;
+};
+// JSON pointer scopes. Missing data below an unavailable side is unknown, not absence.
+// Comparison-only scopes keep decoded values visible while their correspondence is unverified.
+struct ValueCoverage {
+    std::vector<std::string> before_unavailable, after_unavailable, comparison_unavailable, ignored, raw;
 };
 struct PropertyTableOptions {
     std::size_t max_rows = 20000, max_text_bytes = 2048;
     unsigned max_depth = 48;
     // Presentation only: keep supplementary scalars distinct in 16-bit glyph hosts.
     bool escape_non_bmp = false;
+    ValueCoverage coverage;
+    std::size_t max_compare_nodes = 16'000'000;
+    OperationControl control;
 };
 struct PropertyTable {
     std::vector<PropertyRow> rows;

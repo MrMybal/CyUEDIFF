@@ -305,6 +305,7 @@ int main() {
         ObjectExport asset;
         asset.name = asset.path = "Mesh";
         asset.class_name = "/Script/Engine.StaticMesh";
+        asset.coverage = "properties";
         asset.properties = {
             {"SourceModels",
              {{"value", Json::array({{{"StaticMeshDescriptionBulkData", {{"value", "Mesh.Source"}}}}})}}}};

@@ -1,5 +1,6 @@
 #include <cyuediff/blueprint_view.hpp>
 #include "diff_style.hpp"
+#include "../src/source_availability.hpp"
 #include <algorithm>
 #include <map>
 namespace cyuediff {
@@ -41,16 +42,30 @@ void BlueprintView::set_package(const Package &package, const Package *peer, boo
     selected_ = 0;
     auto model = package.blueprint_snapshot();
     auto other = peer ? peer->blueprint_snapshot() : Json{};
+    detail::SourceCoverage coverage;
+    if (peer) {
+        auto raw = after ? detail::source_coverage(*peer, package) : detail::source_coverage(package, *peer);
+        coverage = detail::projection_coverage(raw, after ? *peer : package, after ? package : *peer,
+                                               after ? other : model, after ? model : other, "blueprint");
+    }
+    auto pointer = [](const std::string &key) {
+        std::string out;
+        for (char c : key)
+            out += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+        return out;
+    };
     for (auto graph = model.at("graphs").begin(); graph != model.at("graphs").end(); ++graph) {
         Graph prepared;
         prepared.id = graph.key();
         prepared.path = graph.value().at("path");
         prepared.complete = graph.value().at("complete");
         prepared.diagnostics = graph.value().at("diagnostics").get<std::vector<std::string>>();
+        prepared.comparison_unavailable = peer && coverage.intersects("/graphs/" + pointer(graph.key()));
+        const bool comparing = peer && !prepared.comparison_unavailable;
         GraphChanges delta;
         const Json *match =
             peer && other.at("graphs").contains(graph.key()) ? &other.at("graphs").at(graph.key()) : nullptr;
-        if (peer) {
+        if (comparing) {
             delta = after ? graph_changes(match, &graph.value()) : graph_changes(&graph.value(), match);
             prepared.counts = delta.node_counts;
             prepared.comparing = true;
@@ -61,11 +76,11 @@ void BlueprintView::set_package(const Package &package, const Package *peer, boo
         for (auto node = graph.value().at("nodes").begin(); node != graph.value().at("nodes").end(); ++node) {
             cyui::Node item;
             item.id = next++;
-            if (peer)
+            if (comparing)
                 prepared.changes[item.id] = delta.nodes.at(node.key());
             item.label = node_title(node.value());
-            inspection.push_back(
-                {item.id, node.key(), item.label, peer ? delta.nodes.at(node.key()) : ChangeKind::unchanged});
+            inspection.push_back({item.id, node.key(), item.label,
+                                  comparing ? delta.nodes.at(node.key()) : ChangeKind::unchanged});
             item.position = {node.value().at("position").at("x").get<double>(),
                              node.value().at("position").at("y").get<double>()};
             for (const auto &pin_id : node.value().value("pinOrder", Json::array())) {
@@ -103,8 +118,9 @@ void BlueprintView::set_package(const Package &package, const Package *peer, boo
         }
         const auto *local_nodes = &graph.value().at("nodes");
         const auto *peer_nodes = match ? &match->at("nodes") : nullptr;
-        prepared.inspector.set_nodes(after ? peer_nodes : local_nodes, after ? local_nodes : peer_nodes,
-                                     std::move(inspection), peer != nullptr);
+        prepared.inspector.set_nodes(comparing ? (after ? peer_nodes : local_nodes) : local_nodes,
+                                     comparing ? (after ? local_nodes : peer_nodes) : local_nodes,
+                                     std::move(inspection), comparing);
         graphs_.push_back(std::move(prepared));
     }
 }
@@ -187,6 +203,11 @@ void BlueprintView::draw(const char *id) {
         ImGui::EndCombo();
     }
     auto &graph = graphs_[selected_];
+    if (graph.comparison_unavailable)
+        cyui::callout(cyui::Tone::info,
+                      cyui::tr("Comparison is unavailable for this view because source values are unread or "
+                               "use incompatible decoders. Inspect each revision or use scoped properties.")
+                          .c_str());
     if (cyui::button(cyui::trLabel("Fit graph").c_str()))
         graph.needs_fit = true;
     ImGui::SameLine();

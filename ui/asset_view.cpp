@@ -1,4 +1,5 @@
 #include "json_text.hpp"
+#include "../src/source_availability.hpp"
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/mesh_morphs.hpp>
 #include <cyuediff/asset_view.hpp>
@@ -64,6 +65,22 @@ void AssetView::set_animation_socket_poses(const AnimationSocketPose *a, const A
 }
 void AssetView::register_translations() {
     PhysicalClothView::register_translations();
+    cyui::registerTranslations(
+        "fr", {{"Geometry comparison is unavailable until both source previews are prepared.",
+                "La comparaison géométrique est indisponible tant que les deux aperçus source ne sont pas "
+                "préparés."}});
+    cyui::registerTranslations(
+        "fr",
+        {{"Comparison is unavailable for this view because source values are unread or use incompatible "
+          "decoders. Inspect each revision or use scoped properties.",
+          "La comparaison est indisponible dans cette vue : des valeurs source sont illisibles ou utilisent "
+          "des décodeurs incompatibles. Examinez chaque révision ou les propriétés par niveau."},
+         {"Some source values are unavailable; known fields remain comparable.",
+          "Certaines valeurs source sont indisponibles ; les champs lisibles restent comparables."},
+         {"Whole-document text comparison is unavailable for partial or differently decoded sources. Use "
+          "scoped properties.",
+          "La comparaison textuelle complète est indisponible pour les sources partielles ou décodées "
+          "différemment. Utilisez les propriétés par niveau."}});
     cyui::registerTranslations(
         "fr", {{"Select a source physical cloth profile and matching layouts, then Load.",
                 "Choisissez un profil de tissu source et les structures correspondantes, puis Charger."},
@@ -284,12 +301,108 @@ void AssetView::register_translations() {
          {"Empty package", "Package vide"},
          {"This package has no exported objects.", "Ce package ne contient aucun objet exporté."}});
 }
+Json AssetView::source_comparison_coverage() const {
+    return source_coverage_ ? source_coverage_->unavailable : Json::array();
+}
+ValueCoverage AssetView::value_coverage(const std::string &object, int root) const {
+    ValueCoverage out;
+    auto escaped = [](const std::string &s) {
+        std::string out;
+        for (char c : s)
+            out += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+        return out;
+    };
+    const auto object_prefix = "/objects/" + escaped(object);
+    const auto prefix = object_prefix + (root == 0   ? "/properties"
+                                         : root == 1 ? "/native"
+                                         : root == 2 ? "/opaque"
+                                                     : "");
+    auto local = [&](const std::string &path) -> std::optional<std::string> {
+        if (path == prefix)
+            return std::string{};
+        if (path.size() > prefix.size() && path.compare(0, prefix.size(), prefix) == 0 &&
+            path[prefix.size()] == '/')
+            return path.substr(prefix.size());
+        return {};
+    };
+    if (source_coverage_) {
+        for (const auto &scope : source_coverage_->unavailable) {
+            if (scope.at("reason") == "opaque-bytes-not-decoded")
+                continue;
+            auto path = local(scope.at("path").get<std::string>());
+            if (!path)
+                continue;
+            const bool a = scope.value("beforeUnavailable", false),
+                       b = scope.value("afterUnavailable", false);
+            if (a)
+                out.before_unavailable.push_back(*path);
+            if (b)
+                out.after_unavailable.push_back(*path);
+            if (!a && !b) {
+                if (scope.at("reason") == "map-key-identity-unavailable") {
+                    const auto end = path->find_last_of('/');
+                    out.comparison_unavailable.push_back(end == std::string::npos ? std::string{}
+                                                                                  : path->substr(0, end));
+                } else
+                    out.comparison_unavailable.push_back(*path);
+            }
+        }
+        for (const auto &path : source_coverage_->suppressed)
+            if (auto relative = local(path)) {
+                if (path == object_prefix + "/opaque")
+                    out.comparison_unavailable.push_back(*relative);
+                else
+                    out.ignored.push_back(*relative);
+            }
+    }
+    if (root == -1) {
+        out.raw.push_back("/opaque");
+        out.raw.push_back("/native");
+    } else if (root == 1 || root == 2)
+        out.raw.push_back("");
+    const auto missing = [&](const std::shared_ptr<const Package> &p, bool after) {
+        if (!p)
+            return;
+        for (const auto &entry : p->exports)
+            if (entry.path == object) {
+                auto &paths = after ? out.after_unavailable : out.before_unavailable;
+                if (root == -1 || root == 0)
+                    if (entry.coverage != "properties" && entry.coverage != "partial-properties" &&
+                        entry.coverage != "empty")
+                        paths.push_back(root == -1 ? "/properties" : "");
+                if ((root == -1 || root == 1) && entry.native_data.empty())
+                    paths.push_back(root == -1 ? "/native" : "");
+                break;
+            }
+    };
+    missing(before_, false);
+    missing(after_, true);
+    if (!comparison_) {
+        const auto &selected = properties_after_ ? out.after_unavailable : out.before_unavailable;
+        out.before_unavailable = selected;
+        out.after_unavailable = selected;
+        out.comparison_unavailable.clear();
+    }
+    return out;
+}
 void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after,
                              bool compare_missing_side) {
     if (before && after && (before->source_read_limit_failed || after->source_read_limit_failed))
         throw Error("source-read-limits",
                     "A source read limit/count guard failed; semantic review is unavailable.");
 
+    const Package empty;
+    const bool comparing = (before && after) || (compare_missing_side && (before || after));
+    auto source_coverage = comparing ? std::make_shared<const detail::SourceCoverage>(detail::source_coverage(
+                                           before ? *before : empty, after ? *after : empty))
+                                     : nullptr;
+    const bool text_unknown =
+        comparing && ((source_coverage && !source_coverage->unavailable.empty()) ||
+                      (before && after &&
+                       (before->decoder_context_sha256 != after->decoder_context_sha256 ||
+                        before->source_type_context != after->source_type_context)));
+    source_coverage_ = std::move(source_coverage);
+    source_text_unavailable_ = text_unknown;
     layout_.restore(Json::object(), "asset-layout");
     before_ = std::move(before);
     after_ = std::move(after);
@@ -345,12 +458,10 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
                     if (!comparison_)
                         a = b = &entry.properties;
                     PropertyTableOptions options;
+                    options.coverage = value_coverage(entry.path, 0);
                     options.max_rows = 1;
                     options.escape_non_bmp = sizeof(ImWchar) == 2;
                     auto table = property_table(a, b, options);
-                    if (comparison_ && it != objects.end() && !table.rows.empty() &&
-                        (entry.native_data != it->second->native_data || entry.opaque != it->second->opaque))
-                        table.rows[0].change = ChangeKind::modified;
                     PropertyView view;
                     view.set_table(std::move(table), comparison_);
                     views.push_back(std::move(view));
@@ -360,7 +471,13 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
                 auto a = data(entry), b = it == objects.end() ? Json{} : data(*it->second);
                 const Json *match = it == objects.end() ? nullptr : &b;
                 PropertyView view;
-                view.set_values(after ? match : &a, after ? &a : match, comparison_);
+                PropertyTableOptions options;
+                options.coverage = value_coverage(entry.path);
+                options.escape_non_bmp = sizeof(ImWchar) == 2;
+                if (comparison_)
+                    view.set_table(property_table(after ? match : &a, after ? &a : match, options), true);
+                else
+                    view.set_table(property_table(&a, &a, options), false);
                 views.push_back(std::move(view));
             }
         return views;
@@ -368,13 +485,20 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     before_inspection_ = inspections(before_, after_, false);
     after_inspection_ = inspections(after_, before_, true);
     const auto &initial = properties_after_ ? after_inspection_ : before_inspection_;
-    if (comparison_)
-        for (std::size_t i = 0; i < initial.size(); ++i)
-            if (!initial[i].table().rows.empty() &&
-                initial[i].table().rows.front().change != ChangeKind::unchanged) {
-                selected_ = i;
+    if (comparison_) {
+        bool selected = false;
+        for (auto kind :
+             {ChangeKind::modified, ChangeKind::added, ChangeKind::removed, ChangeKind::unknown}) {
+            for (std::size_t i = 0; i < initial.size(); ++i)
+                if (!initial[i].table().rows.empty() && initial[i].table().rows.front().change == kind) {
+                    selected_ = i;
+                    selected = true;
+                    break;
+                }
+            if (selected)
                 break;
-            }
+        }
+    }
 
     bind_property_browser();
     collisions_.set_packages(before_.get(), after_.get(), comparison_);
@@ -406,7 +530,6 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     };
     load(before_, before_textures_);
     load(after_, after_textures_);
-    const Package empty;
     const auto *before_peer = comparison_ ? (after_ ? after_.get() : &empty) : nullptr;
     const auto *after_peer = comparison_ ? (before_ ? before_.get() : &empty) : nullptr;
     before_material_.set_package(before_ ? *before_ : empty, before_peer, false);
@@ -416,7 +539,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     document_ = {};
     diff_state_ = {};
     text_comparison_available_ = false;
-    if (comparison_) {
+    if (comparison_ && !source_text_unavailable_) {
         auto small = [](const auto &raw) {
             std::size_t size = 0;
             for (const auto &text : raw) {
@@ -483,18 +606,19 @@ bool AssetView::clear_texture_preview(const std::string &path, bool after) {
 }
 void AssetView::set_mesh_geometry(std::shared_ptr<const MeshGeometry> geometry, bool after) {
     (after ? after_geometry_ : before_geometry_) = std::move(geometry);
-    before_mesh_.set_mesh(before_geometry_, after_geometry_, false, comparison_);
-    after_mesh_.set_mesh(after_geometry_, before_geometry_, true, comparison_);
+    const bool comparable = comparison_ && (before_geometry_ || !before_) && (after_geometry_ || !after_);
+    before_mesh_.set_mesh(before_geometry_, comparable ? after_geometry_ : nullptr, false, comparable);
+    after_mesh_.set_mesh(after_geometry_, comparable ? before_geometry_ : nullptr, true, comparable);
     const auto before_skin = before_geometry_ && before_geometry_->skin ? before_geometry_->skin->to_json() : Json(nullptr);
     const auto after_skin = after_geometry_ && after_geometry_->skin ? after_geometry_->skin->to_json() : Json(nullptr);
     skin_.set_values(before_skin.is_null() ? nullptr : &before_skin,
-                     after_skin.is_null() ? nullptr : &after_skin, comparison_);
+                     after_skin.is_null() ? nullptr : &after_skin, comparable);
     const auto before_morphs =
         before_geometry_ && before_geometry_->morphs ? before_geometry_->morphs->to_json() : Json(nullptr);
     const auto after_morphs =
         after_geometry_ && after_geometry_->morphs ? after_geometry_->morphs->to_json() : Json(nullptr);
     morphs_.set_values(before_morphs.is_null() ? nullptr : &before_morphs,
-                       after_morphs.is_null() ? nullptr : &after_morphs, comparison_);
+                       after_morphs.is_null() ? nullptr : &after_morphs, comparable);
 }
 AssetView::BrowserInputs AssetView::property_browser_inputs() const {
     const auto &selected = properties_after_ ? after_ : before_;
@@ -516,15 +640,14 @@ AssetView::BrowserInputs AssetView::property_browser_inputs() const {
                : browser_root_ == 1 ? &entry->native_data
                                     : &entry->opaque;
     };
-    auto known = [&](const ObjectExport *entry) {
-        if (!entry || browser_root_ == 2)
-            return true;
-        if (browser_root_ == 1)
-            return !entry->native_data.empty();
-        return entry->coverage == "properties" || entry->coverage == "empty";
-    };
-    BrowserInputs result{value(a), value(b), comparison_ && known(a) && known(b),
-                         comparison_ && (!known(a) || !known(b))};
+    BrowserInputs result;
+    result.before = value(a);
+    result.after = value(b);
+    result.comparing = comparison_;
+    result.coverage = value_coverage(path, browser_root_);
+    result.unknown = comparison_ && (!result.coverage.before_unavailable.empty() ||
+                                     !result.coverage.after_unavailable.empty() ||
+                                     !result.coverage.comparison_unavailable.empty());
     if (!result.comparing) {
         const auto local = properties_after_ ? result.after : result.before;
         result.before = local ? local : result.before ? result.before : result.after;
@@ -543,7 +666,7 @@ void AssetView::bind_property_browser() {
     browser_after_ = properties_after_;
     bound_browser_root_ = browser_root_;
     const auto input = property_browser_inputs();
-    property_browser_.set_values(input.before, input.after, input.comparing);
+    property_browser_.set_values(input.before, input.after, input.comparing, input.coverage);
     const auto &views = properties_after_ ? after_inspection_ : before_inspection_;
     if (selected_ < views.size() && views[selected_].table().truncated)
         browse_properties_ = true;
@@ -906,7 +1029,9 @@ void AssetView::draw(const char *id, bool show_language) {
                         if (input.unknown)
                             cyui::callout(
                                 cyui::Tone::info,
-                                cyui::tr("Some values are unknown; inspecting one snapshot.").c_str());
+                                cyui::tr(
+                                    "Some source values are unavailable; known fields remain comparable.")
+                                    .c_str());
                         property_browser_.draw(input.before, input.after);
                     } else
                         (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
@@ -970,6 +1095,11 @@ void AssetView::draw(const char *id, bool show_language) {
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Meshes").c_str(), nullptr, flags(AssetTab::meshes))) {
             active_tab_ = AssetTab::meshes;
+            if (comparison_ && !mesh_comparison_available())
+                cyui::callout(
+                    cyui::Tone::info,
+                    cyui::tr("Geometry comparison is unavailable until both source previews are prepared.")
+                        .c_str());
             if (before_ && after_) {
                 if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !mesh_after_))
                     mesh_after_ = false;
@@ -1062,6 +1192,10 @@ void AssetView::draw(const char *id, bool show_language) {
             active_tab_ = AssetTab::comparison;
             if (text_comparison_available_)
                 cyui::diffViewer("##semantic-diff", diff_state_, document_, ImGui::GetContentRegionAvail());
+            else if (source_text_unavailable_)
+                ImGui::TextWrapped("%s", cyui::tr("Whole-document text comparison is unavailable for partial "
+                                                  "or differently decoded sources. Use scoped properties.")
+                                             .c_str());
             else
                 ImGui::TextWrapped("%s", cyui::tr("Whole-document text exceeds the display limits. Use "
                                                   "scoped properties or export JSON with the CLI.")

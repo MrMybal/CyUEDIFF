@@ -17,6 +17,7 @@ Json collision_snapshot(const ZenPackage &, const CollisionOptions & = {});
 struct CollisionComparison {
     Json changes = Json::array();
     bool complete = false;
+    Json unavailable_scopes = Json::array();
     std::string status() const;
     Json to_json() const;
 };

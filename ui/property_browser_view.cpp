@@ -52,6 +52,7 @@ bool PropertyBrowserView::bind(const Json *before, const Json *after, const std:
             before = after;
     }
     PropertyPageOptions options;
+    options.coverage = coverage_;
     options.first = first;
     options.max_compare_nodes = 16'000'000;
     options.serialization_fields = serialization;
@@ -72,9 +73,11 @@ bool PropertyBrowserView::bind(const Json *before, const Json *after, const std:
     error_.clear();
     return true;
 }
-void PropertyBrowserView::set_values(const Json *before, const Json *after, bool comparing) {
+void PropertyBrowserView::set_values(const Json *before, const Json *after, bool comparing,
+                                     const ValueCoverage &coverage) {
     *this = PropertyBrowserView{};
     comparing_ = comparing;
+    coverage_ = coverage;
     try {
         bind(before, after, "", 0, false, false);
     } catch (const Error &e) {

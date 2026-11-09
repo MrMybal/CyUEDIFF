@@ -1,5 +1,6 @@
 #include <cyuediff/skeleton_view.hpp>
 #include "diff_style.hpp"
+#include "../src/source_availability.hpp"
 #include "../src/skeleton_pose_internal.hpp"
 #include <algorithm>
 #include <set>
@@ -17,12 +18,23 @@ void SkeletonView::bind() {
     state_ = {};
     fit_ = true;
     truncated_ = false;
+    comparison_unavailable_ = comparing_ && unavailable_objects_.count(object_);
+    const bool comparing = comparing_ && !comparison_unavailable_;
     const auto *a = body(before_), *b = body(after_);
     complete_ = (!a || a->at("complete").get<bool>()) && (!b || b->at("complete").get<bool>()) &&
                 (comparing_ ? a && b : a || b);
-    metadata_.set_values(a, b, comparing_);
+    ValueCoverage coverage;
+    if (comparison_unavailable_)
+        coverage.comparison_unavailable.push_back("");
+    metadata_.set_values(a, b, comparing_, coverage);
     attachments_.select_owner(object_);
-    animation_.set_models(body(animation_before_), body(animation_after_), comparing_);
+    if (comparison_unavailable_) {
+        const auto *local = body(animation_before_);
+        if (!local)
+            local = body(animation_after_);
+        animation_.set_models(local, nullptr, false);
+    } else
+        animation_.set_models(body(animation_before_), body(animation_after_), comparing);
     std::set<std::string> sources;
     for (const auto *object : {a, b})
         if (object)
@@ -76,7 +88,9 @@ void SkeletonView::bind() {
         node.inputs.push_back({node.id + 1, cyui::tr("Parent"), 6});
         node.outputs.push_back({node.id + 2, cyui::tr("Children"), 6});
         ids[key] = node.id;
-        const auto change = comparing_ ? classify_change(x, y) : ChangeKind::unchanged;
+        const auto change = comparing                 ? classify_change(x, y)
+                            : comparison_unavailable_ ? ChangeKind::unknown
+                                                      : ChangeKind::unchanged;
         changes_[node.id] = change;
         inspection.push_back({node.id, key, key, change});
         high_.x = std::max(high_.x, node.position.x + 210.);
@@ -104,13 +118,23 @@ void SkeletonView::bind() {
             visible_b[id.first] = *entry;
     }
     inspector_.set_nodes(bones_a ? &visible_a : nullptr, bones_b ? &visible_b : nullptr,
-                         std::move(inspection), comparing_);
+                         std::move(inspection), comparing);
 }
 void SkeletonView::set_packages(const Package *before, const Package *after, bool comparing) {
     SkeletonOptions options;
     options.source_indices = true;
     before_ = before ? skeleton_snapshot(*before, options) : Json(nullptr);
     after_ = after ? skeleton_snapshot(*after, options) : Json(nullptr);
+    unavailable_objects_.clear();
+    if (before && after) {
+        const auto raw = detail::source_coverage(*before, *after);
+        const auto coverage = detail::projection_coverage(raw, *before, *after, before_, after_, "skeletons");
+        for (const auto &path : coverage.suppressed) {
+            Json::json_pointer pointer(path);
+            if (!pointer.empty())
+                unavailable_objects_.insert(pointer.back());
+        }
+    }
     AttachmentOptions attachment_options;
     attachment_options.source_indices = false;
     attachments_.set_models(before ? attachment_snapshot(*before, attachment_options) : Json(nullptr),
@@ -192,7 +216,7 @@ void SkeletonView::bind_pose() {
     selected_before_ = find(poses_before_, source_before_);
     selected_after_ = find(poses_after_, source_after_);
     pose_view_.set_models(body(before_) ? &selected_before_ : nullptr,
-                          body(after_) ? &selected_after_ : nullptr, comparing_);
+                          body(after_) ? &selected_after_ : nullptr, comparing_ && !comparison_unavailable_);
     pose_selection_.clear();
     pose_details_.set_values(nullptr, nullptr, comparing_);
     update_pose_selection();
@@ -240,7 +264,8 @@ void SkeletonView::update_pose_selection() {
     };
     const auto a = model(before_, selected_before_, source_before_),
                b = model(after_, selected_after_, source_after_);
-    pose_details_.set_values(a.is_null() ? nullptr : &a, b.is_null() ? nullptr : &b, comparing_);
+    pose_details_.set_values(a.is_null() ? nullptr : &a, b.is_null() ? nullptr : &b,
+                             comparing_ && !comparison_unavailable_);
 }
 bool SkeletonView::select_bone(const std::string &name) {
     const bool selected = inspector_.select_node(name);
@@ -248,7 +273,7 @@ bool SkeletonView::select_bone(const std::string &name) {
     return selected;
 }
 bool SkeletonView::next_changed_bone(bool previous) {
-    const bool selected = comparing_ && inspector_.next_change(previous);
+    const bool selected = comparison_available() && inspector_.next_change(previous);
     update_pose_selection();
     return selected;
 }
@@ -333,6 +358,11 @@ void SkeletonView::restore_view_state(const Json &state) {
     }
 }
 void SkeletonView::draw(const char *id) {
+    if (comparison_unavailable_)
+        cyui::callout(cyui::Tone::info,
+                      cyui::tr("Comparison is unavailable for this view because source values are unread or "
+                               "use incompatible decoders. Inspect each revision or use scoped properties.")
+                          .c_str());
     cyui::ScopedID scope(id);
     if (rendered_locale_ != cyui::locale()) {
         rendered_locale_ = cyui::locale();

@@ -240,9 +240,12 @@ int main(int argc, char **argv) {
               "Decoded struct diff");
         auto other_id = decoder;
         other_id.id = "test.native/2";
-        check(compare(before, Package::open(file, with({other_id}))).changes[0]["path"] ==
-                  "/objects/TestAsset/native/decoder",
-              "Schema identity participates in diff");
+        const auto different_format = compare(before, Package::open(file, with({other_id})));
+        check(different_format.changes.empty() && different_format.status() == "unverified" &&
+                  different_format.unavailable_scopes.size() == 1 &&
+                  different_format.unavailable_scopes[0]["beforeDecoder"] == decoder.id &&
+                  different_format.unavailable_scopes[0]["afterDecoder"] == other_id.id,
+              "Different decoder identities retain context evidence without asserting stored field changes");
         auto mismatched = decoder;
         mismatched.profile.ue5 = {1016, 1018};
         check(Package::open(file, with({mismatched})).to_json() == plain.to_json(),

@@ -22,7 +22,7 @@ class MaterialView {
         std::vector<std::size_t> visible_parameters;
         std::map<cyui::ItemId, ChangeKind> changes;
         ChangeCounts counts;
-        bool comparing = false;
+        bool comparing = false, comparison_unavailable = false;
         std::vector<cyui::Node> nodes;
         std::vector<cyui::NodeLink> links;
         cyui::NodeState state;
@@ -39,6 +39,7 @@ class MaterialView {
     Json view_state() const;
     void restore_view_state(const Json &);
     void set_package(const Package &, const Package *peer = nullptr, bool after = false);
+    bool comparison_available() const { return !documents_.empty() && documents_[selected_].comparing; }
     bool empty() const {
         return documents_.empty();
     }

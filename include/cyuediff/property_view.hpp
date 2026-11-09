@@ -11,7 +11,7 @@ class PropertyView {
     std::vector<int> visible_;
     int selected_ = -1;
     bool scroll_selection_ = false;
-    bool comparing_ = false, changed_only_ = false;
+    bool comparing_ = false, changed_only_ = false, has_unknown_ = false;
     void rebuild();
 
   public:
@@ -28,7 +28,8 @@ class PropertyView {
     const PropertyRow *selected_row() const {
         return selected_ < 0 ? nullptr : &table_.rows[static_cast<std::size_t>(selected_)];
     }
-    void set_values(const Json *before, const Json *after, bool comparing);
+    void set_values(const Json *before, const Json *after, bool comparing,
+                    const ValueCoverage &coverage = {});
     // Owns only the prepared bounded presentation; it never borrows the source JSON.
     void set_table(PropertyTable, bool comparing);
     const PropertyTable &table() const {
