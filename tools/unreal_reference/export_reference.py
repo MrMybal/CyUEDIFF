@@ -20,7 +20,7 @@ def main():
     files = set()
     for row in rows:
         name = row['file']
-        if row.get('mode', 'source') not in ('source', 'nanite-source', 'compressed-animation', 'per-track-synthetic', 'compressed-curves', 'compressed-curve-synthetic', 'physical-cloth', 'physical-cloth-geometry'):
+        if row.get('mode', 'source') not in ('source', 'nanite-source', 'compressed-animation', 'per-track-synthetic', 'compressed-curves', 'compressed-curve-synthetic', 'physical-cloth', 'physical-cloth-geometry', 'tagged-hybrid'):
             raise ValueError('Unknown reference export mode')
         if not row['object'].startswith('/Game/Corpus/'):
             raise ValueError('Export only explicit /Game/Corpus/ copies')
@@ -35,6 +35,7 @@ def main():
             raise ValueError('Cannot load ' + row['object'])
         mode = row.get('mode', 'source')
         methods = {
+            'tagged-hybrid': (unreal.CyUEDiffReferenceLibrary.export_tagged_hybrid_reference, 'cyuediff.original-tagged-hybrid-reference/1'),
             'physical-cloth-geometry': (unreal.CyUEDiffReferenceLibrary.export_physical_cloth_geometry_reference, 'cyuediff.unreal-physical-cloth-geometry-reference/1'),
             'physical-cloth': (unreal.CyUEDiffReferenceLibrary.export_physical_cloth_reference, 'cyuediff.unreal-physical-cloth-reference/1'),
             'compressed-curves': (unreal.CyUEDiffReferenceLibrary.export_compressed_curves_reference, 'cyuediff.unreal-compressed-curves-reference/1'),

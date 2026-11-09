@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.184.0 LANGUAGES C CXX)
+project(CyUEDiff VERSION 0.185.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -367,6 +367,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_native_matrix_tests tests/native_matrix_tests.cpp)
     target_link_libraries(cyuediff_native_matrix_tests PRIVATE CyUEDiff::Core)
     add_test(NAME native_matrices_planes COMMAND cyuediff_native_matrix_tests)
+    add_executable(cyuediff_tagged_hybrid_tests tests/tagged_hybrid_tests.cpp)
+    target_link_libraries(cyuediff_tagged_hybrid_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME tagged_hybrid COMMAND cyuediff_tagged_hybrid_tests)
     add_executable(cyuediff_tagged_native_tests tests/tagged_native_tests.cpp)
     target_link_libraries(cyuediff_tagged_native_tests PRIVATE CyUEDiff::Core)
     add_test(NAME tagged_native_geometry COMMAND cyuediff_tagged_native_tests)
@@ -442,6 +445,9 @@ if(BUILD_TESTING)
             add_test(NAME string_encoding_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/string_encoding_cli_tests.py" "$<TARGET_FILE:cyuediff>"
                 "$<TARGET_FILE:cyuediff_string_encoding_tests>")
+            add_test(NAME tagged_hybrid_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/tagged_hybrid_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_tagged_hybrid_tests>")
             add_test(NAME physical_cloth_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/physical_cloth_cli_tests.py" "$<TARGET_FILE:cyuediff>"
                 "$<TARGET_FILE:cyuediff_schema_hybrid_tests>")
@@ -808,6 +814,11 @@ if(BUILD_TESTING)
         add_executable(cyuediff_view_state_ui_tests tests/view_state_ui_tests.cpp)
         target_link_libraries(cyuediff_view_state_ui_tests PRIVATE CyUEDiff::UI)
         add_test(NAME desktop_view_state_ui COMMAND cyuediff_view_state_ui_tests)
+        if(Python3_Interpreter_FOUND AND CYUEDIFF_BUILD_CLI)
+            add_test(NAME desktop_tagged_hybrid_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/tagged_hybrid_desktop_tests.py" "$<TARGET_FILE:cyuediff_desktop>"
+                "$<TARGET_FILE:cyuediff_tagged_hybrid_tests>")
+        endif()
         add_executable(cyuediff_container_view_tests tests/container_view_tests.cpp apps/desktop/container_view.cpp)
         target_link_libraries(cyuediff_container_view_tests PRIVATE cyuediff_desktop_model CyUEDiff::UI)
         add_test(NAME desktop_container_view COMMAND cyuediff_container_view_tests)
@@ -1153,4 +1164,5 @@ install(DIRECTORY examples/property_page_consumer DESTINATION ${CMAKE_INSTALL_DA
 
 install(DIRECTORY examples/physical_cloth_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 
+install(FILES scripts/validate_tagged_hybrids.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
 install(FILES scripts/validate_physical_cloth_geometry.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)

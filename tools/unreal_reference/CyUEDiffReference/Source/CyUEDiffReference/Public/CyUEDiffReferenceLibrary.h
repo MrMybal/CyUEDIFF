@@ -8,6 +8,12 @@ UCLASS()
 class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctionLibrary {
     GENERATED_BODY()
   public:
+    // Original unsaved source-only test assets under a fixed private prefix; never overwrites a file.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static UObject *CreatePrivateHybridSource(const FString &PackageName, int32 Variant);
+    // Read-only typed reference after the Engine reloaded the source asset.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportTaggedHybridReference(UObject *Object);
     // Original bounded procedural test geometry; fixed private package, never overwrites an asset.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static UStaticMesh *CreatePrivateGrid(int32 Cells);

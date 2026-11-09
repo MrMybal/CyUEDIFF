@@ -129,3 +129,8 @@ The original large-object expanded-table limit now has a practical source/cooked
 ### Physical cloth Core/CLI
 
 Selected UE 5.3 physical geometry, twelve-slot bone records, stored maps/tethers, interpreted transitions and reference-pose wrap queries now have an owned typed Core model and CLI/installed-SDK paths. Explicit base render-source GUID/LOD/index bounds are checked against actual physical vertices. Nonreplacement map defaults and unavailable fields remain incomplete. See [PHYSICAL_CLOTH.md](PHYSICAL_CLOTH.md). Dedicated EN/FR physical desktop review is now bound to the selected container profile; broader source/native/default/delivery workstreams remain open.
+
+
+## Tagged source hybrid foundation — 0.185
+
+Certified source struct prefixes/tails now share the Core's existing tagged parser, catalogue registry and limits. Original actual Engine-saved/reloaded plugin assets demonstrate nested/repeated values, exact int64 fields, CLI/SDK differences and EN/FR scoped review. This closes the explicit source prefix/tail composition gap; legacy missing map/set type identities, source metadata completion, defaults, further producer coverage and final updated distribution remain open. See [HYBRID_STRUCTS.md](HYBRID_STRUCTS.md).

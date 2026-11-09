@@ -17,11 +17,17 @@ struct SerializationProfile {
     bool matches(const PackageSummary &) const;
 };
 enum class DecoderKind { struct_value, native_export };
+enum class DecoderPrefix { none, tagged_properties };
 struct DecoderContext {
     const PackageSummary &summary;
     const ObjectExport &object;
     // For array elements the window ends at the enclosing property's end, not the element's end.
     bool exact_size;
+    // Shared enclosing work/text budget; include failed reads. Optional for standalone hosts.
+    std::function<void(std::uint32_t, std::uint64_t)> charge;
+    std::uint32_t max_depth = UINT32_MAX;
+    // Borrowed for this callback only. Present for a certified tagged-prefix native tail.
+    const Json *tagged_properties = nullptr;
 };
 // Sequential, little-endian, borrowed for the callback duration. No seek or whole-file access.
 class DecoderInput {
@@ -63,6 +69,8 @@ struct AssetDecoder {
     std::string target;
     SerializationProfile profile;
     DecoderCallback decode;
+    // Struct callbacks read the native tail after an explicitly certified tagged prefix.
+    DecoderPrefix prefix = DecoderPrefix::none;
 };
 // Immutable after construction. Callbacks and their captured state must support the host's threading.
 class DecoderRegistry {

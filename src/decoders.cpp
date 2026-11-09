@@ -31,6 +31,9 @@ DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries) : entries_(s
         for (unsigned char c : entry.id)
             if (c < 0x21 || c > 0x7e)
                 throw Error("decoder-registration", "Decoder ID must be printable ASCII without spaces");
+        if (entry.prefix != DecoderPrefix::none &&
+            (entry.kind != DecoderKind::struct_value || entry.prefix != DecoderPrefix::tagged_properties))
+            throw Error("decoder-registration", "Only struct values support a tagged property prefix");
         range(entry.profile.ue4);
         range(entry.profile.ue5);
         for (const auto &version : entry.profile.custom_versions) {
@@ -129,12 +132,17 @@ class ExtensionInput final : public DecoderInput {
     }
 };
 void validate_json(const Json &value, const ReadOptions &options, std::uint64_t &nodes, std::uint64_t &bytes,
-                   unsigned depth = 0) {
+                   const std::function<void(std::uint32_t, std::uint64_t)> &charge, unsigned depth = 0) {
     if (depth > options.max_depth || ++nodes > options.max_properties)
         throw Error("decoder-limit", "Decoder result exceeds node/depth limit");
+    options.control.check();
+    if (charge)
+        charge(1, 0);
     auto text = [&](const std::string &s) {
         if (s.size() > options.max_string_bytes || s.size() > options.max_property_bytes - bytes)
             throw Error("decoder-limit", "Decoder result exceeds text limit");
+        if (charge)
+            charge(0, s.size());
         bytes += s.size();
     };
     if (value.is_string())
@@ -147,25 +155,43 @@ void validate_json(const Json &value, const ReadOptions &options, std::uint64_t 
         for (auto it = value.begin(); it != value.end(); ++it) {
             if (value.is_object())
                 text(it.key());
-            validate_json(it.value(), options, nodes, bytes, depth + 1);
+            validate_json(it.value(), options, nodes, bytes, charge, depth + 1);
         }
 }
 } // namespace
+void validate_extension_value(const Json &value, const ReadOptions &options,
+                              const std::function<void(std::uint32_t, std::uint64_t)> &charge,
+                              unsigned depth) {
+    if (depth > options.max_depth)
+        throw Error("decoder-limit", "Decoder result exceeds enclosing depth");
+    auto selected = options;
+    selected.max_depth -= depth;
+    std::uint64_t nodes = 0, bytes = 0;
+    validate_json(value, selected, nodes, bytes, charge);
+    if (value.dump().size() > options.max_property_bytes)
+        throw Error("decoder-limit", "Decoder JSON exceeds byte limit");
+}
 Json decode_extension(Archive &a, const Package &package, const ObjectExport &object,
                       const ReadOptions &options, const AssetDecoder &decoder, std::uint64_t end,
-                      bool exact_size) {
+                      bool exact_size, const std::function<void(std::uint32_t, std::uint64_t)> &charge,
+                      unsigned depth, bool prefix_consumed, const Json *tagged_properties) {
     if (end < a.tell() || end - a.tell() > options.max_property_bytes)
         throw Error("decoder-limit", "Decoder input exceeds byte limit", a.tell());
     Archive::ReadLimit limit(a, end);
     ExtensionInput input(a, package, options, end);
     try {
-        auto value = decoder.decode(input, {package.summary, object, exact_size});
+        if (depth > options.max_depth)
+            throw Error("decoder-limit", "Native decoder exceeds enclosing depth", a.tell());
+        auto selected = options;
+        selected.max_depth -= depth;
+        auto value = decoder.decode(
+            input, {package.summary, object, exact_size, charge, selected.max_depth, tagged_properties});
         if (input.failed())
             throw Error("decoder-input", "Decoder suppressed an input error", a.tell());
-        if ((exact_size && input.remaining()) || (!exact_size && !input.position()))
+        if ((exact_size && input.remaining()) || (!exact_size && !input.position() && !prefix_consumed))
             throw Error("decoder-consumption", "Decoder did not consume its required payload", a.tell());
         std::uint64_t nodes = 0, bytes = 0;
-        validate_json(value, options, nodes, bytes);
+        validate_json(value, selected, nodes, bytes, charge);
         if (value.dump().size() > options.max_property_bytes)
             throw Error("decoder-limit", "Decoder JSON exceeds byte limit", a.tell());
         return {{"decoder", decoder.id}, {"data", std::move(value)}};

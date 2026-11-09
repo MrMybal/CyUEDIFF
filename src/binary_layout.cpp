@@ -109,13 +109,18 @@ VersionRange version_range(const Json &value) {
     return result;
 }
 AssetDecoder binding(const Json &value) {
-    fields(value, {"id", "kind", "target", "profile", "layout"});
+    fields(value, {"id", "kind", "target", "profile", "layout", "prefix"});
     AssetDecoder result;
     result.id = word(value.at("id"));
     result.target = word(value.at("target"));
     const auto kind = word(value.at("kind"));
     require(kind == "struct" || kind == "native-export", "Unsupported layout decoder kind");
     result.kind = kind == "struct" ? DecoderKind::struct_value : DecoderKind::native_export;
+    if (value.contains("prefix")) {
+        require(result.kind == DecoderKind::struct_value && word(value["prefix"]) == "tagged-properties",
+                "Unsupported decoder prefix");
+        result.prefix = DecoderPrefix::tagged_properties;
+    }
     const auto &profile = value.at("profile");
     fields(profile, {"ue4", "ue5", "customVersions"});
     result.profile.ue4 = version_range(profile.at("ue4"));
@@ -494,8 +499,19 @@ BinaryLayouts::decoder_registry(const BinaryLayoutReadOptions &options) const {
             options.control.check();
             auto entry = binding(value);
             auto name = value["layout"].get<std::string>();
-            entry.decode = [catalog = *this, name, options](DecoderInput &input, const DecoderContext &) {
-                return catalog.decode(input, name, options);
+            entry.decode = [catalog = *this, name, options](DecoderInput &input,
+                                                            const DecoderContext &context) {
+                auto selected = options;
+                selected.max_depth = static_cast<std::uint32_t>(
+                    std::min<std::uint64_t>(selected.max_depth, std::uint64_t(context.max_depth) + 1));
+                selected.charge = [host = options.charge, enclosing = context.charge](std::uint32_t values,
+                                                                                      std::uint64_t bytes) {
+                    if (enclosing)
+                        enclosing(values, bytes);
+                    if (host)
+                        host(values, bytes);
+                };
+                return catalog.decode(input, name, selected);
             };
             result.push_back(std::move(entry));
         }

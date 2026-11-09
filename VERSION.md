@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.185.0 — Tagged source hybrids
+
+The Core now combines an explicitly certified tagged-property prefix with a native struct tail through existing layout catalogues. Nested/repeated values, shared budgets, whole opaque fallback and a borrowed prefix context for conditional host decoders are available in CLI and EN/FR desktop review. Actual Engine-reloaded original plugin assets validate exact values and named differences through a fresh installed SDK. Legacy map/set tags with missing struct identities and class defaults remain separate work. Use matching 0.185 headers/libraries: DecoderContext and AssetDecoder were extended. See [HYBRID_STRUCTS.md](docs/HYBRID_STRUCTS.md).
+
 ## 0.184.0 — Local physical-cloth source development
 
 The independent Core/CLI now project selected UE 5.3 physical cloth geometry, bone/weight/tether data and modern native transitions. Focused queries, named stored differences, reference-pose Chaos wrap algebra, OBJ output and explicitly bound render-source index checks are available through a fresh installed SDK example. Map deltas and missing constructor defaults retain incomplete coverage; the EN/FR desktop now binds independently selected physical LODs, focused vertex/tether differences, stored configuration and reference-pose wire previews. Workspace version 13 retains the independent profiles, objects, LODs, selection and camera; older formats migrate with the new decoder disabled. See [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).

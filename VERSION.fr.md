@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.185.0 — Structures source hybrides
+
+Le Core combine désormais un préfixe de propriétés balisées explicitement certifié et une suite native via les catalogues existants. Valeurs imbriquées/répétées, budgets partagés, repli opaque complet et accès temporaire au préfixe pour les décodeurs C++ conditionnels sont disponibles dans la CLI et l’inspection EN/FR. Des assets originaux de plugin sauvegardés puis rechargés par Unreal valident les valeurs exactes et différences nommées via un SDK installé séparément. Les types internes absents des anciennes maps/sets et les valeurs par défaut restent à traiter. Utilisez les en-têtes/bibliothèques 0.185 correspondants : DecoderContext et AssetDecoder ont été étendus. Voir [HYBRID_STRUCTS.md](docs/HYBRID_STRUCTS.md).
+
 ## 0.184.0 — Sources locales du tissu physique
 
 Le Core indépendant et la CLI projettent désormais la géométrie physique de tissu UE 5.3 sélectionnée, les données d’os/poids/attaches et les transitions natives modernes. Les requêtes ciblées, différences stockées nommées, correspondances de pose de référence Chaos, export OBJ et contrôles explicites des indices de rendu sont disponibles via un nouvel exemple de SDK installé. Les deltas de cartes et valeurs par défaut de constructeurs absentes gardent une couverture incomplète ; l’interface EN/FR propose désormais des LODs physiques indépendants, les différences ciblées de sommets/attaches, la configuration stockée et les aperçus filaires de pose de référence. Les espaces de travail version 13 conservent les profils, objets, LODs, sélection et caméra ; les anciens formats migrent avec le nouveau lecteur désactivé. Voir [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).

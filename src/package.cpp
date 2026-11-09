@@ -150,7 +150,19 @@ class PropertyReader {
     const ObjectExport &object;
     const ReadOptions &options;
     std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0, native_nodes_ = 0;
-    std::uint64_t text_blob_bytes_ = 0;
+    std::uint64_t text_blob_bytes_ = 0, extension_nodes_ = 0, extension_text_ = 0;
+    std::uint32_t opaque_properties_ = 0;
+    void charge_extension(std::uint32_t values, std::uint64_t bytes) {
+        options.control.check();
+        if (extension_nodes_ > options.max_properties || count_ > options.max_properties - extension_nodes_ ||
+            values > options.max_properties - extension_nodes_ - count_ ||
+            extension_text_ > options.max_property_bytes ||
+            bytes > options.max_property_bytes - extension_text_)
+            throw Error("decoder-limit", "Native values exceed enclosing property work/text budget",
+                        a.tell());
+        extension_nodes_ += values;
+        extension_text_ += bytes;
+    }
     void depth_check(unsigned depth) const {
         if (depth > options.max_depth)
             throw Error("limit", "Property nesting exceeds limit", a.tell());
@@ -184,7 +196,7 @@ class PropertyReader {
         t.name = fname(a, p);
         if (t.name == "None")
             return t;
-        if (++count_ > options.max_properties)
+        if (++count_ > options.max_properties || extension_nodes_ > options.max_properties - count_)
             throw Error("limit", "Property count exceeds limit", a.tell());
         if (p.summary.ue5_version >= 1012) {
             t.type = full_type(0);
@@ -287,8 +299,34 @@ class PropertyReader {
         if (n == "StructProperty" && !t.parameters.empty()) {
             const auto &s = t.parameters[0].name;
             if (options.decoders)
-                if (const auto *decoder = options.decoders->find(DecoderKind::struct_value, s, p.summary))
-                    return detail::decode_extension(a, p, object, options, *decoder, end, exact_size);
+                if (const auto *decoder = options.decoders->find(DecoderKind::struct_value, s, p.summary)) {
+                    const auto begin = a.tell();
+                    const auto opaque_before = opaque_properties_;
+                    Json prefix;
+                    if (decoder->prefix == DecoderPrefix::tagged_properties) {
+                        prefix = properties(end, depth + 1, false);
+                        if (opaque_properties_ != opaque_before)
+                            throw Error("hybrid-prefix", "Tagged prefix contains unavailable properties",
+                                        begin);
+                        detail::validate_extension_value(
+                            prefix, options,
+                            [&](std::uint32_t values, std::uint64_t bytes) {
+                                charge_extension(values, bytes);
+                            },
+                            depth);
+                    }
+                    auto result = detail::decode_extension(
+                        a, p, object, options, *decoder, end, exact_size,
+                        [&](std::uint32_t values, std::uint64_t bytes) { charge_extension(values, bytes); },
+                        depth, a.tell() != begin,
+                        decoder->prefix == DecoderPrefix::tagged_properties ? &prefix : nullptr);
+                    if (decoder->prefix == DecoderPrefix::tagged_properties) {
+                        result["prefix"] = "tagged-properties";
+                        result["data"] = {{"properties", std::move(prefix)},
+                                          {"native", std::move(result["data"])}};
+                    }
+                    return result;
+                }
             if (s == "RichCurveKey") {
                 if (p.summary.ue4_version != 522 || p.summary.licensee_version ||
                     (p.summary.ue5_version != 0 && p.summary.ue5_version != 1004 &&
@@ -579,6 +617,7 @@ class PropertyReader {
                 if (e.code == "cancelled")
                     throw;
                 partial = true;
+                ++opaque_properties_;
                 entry.erase("value");
                 entry["opaque"] = {{"bytes", t.bytes}, {"reason", e.code}};
                 if (options.fingerprints)
