@@ -30,6 +30,7 @@ void ContainerView::register_translations() {
     MeshSkinView::register_translations();
     RenderMorphView::register_translations();
     ClothView::register_translations();
+    VertexAttributeView::register_translations();
     PropertyView::register_translations();
     cyui::registerTranslations(
         "fr",
@@ -357,6 +358,7 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     mesh_skin_ = false;
     mesh_morphs_ = false;
     mesh_cloth_ = false;
+    mesh_attributes_ = false;
     pixel_rows_.clear();
     pixel_ = 0;
     diagnostics_.clear();
@@ -429,6 +431,14 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                 if (row.cloth_available)
                     row.cloth.set_cloths(after ? peer_cloth : own_cloth, after ? own_cloth : peer_cloth,
                                          peer != nullptr && row.comparison_known);
+                const auto own_attributes = preview.geometry->vertex_attributes,
+                           peer_attributes = other ? other->vertex_attributes : nullptr;
+                row.attributes_available = (own_attributes && !own_attributes->channels.empty()) ||
+                                           (peer_attributes && !peer_attributes->channels.empty());
+                if (row.attributes_available)
+                    row.attributes.set_attributes(after ? peer_attributes : own_attributes,
+                                                  after ? own_attributes : peer_attributes,
+                                                  peer != nullptr && row.comparison_known);
                 mesh_rows_.push_back(std::move(row));
             }
             diagnostics_.insert(diagnostics_.end(), side.mesh_diagnostics.begin(),
@@ -655,7 +665,9 @@ Json ContainerView::mesh_report() const {
                         {"morphsAvailable", r.morphs_available},
                         {"morphs", r.morphs_available ? r.morphs.report() : Json(nullptr)},
                         {"clothAvailable", r.cloth_available},
-                        {"cloth", r.cloth_available ? r.cloth.report() : Json(nullptr)}});
+                        {"cloth", r.cloth_available ? r.cloth.report() : Json(nullptr)},
+                        {"attributesAvailable", r.attributes_available},
+                        {"attributes", r.attributes_available ? r.attributes.report() : Json(nullptr)}});
     return rows;
 }
 Json ContainerView::property_report() const {
@@ -737,6 +749,9 @@ Json ContainerView::view_state() const {
         result["mesh"] = mesh_rows_[mesh_].key;
         result["meshAfter"] = mesh_rows_[mesh_].after;
         result["meshView"] = mesh_rows_[mesh_].view.view_state();
+        result["meshAttributes"] = mesh_attributes_;
+        if (mesh_rows_[mesh_].attributes_available)
+            result["meshAttributeView"] = mesh_rows_[mesh_].attributes.view_state();
         result["meshCloth"] = mesh_cloth_;
         if (mesh_rows_[mesh_].cloth_available)
             result["meshClothView"] = mesh_rows_[mesh_].cloth.view_state();
@@ -876,6 +891,10 @@ void ContainerView::restore_view_state(const Json &state) {
                 mesh_ = static_cast<int>(i);
                 if (state.contains("meshView"))
                     mesh_rows_[i].view.restore_view_state(state["meshView"]);
+                if (state.contains("meshAttributes"))
+                    mesh_attributes_ = state["meshAttributes"].get<bool>();
+                if (state.contains("meshAttributeView") && mesh_rows_[i].attributes_available)
+                    mesh_rows_[i].attributes.restore_view_state(state["meshAttributeView"]);
                 if (state.contains("meshCloth"))
                     mesh_cloth_ = state["meshCloth"].get<bool>();
                 if (state.contains("meshClothView") && mesh_rows_[i].cloth_available)
@@ -1141,18 +1160,28 @@ ContainerAction ContainerView::draw(bool busy) {
             mesh_skin_) {
             mesh_morphs_ = false;
             mesh_cloth_ = false;
+            mesh_attributes_ = false;
         }
         if (row.morphs_available &&
             ImGui::Checkbox(cyui::trLabel("Render morph targets").c_str(), &mesh_morphs_) && mesh_morphs_) {
             mesh_skin_ = false;
             mesh_cloth_ = false;
+            mesh_attributes_ = false;
         }
         if (row.cloth_available && ImGui::Checkbox(cyui::trLabel("Cloth mappings").c_str(), &mesh_cloth_) &&
             mesh_cloth_) {
             mesh_skin_ = false;
             mesh_morphs_ = false;
+            mesh_attributes_ = false;
         }
-        if (row.cloth_available && mesh_cloth_)
+        if (row.attributes_available &&
+            ImGui::Checkbox(cyui::trLabel("Vertex attributes").c_str(), &mesh_attributes_) &&
+            mesh_attributes_) {
+            mesh_skin_ = mesh_morphs_ = mesh_cloth_ = false;
+        }
+        if (row.attributes_available && mesh_attributes_)
+            row.attributes.draw("##cooked-attributes");
+        else if (row.cloth_available && mesh_cloth_)
             row.cloth.draw("##cooked-cloth");
         else if (row.morphs_available && mesh_morphs_)
             row.morphs.draw("##cooked-morphs");

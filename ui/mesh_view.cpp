@@ -169,6 +169,29 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                     changed_overlap_vertices.insert(static_cast<std::uint32_t>(std::stoul(v.key())));
         }
     }
+    std::set<std::uint32_t> changed_attribute_vertices;
+    if (mesh && peer && mesh->vertex_attributes && peer->vertex_attributes &&
+        (current.contains("vertexAttributes") || remote.contains("vertexAttributes"))) {
+        const Json empty = Json::object();
+        const auto &a =
+            current.contains("vertexAttributes") ? current["vertexAttributes"]["channels"] : empty;
+        const auto &b = remote.contains("vertexAttributes") ? remote["vertexAttributes"]["channels"] : empty;
+        std::set<std::string> names;
+        for (auto c = a.begin(); c != a.end(); ++c)
+            names.insert(c.key());
+        for (auto c = b.begin(); c != b.end(); ++c)
+            names.insert(c.key());
+        for (const auto &name : names) {
+            const auto &x = a.contains(name) ? a[name]["vertices"] : empty;
+            const auto &y = b.contains(name) ? b[name]["vertices"] : empty;
+            for (auto v = x.begin(); v != x.end(); ++v)
+                if (!y.contains(v.key()) || v.value() != y[v.key()])
+                    changed_attribute_vertices.insert(static_cast<std::uint32_t>(std::stoul(v.key())));
+            for (auto v = y.begin(); v != y.end(); ++v)
+                if (!x.contains(v.key()))
+                    changed_attribute_vertices.insert(static_cast<std::uint32_t>(std::stoul(v.key())));
+        }
+    }
     auto different = [&](const char *table, std::uint32_t id) {
         auto key = std::to_string(id);
         return !peer || !remote.at(table).contains(key) ||
@@ -212,7 +235,9 @@ void MeshView::set_mesh(std::shared_ptr<const MeshGeometry> mesh, std::shared_pt
                     if (!peer_edges.count(key))
                         change = after ? ChangeKind::added : ChangeKind::removed;
                     else {
-                        bool changed = changed_overlap_vertices.count(key.first) ||
+                        bool changed = changed_attribute_vertices.count(key.first) ||
+                                       changed_attribute_vertices.count(key.second) ||
+                                       changed_overlap_vertices.count(key.first) ||
                                        changed_overlap_vertices.count(key.second) ||
                                        changed_cloth_vertices.count(key.first) ||
                                        changed_cloth_vertices.count(key.second) ||

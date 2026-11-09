@@ -1,4 +1,5 @@
 #include <cyuediff/mesh_overlaps.hpp>
+#include <cyuediff/vertex_attributes.hpp>
 #include "container_document.hpp"
 #include <algorithm>
 #include <map>
@@ -329,6 +330,12 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                                  std::uint64_t(g.triangles.size()) * sizeof(MeshTriangle);
                         for (const auto &v : g.instances)
                             bytes += v.uvs.size() * sizeof(std::array<float, 2>);
+                        if (g.vertex_attributes)
+                            for (const auto &entry : g.vertex_attributes->channels) {
+                                const auto &a = *entry.second;
+                                bytes += a.encoded().size() + std::uint64_t(a.vertex_count()) *
+                                                                  (128 + std::uint64_t(a.components()) * 64);
+                            }
                         if (g.vertex_overlaps) {
                             for (const auto &s : g.vertex_overlaps->sections) {
                                 bytes += sizeof(MeshSectionOverlaps) + s->indices.size() * 48 +

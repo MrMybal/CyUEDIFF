@@ -280,6 +280,17 @@ inline void validate(const Json &v, std::string_view kind) {
                                                                  : 3);
                     known = true;
                 }
+        } else if (kind == "vertex-attribute") {
+            string({"channel", "filter"});
+            flag({"changedOnly"});
+            child("properties", "property");
+            if (key == "vertex") {
+                if (!x.is_null()) {
+                    require(x.is_number_integer());
+                    scalar(x, 0, 4294967295.);
+                }
+                known = true;
+            }
         } else if (kind == "cloth") {
             string({"filter"});
             flag({"changedOnly"});
@@ -332,6 +343,8 @@ inline void validate(const Json &v, std::string_view kind) {
             child("pixelView", "texture");
             child("meshView", "mesh");
             child("meshSkinView", "graph-inspection");
+            child("meshAttributeView", "vertex-attribute");
+            flag({"meshAttributes"});
             child("meshClothView", "cloth");
             flag({"meshCloth"});
             child("meshRenderMorphView", "render-morph");
@@ -351,7 +364,7 @@ inline void validate(const Json &v, std::string_view kind) {
     }
     if (kind == "container")
         require(int(v.value("meshSkin", false)) + int(v.value("meshRenderMorphs", false)) +
-                    int(v.value("meshCloth", false)) <=
+                    int(v.value("meshCloth", false)) + int(v.value("meshAttributes", false)) <=
                 1);
     if(kind=="skeleton")
         require(int(v.value("posePreview",false))+int(v.value("animationPreview",false))+int(v.value("attachmentsPreview",false))<=1);

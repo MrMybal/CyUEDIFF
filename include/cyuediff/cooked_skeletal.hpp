@@ -3,6 +3,7 @@
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/cloth.hpp>
 #include <cyuediff/mesh_overlaps.hpp>
+#include <cyuediff/vertex_attributes.hpp>
 #include <cyuediff/render_morphs.hpp>
 #include <optional>
 namespace cyuediff {
@@ -30,6 +31,8 @@ struct CookedSkeletalOptions {
     std::uint32_t max_cloth_influences = 5;
     // Aggregate stored section-local duplicate indices across LODs.
     std::uint32_t max_duplicate_indices = 12'000'000;
+    std::uint32_t max_vertex_attributes = 64, max_attribute_name_bytes = 4096;
+    std::uint64_t max_attribute_values = 8'000'000;
 };
 struct CookedSkeletalWeightProfile {
     std::string name, skin_profile_key;
@@ -61,6 +64,7 @@ struct CookedSkeletalLod {
     std::shared_ptr<const MeshGeometry> geometry;
     std::shared_ptr<const MeshRenderMorphs> morphs;
     std::shared_ptr<const MeshCloth> cloth;
+    std::shared_ptr<const MeshVertexAttributes> vertex_attributes;
     Json to_json(bool include_geometry = false) const;
 };
 struct CookedSkeletalMesh {
@@ -84,7 +88,7 @@ struct CookedSkeletalMesh {
 // through explicit MorphTargets references to native child UMorphTarget exports.
 // Stored cloth section/deformer mappings are typed and verified against the render buffer.
 // Stored duplicate-vertex tables are bounded and retain section-local correspondence.
-// Custom vertex attributes require another decoder.
+// Stored custom vertex attributes support finite float32/float16/UNorm8 components.
 // Later object-native data remains an identified opaque tail. No Unreal execution.
 CookedSkeletalMesh read_zen_skeletal_mesh(const Container &, std::size_t package_entry,
                                           const ZenReadOptions &, const ContainerReadOptions &,

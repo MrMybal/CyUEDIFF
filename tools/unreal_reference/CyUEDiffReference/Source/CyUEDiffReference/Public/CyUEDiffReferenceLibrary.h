@@ -40,6 +40,14 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     static bool PreparePrivateOverlaps(UObject *Asset, int32 Variant);
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportOverlapsReference(UObject *Asset);
+    // Original scalar vertex channels on private copies; never saves a file.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static bool PreparePrivateVertexAttributes(UObject *Asset, int32 Variant);
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportVertexAttributesReference(UObject *Asset);
+    // Original CPU-only channels encoded by the actual Engine, including vectors.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportVertexAttributesSyntheticReference();
     // Adds original morph deltas only to caller-prepared /Game/Corpus/Morph* copies; never saves.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateMorphs(UObject *Asset, int32 Variant);

@@ -170,7 +170,8 @@ struct Budget {
     const CookedSkeletalOptions &o;
     std::uint64_t vertices = 0, indices = 0, triangles = 0, sections = 0, influences = 0, output = 0;
     std::uint64_t profiles = 0, overrides = 0, morphs = 0, morph_batches = 0, morph_deltas = 0,
-                  cloth_mappings = 0, duplicate_indices = 0, duplicate_links = 0;
+                  cloth_mappings = 0, duplicate_indices = 0, duplicate_links = 0, attribute_channels = 0,
+                  attribute_values = 0;
     void add(std::uint64_t &counter, std::uint64_t n, std::uint64_t max, const char *s) {
         limit(counter <= max && n <= max - counter, s);
         counter += n;
@@ -795,11 +796,63 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
         if (g)
             g->render_morphs = lod.morphs;
     }
-    supported(r.count(b.o.max_sections) == 0, "Cooked skeletal vertex attributes require another decoder");
+    const auto attribute_count = r.count(b.o.max_vertex_attributes);
+    b.add(b.attribute_channels, attribute_count, b.o.max_vertex_attributes,
+          "Skeletal LODs exceed custom vertex attribute budget");
+    auto attributes = std::make_shared<MeshVertexAttributes>();
+    b.reserve(sizeof(MeshVertexAttributes) + std::uint64_t(attribute_count) * 1024);
+    std::set<std::string> attribute_names;
+    std::uint64_t attribute_name_bytes = 0;
+    for (unsigned ai = 0; ai < attribute_count; ++ai) {
+        b.o.control.checkpoint("cooked-skeletal-vertex-attributes", ai, attribute_count);
+        const auto name_start = r.pos;
+        auto name_options = b.o;
+        name_options.max_profile_name_bytes = b.o.max_attribute_name_bytes;
+        auto name = lod.inlined ? r.name(names) : r.string(name_options);
+        attribute_name_bytes += r.pos - name_start;
+        need(!name.empty() && attribute_names.insert(folded(name)).second,
+             "Empty or duplicate custom vertex attribute name");
+        limit(name.size() <= b.o.max_attribute_name_bytes, "Custom vertex attribute name exceeds budget");
+        const auto components = r.i32(), pixel = r.i32(), component_bytes = r.i32(), stride = r.i32();
+        need(components >= 1 && components <= 4, "Invalid custom vertex component count");
+        supported(pixel == 13 || pixel == 21 || pixel == 71, "Unsupported custom vertex pixel format");
+        const auto width = pixel == 13 ? 4 : pixel == 21 ? 2 : 1;
+        need(component_bytes == width && stride == width * components,
+             "Custom vertex component/record stride disagrees");
+        b.add(b.attribute_values, std::uint64_t(n) * components, b.o.max_attribute_values,
+              "Skeletal LODs exceed custom vertex value budget");
+        const auto byte_count =
+            r.array(1, static_cast<std::uint32_t>(std::min<std::uint64_t>(
+                           b.o.max_read_bytes, std::numeric_limits<std::uint32_t>::max())));
+        need(byte_count == std::uint64_t(n) * stride, "Custom vertex bytes disagree with render vertices");
+        b.reserve(name.size() + byte_count + std::uint64_t(n) * (128 + std::uint64_t(components) * 64));
+        std::vector<std::uint8_t> raw;
+        raw.reserve(byte_count);
+        for (unsigned i = 0; i < byte_count; ++i) {
+            if ((i & 4095) == 0)
+                b.o.control.check();
+            raw.push_back(static_cast<std::uint8_t>(r.number(1)));
+        }
+        VertexAttributeOptions options;
+        options.max_name_bytes = b.o.max_attribute_name_bytes;
+        options.max_vertices = b.o.max_vertices;
+        options.max_output_bytes = b.o.max_output_bytes;
+        options.control = b.o.control;
+        const auto format = pixel == 13   ? VertexAttributeFormat::float32
+                            : pixel == 21 ? VertexAttributeFormat::float16
+                                          : VertexAttributeFormat::unorm8;
+        auto channel =
+            std::make_shared<MeshVertexAttribute>(name, format, components, std::move(raw), options);
+        attributes->channels.emplace(name, std::move(channel));
+    }
+    lod.vertex_attributes = attributes;
+    if (g)
+        g->vertex_attributes = attributes;
     // The native counting archive inherits FArchive's no-op FName operator.
     // Physical inline FNames and streamed FMemoryArchive FStrings are excluded
     // from BuffersSize, even though both are present in the actual payload.
-    need(r.pos - begin >= profile_name_bytes && r.pos - begin - profile_name_bytes == stored_size,
+    need(r.pos - begin >= profile_name_bytes + attribute_name_bytes &&
+             r.pos - begin - profile_name_bytes - attribute_name_bytes == stored_size,
          "Skeletal counted buffer size disagrees with payload");
     std::uint64_t covered_indices = 0;
     for (const auto &s : lod.sections) {
@@ -866,7 +919,8 @@ void buffers(Cursor &r, CookedSkeletalLod &lod, Budget &b, const CookedSkeletalM
                    {"rayTracing", ray},
                    {"serializedBytes", r.pos - begin},
                    {"declaredBuffersSize", stored_size},
-                   {"profileNameBytes", profile_name_bytes}};
+                   {"profileNameBytes", profile_name_bytes},
+                   {"attributeNameBytes", attribute_name_bytes}};
 }
 } // namespace
 Json CookedSkeletalWeightProfile::to_json(bool include) const {
@@ -911,6 +965,8 @@ Json CookedSkeletalLod::to_json(bool include) const {
         j["weightProfiles"].push_back(profile.to_json(include));
     if (cloth)
         j["cloth"] = cloth->to_json(include);
+    if (vertex_attributes && !vertex_attributes->channels.empty())
+        j["vertexAttributes"] = vertex_attributes->to_json(include);
     if (morphs)
         j["morphs"] = morphs->to_json(include);
     if (include && geometry)

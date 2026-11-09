@@ -94,7 +94,7 @@ Independent validation uses seven newly cooked private mesh copies, including un
 
 ## Compressed render morphs — post-0.181 development
 
-Loaded LODs now decode their native compressed morph buffer and bind target names through the mapped `MorphTargets` references to native owned `UMorphTarget` exports. Sparse decoded position/normal contributions, preserved empty targets, exact native metadata and an EN/FR desktop inspector are available. Unknown names produce incomplete morph comparisons, with no invented removals. See [the full Core/CLI/SDK/UI contract and evidence](COMPRESSED_MORPHS.md). Subsequent cloth and duplicate-vertex additions are described below; custom attributes remain outside this decoder.
+Loaded LODs now decode their native compressed morph buffer and bind target names through the mapped `MorphTargets` references to native owned `UMorphTarget` exports. Sparse decoded position/normal contributions, preserved empty targets, exact native metadata and an EN/FR desktop inspector are available. Unknown names produce incomplete morph comparisons, with no invented removals. See [the full Core/CLI/SDK/UI contract and evidence](COMPRESSED_MORPHS.md). Subsequent cloth and duplicate-vertex additions are described below; custom attributes are described in the later addition below.
 
 ## Stored cloth deformer mappings — post-0.181 development
 
@@ -103,3 +103,7 @@ The reader now retains typed section/LOD-bias cloth mappings and asset binding i
 ## Stored duplicate-vertex tables — post-0.181 development
 
 Unstripped section-local duplicate-vertex arrays are now typed, bounded and checked against their render section. Core/CLI/SDK compare resolved relations independently of buffer packing, and desktop wireframes mark known relation changes. Stripped tables remain unavailable instead of becoming empty relations. See [the contract, validation and limits](MESH_OVERLAPS.md).
+
+## Named custom vertex attributes — post-0.181 development
+
+Finite float32/float16/UNorm8 channels now have typed Core/CLI/SDK values, named decoded differences and a focused EN/FR desktop channel/vertex inspector. The reader validates dimensions, names, budgets and native counted/physical windows. Storage fingerprints remain separate from semantic values; unknown peer coverage stays incomplete. See [VERTEX_ATTRIBUTES.md](VERTEX_ATTRIBUTES.md).

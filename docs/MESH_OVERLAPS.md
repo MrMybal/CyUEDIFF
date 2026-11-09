@@ -36,4 +36,6 @@ Original fixtures cover original/sparse/empty/repacked relations, nonzero sectio
 
 Private actual Engine examples are rebuilt from authorized copies, including an original UV variant that changes the cube's split render vertex count. The optional original reference adapter reads the Engine's CPU tables and calls its actual native serializer; it remains outside the runtime/SDK dependency graph. No private assets, generated native buffers or Engine implementation are distributed. See [validation evidence](VALIDATION.md).
 
-The selected format does not cover other Unreal/platform producers, custom vertex attribute buffers, physical cloth asset/configuration data or runtime deformation/tangent evaluation. The published 0.181 desktop archive predates this feature and remains unchanged.
+The selected format does not cover other Unreal/platform producers, further custom vertex formats, physical cloth asset/configuration data or runtime deformation/tangent evaluation. The published 0.181 desktop archive predates this feature and remains unchanged.
+
+Finite named custom attributes have a separate [stored value contract](VERTEX_ATTRIBUTES.md).

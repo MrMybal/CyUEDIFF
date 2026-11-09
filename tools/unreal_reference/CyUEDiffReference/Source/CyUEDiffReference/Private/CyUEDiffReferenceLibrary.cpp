@@ -639,6 +639,153 @@ FString UCyUEDiffReferenceLibrary::ExportOverlapsReference(UObject *Asset) {
     FJsonSerializer::Serialize(Out, Writer);
     return Result;
 }
+bool UCyUEDiffReferenceLibrary::PreparePrivateVertexAttributes(UObject *Asset, int32 Variant) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh || Variant < 0 || Variant > 1 ||
+        !Mesh->GetOutermost()->GetName().StartsWith(TEXT("/Game/Corpus/Attribute")))
+        return false;
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    FSkeletalMeshImportData Source;
+    Mesh->LoadLODImportedData(0, Source);
+    if (!Source.Points.Num() || !Source.Influences.Num()) {
+        FMeshDescription Description;
+        Mesh->GetMeshDescription(0, Description);
+        Source = FSkeletalMeshImportData::CreateFromMeshDescription(Description);
+    }
+    if (!Source.Points.Num() || Source.Points.Num() > 1000000 || Source.VertexAttributes.Num() ||
+        !Mesh->GetLODInfo(0) || Mesh->GetLODInfo(0)->VertexAttributes.Num())
+        return false;
+    const TArray<FString> Names = {TEXT("CyFloat"), TEXT("CyHalf"), TEXT("CyByte")};
+    for (int32 Kind = 0; Kind < Names.Num(); ++Kind) {
+        SkeletalMeshImportData::FVertexAttribute Attribute;
+        Attribute.ComponentCount = 1;
+        for (int32 I = 0; I < Source.Points.Num(); ++I) {
+            float Value = Kind == 2 ? float(I % 17) / 16.f : float((I % 31) - 15) * .03125f;
+            if (Variant && I % 97 == 0)
+                Value += .125f;
+            Attribute.AttributeValues.Add(Value);
+        }
+        Source.VertexAttributeNames.Add(Names[Kind]);
+        Source.VertexAttributes.Add(MoveTemp(Attribute));
+        FSkeletalMeshVertexAttributeInfo Info;
+        Info.Name = FName(Names[Kind]);
+        Info.EnabledForRender.Default = true;
+        Info.DataType = Kind == 0   ? ESkeletalMeshVertexAttributeDataType::Float
+                        : Kind == 1 ? ESkeletalMeshVertexAttributeDataType::HalfFloat
+                                    : ESkeletalMeshVertexAttributeDataType::NUInt8;
+        Mesh->GetLODInfo(0)->VertexAttributes.Add(Info);
+    }
+    Mesh->SaveLODImportedData(0, Source);
+    Mesh->SetLODImportedDataVersions(0, ESkeletalMeshGeoImportVersions::LatestVersion,
+                                     ESkeletalMeshSkinningImportVersions::LatestVersion);
+    Mesh->SetUseLegacyMeshDerivedDataKey(false);
+    Mesh->InvalidateDeriveDataCacheGUID();
+    Mesh->Build();
+    Mesh->PostEditChange();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    Mesh->MarkPackageDirty();
+    const auto *Render = Mesh->GetResourceForRendering();
+    if (!Render || !Render->LODRenderData.Num())
+        return false;
+    for (const auto &Name : Names)
+        if (!Render->LODRenderData[0].VertexAttributeBuffers.GetAttributeBuffer(FName(Name)))
+            return false;
+    return true;
+}
+FString UCyUEDiffReferenceLibrary::ExportVertexAttributesReference(UObject *Asset) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh || !Mesh->GetImportedModel())
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    auto *Render = Mesh->GetResourceForRendering();
+    if (!Render)
+        return FString();
+    auto Out = MakeShared<FJsonObject>();
+    Out->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-vertex-attributes-reference/1"));
+    Out->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Out->SetStringField(TEXT("object"), Mesh->GetPathName());
+    Values LODs;
+    for (int32 LI = 0; LI < Render->LODRenderData.Num(); ++LI) {
+        auto L = MakeShared<FJsonObject>();
+        auto &Buffers = Render->LODRenderData[LI].VertexAttributeBuffers;
+        TArray<uint8> Bytes;
+        FMemoryWriter Native(Bytes, true);
+        Buffers.Serialize(Native);
+        Values Raw;
+        for (auto B : Bytes)
+            Raw.Add(Number(B));
+        L->SetArrayField(TEXT("nativeBytes"), Raw);
+        Values Sources;
+        const auto *Info = Mesh->GetLODInfo(LI);
+        const auto &Model = Mesh->GetImportedModel()->LODModels[LI];
+        if (Info)
+            for (const auto &A : Info->VertexAttributes) {
+                const auto *Source = Model.VertexAttributes.Find(A.Name);
+                if (!A.IsEnabledForRender() || !Source || !Buffers.GetAttributeBuffer(A.Name))
+                    continue;
+                auto S = MakeShared<FJsonObject>();
+                S->SetStringField(TEXT("name"), A.Name.ToString());
+                S->SetNumberField(TEXT("dataType"), int32(A.DataType));
+                S->SetNumberField(TEXT("components"), Source->ComponentCount);
+                Values V;
+                for (auto F : Source->Values)
+                    V.Add(Number(F));
+                S->SetArrayField(TEXT("values"), V);
+                Sources.Add(Obj(S));
+            }
+        L->SetArrayField(TEXT("sourceValues"), Sources);
+        LODs.Add(Obj(L));
+    }
+    Out->SetArrayField(TEXT("lods"), LODs);
+    FString Result;
+    auto Writer = TJsonWriterFactory<>::Create(&Result);
+    FJsonSerializer::Serialize(Out, Writer);
+    return Result;
+}
+FString UCyUEDiffReferenceLibrary::ExportVertexAttributesSyntheticReference() {
+    FSkeletalMeshVertexAttributeRenderData Data;
+    Values Sources;
+    const TArray<float> Original = {-0.f, 1.f / 3.f, 1.f / 16777216.f, 65504.f, 1.001f, -1.001f, 2.f, -2.f,
+                                    0.f,  1.f};
+    for (int32 Kind = 0; Kind < 3; ++Kind)
+        for (int32 Components = 1; Components <= 4; ++Components) {
+            const FString Name = FString::Printf(TEXT("CyType%dVector%d"), Kind, Components);
+            const auto Type = Kind == 0   ? ESkeletalMeshVertexAttributeDataType::Float
+                              : Kind == 1 ? ESkeletalMeshVertexAttributeDataType::HalfFloat
+                                          : ESkeletalMeshVertexAttributeDataType::NUInt8;
+            TArray<float> ValuesIn;
+            Values JsonValues;
+            for (int32 I = 0; I < 3 * Components; ++I) {
+                const auto Value = Original[I % Original.Num()];
+                ValuesIn.Add(Value);
+                JsonValues.Add(Number(Value));
+            }
+            if (!Data.AddAttribute(FName(Name), Type, 3, Components, ValuesIn))
+                return FString();
+            auto S = MakeShared<FJsonObject>();
+            S->SetStringField(TEXT("name"), Name);
+            S->SetNumberField(TEXT("components"), Components);
+            S->SetNumberField(TEXT("dataType"), Kind);
+            S->SetArrayField(TEXT("values"), JsonValues);
+            Sources.Add(Obj(S));
+        }
+    TArray<uint8> Bytes;
+    FMemoryWriter Native(Bytes, true);
+    Data.Serialize(Native);
+    Values Raw;
+    for (auto B : Bytes)
+        Raw.Add(Number(B));
+    auto Out = MakeShared<FJsonObject>();
+    Out->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-vertex-attributes-synthetic/1"));
+    Out->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Out->SetNumberField(TEXT("vertices"), 3);
+    Out->SetArrayField(TEXT("sourceValues"), Sources);
+    Out->SetArrayField(TEXT("nativeBytes"), Raw);
+    FString Result;
+    auto Writer = TJsonWriterFactory<>::Create(&Result);
+    FJsonSerializer::Serialize(Out, Writer);
+    return Result;
+}
 bool UCyUEDiffReferenceLibrary::PreparePrivateMorphs(UObject *Asset, int32 Variant) {
     auto *Mesh = Cast<USkeletalMesh>(Asset);
     if (!Mesh || Variant < 0 || Variant > 1 ||

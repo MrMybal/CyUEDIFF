@@ -1,5 +1,6 @@
 #include <cyuediff/cloth.hpp>
 #include <cyuediff/mesh_overlaps.hpp>
+#include <cyuediff/vertex_attributes.hpp>
 #include <cyuediff/render_morphs.hpp>
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/mesh_morphs.hpp>
@@ -654,6 +655,8 @@ Json MeshGeometry::to_json() const {
         morphs->validate(*this);
         result["morphs"] = morphs->to_json();
     }
+    if (vertex_attributes && !vertex_attributes->channels.empty())
+        result["vertexAttributes"] = vertex_attributes->semantic_snapshot();
     if (vertex_overlaps)
         result["vertexOverlaps"] = vertex_overlaps->semantic_snapshot();
     if (cloth)

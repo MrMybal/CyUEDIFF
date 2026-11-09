@@ -109,3 +109,8 @@ Stored UE 5.3 Windows cloth section bindings, per-LOD-bias render vertex mapping
 ### Retained skeletal vertex-overlap tables — post-0.181 development
 
 The selected UE 5.3 Windows Core/CLI/SDK reader now exposes typed raw section-local overlap arrays, exact native fingerprints, focused render-vertex queries and scoped relation differences. Aggregate raw/resolved limits prevent window expansion; stripped tables remain unavailable. Desktop wires highlight changed known relations through the existing EN/FR mesh views. See [MESH_OVERLAPS.md](MESH_OVERLAPS.md). Custom skeletal attributes, physical cloth assets, broader native/plugin/producer/runtime coverage and final distribution remain open; this milestone does not complete the full product goal or imply a new archive/push/release.
+
+
+### Named cooked vertex attributes — post-0.181 development
+
+The selected UE 5.3 Windows reader now exposes finite float32/float16/UNorm8 channels with one to four components, exact owned bytes and focused typed values. Core/CLI/SDK compare decoded named values independently of encoding. The EN/FR desktop adds channel/vertex search, change navigation, focused vectors, incident edge highlights and persisted state; unknown peer coverage stays incomplete. See [VERTEX_ATTRIBUTES.md](VERTEX_ATTRIBUTES.md). Further native/plugin/producer/runtime coverage, physical cloth assets and final distribution remain open; this addition does not complete the full product goal or imply a push/release.

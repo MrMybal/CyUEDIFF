@@ -19,3 +19,5 @@ The consumer also includes named compressed render morphs when present in suppor
 Optional manifest `clothReference` paths add validation of stored section bindings, one/five-influence LOD-bias mappings, cached/indexed render windows and exact decoded mapping record bytes against actual Engine operator output. The consumer remains Core-only. Physical simulation meshes and runtime cloth poses are outside this stored-mapping scope. See the installed `CLOTH.md` contract.
 
 The selected reader also exposes retained typed section overlap arrays and focused `neighbors(render_vertex)` queries. Optional manifest `overlapsReference` checks every native serialized byte and resolved relation against an independent Engine reference; stripped tables are unavailable. See [MESH_OVERLAPS.md](../../docs/MESH_OVERLAPS.md).
+
+Named custom vertex attributes expose owned raw payloads and focused vectors through the installed Core. Optional manifest `vertexAttributesReference` checks exact native-decoded component bits and actual source quantization against the matching Engine export. See [VERTEX_ATTRIBUTES.md](../../docs/VERTEX_ATTRIBUTES.md).

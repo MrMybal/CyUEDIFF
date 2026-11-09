@@ -346,6 +346,136 @@ def compare_overlaps(actual, reference):
             'overlapIndices': indices, 'overlapLinks': links}
 
 
+def parse_attribute_reference(reference):
+    """Read the actual Engine memory-archive collection, independently of Core."""
+    raw = reference['nativeBytes']
+    if len(raw) > 512 * 1024 * 1024 or any(type(v) is not int or not 0 <= v <= 255 for v in raw):
+        raise ValueError('Invalid reference attribute bytes')
+    wire = bytes(raw)
+    at = 0
+
+    def number():
+        nonlocal at
+        if at + 4 > len(wire):
+            raise ValueError('Truncated attribute reference integer')
+        value = struct.unpack_from('<i', wire, at)[0]
+        at += 4
+        return value
+
+    count = number()
+    if not 0 <= count <= 1024:
+        raise ValueError('Invalid reference attribute count')
+    channels = []
+    names = set()
+    for _ in range(count):
+        length = number()
+        size = abs(length) * (2 if length < 0 else 1)
+        if not length or size > 8192 or at + size > len(wire):
+            raise ValueError('Invalid reference attribute name')
+        name_bytes = wire[at:at + size]
+        at += size
+        terminator = b'\0\0' if length < 0 else b'\0'
+        if not name_bytes.endswith(terminator):
+            raise ValueError('Unterminated reference attribute name')
+        name = name_bytes[:-len(terminator)].decode('utf-16-le' if length < 0 else 'utf-8')
+        if not name or name in names or '\0' in name:
+            raise ValueError('Invalid duplicate reference name')
+        names.add(name)
+        components, pixel, width, stride, element, size = [number() for _ in range(6)]
+        if not 1 <= components <= 4 or pixel not in (13, 21, 71):
+            raise ValueError('Unknown reference attribute format')
+        if width != {13: 4, 21: 2, 71: 1}[pixel] or stride != width * components or element != 1:
+            raise ValueError('Invalid reference attribute strides')
+        if size < 0 or size % stride or at + size > len(wire):
+            raise ValueError('Invalid reference attribute size')
+        data = wire[at:at + size]
+        at += size
+        if pixel == 13:
+            decoded = list(struct.unpack('<' + 'f' * (size // 4), data))
+        elif pixel == 21:
+            decoded = list(struct.unpack('<' + 'e' * (size // 2), data))
+        else:
+            decoded = [struct.unpack('<f', struct.pack('<f', v / 255.0))[0] for v in data]
+        if any(not math.isfinite(v) for v in decoded):
+            raise ValueError('Non-finite reference attribute')
+        channels.append({'name': name, 'components': components, 'pixel': pixel, 'bytes': data,
+                         'encoding': {13: 'float32', 21: 'float16', 71: 'unorm8'}[pixel],
+                         'vertices': size // stride, 'values': decoded})
+    if at != len(wire):
+        raise ValueError('Unexpected reference attribute tail')
+    return channels
+
+
+def compare_vertex_attributes(actual, reference):
+    if actual.get('schema') != 'cyuediff.cooked-skeletal-mesh/1' or actual.get('profile') != 'ue5.3-windows':
+        raise ValueError('Unexpected cooked skeletal schema/profile')
+    if reference.get('schema') != 'cyuediff.unreal-vertex-attributes-reference/1' or not reference.get('engine', '').startswith('5.3.'):
+        raise ValueError('Matching UE 5.3 vertex attribute reference required')
+    if actual.get('object') != reference.get('object') or len(actual['lods']) != len(reference['lods']):
+        raise ValueError('Attribute object/LOD identity differs')
+    values = source_values = channels = 0
+
+    def bits(value):
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError('Expected finite attribute value')
+        return struct.pack('<f', value)
+
+    def f32(value):
+        return struct.unpack('<f', struct.pack('<f', value))[0]
+
+    for lod, ref in zip(actual['lods'], reference['lods']):
+        expected = parse_attribute_reference(ref)
+        source = {x['name']: x for x in ref['sourceValues']}
+        if len(source) != len(ref['sourceValues']):
+            raise ValueError('Duplicate source attribute identities')
+        model = lod.get('vertexAttributes')
+        if model and (model.get('schema') != 'cyuediff.vertex-attributes/1' or model.get('scope') != 'stored-render-vertex-attributes'):
+            raise ValueError('Unexpected attribute projection scope')
+        observed = {x['name']: x for x in model['channels']} if model else {}
+        semantic = lod['geometry'].get('vertexAttributes', {}).get('channels', {})
+        if len(observed) != len(model['channels'] if model else []) or set(observed) != {x['name'] for x in expected} or set(semantic) != set(observed) or set(source) != set(observed):
+            raise ValueError('Attribute channel inventory differs')
+        for channel in expected:
+            name = channel['name']
+            raw, src, projected = observed[name], source[name], semantic[name]
+            if raw.get('scope') != 'stored-render-vertex-attribute' or raw.get('runtimeEvaluation') is not False:
+                raise ValueError('Unexpected attribute runtime claims')
+            if raw['encoding'] != channel['encoding'] or any(type(raw[k]) is not int or raw[k] != channel[k] for k in ('components', 'vertices')):
+                raise ValueError('Attribute encoding/dimensions differ')
+            if type(raw['bytes']) is not int or raw['bytes'] != len(channel['bytes']) or raw['sha256'] != hashlib.sha256(channel['bytes']).hexdigest():
+                raise ValueError('Attribute native byte identity differs')
+            n, components = channel['vertices'], channel['components']
+            if type(src['components']) is not int or src['components'] != components or type(src['dataType']) is not int or src['dataType'] != {13: 0, 21: 1, 71: 2}[channel['pixel']] or len(src['values']) != n * components:
+                raise ValueError('Source attribute layout differs')
+            if len(raw['values']) != n or type(projected['components']) is not int or projected['components'] != components or set(projected['vertices']) != {str(i) for i in range(n)}:
+                raise ValueError('Decoded attribute layout differs')
+            for vi in range(n):
+                if len(raw['values'][vi]) != components or len(projected['vertices'][str(vi)]) != components:
+                    raise ValueError('Attribute vector dimensions differ')
+                for ci in range(components):
+                    i = vi * components + ci
+                    wanted = channel['values'][i]
+                    if bits(raw['values'][vi][ci]) != bits(wanted) or bits(projected['vertices'][str(vi)][ci]) != bits(wanted):
+                        raise ValueError('Decoded attribute bits differ from actual Engine buffer')
+                    source_value = src['values'][i]
+                    bits(source_value)
+                    if channel['pixel'] == 13:
+                        quantized = f32(source_value)
+                    elif channel['pixel'] == 21:
+                        quantized = struct.unpack('<e', struct.pack('<e', source_value))[0]
+                    else:
+                        quantized = f32(int(f32(min(1, max(0, source_value)) * 255)) / 255.0)
+                    # Ordinary Engine numeric JSON loses zero sign. Exact native
+                    # decoded bits above still preserve both signs independently.
+                    if bits(0 if quantized == 0 else quantized) != bits(0 if wanted == 0 else wanted):
+                        raise ValueError('Source attribute quantization differs from actual Engine buffer')
+                    values += 2
+                    source_values += 1
+            channels += 1
+    return {'values': values + source_values, 'vertexAttributeChannels': channels,
+            'vertexAttributeValues': source_values}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for field in ('manifest', 'consumer', 'container', 'global-toc', 'schema', 'output-dir'):
@@ -361,8 +491,9 @@ def main():
     morph_references = [(manifest_path.parent / row['morphReference']).resolve() if row.get('morphReference') else None for row in cases]
     cloth_references = [(manifest_path.parent / row['clothReference']).resolve() if row.get('clothReference') else None for row in cases]
     overlap_references = [(manifest_path.parent / row['overlapsReference']).resolve() if row.get('overlapsReference') else None for row in cases]
+    attribute_references = [(manifest_path.parent / row['vertexAttributesReference']).resolve() if row.get('vertexAttributesReference') else None for row in cases]
     protected = [args.consumer.resolve(), args.container.resolve(), args.global_toc.resolve(),
-                 args.schema.resolve(), manifest_path, *references, *[p for p in morph_references + cloth_references + overlap_references if p]]
+                 args.schema.resolve(), manifest_path, *references, *[p for p in morph_references + cloth_references + overlap_references + attribute_references if p]]
     for toc in (args.container, args.global_toc):
         protected.extend(p.resolve() for p in toc.parent.glob(toc.stem + '*.ucas'))
     schema = json.loads(args.schema.read_text(encoding='utf-8'))
@@ -406,6 +537,10 @@ def main():
                 overlaps = compare_overlaps(actual, json.loads(overlap_references[i].read_text(encoding='utf-8')))
                 evidence['values'] += overlaps.pop('values')
                 evidence.update(overlaps)
+            if attribute_references[i]:
+                attributes = compare_vertex_attributes(actual, json.loads(attribute_references[i].read_text(encoding='utf-8')))
+                evidence['values'] += attributes.pop('values')
+                evidence.update(attributes)
             evidence.update(entry=row['entry'], object=actual['object'], referenceEngine=reference['engine'])
             reports.append(evidence)
             (output / f'{i:03d}.json').write_text(json.dumps(actual, indent=2), encoding='utf-8')

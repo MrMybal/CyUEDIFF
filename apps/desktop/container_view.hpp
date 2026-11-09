@@ -6,6 +6,7 @@
 #include <cyuediff/mesh_skin_view.hpp>
 #include <cyuediff/render_morph_view.hpp>
 #include <cyuediff/cloth_view.hpp>
+#include <cyuediff/vertex_attribute_view.hpp>
 #include <cyuediff/collision_view.hpp>
 #include <cyuediff/cooked_animation_view.hpp>
 #include <cyuediff/nanite_view.hpp>
@@ -36,6 +37,8 @@ class ContainerView {
         MeshView view;
         MeshSkinView skin;
         ClothView cloth;
+        VertexAttributeView attributes;
+        bool attributes_available = false;
         bool cloth_available = false;
         RenderMorphView morphs;
         bool morphs_available = false;
@@ -55,7 +58,7 @@ class ContainerView {
     bool collisions_present_ = false;
     std::vector<MeshRow> mesh_rows_;
     int mesh_ = 0;
-    bool mesh_skin_ = false, mesh_morphs_ = false, mesh_cloth_ = false;
+    bool mesh_skin_ = false, mesh_morphs_ = false, mesh_cloth_ = false, mesh_attributes_ = false;
     std::vector<PixelRow> pixel_rows_;
     int pixel_ = 0;
     std::vector<MemberRow> member_rows_;

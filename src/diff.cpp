@@ -3,6 +3,7 @@
 #include <cyuediff/animation.hpp>
 #include <cyuediff/core.hpp>
 #include <cyuediff/mesh_overlaps.hpp>
+#include <cyuediff/vertex_attributes.hpp>
 #include <cyuediff/collision.hpp>
 #include <cyuediff/skeleton.hpp>
 #include <cyuediff/attachments.hpp>
@@ -328,6 +329,20 @@ MeshComparison compare_meshes(const MeshGeometry &before, const MeshGeometry &af
             result.complete = false;
             result.diagnostics.push_back("Stored vertex overlap tables are unavailable for some sections; "
                                          "those relations are unknown.");
+        }
+    }
+    if (a.contains("vertexAttributes") || b.contains("vertexAttributes")) {
+        if (!before.vertex_attributes || !after.vertex_attributes) {
+            result.complete = false;
+            result.diagnostics.push_back(
+                "Stored vertex attribute coverage is unavailable; those values are unknown.");
+            a.erase("vertexAttributes");
+            b.erase("vertexAttributes");
+        } else {
+            if (!a.contains("vertexAttributes"))
+                a["vertexAttributes"] = before.vertex_attributes->semantic_snapshot();
+            if (!b.contains("vertexAttributes"))
+                b["vertexAttributes"] = after.vertex_attributes->semantic_snapshot();
         }
     }
     walk(a, b, "", result.changes);
