@@ -2,6 +2,12 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.183.0 — Développement local des sources
+
+Ce jalon des sources et de l’API ajoute des liaisons de structures hybrides explicites : préfixe de propriétés réfléchies certifié, suivi de données natives déclaratives bornées. Les contextes de schéma version quatre conservent la provenance des descriptions et les identités avant/après indépendantes. Le profil de tissu UE 5.3 Windows sélectionné expose les propriétés physiques associées, les valeurs natives des attaches et les enregistrements bruts des transitions. Il ne déduit pas les valeurs par défaut absentes, n’exécute pas de simulation et ne découvre pas les sérialiseurs arbitraires des plugins.
+
+Les structures C++ publiques d’options/contexte gagnent `struct_tails` ; recompilez les hôtes avec les en-têtes et la bibliothèque correspondants. Le changement de version mineure distingue ce contrat SDK de 0.182 selon la règle de compatibilité CMake. La dernière archive Windows locale vérifiée reste 0.182.0 ; cette modification des sources ne la remplace, ne la téléverse et ne la publie pas. Voir [le contrat et les preuves](docs/HYBRID_STRUCTS.md).
+
 ## 0.182.0 — Aperçu de développement local
 
 Cette version des sources regroupe les lecteurs natifs, comparaisons et vues desktop ajoutés après 0.181. La CLI, l’application Windows x64 et les SDK réutilisables Core/Git sont vérifiés dans une archive locale. Cette tâche ne téléverse pas de binaires, ne publie pas de release GitHub et ne prétend pas avoir exécuté une nouvelle CI hébergée. La vitrine publique est gérée séparément.

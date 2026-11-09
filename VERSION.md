@@ -2,6 +2,12 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.183.0 — Local source development
+
+This source/API milestone adds explicit hybrid struct bindings: a certified reflected property prefix followed by a bounded declarative native tail. Version-four schema contexts preserve layout provenance and independent before/after identities. The selected UE 5.3 Windows cloth profile exposes mapped physical properties, native tether values and raw native transition records. It does not infer missing class defaults, execute simulation or discover arbitrary plugin serializers.
+
+The public C++ option/context structures gain `struct_tails`; rebuild hosts against the matching headers and library. The minor-version increase keeps this SDK contract distinct from 0.182 under CMake's same-minor compatibility rule. The latest verified local Windows archive remains 0.182.0; this source change does not replace, upload or publish that archive. See [the contract and evidence](docs/HYBRID_STRUCTS.md).
+
 ## 0.182.0 — Local development preview
 
 This source version includes the post-0.181 native readers, comparisons and desktop inspection work. The Windows x64 CLI/desktop and reusable Core/Git SDK are verified as a local archive. This task does not upload binaries, publish a GitHub Release or claim a new hosted CI run. The public website is managed separately.

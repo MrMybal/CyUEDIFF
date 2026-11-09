@@ -17,6 +17,7 @@ class ZenSchemaManifest {
     std::map<std::string, NativeStructLayout> native_structs_;
     std::shared_ptr<const BinaryLayouts> binary_layouts_;
     std::map<std::string, std::string> struct_layouts_;
+    std::map<std::string, std::string> struct_tails_;
     NarrowStringEncoding narrow_string_encoding_ = NarrowStringEncoding::unspecified;
     std::string format_ = "cyuediff.zen-schema/1";
     ZenSchemaManifest() = default;

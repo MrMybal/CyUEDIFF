@@ -17,6 +17,7 @@ struct ZenSchemaContext {
     std::map<std::string, NativeStructLayout> native_structs;
     std::shared_ptr<const BinaryLayouts> binary_layouts;
     std::map<std::string, std::string> struct_layouts;
+    std::map<std::string, std::string> struct_tails;
     NarrowStringEncoding narrow_string_encoding = NarrowStringEncoding::unspecified;
     std::string fingerprint() const;
 };

@@ -35,6 +35,12 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     static bool PreparePrivateCloth(UObject *Asset, int32 Variant);
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportClothReference(UObject *Asset);
+    // Original two-LOD physical data on an unsaved /Game/Corpus/ClothPhysical* copy only.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static bool PreparePrivatePhysicalCloth(UObject *Asset, int32 Variant);
+    // Read-only actual physical mesh, config and native tether/transition references.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportPhysicalClothReference(UObject *Asset);
     // Private source UV variant and read-only native overlap reference; caller owns saving.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateOverlaps(UObject *Asset, int32 Variant);

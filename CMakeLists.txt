@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.182.0 LANGUAGES C CXX)
+project(CyUEDiff VERSION 0.183.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -169,6 +169,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_schema_layout_tests tests/schema_layout_tests.cpp)
     target_link_libraries(cyuediff_schema_layout_tests PRIVATE CyUEDiff::Core)
     add_test(NAME schema_layouts COMMAND cyuediff_schema_layout_tests)
+    add_executable(cyuediff_schema_hybrid_tests tests/schema_hybrid_tests.cpp)
+    target_link_libraries(cyuediff_schema_hybrid_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME schema_hybrids COMMAND cyuediff_schema_hybrid_tests)
     add_executable(cyuediff_binary_layout_tests tests/binary_layout_tests.cpp)
     target_link_libraries(cyuediff_binary_layout_tests PRIVATE CyUEDiff::Core)
     add_test(NAME binary_layouts COMMAND cyuediff_binary_layout_tests)
@@ -439,6 +442,9 @@ if(BUILD_TESTING)
             add_test(NAME string_encoding_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/string_encoding_cli_tests.py" "$<TARGET_FILE:cyuediff>"
                 "$<TARGET_FILE:cyuediff_string_encoding_tests>")
+            add_test(NAME schema_hybrid_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_hybrid_cli_tests.py" "$<TARGET_FILE:cyuediff>"
+                "$<TARGET_FILE:cyuediff_schema_hybrid_tests>")
             add_test(NAME binary_layout_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_layout_cli_tests.py" "$<TARGET_FILE:cyuediff>"
                 "$<TARGET_FILE:cyuediff_binary_layout_tests>" "$<TARGET_FILE:cyuediff_schema_layout_tests>")
@@ -654,6 +660,10 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/mesh_skin_desktop_tests.py" "$<TARGET_FILE:cyuediff_desktop>"
                 "$<TARGET_FILE:cyuediff_mesh_skin_tests>")
             set_tests_properties(desktop_mesh_skin_cli PROPERTIES TIMEOUT 120)
+            add_test(NAME desktop_schema_hybrid_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/schema_hybrid_cli_tests.py" "$<TARGET_FILE:cyuediff_desktop>"
+                "$<TARGET_FILE:cyuediff_schema_hybrid_tests>" desktop)
+            set_tests_properties(desktop_schema_hybrid_cli PROPERTIES TIMEOUT 150)
             add_test(NAME desktop_binary_layout_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/binary_layout_desktop_tests.py" "$<TARGET_FILE:cyuediff_desktop>"
                 "$<TARGET_FILE:cyuediff_binary_layout_tests>" "$<TARGET_FILE:cyuediff_schema_layout_tests>")
@@ -1047,6 +1057,7 @@ install(FILES site/assets/screenshots/overview-en.png site/assets/screenshots/ov
     DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/site/assets/screenshots)
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff)
 install(DIRECTORY examples/consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(DIRECTORY examples/hybrid_struct_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 # All standalone SDK samples used by the archive verifier must ship with it.
 foreach(example IN ITEMS animation_consumer animation_pose_consumer binary_delta_consumer
         catalog_consumer collision_consumer container_consumer curve_consumer image_consumer
@@ -1069,6 +1080,7 @@ install(DIRECTORY examples/cooked_mesh_consumer DESTINATION ${CMAKE_INSTALL_DATA
 install(DIRECTORY examples/mesh_source_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/reflection_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(FILES scripts/validate_cooked_skeletal.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
+install(FILES scripts/validate_physical_cloth.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
 install(FILES scripts/export_uht_metadata.py scripts/build_uht_mappings.py scripts/uht_mappings.py
     DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
 install(FILES tools/uht_schema_exporter/Exporter.cs tools/uht_schema_exporter/CyUEDiff.UhtExporter.csproj

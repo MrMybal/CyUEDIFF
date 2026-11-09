@@ -2,6 +2,7 @@
 #include "ClothingAssetFactory.h"
 #include "ClothingAsset.h"
 #include "ClothLODData.h"
+#include "ChaosCloth/ChaosClothConfig.h"
 #include "HAL/IConsoleManager.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimBoneCompressionCodec.h"
@@ -562,6 +563,199 @@ FString UCyUEDiffReferenceLibrary::ExportClothReference(UObject *Asset) {
         LODs.Add(Obj(L));
     }
     Out->SetArrayField(TEXT("lods"), LODs);
+    FString Result;
+    auto Writer = TJsonWriterFactory<>::Create(&Result);
+    FJsonSerializer::Serialize(Out, Writer);
+    return Result;
+}
+bool UCyUEDiffReferenceLibrary::PreparePrivatePhysicalCloth(UObject *Asset, int32 Variant) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh || Variant < 0 || Variant > 1 ||
+        !Mesh->GetOutermost()->GetName().StartsWith(TEXT("/Game/Corpus/ClothPhysical")) ||
+        Mesh->GetMeshClothingAssets().Num() != 1)
+        return false;
+    auto *Cloth = Cast<UClothingAssetCommon>(Mesh->GetMeshClothingAssets()[0]);
+    if (!Cloth || Cloth->GetOuter() != Mesh || (Cloth->LodData.Num() < 1 || Cloth->LodData.Num() > 2) ||
+        Cloth->LodData[0].PhysicalMeshData.Vertices.Num() < 3 ||
+        Cloth->LodData[0].PhysicalMeshData.Vertices.Num() > 100000)
+        return false;
+    auto *Config = Cloth->GetClothConfig<UChaosClothConfig>();
+    auto *Shared = Cloth->GetClothConfig<UChaosClothSharedSimConfig>();
+    if (!Config || !Shared || Config->GetOutermost() != Mesh->GetOutermost() ||
+        Shared->GetOutermost() != Mesh->GetOutermost())
+        return false;
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    {
+        FScopedSkeletalMeshPostEditChange Edit(Mesh);
+        Cloth->UnbindFromSkeletalMesh(Mesh, 0);
+        const auto Original = Cloth->LodData[0];
+        Cloth->LodData.SetNum(2);
+        Cloth->LodData[1] = Original;
+        for (int32 L = 0; L < Cloth->LodData.Num(); ++L) {
+            auto &LOD = Cloth->LodData[L];
+            LOD.TransitionUpSkinData.Empty();
+            LOD.TransitionDownSkinData.Empty();
+            auto &Physical = LOD.PhysicalMeshData;
+            for (int32 I = 0; I < Physical.Vertices.Num(); ++I) {
+                if (L)
+                    Physical.Vertices[I] *= 1.01f;
+                if (Variant && I % 3 == 0)
+                    Physical.Vertices[I].Z += .125f * (L + 1);
+            }
+            auto &Distances = Physical.FindOrAddWeightMap(EWeightMapTargetCommon::MaxDistance);
+            Distances = FPointWeightMap(Physical.Vertices.Num(), Variant ? 12.0f : 10.0f);
+            Distances.Values[0] = Distances.Values.Last() = 0.f;
+            LOD.PointWeightMaps.Empty();
+            FPointWeightMap Mask;
+            Mask.Initialize(Distances, EWeightMapTargetCommon::MaxDistance);
+            LOD.PointWeightMaps.Add(MoveTemp(Mask));
+        }
+        Config->DampingCoefficient = Variant ? .25f : .125f;
+        Config->GravityScale = Variant ? .5f : .75f;
+        Config->EdgeStiffnessWeighted.Low = Variant ? .3f : .2f;
+        Config->EdgeStiffnessWeighted.High = Variant ? .9f : .8f;
+        Shared->IterationCount = Variant ? 4 : 2;
+        Cloth->InvalidateAllCachedData();
+        Cloth->BuildLodTransitionData();
+        if (!Cloth->BindToSkeletalMesh(Mesh, 0, 0, 0))
+            return false;
+        auto &Model = Mesh->GetImportedModel()->LODModels[0];
+        const auto &Section = Model.Sections[0];
+        auto &User =
+            FSkelMeshSourceSectionUserData::GetSourceSectionUserData(Model.UserSectionsData, Section);
+        User.ClothingData = Section.ClothingData;
+        User.CorrespondClothAssetIndex = Section.CorrespondClothAssetIndex;
+    }
+    Mesh->InvalidateDeriveDataCacheGUID();
+    Mesh->PostEditChange();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    for (auto &LOD : Cloth->LodData) {
+        auto &Physical = LOD.PhysicalMeshData;
+        Physical.CalculateInverseMasses();
+        Physical.CalculateNumInfluences();
+        Physical.BuildSelfCollisionData(.05f);
+        Physical.CalculateTethers(true, true);
+    }
+    Cloth->MarkPackageDirty();
+    Config->MarkPackageDirty();
+    Shared->MarkPackageDirty();
+    Mesh->MarkPackageDirty();
+    return true;
+}
+FString UCyUEDiffReferenceLibrary::ExportPhysicalClothReference(UObject *Asset) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh)
+        return FString();
+    FAssetCompilingManager::Get().FinishAllCompilation();
+    auto Out = MakeShared<FJsonObject>();
+    Out->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-physical-cloth-reference/1"));
+    Out->SetStringField(TEXT("engine"), FEngineVersion::Current().ToString());
+    Out->SetStringField(TEXT("object"), Mesh->GetPathName());
+    const auto NativeBytes = [](auto Data) {
+        TArray<uint8> Bytes;
+        FMemoryWriter Writer(Bytes, true);
+        Writer << Data;
+        return Integers(Bytes);
+    };
+    const auto Tethers = [&](const FClothTetherData &Data) {
+        auto T = MakeShared<FJsonObject>();
+        Values Batches;
+        for (const auto &Batch : Data.Tethers) {
+            Values Rows;
+            for (const auto &Row : Batch)
+                Rows.Add(Array({Number(Row.template Get<0>()), Number(Row.template Get<1>()),
+                                Number(Row.template Get<2>())}));
+            Batches.Add(Array(Rows));
+        }
+        T->SetArrayField(TEXT("batches"), Batches);
+        T->SetArrayField(TEXT("nativeBytes"), NativeBytes(Data.Tethers));
+        return T;
+    };
+    Values Assets;
+    for (const auto &Base : Mesh->GetMeshClothingAssets()) {
+        const auto *Cloth = Cast<UClothingAssetCommon>(Base.Get());
+        if (!Cloth)
+            continue;
+        auto A = MakeShared<FJsonObject>();
+        A->SetStringField(TEXT("object"), Cloth->GetPathName());
+        A->SetArrayField(TEXT("assetGuidWords"),
+                         Integers(TArray<uint32>{Cloth->GetAssetGuid().A, Cloth->GetAssetGuid().B,
+                                                 Cloth->GetAssetGuid().C, Cloth->GetAssetGuid().D}));
+        A->SetArrayField(TEXT("lodMap"), Integers(Cloth->LodMap));
+        A->SetArrayField(TEXT("usedBoneIndices"), Integers(Cloth->UsedBoneIndices));
+        Values Names;
+        for (const auto &Name : Cloth->UsedBoneNames)
+            Names.Add(MakeShared<FJsonValueString>(Name.ToString()));
+        A->SetArrayField(TEXT("usedBoneNames"), Names);
+        A->SetNumberField(TEXT("referenceBoneIndex"), Cloth->ReferenceBoneIndex);
+        Values Configs;
+        for (const auto &Pair : Cloth->ClothConfigs) {
+            auto C = MakeShared<FJsonObject>();
+            const auto *Config = Pair.Value.Get();
+            if (!Config)
+                continue;
+            C->SetStringField(TEXT("object"), Config->GetPathName());
+            C->SetStringField(TEXT("class"), Config->GetClass()->GetPathName());
+            if (const auto *Chaos = Cast<UChaosClothConfig>(Config)) {
+                C->SetNumberField(TEXT("DampingCoefficient"), Chaos->DampingCoefficient);
+                C->SetNumberField(TEXT("GravityScale"), Chaos->GravityScale);
+                C->SetNumberField(TEXT("EdgeStiffnessWeighted.Low"), Chaos->EdgeStiffnessWeighted.Low);
+                C->SetNumberField(TEXT("EdgeStiffnessWeighted.High"), Chaos->EdgeStiffnessWeighted.High);
+            }
+            if (const auto *Shared = Cast<UChaosClothSharedSimConfig>(Config))
+                C->SetNumberField(TEXT("IterationCount"), Shared->IterationCount);
+            Configs.Add(Obj(C));
+        }
+        A->SetArrayField(TEXT("configs"), Configs);
+        Values LODs;
+        for (const auto &LOD : Cloth->LodData) {
+            auto L = MakeShared<FJsonObject>();
+            const auto &P = LOD.PhysicalMeshData;
+            Values Vertices, Normals, BoneData, WeightMaps;
+            for (const auto &V : P.Vertices)
+                Vertices.Add(Vec3(V));
+            for (const auto &N : P.Normals)
+                Normals.Add(Vec3(N));
+            L->SetArrayField(TEXT("vertices"), Vertices);
+            L->SetArrayField(TEXT("normals"), Normals);
+            L->SetArrayField(TEXT("indices"), Integers(P.Indices));
+            L->SetArrayField(TEXT("inverseMasses"), Integers(P.InverseMasses));
+            L->SetArrayField(TEXT("selfCollisionIndices"), Integers(P.SelfCollisionIndices));
+            L->SetNumberField(TEXT("maxBoneWeights"), P.MaxBoneWeights);
+            L->SetNumberField(TEXT("fixedVertices"), P.NumFixedVerts);
+            for (const auto &B : P.BoneData) {
+                auto R = MakeShared<FJsonObject>();
+                Values Indices, Weights;
+                for (int32 I = 0; I < FClothVertBoneData::MaxTotalInfluences; ++I) {
+                    Indices.Add(Number(B.BoneIndices[I]));
+                    Weights.Add(Number(B.BoneWeights[I]));
+                }
+                R->SetNumberField(TEXT("influences"), B.NumInfluences);
+                R->SetArrayField(TEXT("indices"), Indices);
+                R->SetArrayField(TEXT("weights"), Weights);
+                BoneData.Add(Obj(R));
+            }
+            L->SetArrayField(TEXT("boneData"), BoneData);
+            for (const auto &W : P.WeightMaps) {
+                auto R = MakeShared<FJsonObject>();
+                R->SetNumberField(TEXT("target"), W.Key);
+                R->SetArrayField(TEXT("values"), Integers(W.Value.Values));
+                WeightMaps.Add(Obj(R));
+            }
+            L->SetArrayField(TEXT("weightMaps"), WeightMaps);
+            L->SetObjectField(TEXT("euclideanTethers"), Tethers(P.EuclideanTethers));
+            L->SetObjectField(TEXT("geodesicTethers"), Tethers(P.GeodesicTethers));
+            L->SetArrayField(TEXT("transitionUpNativeBytes"), NativeBytes(LOD.TransitionUpSkinData));
+            L->SetArrayField(TEXT("transitionDownNativeBytes"), NativeBytes(LOD.TransitionDownSkinData));
+            L->SetNumberField(TEXT("skinningKernelRadius"), LOD.SkinningKernelRadius);
+            L->SetBoolField(TEXT("multipleInfluences"), LOD.bUseMultipleInfluences);
+            L->SetBoolField(TEXT("smoothTransition"), LOD.bSmoothTransition);
+            LODs.Add(Obj(L));
+        }
+        A->SetArrayField(TEXT("lods"), LODs);
+        Assets.Add(Obj(A));
+    }
+    Out->SetArrayField(TEXT("assets"), Assets);
     FString Result;
     auto Writer = TJsonWriterFactory<>::Create(&Result);
     FJsonSerializer::Serialize(Out, Writer);

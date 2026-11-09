@@ -20,7 +20,7 @@ def main():
     files = set()
     for row in rows:
         name = row['file']
-        if row.get('mode', 'source') not in ('source', 'nanite-source', 'compressed-animation', 'per-track-synthetic', 'compressed-curves', 'compressed-curve-synthetic'):
+        if row.get('mode', 'source') not in ('source', 'nanite-source', 'compressed-animation', 'per-track-synthetic', 'compressed-curves', 'compressed-curve-synthetic', 'physical-cloth'):
             raise ValueError('Unknown reference export mode')
         if not row['object'].startswith('/Game/Corpus/'):
             raise ValueError('Export only explicit /Game/Corpus/ copies')
@@ -35,6 +35,7 @@ def main():
             raise ValueError('Cannot load ' + row['object'])
         mode = row.get('mode', 'source')
         methods = {
+            'physical-cloth': (unreal.CyUEDiffReferenceLibrary.export_physical_cloth_reference, 'cyuediff.unreal-physical-cloth-reference/1'),
             'compressed-curves': (unreal.CyUEDiffReferenceLibrary.export_compressed_curves_reference, 'cyuediff.unreal-compressed-curves-reference/1'),
             'compressed-curve-synthetic': (unreal.CyUEDiffReferenceLibrary.export_compressed_curve_synthetic_reference, 'cyuediff.unreal-compressed-curve-synthetic-reference/1'),
             'nanite-source': (unreal.CyUEDiffReferenceLibrary.export_nanite_source_reference, 'cyuediff.unreal-nanite-source-reference/1'),
@@ -48,10 +49,12 @@ def main():
         if data['schema'] != schema:
             raise ValueError('Unexpected adapter schema')
         target = output / row['file']
-        target.write_text(json.dumps(data, indent=2), encoding='utf-8')
+        with target.open('w', encoding='utf-8', newline='\n') as stream:
+            json.dump(data, stream, indent=2); stream.write('\n')
         evidence.append({'object': data.get('object', row['object']), 'mode': mode, 'file': row['file'],
                          'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
-    (output / 'export-manifest.json').write_text(json.dumps({'references': evidence}, indent=2), encoding='utf-8')
+    with (output / 'export-manifest.json').open('w', encoding='utf-8', newline='\n') as stream:
+        json.dump({'references': evidence}, stream, indent=2); stream.write('\n')
 
 
 main()

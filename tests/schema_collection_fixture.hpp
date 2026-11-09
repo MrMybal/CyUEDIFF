@@ -26,7 +26,8 @@ inline Bytes collection_enum() {
     t.i(7);
     return t;
 }
-inline Bytes collection_schema_fixture(Bytes lookup = {}, Bytes tags = {}, Bytes after = {}) {
+inline Bytes collection_schema_fixture(Bytes lookup = {}, Bytes tags = {}, Bytes after = {},
+                                       bool native_record = false) {
     if (lookup.data.empty())
         lookup = map_type(collection_type(5), collection_type(2));
     if (tags.data.empty())
@@ -75,11 +76,27 @@ inline Bytes collection_schema_fixture(Bytes lookup = {}, Bytes tags = {}, Bytes
     paths.i(10);
     payload.i(0x54584543);
     payload.put<std::uint8_t>(0);
-    payload.i(1);
+    payload.i(native_record ? 2 : 1);
     for (char c : std::string("PPTH"))
         payload.put(c);
     payload.i(static_cast<int>(paths.data.size()));
     payload.append(paths);
+    if (native_record) {
+        Bytes traits;
+        traits.put<std::uint8_t>(0);
+        traits.i(1); // One enum's attributes.
+        traits.i(0);
+        traits.i(2); // A class followed by a native-serialized struct.
+        for (const auto kind : {0u, 2u}) {
+            traits.put<std::uint8_t>(static_cast<std::uint8_t>(kind));
+            traits.i(0);
+            traits.i(0); // No serialized property-flag annotations.
+        }
+        for (char c : std::string("EATR"))
+            payload.put(c);
+        payload.i(static_cast<int>(traits.data.size()));
+        payload.append(traits);
+    }
     Bytes file;
     file.put<std::uint16_t>(0x30c4);
     file.put<std::uint8_t>(0);

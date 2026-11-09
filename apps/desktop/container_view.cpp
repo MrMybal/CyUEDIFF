@@ -680,7 +680,8 @@ Json ContainerView::property_report() const {
             {"mode", property_mode_ ? "properties" : "object"},
             {"beforeStatus", row ? status(row->before_read) : Json(nullptr)},
             {"afterStatus", row ? status(row->after_read) : Json(nullptr)},
-            {"visibleProperties", row ? values_.visible_count() : 0}};
+            {"visibleProperties", row ? values_.visible_count() : 0},
+            {"displayTruncated", row && values_.table().truncated}};
 }
 void ContainerView::bind_animation() {
     const auto before = document_ && before_animation_ >= 0

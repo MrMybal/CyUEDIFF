@@ -114,3 +114,8 @@ The selected UE 5.3 Windows Core/CLI/SDK reader now exposes typed raw section-lo
 ### Named cooked vertex attributes — post-0.181 development
 
 The selected UE 5.3 Windows reader now exposes finite float32/float16/UNorm8 channels with one to four components, exact owned bytes and focused typed values. Core/CLI/SDK compare decoded named values independently of encoding. The EN/FR desktop adds channel/vertex search, change navigation, focused vectors, incident edge highlights and persisted state; unknown peer coverage stays incomplete. See [VERTEX_ATTRIBUTES.md](VERTEX_ATTRIBUTES.md). Further native/plugin/producer/runtime coverage, physical cloth assets and final distribution remain open; this addition does not complete the full product goal or imply a push/release.
+
+
+### Hybrid reflected/native struct bindings — 0.183 source development
+
+Explicit schema/context `struct_tails` and version-four manifests bind certified reflected prefixes followed by declarative native data with shared bounds/budgets and complete opaque fallback. Real UE 5.3.2 physical cloth/configuration before/after evidence checks 588,898 values plus exact native tether/raw transition bytes through an installed Core-only consumer. EN/FR generic property review is available; large nested-value navigation, dedicated physical geometry/bounds, semantic transitions and broader source/native producer coverage remain open. See [HYBRID_STRUCTS.md](HYBRID_STRUCTS.md). The verified 0.182 archive remains unchanged; this does not publish a new build.

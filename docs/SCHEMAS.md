@@ -376,3 +376,8 @@ The returned struct value is `{ "platformValue": ... }`. It represents the value
 For the UE 5.3 Texture2D context in [matching-source preparation](UHT_SCHEMAS.md), explicitly add `/Script/Engine.PerPlatformFloat: per-platform-float-cooked`. The template serializers were checked in local UE 5.3 source and the relocated UE 5.5 implementation. Native/context fixtures cover both supported Zen header profiles; real producer evidence currently covers the float layout in the supplied UE 5.3 build. Integer/bool layouts remain fixture-validated. These layouts do not enable editor override-map serialization or general native payload decoding.
 
 Modern engine aliases need serializer evidence independently of their C++ math archive operators. In the checked UE 5.3 profile, `/Script/CoreUObject.Transform` uses an explicit reflected struct binding with native Quat/Vector children. Its immutable named float/double variants and a host-declared binary wire record have different contracts. Bounded failure messages retain the nearest qualified fields and absolute error offset, rather than accepting a plausible but incorrect stream.
+
+
+## Hybrid reflected/native serializers — post-0.182 development
+
+Version-four contexts add required `structTails` bindings for an explicitly certified reflected prefix followed by a declarative native tail. Runtime hosts can use `struct_tails` in the public read/context options. Prefix and tail share bounds and budgets; damaged/unsupported tails retain the whole opaque result. See [the complete contract and physical cloth scope](HYBRID_STRUCTS.md). The raw schema consumer forwards these bindings from its loaded context.

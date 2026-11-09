@@ -22,6 +22,7 @@ int run(const std::vector<std::string> &args) {
             options.native_structs = context->native_structs;
             options.binary_layouts = context->binary_layouts;
             options.struct_layouts = context->struct_layouts;
+            options.struct_tails = context->struct_tails;
             options.narrow_string_encoding = context->narrow_string_encoding;
             options.text_layout = cyuediff::TextLayout::ue5_history;
             options.text_argument_data_layout = cyuediff::TextArgumentDataLayout::variant_int64;

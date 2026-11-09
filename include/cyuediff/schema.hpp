@@ -116,6 +116,9 @@ struct UnversionedReadOptions {
     std::map<std::string, NativeStructLayout> native_structs;
     std::shared_ptr<const BinaryLayouts> binary_layouts;
     std::map<std::string, std::string> struct_layouts;
+    // Certified reflected property prefix followed by a declarative native tail.
+    // Exclusive with the reflected/native/whole-layout bindings for the same schema.
+    std::map<std::string, std::string> struct_tails;
     SoftPathLayout soft_path_layout = SoftPathLayout::unspecified;
     TextLayout text_layout = TextLayout::unspecified;
     TextArgumentDataLayout text_argument_data_layout = TextArgumentDataLayout::unspecified;

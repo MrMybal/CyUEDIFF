@@ -590,6 +590,7 @@ struct PropertyReader {
     UnversionedProperties result;
     std::map<std::string, NativeStructLayout> native_structs;
     std::map<std::string, std::string> struct_layouts;
+    std::map<std::string, std::string> struct_tails;
     void charge() {
         options.control.check();
         if (result.values_read >= options.max_values)
@@ -672,6 +673,12 @@ struct PropertyReader {
                 if (layout != struct_layouts.end()) {
                     text(layout->second.size() + options.binary_layouts->sha256().size());
                     value["binaryLayout"] = layout->second;
+                    value["binaryLayoutsSha256"] = options.binary_layouts->sha256();
+                }
+                auto tail = struct_tails.find(name);
+                if (tail != struct_tails.end()) {
+                    text(tail->second.size() + options.binary_layouts->sha256().size());
+                    value["structTailLayout"] = tail->second;
                     value["binaryLayoutsSha256"] = options.binary_layouts->sha256();
                 }
             }
@@ -1358,6 +1365,16 @@ struct PropertyReader {
             auto described = struct_layouts.find(definition.path);
             if (described != struct_layouts.end())
                 return layout_value(described->second, zero, nesting);
+            auto tail = struct_tails.find(definition.path);
+            if (tail != struct_tails.end()) {
+                if (zero)
+                    throw Error("schema-type", "Hybrid native zero defaults require an explicit value model",
+                                r.pos);
+                text(16); // The two fixed wrapper keys: properties and native.
+                auto properties = structure(definition.path, false, nesting + 1);
+                auto native_tail = layout_value(tail->second, false, nesting + 1);
+                return {{"properties", std::move(properties)}, {"native", std::move(native_tail)}};
+            }
             bool allowed = options.reflected_structs.count(definition.path) != 0;
             if (!allowed && options.reflected_structs.count(definition.name))
                 allowed = schemas.schema(definition.name).path == definition.path;
@@ -1384,7 +1401,7 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
                                          const std::string &schema, const UnversionedReadOptions &options) {
     if (offset > bytes.size() || size > bytes.size() - offset)
         throw Error("bounds", "Invalid unversioned property window", offset);
-    PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}, {}, {}};
+    PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}, {}, {}, {}};
     for (const auto &binding : options.native_structs) {
         reader.charge();
         native_struct_layout_name(binding.second);
@@ -1406,6 +1423,18 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
             (options.reflected_structs.count(definition.name) &&
              schemas.schema(definition.name).path == definition.path))
             throw Error("schema-context", "Conflicting declarative struct binding: " + definition.path);
+    }
+    for (const auto &binding : options.struct_tails) {
+        reader.charge();
+        if (!options.binary_layouts || !options.binary_layouts->contains(binding.second))
+            throw Error("schema-context", "Missing declarative struct tail: " + binding.second);
+        const auto &definition = schemas.schema(binding.first);
+        if (!reader.struct_tails.emplace(definition.path, binding.second).second ||
+            reader.native_structs.count(definition.path) || reader.struct_layouts.count(definition.path) ||
+            options.reflected_structs.count(definition.path) ||
+            (options.reflected_structs.count(definition.name) &&
+             schemas.schema(definition.name).path == definition.path))
+            throw Error("schema-context", "Conflicting hybrid struct binding: " + definition.path);
     }
     reader.result.properties = reader.structure(schema, false, 0);
     reader.result.consumed_bytes = reader.r.pos - offset;

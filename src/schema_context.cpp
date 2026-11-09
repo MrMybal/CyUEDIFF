@@ -64,7 +64,8 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
             return true;
         });
         result.format_ = string_value(manifest.at("format"));
-        const bool described_format = result.format_ == "cyuediff.zen-schema/3";
+        const bool hybrid_format = result.format_ == "cyuediff.zen-schema/4";
+        const bool described_format = hybrid_format || result.format_ == "cyuediff.zen-schema/3";
         const bool native_format = described_format || result.format_ == "cyuediff.zen-schema/2";
         if (!native_format && result.format_ != "cyuediff.zen-schema/1")
             throw Error("schema-context", "Unsupported schema context format");
@@ -77,6 +78,8 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
             allowed.insert("structLayouts");
             allowed.insert("narrowStringEncoding");
         }
+        if (hybrid_format)
+            allowed.insert("structTails");
         fields(manifest, allowed);
         const auto profile = string_value(manifest.at("profile"));
         if (profile == "ue5.3")
@@ -166,6 +169,24 @@ ZenSchemaManifest ZenSchemaManifest::read(const fs::path &path, const ZenSchemaM
                     throw Error("schema-context", "Missing declarative binary layout: " + layout);
                 result.struct_layouts_.emplace(std::move(name), std::move(layout));
             }
+            if (hybrid_format) {
+                const auto &tails = manifest.at("structTails");
+                if (!tails.is_object())
+                    throw Error("schema-context", "Expected structTails object");
+                const auto tail_used = used + result.struct_layouts_.size();
+                if (tails.size() > options.max_entries - tail_used)
+                    throw Error("schema-limit", "Schema context entry limit exceeded");
+                for (auto it = tails.begin(); it != tails.end(); ++it) {
+                    options.control.check();
+                    auto name = string_value(it.key()), layout = string_value(it.value());
+                    if (reflected_names.count(name) || result.native_structs_.count(name) ||
+                        result.struct_layouts_.count(name))
+                        throw Error("schema-context", "Conflicting hybrid struct binding");
+                    if (!result.binary_layouts_->contains(layout))
+                        throw Error("schema-context", "Missing declarative struct tail: " + layout);
+                    result.struct_tails_.emplace(std::move(name), std::move(layout));
+                }
+            }
         }
     } catch (const Json::exception &) {
         throw Error("schema-context", "Malformed schema context JSON or missing required field");
@@ -210,6 +231,14 @@ std::shared_ptr<const ZenSchemaContext> ZenSchemaManifest::load(const SchemaRead
             !result->struct_layouts.emplace(definition.path, binding.second).second)
             throw Error("schema-context", "Conflicting declarative struct binding: " + definition.path);
     }
+    for (const auto &binding : struct_tails_) {
+        options.control.check();
+        const auto &definition = result->schemas->schema(binding.first);
+        if (result->reflected_structs.count(definition.path) ||
+            result->native_structs.count(definition.path) || result->struct_layouts.count(definition.path) ||
+            !result->struct_tails.emplace(definition.path, binding.second).second)
+            throw Error("schema-context", "Conflicting hybrid struct binding: " + definition.path);
+    }
     options.control.check();
     return result;
 }
@@ -236,6 +265,10 @@ Json ZenSchemaManifest::to_json() const {
         result["binaryLayoutsSha256"] = binary_layouts_->sha256();
         result["structLayouts"] = struct_layouts_;
         result["structLayoutCount"] = struct_layouts_.size();
+        if (format_ == "cyuediff.zen-schema/4") {
+            result["structTails"] = struct_tails_;
+            result["structTailCount"] = struct_tails_.size();
+        }
     }
     return result;
 }

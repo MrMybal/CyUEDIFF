@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.182.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.183.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.182.0**
+> **EN DÉVELOPPEMENT · 0.183.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -56,6 +56,7 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 - **Inspection Nanite cooked ciblée :** lecture optionnelle UE 5.3 Windows des positions, triangles orientés, matériaux et attributs stockés via Core/CLI/SDK, avec différences de surface de pleine résolution et références shader indépendantes. La vue desktop EN/FR compilée depuis les sources ajoute les filaires de pleine résolution et par cluster, les attributs des coins alignés, la hiérarchie stockée et les contextes indépendants persistants.
 - **Données de mouvement enregistrées** : poses de référence/retarget des squelettes, sockets, clés d’animation locales prises en charge, origines de joints/sockets sources liées à un Skeleton explicite et rich curves avec évaluation pondérée prise en charge. Les transformations compressées par piste et courbes compressées compatibles UE 5.3 Windows sélectionnées permettent aussi un échantillonnage fractionnaire et une inspection EN/FR dédiée. Ces vues inspectent les données stockées sans retargeting à l’exécution, blending ou rendu skinné. [Animation cuite](docs/COOKED_ANIMATIONS.md).
 - **Contexte de projet et de révision** : racines de projet et moteur distinctes avant/après, historique Git et contenu LFS locaux, membres Pak 10/11 et IoStore TOC 3–8 pris en charge (selon les modes de stockage explicitement compatibles), tables Zen cooked et propriétés USMAP associées explicitement.
+- **Structures natives hybrides** : liaison explicite d’un préfixe de propriétés réfléchies et d’une suite native déclarative, avec champs nommés, budgets partagés et repli opaque. Des propriétés physiques de tissu et attaches stockées sont vérifiées indépendamment ; les transitions restent brutes. [Contrat](docs/HYBRID_STRUCTS.md).
 - **Lecteurs extensibles** : callbacks natifs bornés et descriptions binaires déclaratives avec profils de version explicites ; les magasins locaux de payloads d’éditeur virtualisés exigent une vérification BLAKE3 complète des octets bruts. Le chargement propose une annulation coopérative, une progression et un cache de packages vérifié.
 - **Deltas de blocs réutilisables** : génération, composition et reconstruction de différences de fichiers/blocs avec vérification SHA-256. Cette API de reconstruction binaire est distincte ; l’hébergement distant des objets et leur synchronisation ne sont pas implémentés.
 
@@ -74,7 +75,7 @@ Liez `CyUEDiff::Core` avec `add_subdirectory`, ou installez le SDK et utilisez `
 
 ## Installation
 
-**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; l’aperçu 0.182 non poussé dispose d’une validation locale Windows. Son archive locale comprend un manuel HTML hors ligne bilingue et les métadonnées de version/composants. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
+**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources 0.183 non poussées disposent d’une validation locale Windows. L’archive locale 0.182 précédemment vérifiée comprend un manuel HTML hors ligne bilingue et les métadonnées de version/composants. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
 
 Les builds Windows utilisant le runtime MSVC dynamique par défaut nécessitent le runtime Microsoft Visual C++ x64 correspondant. Les fonctions Git nécessitent une installation séparée de Git 2.45+ ; l’inspection de fichiers libres n’en dépend pas. Conservez les archives CPack extraites avec leur documentation et leurs notices de licence. Voir les [conditions de distribution et d’exécution](docs/DISTRIBUTION.md).
 

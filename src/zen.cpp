@@ -19,11 +19,14 @@ std::string ZenSchemaContext::fingerprint() const {
         for (const auto &binding : native_structs)
             state["nativeStructs"][binding.first] = native_struct_layout_name(binding.second);
     }
-    if (!struct_layouts.empty()) {
+    if (!struct_layouts.empty() || !struct_tails.empty()) {
         if (!binary_layouts)
             throw Error("schema-context", "Missing binary layout catalogue");
         state["binaryLayoutsSha256"] = binary_layouts->sha256();
-        state["structLayouts"] = struct_layouts;
+        if (!struct_layouts.empty())
+            state["structLayouts"] = struct_layouts;
+        if (!struct_tails.empty())
+            state["structTails"] = struct_tails;
     }
     if (narrow_string_encoding != NarrowStringEncoding::unspecified)
         state["narrowStringEncoding"] = narrow_string_encoding_name(narrow_string_encoding);
@@ -547,6 +550,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                     props.native_structs = context.native_structs;
                     props.binary_layouts = context.binary_layouts;
                     props.struct_layouts = context.struct_layouts;
+                    props.struct_tails = context.struct_tails;
                     props.narrow_string_encoding = context.narrow_string_encoding;
                     props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
                     props.soft_path_layout = SoftPathLayout::ue5_top_level_names;

@@ -27,6 +27,9 @@ if out.exists() and any(out.iterdir()):
 out.mkdir(parents=True, exist_ok=True)
 (out / '.cyuediff-site-output').write_text('CyUEDiff generated static website\n', encoding='utf-8',newline='\n')
 data = json.loads((SOURCE / 'content.json').read_text(encoding='utf-8-sig'))
+for translations in data['translations'].values():
+    for key, value in translations.items():
+        translations[key] = value.replace('{version}', VERSION)
 data['guide'] = json.loads((SOURCE / 'guide.json').read_text(encoding='utf-8-sig'))
 assert data['translations']['en'].keys() == data['translations']['fr'].keys(), 'Translation key mismatch'
 assert [s['id'] for s in data['guide']['en']] == [s['id'] for s in data['guide']['fr']]
