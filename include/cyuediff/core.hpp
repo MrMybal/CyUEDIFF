@@ -226,6 +226,7 @@ struct Package {
     Json fingerprints = Json::object();
     std::vector<std::string> diagnostics;
     bool complete_input = true;
+    Json source_type_context = nullptr;
     static Package open(const fs::path &file, const ReadOptions &options = {});
     std::string reference(std::int32_t index) const;
     Json semantic_snapshot() const;

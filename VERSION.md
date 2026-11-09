@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.186.0 — Explicit source type metadata
+
+Immutable, profile-bound source type contexts complete identities omitted by older tagged maps/sets. `source-types` prepares a root-selected catalogue from an explicit USMAP; the existing CLI/Git and EN/FR desktop catalogue controls carry it per side. Serialized tags remain intact beside `resolvedType`; conflicting metadata, ambiguous aliases and unbound native serializers stay unavailable. This resolves the selected real Cube cloth's generic source properties/tails, without resolving class defaults or projecting its physical geometry. The larger Humanoid still exceeds the default source work budget. Rebuild against matching 0.186 headers/libraries after the `DecoderRegistry` and `Package` additions. The last verified local Windows archive remains 0.182. See [the source type contract](docs/TAGGED_TYPES.md).
+
 ## 0.185.0 — Tagged source hybrids
 
 The Core now combines an explicitly certified tagged-property prefix with a native struct tail through existing layout catalogues. Nested/repeated values, shared budgets, whole opaque fallback and a borrowed prefix context for conditional host decoders are available in CLI and EN/FR desktop review. Actual Engine-reloaded original plugin assets validate exact values and named differences through a fresh installed SDK. Legacy map/set tags with missing struct identities and class defaults remain separate work. Use matching 0.185 headers/libraries: DecoderContext and AssetDecoder were extended. See [HYBRID_STRUCTS.md](docs/HYBRID_STRUCTS.md).

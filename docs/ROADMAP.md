@@ -134,3 +134,8 @@ Selected UE 5.3 physical geometry, twelve-slot bone records, stored maps/tethers
 ## Tagged source hybrid foundation — 0.185
 
 Certified source struct prefixes/tails now share the Core's existing tagged parser, catalogue registry and limits. Original actual Engine-saved/reloaded plugin assets demonstrate nested/repeated values, exact int64 fields, CLI/SDK differences and EN/FR scoped review. This closes the explicit source prefix/tail composition gap; legacy missing map/set type identities, source metadata completion, defaults, further producer coverage and final updated distribution remain open. See [HYBRID_STRUCTS.md](HYBRID_STRUCTS.md).
+
+
+## Explicit source metadata — 0.186
+
+Selected USMAP roots now supply immutable type completion for older tagged maps/sets through the public Core, CLI preparation and existing EN/FR per-side catalogue controls. The actual Cube source validates stored fields/native tails; the Humanoid still exceeds the default source work budget. Constructor defaults, dedicated source physical projection/render correspondence, broader producer acceptance, report-memory work and final updated delivery remain open. See [TAGGED_TYPES.md](TAGGED_TYPES.md).

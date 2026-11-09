@@ -20,6 +20,7 @@
 #include <cyuediff/cooked_physics.hpp>
 #include <cyuediff/schema_context.hpp>
 #include <cyuediff/binary_layout.hpp>
+#include <cyuediff/tagged_types.hpp>
 #include <cmath>
 #include <locale>
 #include <sstream>
@@ -51,6 +52,8 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff git-binary-diff REPO BEFORE_REV AFTER_REV PATH [--after-path PATH] [--summary] "
                "[--out DELTA.json]\n"
                "  Binary commands refuse existing outputs; see docs/BINARY_DELTA.md for budgets.\n"
+               "  cyuediff source-types MAPPING.usmap UE4_VERSION UE5_VERSION ROOT [ROOT...]\n"
+               "    [--layouts BASE.json] [--codec MODULE.dll] [--out CATALOGUE.json]\n"
                "  cyuediff layouts DESCRIPTION.json [--out REPORT.json]\n"
                "  inspect/diff/git-inspect/git-diff accept --layouts DESCRIPTION.json.\n"
                "  diff/git-diff accept independent --after-layouts DESCRIPTION.json.\n"
@@ -348,6 +351,7 @@ int run(const std::vector<std::string> &args) {
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
+    const bool source_types = command == "source-types";
     const bool cooked_physics =
         command == "zen-physics" || command == "zen-physics-wire" || command == "zen-physics-diff";
     const bool cooked_physics_diff = command == "zen-physics-diff";
@@ -389,12 +393,22 @@ int run(const std::vector<std::string> &args) {
     if (git_command)
         required =
             command == "git-diff" ? 4u : ((command == "git-catalog" || command == "git-history") ? 2u : 3u);
+    if (source_types) {
+        if (positional.size() < 4 || positional.size() > 1003)
+            throw Error("arguments", "Select a mapping, exact archive versions and at least one source root");
+        required = static_cast<unsigned>(positional.size());
+    }
     if (positional.size() != required)
         throw Error("arguments", "Wrong number of arguments; use --help");
     const bool image_command = command == "preview" || command == "image-diff" || command == "hdr-diff";
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (source_types) {
+            if (key != "--out" && key != "--layouts" && key != "--codec")
+                throw Error("arguments", "Unsupported source type preparation option: " + key);
+            continue;
+        }
         if ((key == "--physical-cloth-profile" || key == "--after-physical-cloth-profile" ||
              key == "--include-values" || key == "--vertex" || key == "--transition") &&
             !physical_cloth)
@@ -723,6 +737,36 @@ int run(const std::vector<std::string> &args) {
         const auto catalog = BinaryLayouts::read(input);
         output = {{"schema", "cyuediff.binary-layout-catalog/1"}, {"sha256", catalog.sha256()},
                   {"decoderCount", catalog.decoder_registry()->size()}, {"definition", catalog.to_json()}};
+    } else if (source_types) {
+        auto version = [&](const std::string &text) {
+            std::uint32_t value = 0;
+            if (text.empty())
+                throw Error("arguments", "Empty source archive version");
+            for (const char c : text) {
+                if (c < '0' || c > '9' || value > (static_cast<std::uint32_t>(INT32_MAX) - (c - '0')) / 10)
+                    throw Error("arguments", "Source archive version must be a nonnegative int32");
+                value = value * 10 + static_cast<unsigned>(c - '0');
+            }
+            return static_cast<std::int32_t>(value);
+        };
+        SerializationProfile source_profile;
+        source_profile.ue4 = {version(positional[1]), version(positional[1])};
+        source_profile.ue5 = {version(positional[2]), version(positional[2])};
+        const auto input = fs::u8path(positional[0]);
+        protected_files.push_back(input);
+        SchemaReadOptions schema_options;
+        if (decoder)
+            schema_options.decoder = container_block_decoder(decoder);
+        const auto schemas = UnversionedSchemas::read(input, schema_options);
+        const std::vector<std::string> roots(positional.begin() + 3, positional.end());
+        const auto types = TaggedTypes::from_schemas(schemas, roots, source_profile);
+        output = before_layouts ? before_layouts->to_json()
+                                : Json{{"format", "cyuediff.binary-layouts/1"}, {"layouts", Json::object()}};
+        if (output.contains("taggedTypes"))
+            throw Error("tagged-types",
+                        "Base catalogue already has source type metadata; select an unmodified base");
+        output["taggedTypes"] = types.to_json();
+        BinaryLayouts::parse(output);
     } else if (schema_command) {
         auto input = fs::u8path(positional[0]);
         protected_files.push_back(input);
@@ -1463,7 +1507,8 @@ int run(const std::vector<std::string> &args) {
 #else
         throw Error("git-unavailable", "Configure CYUEDIFF_BUILD_GIT=ON to enable Git commands");
 #endif
-    } else if(command=="curve-value-diff" || command=="curves" || command=="curves-diff" || command=="curve-value" || command=="curve-components"){
+    } else if (command == "curve-value-diff" || command == "curves" || command == "curves-diff" ||
+               command == "curve-value" || command == "curve-components") {
         CurveOptions curve_options;
         const auto family=flags.value("--curve-family",std::string("float"));
         if(family=="transform")curve_options.animation_family=AnimationCurveFamily::Transform;
@@ -1499,7 +1544,7 @@ int run(const std::vector<std::string> &args) {
         }else output=curve_snapshot(before,curve_options);
         if(!before.complete_input)exit_code=2;
         }
-    } else if(source_pose_single || source_pose_diff) {
+    } else if (source_pose_single || source_pose_diff) {
         const bool comparing = source_pose_diff;
         if(flags.contains("--metadata") || flags.contains("--snapshot"))throw Error("arguments","Animation poses require decoded properties");
         if(!comparing) {
@@ -1525,7 +1570,7 @@ int run(const std::vector<std::string> &args) {
             } else output=compare_animation_poses(before,before_skeleton,after,after_skeleton,a,b,selected);
             exit_code=output.at("status")=="identical"?0:output.at("status")=="changed"?1:2;
         }
-    } else if(command=="animation-frame-diff") {
+    } else if (command == "animation-frame-diff") {
         if(flags.contains("--metadata") || flags.contains("--snapshot") || !flags.contains("--before-frame") || !flags.contains("--after-frame"))throw Error("arguments","animation-frame-diff requires decoded properties, --before-frame and --after-frame");
         AnimationFrameDiffOptions selected;
         selected.position_tolerance=real_option("--position-tolerance",0,0,std::numeric_limits<double>::max());
@@ -1535,7 +1580,7 @@ int run(const std::vector<std::string> &args) {
         const auto before=read(positional[0],"--before-project",options),after=read(positional[1],"--after-project",options);
         output=compare_animation_frames(before,after,af,bf,flags.value("--before-object",std::string{}),flags.value("--after-object",std::string{}),selected);
         exit_code=output["status"]=="identical"?0:output["status"]=="changed"?1:2;
-    } else if(command=="animation" || command=="animation-frame" || command=="animation-diff") {
+    } else if (command == "animation" || command == "animation-frame" || command == "animation-diff") {
         if(flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments","Animation source inspection requires decoded properties");
         if(command=="animation-frame" && !flags.contains("--frame"))
@@ -1552,7 +1597,8 @@ int run(const std::vector<std::string> &args) {
         if(!before.complete_input)exit_code=2;
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
                command == "mesh" || command == "material" || command == "collision" ||
-               command == "collision-preview" || command == "skeleton" || command == "skeleton-animation" || command == "skeleton-pose" || command=="attachments" || command=="socket-pose") {
+               command == "collision-preview" || command == "skeleton" || command == "skeleton-animation" ||
+               command == "skeleton-pose" || command == "attachments" || command == "socket-pose") {
         if ((command == "graph" || command == "texture" || command == "mesh" || command == "material" ||
              command == "collision" || command == "collision-preview" || command == "skeleton" ||
              command == "skeleton-pose" || command == "skeleton-animation" || command=="attachments" || command=="socket-pose") &&
@@ -1682,7 +1728,7 @@ int run(const std::vector<std::string> &args) {
             output["lod"] = lod;
             exit_code = comparison.changes.empty() ? 0 : 1;
         }
-    } else if (command == "skeleton-pose-diff" || command=="socket-pose-diff") {
+    } else if (command == "skeleton-pose-diff" || command == "socket-pose-diff") {
         if (flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments", "Reference pose comparison requires decoded hierarchy data");
         ReferencePoseDiffOptions pose_options;
@@ -1701,7 +1747,7 @@ int run(const std::vector<std::string> &args) {
         output = comparison.to_json();
         exit_code = comparison.status()=="identical" ? 0 : comparison.status()=="changed" ? 1 : 2;
         }
-    } else if(command=="attachments-diff"){
+    } else if (command == "attachments-diff") {
         if(flags.contains("--metadata") || flags.contains("--snapshot"))
             throw Error("arguments","Attachment comparison requires decoded stored properties");
         const auto before=read(positional[0],"--before-project",options);
@@ -1780,7 +1826,7 @@ int run(const std::vector<std::string> &args) {
                                       : Json{{"path", context.resolve(positional[1]).u8string()}};
     } else
         throw Error("arguments", "Unknown command " + command);
-    if (before_layouts || after_layouts) {
+    if (!source_types && (before_layouts || after_layouts)) {
         output["layoutContexts"] = {{"beforeSha256", before_layouts ? before_layouts->sha256() : std::string{}},
                                     {"afterSha256", after_layouts ? after_layouts->sha256() : std::string{}},
                                     {"contextChanged", before_layouts != after_layouts &&

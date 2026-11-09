@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.186.0 — Métadonnées explicites des types source
+
+Des contextes immuables et liés au profil complètent les identités absentes des anciennes maps/sets balisées. `source-types` prépare un catalogue depuis un USMAP explicite et des types racines sélectionnés ; les contrôles existants de la CLI/Git et de l’interface EN/FR le conservent par côté. Les balises restent intactes avec `resolvedType` à côté ; contradictions, alias ambigus et sérialiseurs natifs sans liaison restent indisponibles. Les propriétés/suites natives du tissu Cube réel sont accessibles, sans résolution des valeurs par défaut ni projection de géométrie physique source. Le Humanoid plus grand dépasse encore le budget source par défaut. Recompilez avec les en-têtes/bibliothèques 0.186 correspondants après les ajouts à `DecoderRegistry` et `Package`. La dernière archive Windows locale vérifiée reste 0.182. Voir [le contrat](docs/TAGGED_TYPES.md).
+
 ## 0.185.0 — Structures source hybrides
 
 Le Core combine désormais un préfixe de propriétés balisées explicitement certifié et une suite native via les catalogues existants. Valeurs imbriquées/répétées, budgets partagés, repli opaque complet et accès temporaire au préfixe pour les décodeurs C++ conditionnels sont disponibles dans la CLI et l’inspection EN/FR. Des assets originaux de plugin sauvegardés puis rechargés par Unreal valident les valeurs exactes et différences nommées via un SDK installé séparément. Les types internes absents des anciennes maps/sets et les valeurs par défaut restent à traiter. Utilisez les en-têtes/bibliothèques 0.185 correspondants : DecoderContext et AssetDecoder ont été étendus. Voir [HYBRID_STRUCTS.md](docs/HYBRID_STRUCTS.md).

@@ -73,12 +73,17 @@ struct AssetDecoder {
     DecoderPrefix prefix = DecoderPrefix::none;
 };
 // Immutable after construction. Callbacks and their captured state must support the host's threading.
+class TaggedTypes;
 class DecoderRegistry {
     const std::vector<AssetDecoder> entries_;
+    std::shared_ptr<const TaggedTypes> tagged_types_;
     std::map<std::pair<DecoderKind, std::string>, std::vector<std::size_t>> index_;
 
   public:
-    explicit DecoderRegistry(std::vector<AssetDecoder> entries);
+    explicit DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_ptr<const TaggedTypes> = {});
+    const std::shared_ptr<const TaggedTypes> &tagged_types() const {
+        return tagged_types_;
+    }
     // No match returns nullptr; overlapping matches fail instead of depending on registration order.
     const AssetDecoder *find(DecoderKind, const std::string &target, const PackageSummary &) const;
     std::size_t size() const;

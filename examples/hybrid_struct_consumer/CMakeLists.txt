@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(CyUEDiffHybridStructConsumer LANGUAGES CXX)
-find_package(CyUEDiff 0.185 CONFIG REQUIRED)
+find_package(CyUEDiff 0.186 CONFIG REQUIRED)
 add_executable(hybrid_struct_consumer main.cpp)
 target_link_libraries(hybrid_struct_consumer PRIVATE CyUEDiff::Core)
 target_compile_features(hybrid_struct_consumer PRIVATE cxx_std_17)

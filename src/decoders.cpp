@@ -17,7 +17,8 @@ bool SerializationProfile::matches(const PackageSummary &summary) const {
     }
     return true;
 }
-DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries) : entries_(std::move(entries)) {
+DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_ptr<const TaggedTypes> types)
+    : entries_(std::move(entries)), tagged_types_(std::move(types)) {
     std::set<std::string> ids;
     auto range = [](VersionRange r) {
         if (r.min > r.max)

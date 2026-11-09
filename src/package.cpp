@@ -1,4 +1,5 @@
 #include <cyuediff/reflection.hpp>
+#include <cyuediff/tagged_types.hpp>
 #include "material_io.hpp"
 #include "mesh.hpp"
 #include "texture.hpp"
@@ -123,10 +124,7 @@ void read_summary(Archive &a, PackageSummary &s) {
     table_range(a, s.import_offset, s.import_count, 28, s.header_size);
     table_range(a, s.export_offset, s.export_count, 80, s.header_size);
 }
-struct Type {
-    std::string name;
-    std::vector<Type> parameters;
-};
+using Type = TaggedType;
 Json type_json(const Type &t) {
     Json j = {{"name", t.name}};
     if (!t.parameters.empty()) {
@@ -298,35 +296,61 @@ class PropertyReader {
         }
         if (n == "StructProperty" && !t.parameters.empty()) {
             const auto &s = t.parameters[0].name;
-            if (options.decoders)
-                if (const auto *decoder = options.decoders->find(DecoderKind::struct_value, s, p.summary)) {
-                    const auto begin = a.tell();
-                    const auto opaque_before = opaque_properties_;
-                    Json prefix;
-                    if (decoder->prefix == DecoderPrefix::tagged_properties) {
-                        prefix = properties(end, depth + 1, false);
-                        if (opaque_properties_ != opaque_before)
-                            throw Error("hybrid-prefix", "Tagged prefix contains unavailable properties",
-                                        begin);
-                        detail::validate_extension_value(
-                            prefix, options,
-                            [&](std::uint32_t values, std::uint64_t bytes) {
-                                charge_extension(values, bytes);
-                            },
-                            depth);
-                    }
-                    auto result = detail::decode_extension(
-                        a, p, object, options, *decoder, end, exact_size,
-                        [&](std::uint32_t values, std::uint64_t bytes) { charge_extension(values, bytes); },
-                        depth, a.tell() != begin,
-                        decoder->prefix == DecoderPrefix::tagged_properties ? &prefix : nullptr);
-                    if (decoder->prefix == DecoderPrefix::tagged_properties) {
-                        result["prefix"] = "tagged-properties";
-                        result["data"] = {{"properties", std::move(prefix)},
-                                          {"native", std::move(result["data"])}};
-                    }
-                    return result;
+            const AssetDecoder *selected_decoder = nullptr;
+            if (options.decoders) {
+                selected_decoder = options.decoders->find(DecoderKind::struct_value, s, p.summary);
+                if (!t.schema.empty() && t.schema != s) {
+                    const auto *qualified =
+                        options.decoders->find(DecoderKind::struct_value, t.schema, p.summary);
+                    if (qualified && selected_decoder && qualified != selected_decoder)
+                        throw Error("decoder-ambiguous", "Both qualified and short struct decoders match",
+                                    a.tell());
+                    if (qualified)
+                        selected_decoder = qualified;
                 }
+            }
+            if (const auto *decoder = selected_decoder) {
+                const auto begin = a.tell();
+                const auto opaque_before = opaque_properties_;
+                Json prefix;
+                if (decoder->prefix == DecoderPrefix::tagged_properties) {
+                    prefix = properties(end, depth + 1, false, t.schema.empty() ? s : t.schema);
+                    if (opaque_properties_ != opaque_before)
+                        throw Error("hybrid-prefix", "Tagged prefix contains unavailable properties", begin);
+                    detail::validate_extension_value(
+                        prefix, options,
+                        [&](std::uint32_t values, std::uint64_t bytes) { charge_extension(values, bytes); },
+                        depth);
+                }
+                auto result = detail::decode_extension(
+                    a, p, object, options, *decoder, end, exact_size,
+                    [&](std::uint32_t values, std::uint64_t bytes) { charge_extension(values, bytes); },
+                    depth, a.tell() != begin,
+                    decoder->prefix == DecoderPrefix::tagged_properties ? &prefix : nullptr);
+                if (decoder->prefix == DecoderPrefix::tagged_properties) {
+                    result["prefix"] = "tagged-properties";
+                    result["data"] = {{"properties", std::move(prefix)},
+                                      {"native", std::move(result["data"])}};
+                }
+                return result;
+            }
+            if (!t.schema.empty() && t.schema.find_first_of("./") != std::string::npos) {
+                static const std::set<std::string> core_builtins = {
+                    "Guid",   "DateTime", "Timespan",    "Box",       "Box3f",       "Box3d",
+                    "Sphere", "Sphere3f", "Sphere3d",    "Matrix",    "Matrix44f",   "Matrix44d",
+                    "Plane",  "Plane4f",  "Plane4d",     "Transform", "Transform3f", "Transform3d",
+                    "Vector", "Rotator",  "Vector3f",    "Vector3d",  "Vector2D",    "Quat",
+                    "Quat4f", "Vector4",  "LinearColor", "IntPoint",  "IntVector",   "Color"};
+                const auto module =
+                    core_builtins.count(s) ? "CoreUObject"
+                    : (s == "RichCurveKey" || s == "RawAnimSequenceTrack" || detail::is_material_input(s))
+                        ? "Engine"
+                        : "";
+                if (*module && t.schema != std::string("/Script/") + module + '.' + s)
+                    throw Error("tagged-types-identity",
+                                "Qualified source type cannot select an unrelated built-in serializer",
+                                a.tell());
+            }
             if (s == "RichCurveKey") {
                 if (p.summary.ue4_version != 522 || p.summary.licensee_version ||
                     (p.summary.ue5_version != 0 && p.summary.ue5_version != 1004 &&
@@ -518,7 +542,11 @@ class PropertyReader {
                                          : number(doubles ? a.get<double>() : a.get<float>()));
                 return v;
             }
-            return properties(end, depth + 1, false);
+            if (options.decoders && options.decoders->tagged_types() &&
+                options.decoders->tagged_types()->native(t.schema.empty() ? s : t.schema))
+                throw Error("tagged-types-native", "Native struct needs an explicit serializer binding",
+                            a.tell());
+            return properties(end, depth + 1, false, t.schema.empty() ? s : t.schema);
         }
         if ((n == "MapProperty" && t.parameters.size() == 2) ||
             (n == "SetProperty" && t.parameters.size() == 1)) {
@@ -557,7 +585,8 @@ class PropertyReader {
                 auto element = tag();
                 if (element.type.name != "StructProperty" || element.type.parameters.empty())
                     throw Error("array-tag", "Invalid struct array element tag", a.tell());
-                inner = std::move(element.type);
+                inner = inner.schema.empty() ? std::move(element.type)
+                                             : TaggedTypes::complete(element.type, inner);
             }
             // Legacy array tags omit the enum type. Exact size distinguishes FNames from raw bytes.
             bool enum_names = inner.name == "ByteProperty" && inner.parameters.empty() && count &&
@@ -576,7 +605,7 @@ class PropertyReader {
     PropertyReader(Archive &ar, const Package &package, const ObjectExport &entry, const ReadOptions &o)
         : a(ar), p(package), object(entry), options(o) {}
     bool partial = false;
-    Json properties(std::uint64_t end, unsigned depth = 0, bool root = true) {
+    Json properties(std::uint64_t end, unsigned depth = 0, bool root = true, const std::string &owner = {}) {
         depth_check(depth);
         Archive::ReadLimit script_limit(a, end);
         Json result = Json::object();
@@ -602,6 +631,16 @@ class PropertyReader {
                 entry["extensions"] = t.extensions;
             try {
                 Archive::ReadLimit property_limit(a, next);
+                auto effective = t.type;
+                if (options.decoders && options.decoders->tagged_types()) {
+                    const auto &hints = *options.decoders->tagged_types();
+                    if (const auto *declared =
+                            hints.property(root ? object.class_name : owner, t.name, t.index, p.summary)) {
+                        effective = TaggedTypes::complete(t.type, *declared);
+                        if (tagged_type_json(effective) != tagged_type_json(t.type))
+                            entry["resolvedType"] = tagged_type_json(effective);
+                    }
+                }
                 if (t.extensions.is_object() && t.extensions.value("experimentalOverridable", false))
                     throw Error("property-extension",
                                 "Experimental overridable values require a schema decoder", a.tell());
@@ -610,7 +649,7 @@ class PropertyReader {
                 else if (t.flags & 0x20)
                     entry["value"] = nullptr;
                 else
-                    entry["value"] = value(t.type, next, depth + 1);
+                    entry["value"] = value(effective, next, depth + 1);
                 if (a.tell() != next)
                     throw Error("opaque", "Property decoder did not consume exact payload", a.tell());
             } catch (const Error &e) {
@@ -644,6 +683,12 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     p.source = fs::weakly_canonical(fs::absolute(file));
     Archive header(file, options);
     read_summary(header, p.summary);
+    if (options.decoders && options.decoders->tagged_types()) {
+        const auto &types = *options.decoders->tagged_types();
+        p.source_type_context = {{"sha256", types.sha256()},
+                                 {"profileMatched", types.matches(p.summary)},
+                                 {"defaultsResolved", false}};
+    }
     const auto &s = p.summary;
     header.seek(s.name_offset);
     p.names.reserve(s.name_count);
@@ -1018,20 +1063,23 @@ Json Package::to_json() const {
                             {"nativeCoverage", e.native_coverage},
                             {"nativeStart", e.native_start},
                             {"nativeEnd", e.native_end}};
-    return {{"schema", "cyuediff.package/1"},
-            {"source", source.u8string()},
-            {"summary", summary.to_json()},
-            {"snapshot", semantic_snapshot()},
-            {"blueprint", blueprint_snapshot()},
-            {"textures", texture_snapshot()},
-            {"meshes", mesh_snapshot()},
-            {"materials", material_snapshot()},
-            {"collisions", collision_snapshot()},
-            {"skeletons", skeleton_snapshot()},
-            {"reflection", reflection_definitions(*this)},
-            {"coverage", coverage},
-            {"fingerprints", fingerprints},
-            {"completeInput", complete_input},
-            {"diagnostics", diagnostics}};
+    Json result = {{"schema", "cyuediff.package/1"},
+                   {"source", source.u8string()},
+                   {"summary", summary.to_json()},
+                   {"snapshot", semantic_snapshot()},
+                   {"blueprint", blueprint_snapshot()},
+                   {"textures", texture_snapshot()},
+                   {"meshes", mesh_snapshot()},
+                   {"materials", material_snapshot()},
+                   {"collisions", collision_snapshot()},
+                   {"skeletons", skeleton_snapshot()},
+                   {"reflection", reflection_definitions(*this)},
+                   {"coverage", coverage},
+                   {"fingerprints", fingerprints},
+                   {"completeInput", complete_input},
+                   {"diagnostics", diagnostics}};
+    if (!source_type_context.is_null())
+        result["sourceTypeContext"] = source_type_context;
+    return result;
 }
 } // namespace cyuediff

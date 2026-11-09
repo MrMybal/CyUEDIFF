@@ -1,4 +1,5 @@
 #include <cyuediff/binary_layout.hpp>
+#include <cyuediff/tagged_types.hpp>
 #include "string_value.hpp"
 #include <cyuediff/string_encoding.hpp>
 #include <algorithm>
@@ -136,12 +137,13 @@ AssetDecoder binding(const Json &value) {
 struct BinaryLayouts::Impl {
     Json document;
     std::string hash;
+    std::shared_ptr<const TaggedTypes> tagged_types;
 };
 BinaryLayouts::BinaryLayouts(std::shared_ptr<const Impl> impl) : impl_(std::move(impl)) {}
 BinaryLayouts BinaryLayouts::parse(const Json &document, const BinaryLayoutOptions &options) {
     try {
         DefinitionValidator{options}.json(document);
-        fields(document, {"format", "layouts", "decoders", "narrowStringEncoding"});
+        fields(document, {"format", "layouts", "decoders", "narrowStringEncoding", "taggedTypes"});
         if (document.contains("narrowStringEncoding"))
             parse_narrow_string_encoding(word(document["narrowStringEncoding"]));
         require(document.at("format") == "cyuediff.binary-layouts/1", "Unsupported binary layout format");
@@ -192,6 +194,15 @@ BinaryLayouts BinaryLayouts::parse(const Json &document, const BinaryLayoutOptio
             throw Error("layout-limit", "Layout definition exceeds byte limit");
         auto impl = std::make_shared<Impl>();
         impl->document = document;
+        if (document.contains("taggedTypes")) {
+            TaggedTypesOptions hints;
+            hints.max_nodes = options.max_nodes;
+            hints.max_text_bytes = options.max_text_bytes;
+            hints.max_depth = options.max_depth;
+            hints.control = options.control;
+            impl->tagged_types =
+                std::make_shared<TaggedTypes>(TaggedTypes::parse(document["taggedTypes"], hints));
+        }
         impl->hash = sha256_bytes(std::vector<std::uint8_t>(text.begin(), text.end()), options.control);
         return BinaryLayouts(std::move(impl));
     } catch (const Json::exception &) {
@@ -515,6 +526,6 @@ BinaryLayouts::decoder_registry(const BinaryLayoutReadOptions &options) const {
             };
             result.push_back(std::move(entry));
         }
-    return std::make_shared<const DecoderRegistry>(std::move(result));
+    return std::make_shared<const DecoderRegistry>(std::move(result), impl_->tagged_types);
 }
 } // namespace cyuediff

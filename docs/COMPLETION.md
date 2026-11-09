@@ -15,7 +15,7 @@ The product goal is the originally requested reusable Unreal inspection/diff eng
 
 ## Current facts
 
-Current 0.185.0 source adds typed physical cloth geometry/transitions/CLI queries on the independently verified hybrid/paged foundations; the remaining scope is recorded below. Version 0.182.0 remains a locally verified Windows development archive with CLI/desktop, Core/Git SDK and a bilingual offline HTML manual. The other workstreams below still require their remaining acceptance evidence; this does not complete the full product goal. The previous 0.181.0 milestone already supplies the foundational Core, optional Git adapter, source readers, declarative native layouts, container and Zen tables, explicit schema reads, source visuals, local virtualized resources, multiple documents, workspaces and file/block reconstruction. The public website, bilingual README and MIT license are published. Hosted Windows/Ubuntu Core Git-on/off and secret checks pass at commit d0ad51c. The detailed format contracts and remaining reader coverage are tracked in ROADMAP.md.
+Current 0.186.0 source adds explicit source type completion to the independently verified hybrid/paged and physical-cloth foundations; the remaining scope is recorded below. Version 0.182.0 remains a locally verified Windows development archive with CLI/desktop, Core/Git SDK and a bilingual offline HTML manual. The other workstreams below still require their remaining acceptance evidence; this does not complete the full product goal. The previous 0.181.0 milestone already supplies the foundational Core, optional Git adapter, source readers, declarative native layouts, container and Zen tables, explicit schema reads, source visuals, local virtualized resources, multiple documents, workspaces and file/block reconstruction. The public website, bilingual README and MIT license are published. Hosted Windows/Ubuntu Core Git-on/off and secret checks pass at commit d0ad51c. The detailed format contracts and remaining reader coverage are tracked in ROADMAP.md.
 
 ## Reader work log (chronological)
 
@@ -157,3 +157,8 @@ The container worker and reusable EN/FR physical view now bind independently sel
 ## Tagged source hybrid foundation — 0.185
 
 Certified source struct prefixes/tails now share the Core's existing tagged parser, catalogue registry and limits. Original actual Engine-saved/reloaded plugin assets demonstrate nested/repeated values, exact int64 fields, CLI/SDK differences and EN/FR scoped review. This closes the explicit source prefix/tail composition gap; legacy missing map/set type identities, source metadata completion, defaults, further producer coverage and final updated distribution remain open. See [HYBRID_STRUCTS.md](HYBRID_STRUCTS.md).
+
+
+## Explicit source metadata — 0.186
+
+Selected USMAP roots now supply immutable type completion for older tagged maps/sets through the public Core, CLI preparation and existing EN/FR per-side catalogue controls. The actual Cube source validates stored fields/native tails; the Humanoid still exceeds the default source work budget. Constructor defaults, dedicated source physical projection/render correspondence, broader producer acceptance, report-memory work and final updated delivery remain open. See [TAGGED_TYPES.md](TAGGED_TYPES.md).
