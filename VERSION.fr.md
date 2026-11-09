@@ -4,7 +4,7 @@
 
 ## 0.184.0 — Sources locales du tissu physique
 
-Le Core indépendant et la CLI projettent désormais la géométrie physique de tissu UE 5.3 sélectionnée, les données d’os/poids/attaches et les transitions natives modernes. Les requêtes ciblées, différences stockées nommées, correspondances de pose de référence Chaos, export OBJ et contrôles explicites des indices de rendu sont disponibles via un nouvel exemple de SDK installé. Les deltas de cartes et valeurs par défaut de constructeurs absentes gardent une couverture incomplète ; l’intégration desktop physique dédiée reste à réaliser. Voir [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).
+Le Core indépendant et la CLI projettent désormais la géométrie physique de tissu UE 5.3 sélectionnée, les données d’os/poids/attaches et les transitions natives modernes. Les requêtes ciblées, différences stockées nommées, correspondances de pose de référence Chaos, export OBJ et contrôles explicites des indices de rendu sont disponibles via un nouvel exemple de SDK installé. Les deltas de cartes et valeurs par défaut de constructeurs absentes gardent une couverture incomplète ; l’interface EN/FR propose désormais des LODs physiques indépendants, les différences ciblées de sommets/attaches, la configuration stockée et les aperçus filaires de pose de référence. Les espaces de travail version 13 conservent les profils, objets, LODs, sélection et caméra ; les anciens formats migrent avec le nouveau lecteur désactivé. Voir [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).
 
 La dernière archive Windows locale vérifiée reste 0.182.0. Ce jalon des sources ne téléverse, ne publie et ne remplace pas cette archive.
 

@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-cooked-curves-desktop-', dir=
     assert v['before']['scalarSample']['value'] == 2. and v['after']['scalarSample']['value'] == 4.
     assert v['beforeCoverage']['settings']['schemaContextSha256'] != v['afterCoverage']['settings']['schemaContextSha256']
     saved = json.loads(workspace.read_text(encoding='utf-8'))
-    assert saved['schema'] == 'cyuediff.workspace/12' and saved['documents'][0]['settings']['after_curve_settings_entry'] == entry
+    assert saved['schema'] == 'cyuediff.workspace/13' and saved['documents'][0]['settings']['after_curve_settings_entry'] == entry
     assert saved['documents'][0]['viewState']['container']['animation']['scalarMode']
     checks += 5
     restored = run('--workspace', workspace, context=[])
@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-cooked-curves-desktop-', dir=
     legacy = json.loads(workspace.read_text(encoding='utf-8'))
     legacy['schema'] = 'cyuediff.workspace/10'
     for d in legacy['documents']:
-        for key in ('nanite_profile','after_nanite_profile','nanite_attributes','after_nanite_attributes','curve_settings_container','after_curve_settings_container','curve_settings_entry','after_curve_settings_entry'):
+        for key in ('physical_cloth_profile', 'after_physical_cloth_profile', 'nanite_profile','after_nanite_profile','nanite_attributes','after_nanite_attributes','curve_settings_container','after_curve_settings_container','curve_settings_entry','after_curve_settings_entry'):
             d['settings'].pop(key)
     old = root/'version-ten.json'
     old.write_text(json.dumps(legacy), encoding='utf-8')

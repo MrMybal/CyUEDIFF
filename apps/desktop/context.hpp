@@ -17,6 +17,7 @@ struct Settings {
     int skeletal_profile = 0, after_skeletal_profile = 0;
     int skeletal_mobile_lod = 0, after_skeletal_mobile_lod = 0, skeletal_colors = 0,
         after_skeletal_colors = 0;
+    int physical_cloth_profile = 0, after_physical_cloth_profile = 0;
     int physics_profile = 0, after_physics_profile = 0;
     int mesh_profile = 0, after_mesh_profile = 0, mesh_mobile_lod = 0, after_mesh_mobile_lod = 0;
     int nanite_profile = 0, after_nanite_profile = 0;
@@ -59,6 +60,9 @@ struct Settings {
             input.script_objects = fs::u8path(script_objects);
             input.schema = fs::u8path(container_schema);
             input.entry = container_entry;
+            input.physical_cloth_profile = physical_cloth_profile == 1
+                                               ? PhysicalClothProfile::unreal_5_3_windows
+                                               : PhysicalClothProfile::unspecified;
             input.animation_profile = animation_profile == 1 ? CookedAnimationProfile::unreal_5_3_windows
                                                              : CookedAnimationProfile::unspecified;
             if (animation_interpolation)
@@ -92,6 +96,9 @@ struct Settings {
             if (!after_container_path.empty()) {
                 input.after_path = fs::u8path(after_container_path);
                 input.after_entry = after_container_entry;
+                input.after_physical_cloth_profile = after_physical_cloth_profile == 1
+                                                         ? PhysicalClothProfile::unreal_5_3_windows
+                                                         : PhysicalClothProfile::unspecified;
                 input.after_animation_profile = after_animation_profile == 1
                                                     ? CookedAnimationProfile::unreal_5_3_windows
                                                     : CookedAnimationProfile::unspecified;

@@ -35,7 +35,12 @@ Json ContainerDocument::report() const {
     Json nanite = Json::array();
     for (const auto &p : nanite_previews)
         nanite.push_back({{"object", p.object_path}, {"resource", p.resource->information()}});
+    Json physical = Json::array();
+    for (const auto &p : physical_cloth_previews)
+        physical.push_back(p.model->to_json(false));
     return {{"schema", "cyuediff.desktop-container/1"},
+            {"physicalCloth", std::move(physical)},
+            {"physicalClothDiagnostics", physical_cloth_diagnostics},
             {"animations", animations},
             {"animationDiagnostics", animation_diagnostics},
             {"physics", physics},
@@ -235,6 +240,39 @@ std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &sour
                     throw;
                 document->physics_diagnostics.push_back(error.code + ": " + error.what());
             }
+        }
+        if (source.physical_cloth_profile != PhysicalClothProfile::unspecified) {
+            unsigned count = 0;
+            for (std::size_t i = 0; i < document->zen->exports.size(); ++i) {
+                const auto &object = document->zen->exports[i];
+                if (object.class_name != "/Script/ClothingSystemRuntimeCommon.ClothingAssetCommon" ||
+                    (object.flags & 0x30))
+                    continue;
+                try {
+                    if (++count > 4)
+                        throw Error("physical-cloth-limit", "Physical cloth document export limit exceeded");
+                    PhysicalClothOptions options;
+                    options.profile = source.physical_cloth_profile;
+                    options.control = control;
+                    options.max_model_bytes = 64 * 1024 * 1024;
+                    options.max_vertices = 100'000;
+                    options.max_tethers = options.max_transitions = 500'000;
+                    options.max_values = 1'000'000;
+                    auto model =
+                        std::make_shared<PhysicalClothAsset>(read_physical_cloth(*document->zen, options, i));
+                    document->physical_cloth_previews.push_back({object.path, std::move(model)});
+                } catch (const Error &error) {
+                    if (error.code == "cancelled" || error.code == "container-integrity")
+                        throw;
+                    document->physical_cloth_diagnostics.push_back(object.path + ": " + error.code + ": " +
+                                                                   error.what());
+                }
+                if (count > 4)
+                    break;
+            }
+            if (!count)
+                document->physical_cloth_diagnostics.push_back(
+                    "No supported physical cloth instance in the selected member.");
         }
         if (source.animation_profile != CookedAnimationProfile::unspecified) {
             unsigned count = 0;
@@ -517,6 +555,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
                                                                  const OperationControl &control) {
     if (source.after_path.empty()) {
         if (source.compare_payloads || !source.after_entry.empty() ||
+            source.after_physical_cloth_profile != PhysicalClothProfile::unspecified ||
             source.after_animation_profile != CookedAnimationProfile::unspecified ||
             source.after_animation_interpolation.has_value() ||
             !source.after_bone_settings_container.empty() || !source.after_skeleton_container.empty() ||
@@ -539,6 +578,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
         throw Error("desktop-container", "An explicit after member requires a before member");
     auto left = source;
     left.after_entry.clear();
+    left.after_physical_cloth_profile = PhysicalClothProfile::unspecified;
     left.after_animation_profile = CookedAnimationProfile::unspecified;
     left.after_animation_interpolation.reset();
     left.after_bone_settings_container.clear();
@@ -562,6 +602,7 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
     left.compare_payloads = false;
     left.entry.clear();
     auto right = left;
+    right.physical_cloth_profile = source.after_physical_cloth_profile;
     right.animation_profile = source.after_animation_profile;
     right.animation_interpolation = source.after_animation_interpolation;
     right.bone_settings_container = source.after_bone_settings_container;
@@ -612,6 +653,8 @@ std::shared_ptr<const ContainerDocument> load_container_document(const Container
         if (pair.before) {
             left.entry = document->input->entries()[*pair.before].id;
             const auto loaded = load_single(left, codec, control);
+            document->physical_cloth_previews = loaded->physical_cloth_previews;
+            document->physical_cloth_diagnostics = loaded->physical_cloth_diagnostics;
             document->animations = loaded->animations;
             document->animation_previews = loaded->animation_previews;
             document->animation_diagnostics = loaded->animation_diagnostics;

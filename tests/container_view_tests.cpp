@@ -2,6 +2,7 @@
 #include "container_fixtures.hpp"
 #include "schema_fixture.hpp"
 #include "schema_native_fixture.hpp"
+#include "physical_cloth_fixture.hpp"
 #include <chrono>
 #include <array>
 #include <algorithm>
@@ -244,6 +245,37 @@ int main() {
                 }))
                 throw std::runtime_error("Exact native temporal/bounds desktop preview");
         }
+        auto physical_doc = std::make_shared<ContainerDocument>(*member);
+        auto physical_peer = std::make_shared<ContainerDocument>(*member);
+        PhysicalClothOptions physical_options;
+        physical_options.profile = PhysicalClothProfile::unreal_5_3_windows;
+        auto physical_input = physical_fixture(), physical_changed = physical_input;
+        physical_fields(physical_changed)[std::string(PhysicalData) + ".InverseMasses"]["value"][1] = .5f;
+        auto physical_a =
+            std::make_shared<PhysicalClothAsset>(read_physical_cloth(physical_input, physical_options));
+        auto physical_b =
+            std::make_shared<PhysicalClothAsset>(read_physical_cloth(physical_changed, physical_options));
+        physical_doc->source.physical_cloth_profile = physical_peer->source.physical_cloth_profile =
+            physical_options.profile;
+        physical_doc->physical_cloth_previews = {{physical_a->object_path(), physical_a}};
+        physical_peer->physical_cloth_previews = {{physical_b->object_path(), physical_b}};
+        physical_doc->after = physical_peer;
+        ContainerView physical_view;
+        physical_view.set_document(physical_doc);
+        physical_view.restore_view_state({{"physicalCloth", {{"selected", 1}, {"changedOnly", true}}}});
+        if (!physical_view.select_tab(11) || physical_view.physical_cloth_report()["modified"] != 1)
+            throw std::runtime_error("Explicit physical document binding");
+        const auto physical_state = physical_view.view_state();
+        physical_view.restore_view_state({{"filter", "A"}});
+        if (physical_view.view_state()["physicalCloth"] != physical_state["physicalCloth"])
+            throw std::runtime_error("Unrelated container state must preserve physical vertex/filter/camera");
+        physical_view.restore_view_state({{"beforePhysicalCloth", "/missing"}});
+        if (physical_view.physical_cloth_report()["knownComparison"].get<bool>() ||
+            physical_view.physical_cloth_report()["removed"] != 0)
+            throw std::runtime_error("Missing physical object is unknown rather than removed");
+        physical_view.restore_view_state(physical_state);
+        if (physical_view.view_state()["physicalCloth"] != physical_state["physicalCloth"])
+            throw std::runtime_error("Physical object identity restores its selected value");
         ImGui::CreateContext();
         auto &io = ImGui::GetIO();
         io.DisplaySize = ImVec2(1280, 900);
@@ -286,7 +318,8 @@ int main() {
                          {mapped_pair, 2},
                          {mapped_partial, 2},
                          {mapped_failure, 2},
-                         {mapped_pair, 4}}) {
+                         {mapped_pair, 4},
+                         {physical_doc, 11}}) {
                     const auto &document = scene.first;
                     view.set_document(document);
                     if (!view.select_tab(scene.second) || view.select_tab(99))

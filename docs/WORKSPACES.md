@@ -1,6 +1,6 @@
 # Workspace files
 
-The optional desktop host has a data-only `cyuediff.workspace/12` JSON format (post-0.181 development). It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
+The optional desktop host has a data-only `cyuediff.workspace/13` JSON format (post-0.181 development). It records one to eight documents in order, the active document index, source and project/engine/schema contexts, preview options, initial asset/container view and supported presentation state. It does not serialize asset bytes, runtime view objects, GPU resources, caches, callbacks, closed-document history, appearance preferences or codec modules. A workspace file does not certify that its source files or schemas still match a build.
 
 Local filesystem paths are saved as absolute paths. Relative paths in a file being opened resolve against that file's parent directory. Git asset/project paths remain repository-relative, and mounted names such as `/Game/Example` remain mounted when a project context is present. Git revision expressions are retained as entered, so a later opening can resolve a moving branch differently. No checkout, network fetch or source modification is performed.
 
@@ -132,3 +132,8 @@ Format 11 adds `curve_settings_container`, `after_curve_settings_container`, `cu
 Version twelve adds independent `nanite_profile`/`after_nanite_profile` and `nanite_attributes`/`after_nanite_attributes` settings, plus container tab 10. Formats one through eleven migrate with Nanite decoding disabled and attribute requests enabled only for a later explicit profile selection. No native producer compatibility is inferred.
 
 The optional container `beforeNanite`/`afterNanite` fields store exact object paths or null; stale identities clear instead of selecting another resource. `nanite` presentation state retains side, full-leaf/selected-cluster scope, attribute comparison scope, page/cluster/vertex/triangle/hierarchy indices, inspector mode, filters, property path, camera and panel proportions. Bounds and field types are validated before replacing current state. Resource bindings are restored before focused values and camera. The full contract and unavailable/empty semantics are in [NANITE_GEOMETRY.md](NANITE_GEOMETRY.md).
+
+
+## Physical cloth extension
+
+Version 13 adds separate before/after physical-cloth profiles, tab 11 and validated physical object/LOD/mode/vertex/filter/camera state. Versions 1–12 migrate with physical readers disabled. Missing saved objects or out-of-range LODs stay unavailable; no replacement scope is selected implicitly.

@@ -7,6 +7,7 @@
 #include <cyuediff/mesh_skin_view.hpp>
 #include <cyuediff/render_morph_view.hpp>
 #include <cyuediff/cloth_view.hpp>
+#include <cyuediff/physical_cloth_view.hpp>
 #include <cyuediff/vertex_attribute_view.hpp>
 #include <cyuediff/collision_view.hpp>
 #include <cyuediff/cooked_animation_view.hpp>
@@ -45,6 +46,10 @@ class ContainerView {
         bool morphs_available = false;
         bool skin_available = false, comparison_known = true;
     };
+    PhysicalClothView physical_cloth_;
+    int before_physical_cloth_ = -1, after_physical_cloth_ = -1;
+    bool physical_cloth_present_ = false, physical_pair_explicit_ = false;
+    void bind_physical_cloth();
     NaniteView nanite_;
     int before_nanite_ = -1, after_nanite_ = -1;
     bool nanite_present_ = false;
@@ -108,6 +113,9 @@ class ContainerView {
     }
     bool busy() const {
         return animation_.busy() || nanite_.busy();
+    }
+    Json physical_cloth_report() const {
+        return physical_cloth_present_ ? physical_cloth_.report() : Json(nullptr);
     }
     Json animation_report() const;
     Json nanite_report() const;

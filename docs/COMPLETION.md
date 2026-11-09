@@ -146,4 +146,9 @@ This resolves the identified large-object navigation gap for these desktop paths
 
 The physical model, focused vertex/transition queries, named stored comparisons, source-pose transition coordinates, OBJ geometry export and explicit base render-source bounds are implemented through Core/CLI/installed SDK. Actual Engine API/native serializers and Chaos CPU wrap references exercise this scope. See [PHYSICAL_CLOTH.md](PHYSICAL_CLOTH.md).
 
-This addresses the typed physical geometry/transition foundation, not the whole product goal. A dedicated physical desktop view, full constructor/default reconstruction, further source/native/plugin/producer acceptance and the final updated distribution remain required. Nonreplacement map inventories retain incomplete coverage. The earlier 0.182 delivery archive remains unchanged; no push or public release is implied.
+This addresses the typed physical geometry/transition foundation, not the whole product goal. The dedicated physical desktop view described below is now bound. Full constructor/default reconstruction, further source/native/plugin/producer acceptance and the final updated distribution remain required. Nonreplacement map inventories retain incomplete coverage. The earlier 0.182 delivery archive remains unchanged; no push or public release is implied.
+
+
+## Physical cloth desktop review
+
+The container worker and reusable EN/FR physical view now bind independently selected objects/LODs, focused stored vertex/tether differences, configuration inspection, stored/reference-pose wire previews and version-13 workspaces. This closes the dedicated physical view gap for the selected profile. Missing defaults, arbitrary native/source/plugin serializers, further producer acceptance and final distribution remain open.

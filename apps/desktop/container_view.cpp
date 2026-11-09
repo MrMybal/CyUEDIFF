@@ -30,6 +30,14 @@ void ContainerView::register_translations() {
     MeshSkinView::register_translations();
     RenderMorphView::register_translations();
     ClothView::register_translations();
+    PhysicalClothView::register_translations();
+    cyui::registerTranslations(
+        "fr", {{"Physical cloth settings", "Réglages du tissu physique"},
+               {"Before physical cloth profile", "Profil du tissu physique avant"},
+               {"After physical cloth profile", "Profil du tissu physique après"},
+               {"Before physical cloth object", "Objet de tissu physique avant"},
+               {"After physical cloth object", "Objet de tissu physique après"},
+               {"Compare selected physical objects", "Comparer les objets physiques sélectionnés"}});
     VertexAttributeView::register_translations();
     PropertyBrowserView::register_translations();
     cyui::registerTranslations("fr", {{"Browse by level", "Parcourir par niveau"}});
@@ -353,6 +361,9 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
     physics_.set_models(nullptr, nullptr, {}, {});
     collisions_present_ = false;
     collisions_.set_models(nullptr, nullptr, {}, {});
+    physical_cloth_.set_assets(nullptr);
+    physical_cloth_present_ = physical_pair_explicit_ = false;
+    before_physical_cloth_ = after_physical_cloth_ = -1;
     nanite_.set_resources(nullptr);
     nanite_present_ = false;
     before_nanite_ = after_nanite_ = -1;
@@ -616,6 +627,16 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
         bind_nanite();
         if (nanite_present_)
             initial_tab_ = 10;
+        before_physical_cloth_ = document_->physical_cloth_previews.size() == 1 ? 0 : -1;
+        after_physical_cloth_ =
+            document_->after && document_->after->physical_cloth_previews.size() == 1 ? 0 : -1;
+        physical_cloth_present_ =
+            document_->source.physical_cloth_profile != PhysicalClothProfile::unspecified ||
+            (document_->after &&
+             document_->after->source.physical_cloth_profile != PhysicalClothProfile::unspecified);
+        bind_physical_cloth();
+        if (physical_cloth_present_)
+            initial_tab_ = 11;
         select_tab_ = true;
     } else {
         members_.clear();
@@ -624,11 +645,11 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
 }
 
 bool ContainerView::select_tab(int tab) {
-    if (!document_ || tab < 0 || tab > 10 || (tab == 10 && !nanite_present_) ||
-        (tab == 9 && !animation_present_) || (tab == 8 && !physics_present_) ||
-        (tab == 7 && !collisions_present_) || (tab == 6 && mesh_rows_.empty()) ||
-        (tab == 5 && pixel_rows_.empty()) || (tab == 2 && object_rows_.empty()) ||
-        (tab == 3 && !document_->after) ||
+    if (!document_ || tab < 0 || tab > 11 || (tab == 11 && !physical_cloth_present_) ||
+        (tab == 10 && !nanite_present_) || (tab == 9 && !animation_present_) ||
+        (tab == 8 && !physics_present_) || (tab == 7 && !collisions_present_) ||
+        (tab == 6 && mesh_rows_.empty()) || (tab == 5 && pixel_rows_.empty()) ||
+        (tab == 2 && object_rows_.empty()) || (tab == 3 && !document_->after) ||
         (tab == 4 && !document_->schema_manifest &&
          (!document_->after || !document_->after->schema_manifest)))
         return false;
@@ -723,6 +744,15 @@ Json ContainerView::property_report() const {
                                                    : Json(nullptr)}};
     }
     return result;
+}
+void ContainerView::bind_physical_cloth() {
+    const auto a = document_ && before_physical_cloth_ >= 0
+                       ? document_->physical_cloth_previews.at(before_physical_cloth_).model
+                       : nullptr;
+    const auto b = document_ && document_->after && after_physical_cloth_ >= 0
+                       ? document_->after->physical_cloth_previews.at(after_physical_cloth_).model
+                       : nullptr;
+    physical_cloth_.set_assets(a, b, document_ && document_->after != nullptr, physical_pair_explicit_);
 }
 void ContainerView::bind_animation() {
     const auto before = document_ && before_animation_ >= 0
@@ -827,6 +857,18 @@ Json ContainerView::view_state() const {
                 ? Json(document_->after->animation_previews.at(after_animation_).object_path)
                 : Json(nullptr);
     }
+    if (physical_cloth_present_) {
+        result["physicalCloth"] = physical_cloth_.view_state();
+        result["physicalPairExplicit"] = physical_pair_explicit_;
+        result["beforePhysicalCloth"] =
+            before_physical_cloth_ >= 0
+                ? Json(document_->physical_cloth_previews.at(before_physical_cloth_).object_path)
+                : Json(nullptr);
+        result["afterPhysicalCloth"] =
+            after_physical_cloth_ >= 0
+                ? Json(document_->after->physical_cloth_previews.at(after_physical_cloth_).object_path)
+                : Json(nullptr);
+    }
     if (physics_present_)
         result["physics"] = physics_.view_state();
     if (collisions_present_)
@@ -892,6 +934,30 @@ void ContainerView::restore_view_state(const Json &state) {
     restore("values", values_);
     restore("comparison", comparison_);
     restore("schema", schema_);
+    if (physical_cloth_present_) {
+        const auto old_before = before_physical_cloth_, old_after = after_physical_cloth_;
+        const auto old_pair = physical_pair_explicit_;
+        const auto select = [&](const char *key, const ContainerDocument *side, int &selected) {
+            if (!state.contains(key))
+                return;
+            selected = -1;
+            if (side && state[key].is_string())
+                for (std::size_t i = 0; i < side->physical_cloth_previews.size(); ++i)
+                    if (side->physical_cloth_previews[i].object_path == state[key]) {
+                        selected = int(i);
+                        break;
+                    }
+        };
+        select("beforePhysicalCloth", document_.get(), before_physical_cloth_);
+        select("afterPhysicalCloth", document_->after.get(), after_physical_cloth_);
+        if (state.contains("physicalPairExplicit"))
+            physical_pair_explicit_ = state["physicalPairExplicit"].get<bool>();
+        if (old_before != before_physical_cloth_ || old_after != after_physical_cloth_ ||
+            old_pair != physical_pair_explicit_)
+            bind_physical_cloth();
+        if (state.contains("physicalCloth"))
+            physical_cloth_.restore_view_state(state["physicalCloth"]);
+    }
     if (animation_present_) {
         bool changed = false;
         auto select = [&](const char *key, const ContainerDocument *side, int &selected) {
@@ -1323,6 +1389,49 @@ ContainerAction ContainerView::draw(bool busy) {
             for (const auto &diagnostic : document_->after->mesh_diagnostics)
                 ImGui::TextWrapped("%s: %s", cyui::tr("After").c_str(), diagnostic.c_str());
         nanite_.draw();
+        ImGui::EndTabItem();
+    }
+    if (physical_cloth_present_ &&
+        ImGui::BeginTabItem(cyui::trLabel("Physical cloth").c_str(), nullptr, flags(11))) {
+        active_tab_ = 11;
+        const auto choose = [&](const char *label, const ContainerDocument *side, int &selected) {
+            const auto text = side && selected >= 0 ? side->physical_cloth_previews.at(selected).object_path
+                                                    : cyui::tr("Unavailable");
+            if (ImGui::BeginCombo(cyui::trLabel(label).c_str(), text.c_str())) {
+                bool changed = false;
+                if (ImGui::Selectable(cyui::trLabel("Unavailable").c_str(), selected < 0)) {
+                    selected = -1;
+                    changed = true;
+                }
+                if (side)
+                    for (std::size_t i = 0; i < side->physical_cloth_previews.size(); ++i)
+                        if (ImGui::Selectable(side->physical_cloth_previews[i].object_path.c_str(),
+                                              selected == int(i))) {
+                            selected = int(i);
+                            changed = true;
+                        }
+                ImGui::EndCombo();
+                if (changed)
+                    bind_physical_cloth();
+            }
+        };
+        choose("Before physical cloth object", document_.get(), before_physical_cloth_);
+        if (document_->after) {
+            choose("After physical cloth object", document_->after.get(), after_physical_cloth_);
+            if (ImGui::Checkbox(cyui::trLabel("Compare selected physical objects").c_str(),
+                                &physical_pair_explicit_))
+                bind_physical_cloth();
+        }
+        for (const auto *side : {document_.get(), document_->after.get()})
+            if (side) {
+                for (const auto &d : side->physical_cloth_diagnostics)
+                    ImGui::TextWrapped(
+                        "%s: %s", cyui::tr(side == document_.get() ? "Before" : "After").c_str(), d.c_str());
+                for (const auto &p : side->physical_cloth_previews)
+                    for (const auto &d : p.model->diagnostics())
+                        ImGui::TextWrapped("%s", d.c_str());
+            }
+        physical_cloth_.draw();
         ImGui::EndTabItem();
     }
     ImGui::EndTabBar();

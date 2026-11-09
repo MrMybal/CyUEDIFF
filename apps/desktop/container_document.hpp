@@ -5,6 +5,7 @@
 #include <cyuediff/cooked_skeletal.hpp>
 #include <cyuediff/cooked_physics.hpp>
 #include <cyuediff/cooked_animation.hpp>
+#include <cyuediff/physical_cloth.hpp>
 #include <cyuediff/collision_wireframe.hpp>
 #include <optional>
 namespace cyuediff::desktop {
@@ -35,6 +36,8 @@ struct ContainerSource {
     std::string bone_settings_entry, skeleton_entry, after_bone_settings_entry, after_skeleton_entry;
     fs::path curve_settings_container, after_curve_settings_container;
     std::string curve_settings_entry, after_curve_settings_entry;
+    PhysicalClothProfile physical_cloth_profile = PhysicalClothProfile::unspecified,
+                         after_physical_cloth_profile = PhysicalClothProfile::unspecified;
     bool compare_payloads = false;
     std::uint64_t max_comparison_bytes = 512ull * 1024 * 1024;
     std::uint64_t max_payload_bytes = 64ull * 1024 * 1024;
@@ -63,6 +66,10 @@ struct ContainerTextureDifference {
     ImageComparison comparison;
     std::optional<HdrImageComparison> hdr;
 };
+struct ContainerPhysicalClothPreview {
+    std::string object_path;
+    std::shared_ptr<const PhysicalClothAsset> model;
+};
 struct ContainerDocument {
     ContainerSource source;
     std::shared_ptr<const Container> input;
@@ -80,6 +87,8 @@ struct ContainerDocument {
     std::vector<ContainerMeshPreview> mesh_previews;
     std::vector<ContainerNanitePreview> nanite_previews;
     std::vector<std::string> mesh_diagnostics;
+    std::vector<ContainerPhysicalClothPreview> physical_cloth_previews;
+    std::vector<std::string> physical_cloth_diagnostics;
     Json animations = Json::array();
     std::vector<ContainerAnimationPreview> animation_previews;
     std::vector<std::string> animation_diagnostics;

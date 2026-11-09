@@ -84,7 +84,7 @@ inline void validate(const Json &v, std::string_view kind) {
             }
             flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics",
                   "animationPose", "binaryLayouts", "virtualizedPayloads", "mesh-native", "physics-native",
-                  "animation-native", "skeletal-native", "nanite-native"});
+                  "animation-native", "skeletal-native", "nanite-native", "physical-cloth-native"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);
@@ -314,6 +314,23 @@ inline void validate(const Json &v, std::string_view kind) {
                 }
                 known = true;
             }
+        } else if (kind == "physical-cloth") {
+            string({"filter"});
+            flag({"changedOnly", "after", "controlsOpen"});
+            child("details", "property");
+            child("mesh", "mesh");
+            if (key == "beforeLOD" || key == "afterLOD" || key == "selected") {
+                if (!x.is_null()) {
+                    require(x.is_number_integer());
+                    scalar(x, 0, 4294967295.);
+                }
+                known = true;
+            }
+            if (key == "mode" || key == "panel") {
+                require(x.is_number_integer());
+                scalar(x, 0, 2);
+                known = true;
+            }
         } else if (kind == "cloth") {
             string({"filter"});
             flag({"changedOnly"});
@@ -365,6 +382,9 @@ inline void validate(const Json &v, std::string_view kind) {
             child("after", "side");
             child("comparison", "diff");
         } else if (kind == "container") {
+            child("physicalCloth", "physical-cloth");
+            string({"beforePhysicalCloth", "afterPhysicalCloth"}, true);
+            flag({"physicalPairExplicit"});
             child("propertyBrowser", "property-browser");
             flag({"browseProperties"});
             child("nanite", "nanite");

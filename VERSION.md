@@ -4,7 +4,7 @@
 
 ## 0.184.0 — Local physical-cloth source development
 
-The independent Core/CLI now project selected UE 5.3 physical cloth geometry, bone/weight/tether data and modern native transitions. Focused queries, named stored differences, reference-pose Chaos wrap algebra, OBJ output and explicitly bound render-source index checks are available through a fresh installed SDK example. Map deltas and missing constructor defaults retain incomplete coverage; dedicated physical desktop binding remains subsequent work. See [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).
+The independent Core/CLI now project selected UE 5.3 physical cloth geometry, bone/weight/tether data and modern native transitions. Focused queries, named stored differences, reference-pose Chaos wrap algebra, OBJ output and explicitly bound render-source index checks are available through a fresh installed SDK example. Map deltas and missing constructor defaults retain incomplete coverage; the EN/FR desktop now binds independently selected physical LODs, focused vertex/tether differences, stored configuration and reference-pose wire previews. Workspace version 13 retains the independent profiles, objects, LODs, selection and camera; older formats migrate with the new decoder disabled. See [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).
 
 The last verified local Windows archive remains 0.182.0. This source milestone does not upload, publish or replace that archive.
 

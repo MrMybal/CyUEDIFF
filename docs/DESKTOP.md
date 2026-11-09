@@ -423,3 +423,8 @@ The selected UE 5.3 Windows Core/CLI/SDK reader now exposes typed raw section-lo
 ### Named cooked vertex attributes — post-0.181 development
 
 The selected UE 5.3 Windows reader now exposes finite float32/float16/UNorm8 channels with one to four components, exact owned bytes and focused typed values. Core/CLI/SDK compare decoded named values independently of encoding. The EN/FR desktop adds channel/vertex search, change navigation, focused vectors, incident edge highlights and persisted state; unknown peer coverage stays incomplete. See [VERTEX_ATTRIBUTES.md](VERTEX_ATTRIBUTES.md). Further native/plugin/producer/runtime coverage, physical cloth assets and final distribution remain open; this addition does not complete the full product goal or imply a push/release.
+
+
+## Physical cloth — 0.184 development
+
+The explicitly selected UE 5.3 physical-cloth profile now binds owned Core models to an EN/FR object/LOD inspector and reference-pose wire preview. Independent contexts, focused tether/vertex differences and workspace version 13 are available. See [PHYSICAL_CLOTH.md](PHYSICAL_CLOTH.md) for limits and launch options.

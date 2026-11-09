@@ -162,6 +162,8 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.container_tab = 1;
             else if (name == "objects")
                 options.container_tab = 2;
+            else if (name == "physical-cloth")
+                options.container_tab = 11;
             else if (name == "nanite")
                 options.container_tab = 10;
             else if (name == "animations")
@@ -250,6 +252,15 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.settings.curve_settings_entry = text;
             else if (argument == "--after-curve-settings-entry")
                 options.settings.after_curve_settings_entry = text;
+        } else if (argument == "--physical-cloth-profile" || argument == "--after-physical-cloth-profile") {
+            if (value() != "ue5.3-windows")
+                throw Error("desktop-option", "Supported physical cloth profile: ue5.3-windows");
+            options.container_parameters = true;
+            if (argument == "--after-physical-cloth-profile") {
+                options.settings.after_physical_cloth_profile = 1;
+                options.after_container_parameters = true;
+            } else
+                options.settings.physical_cloth_profile = 1;
         } else if (argument == "--animation-profile" || argument == "--after-animation-profile") {
             if (value() != "ue5.3-windows")
                 throw Error("desktop-option", "Supported cooked animation profile: ue5.3-windows");
@@ -1145,6 +1156,7 @@ class Shell {
                 {"collisionView", current().container_view.collision_report()},
                 {"physicsView", current().container_view.physics_report()},
                 {"animationView", current().container_view.animation_report()},
+                {"physicalClothView", current().container_view.physical_cloth_report()},
                 {"naniteView", current().container_view.nanite_report()}};
     }
     Json history_report() const {
@@ -2122,6 +2134,22 @@ class Shell {
                                                      .c_str());
                         cyui::endSection();
                     }
+                    if (current().layout.section("physical-cloth-native", "Physical cloth settings",
+                                                 current().settings.physical_cloth_profile ||
+                                                     current().settings.after_physical_cloth_profile)) {
+                        const auto disabled = cyui::tr("Disabled");
+                        const char *profiles[] = {disabled.c_str(), "UE 5.3 Windows"};
+                        if (cyui::beginProperties("##physical-cloth-profiles", 150)) {
+                            cyui::property(cyui::tr("Before physical cloth profile").c_str());
+                            ImGui::Combo("##before-physical-cloth-profile",
+                                         &current().settings.physical_cloth_profile, profiles, 2);
+                            cyui::property(cyui::tr("After physical cloth profile").c_str());
+                            ImGui::Combo("##after-physical-cloth-profile",
+                                         &current().settings.after_physical_cloth_profile, profiles, 2);
+                            cyui::endProperties();
+                        }
+                        cyui::endSection();
+                    }
                     if (current().layout.section("schema", "Schema contexts (optional)",
                                                  !current().settings.container_schema.empty() ||
                                                      !current().settings.after_container_schema.empty())) {
@@ -2784,6 +2812,7 @@ int run(Options options) {
                "  [--project REPO_PROJECT] [--no-engine] [--lfs-objects DIR] : local Git/LFS comparison\n"
                "  --container FILE.pak|FILE.utoc [--container-entry ID_OR_PATH] [--container-filter TEXT]\n"
                "  --after-container-entry ID_OR_PATH (optional independent after member)\n"
+               "  --physical-cloth-profile/--after-physical-cloth-profile ue5.3-windows\n"
                "  --animation-profile ue5.3-windows [--animation-interpolation linear|step]\n"
                "  --bone-settings-entry ID [--bone-settings-container TOC] --skeleton-entry ID "
                "[--skeleton-container TOC]\n"

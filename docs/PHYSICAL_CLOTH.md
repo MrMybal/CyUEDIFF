@@ -35,9 +35,26 @@ cyuediff zen-physical-cloth-diff before.utoc MEMBER after.utoc MEMBER [independe
 
 The comparison command explicitly selects both package members and supports separate profile/script/schema/export choices. Exit status is 0 for a complete identical comparison, 1 for complete named changes and 2 for incomplete/unavailable scope or an error. Full inspection returns 0 for an available stored model without claiming resolved defaults. Standard protected-output aliases apply to JSON/OBJ exports.
 
-Default aggregate budgets bound LODs, vertices/indices, tethers/transitions, model bytes, text, input work, report values and comparison changes/bytes. Cooperative cancellation propagates; damaged known data fails before returning a usable partial model. Focused queries remain useful when full reports are intentionally limited. The existing paged EN/FR inspector continues to expose the generic stored properties; dedicated physical geometry/transition desktop binding remains subsequent work. No new archive or public release is implied.
+Default aggregate budgets bound LODs, vertices/indices, tethers/transitions, model bytes, text, input work, report values and comparison changes/bytes. Cooperative cancellation propagates; damaged known data fails before returning a usable partial model. Focused queries remain useful when full reports are intentionally limited. The generic paged inspector remains available alongside the dedicated physical-cloth desktop view described below. No new archive or public release is implied.
 
 
 ## Independent validation
 
 The installed Core-only consumer agrees with actual Unreal 5.3.2 references across four before/after cases and eight physical LODs: 12,788 vertices, 24,520 triangles, 26,748 tethers and 12,788 transitions. Stored data/native bytes are checked separately from 38,364 float32 wrap-coordinate components and 7,892 render-binding records. The original validator rejects altered projections and records unavailable defaults explicitly. See [VALIDATION.md](VALIDATION.md#typed-physical-cloth--0184-development) for scope and limits. The optional Engine adapter prepares evidence; it is not a dependency of the installed reader.
+
+
+## Desktop and reusable CyUI view
+
+Enable **Physical cloth settings** for each input in Containers and provide the matching UE 5.3 cooked profile, global script TOC and schema context. The **Physical cloth** tab selects an object and physical LOD independently on each side. Multiple objects require selection; a stale saved identity or LOD stays unavailable. Differently named objects require the explicit **Compare selected physical objects** control. An unavailable peer never creates removal rows.
+
+The clipped physical-vertex list filters by index, isolates named known changes, navigates changed records and focuses a selected vertex's stored position, normal, inverse mass, bone slots, weight maps and batch-keyed tether anchors/lengths. Missing optional values and unresolved default map entries are excluded from confirmed differences. The stored configuration panel inspects the chosen side; the existing generic property browser and Core/CLI comparison supply named configuration differences.
+
+The geometry panel uses the existing orbit camera for stored physical meshes or the selected adjacent-LOD reference-pose correspondence. Wrapped previews transport positions only; they do not claim wrapped normals, collision response or simulation. Unavailable boundary transitions show no invented geometry. Geometry edge changes remain separate from stored mass/tether changes. English/French controls, wide/compact layouts with foldable controls, clipped selection and workspace presentation state are supported by the reusable `PhysicalClothView` in `physical_cloth_view.hpp`.
+
+Desktop decoding runs in the document worker, with a maximum of four selected instances, 100,000 aggregate vertices and 64 MiB of model allocations per instance, plus bounded native records/input work. The view applies a separate one-million-record preparation budget and displays failures as diagnostics. It performs no package I/O or simulation while drawing. Workspace version 13 retains independent profiles/object identities/LODs, selected vertex, display mode, filter and camera; versions 1–12 remain readable with physical profiles disabled.
+
+A representative launch is:
+
+```sh
+cyuediff_desktop --container input.utoc --container-entry MEMBER --cooked-profile ue5.3 --script-objects global.utoc --schema context.json --physical-cloth-profile ue5.3-windows --container-tab physical-cloth
+```

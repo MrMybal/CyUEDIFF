@@ -121,8 +121,36 @@ int main() {
                   nanite_roundtrip.documents[2].container_tab == 10,
               "Independent Nanite profiles and requested attributes round trip");
         value.documents[2].container_tab = 4;
+        auto physical = value.to_json();
+        physical["documents"][2]["settings"]["physical_cloth_profile"] = 1;
+        physical["documents"][2]["settings"]["after_physical_cloth_profile"] = 1;
+        physical["documents"][2]["containerTab"] = 11;
+        const auto physical_saved = WorkspaceFile::from_json(physical);
+        check(physical_saved.documents[2].settings.physical_cloth_profile == 1 &&
+                  physical_saved.documents[2].settings.after_physical_cloth_profile == 1 &&
+                  physical_saved.documents[2].container_tab == 11,
+              "Physical profiles and tab round trip independently");
+        auto twelve = physical;
+        twelve["schema"] = "cyuediff.workspace/12";
+        for (auto &doc : twelve["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+            doc["containerTab"] = std::min(doc["containerTab"].get<int>(), 10);
+        }
+        check(WorkspaceFile::from_json(twelve).documents[2].settings.physical_cloth_profile == 0,
+              "Version twelve migrates with physical readers disabled");
+        auto invalid_physical = physical;
+        invalid_physical["documents"][2]["settings"]["physical_cloth_profile"] = 2;
+        rejects([&] { WorkspaceFile::from_json(invalid_physical); });
+        invalid_physical = physical;
+        invalid_physical["documents"][2]["settings"].erase("after_physical_cloth_profile");
+        rejects([&] { WorkspaceFile::from_json(invalid_physical); });
         auto eleven = value.to_json();
         eleven["schema"] = "cyuediff.workspace/11";
+        for (auto &doc : eleven["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : eleven["documents"])
             for (const auto *k :
                  {"nanite_profile", "after_nanite_profile", "nanite_attributes", "after_nanite_attributes"})
@@ -337,6 +365,10 @@ int main() {
               "Curve dependency contexts and scalar state persist independently");
         auto legacy_ten = animation_state;
         legacy_ten["schema"] = "cyuediff.workspace/10";
+        for (auto &doc : legacy_ten["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy_ten["documents"])
             for (const auto *k :
                  {"nanite_profile", "after_nanite_profile", "nanite_attributes", "after_nanite_attributes"})
@@ -356,6 +388,10 @@ int main() {
         auto legacy_nine = animation_state;
         strip_animation(legacy_nine);
         legacy_nine["schema"] = "cyuediff.workspace/9";
+        for (auto &doc : legacy_nine["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         legacy_nine["documents"][2]["containerTab"] = 4;
         legacy_nine["documents"][2]["viewState"] = Json::object();
         const auto migrated_nine =
@@ -376,6 +412,10 @@ int main() {
         auto legacy_eight = value.to_json();
         strip_animation(legacy_eight);
         legacy_eight["schema"] = "cyuediff.workspace/8";
+        for (auto &doc : legacy_eight["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy_eight["documents"])
             for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
                                     "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors"})
@@ -388,6 +428,10 @@ int main() {
         auto legacy_seven = value.to_json();
         strip_animation(legacy_seven);
         legacy_seven["schema"] = "cyuediff.workspace/7";
+        for (auto &doc : legacy_seven["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy_seven["documents"])
             for (const auto *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
                                     "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors",
@@ -398,6 +442,10 @@ int main() {
         auto legacy_six = value.to_json();
         strip_animation(legacy_six);
         legacy_six["schema"] = "cyuediff.workspace/6";
+        for (auto &doc : legacy_six["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy_six["documents"])
             for (const auto *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
                                     "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors",
@@ -409,6 +457,10 @@ int main() {
         auto legacy_five = value.to_json();
         strip_animation(legacy_five);
         legacy_five["schema"] = "cyuediff.workspace/5";
+        for (auto &doc : legacy_five["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy_five["documents"])
             for (const char *key : {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
                                     "after_skeletal_mobile_lod", "skeletal_colors", "after_skeletal_colors",
@@ -421,6 +473,10 @@ int main() {
         auto legacy_four = value.to_json();
         strip_animation(legacy_four);
         legacy_four["schema"] = "cyuediff.workspace/4";
+        for (auto &doc : legacy_four["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy_four["documents"])
             for (const char *key :
                  {"skeletal_profile", "after_skeletal_profile", "skeletal_mobile_lod",
@@ -443,6 +499,10 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(legacy_three);
         legacy_three["schema"] = "cyuediff.workspace/3";
+        for (auto &doc : legacy_three["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy_three["documents"])
             for (const char *key :
                  {"pose_enabled", "pose_independent_frames", "pose_before_frame", "pose_after_frame",
@@ -451,7 +511,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/12",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/13",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -473,7 +533,11 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(version_two);
         version_two["schema"] = "cyuediff.workspace/2";
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/12",
+        for (auto &doc : version_two["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/13",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -494,12 +558,16 @@ int main() {
                 d["settings"].erase(key);
         strip_animation(legacy);
         legacy["schema"] = "cyuediff.workspace/1";
+        for (auto &doc : legacy["documents"]) {
+            doc["settings"].erase("physical_cloth_profile");
+            doc["settings"].erase("after_physical_cloth_profile");
+        }
         for (auto &d : legacy["documents"])
             d.erase("viewState");
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/12",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/13",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

@@ -180,6 +180,8 @@ Json WorkspaceFile::to_json() const {
         s["after_skeletal_mobile_lod"] = d.settings.after_skeletal_mobile_lod;
         s["skeletal_colors"] = d.settings.skeletal_colors;
         s["after_skeletal_colors"] = d.settings.after_skeletal_colors;
+        s["physical_cloth_profile"] = d.settings.physical_cloth_profile;
+        s["after_physical_cloth_profile"] = d.settings.after_physical_cloth_profile;
         s["physics_profile"] = d.settings.physics_profile;
         s["after_physics_profile"] = d.settings.after_physics_profile;
         s["nanite_profile"] = d.settings.nanite_profile;
@@ -196,20 +198,22 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/12"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/13"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
 WorkspaceFile WorkspaceFile::from_json(const Json &j) {
-    require(j.is_object() && j.size() == 3 && j.contains("schema") &&
-                (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
-                 j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
-                 (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
-                  (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
-                   (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10" ||
-                    (j["schema"] == "cyuediff.workspace/11" || j["schema"] == "cyuediff.workspace/12"))))) &&
-                j.contains("active") && j.contains("documents"),
-            "Unsupported workspace format");
+    require(
+        j.is_object() && j.size() == 3 && j.contains("schema") &&
+            (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
+             j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
+             (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
+              (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
+               (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10" ||
+                (j["schema"] == "cyuediff.workspace/11" ||
+                 (j["schema"] == "cyuediff.workspace/12" || j["schema"] == "cyuediff.workspace/13")))))) &&
+            j.contains("active") && j.contains("documents"),
+        "Unsupported workspace format");
     const auto &docs = j["documents"];
     require(docs.is_array() && !docs.empty() && docs.size() <= 8,
             "Workspace requires one to eight documents");
@@ -234,15 +238,17 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        const bool nanite_extension = j["schema"] == "cyuediff.workspace/12";
+        const bool physical_cloth_extension = j["schema"] == "cyuediff.workspace/13";
+        const bool nanite_extension = j["schema"] == "cyuediff.workspace/12" || physical_cloth_extension;
         const bool curve_extension = j["schema"] == "cyuediff.workspace/11" || nanite_extension;
         const bool animation_extension = j["schema"] == "cyuediff.workspace/10" || curve_extension;
         const bool skeletal_extension = j["schema"] == "cyuediff.workspace/9" || animation_extension;
         const bool physics_extension = j["schema"] == "cyuediff.workspace/8" || skeletal_extension;
         saved.container_tab = number(d["containerTab"], -1,
-                                     nanite_extension      ? 10
-                                     : animation_extension ? 9
-                                                           : (physics_extension ? 8 : 7));
+                                     physical_cloth_extension ? 11
+                                     : nanite_extension       ? 10
+                                     : animation_extension    ? 9
+                                                              : (physics_extension ? 8 : 7));
         const auto &s = d["settings"];
         const bool mesh_extension = j["schema"] == "cyuediff.workspace/7" || physics_extension;
         const bool payload_extension = j["schema"] == "cyuediff.workspace/6" || mesh_extension;
@@ -253,7 +259,8 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
                                 (mesh_extension ? 4 : 0) + (physics_extension ? 2 : 0) +
                                 (skeletal_extension ? 6 : 0) +
                                 (animation_extension ? std::size(animation_strings) + 4 : 0) +
-                                (curve_extension ? std::size(curve_strings) : 0) + (nanite_extension ? 4 : 0);
+                                (curve_extension ? std::size(curve_strings) : 0) +
+                                (nanite_extension ? 4 : 0) + (physical_cloth_extension ? 2 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
         require(s.is_object() && (pose_extension || (j["schema"] != "cyuediff.workspace/4" &&
@@ -321,6 +328,12 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
             number(s.value("after_skeletal_mobile_lod", Json(0)), 0, 2);
         saved.settings.skeletal_colors = number(s.value("skeletal_colors", Json(0)), 0, 2);
         saved.settings.after_skeletal_colors = number(s.value("after_skeletal_colors", Json(0)), 0, 2);
+        if (physical_cloth_extension) {
+            for (const auto *key : {"physical_cloth_profile", "after_physical_cloth_profile"})
+                require(s.contains(key), "Missing physical cloth setting");
+            saved.settings.physical_cloth_profile = number(s.at("physical_cloth_profile"), 0, 1);
+            saved.settings.after_physical_cloth_profile = number(s.at("after_physical_cloth_profile"), 0, 1);
+        }
         if (physics_extension)
             for (const auto *key : {"physics_profile", "after_physics_profile"})
                 require(s.contains(key), "Missing cooked physics setting");
