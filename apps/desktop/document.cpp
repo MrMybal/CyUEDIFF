@@ -1,6 +1,7 @@
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/mesh_morphs.hpp>
 #include "document.hpp"
+#include "../../src/json_output.hpp"
 #include "animation_document.hpp"
 #include <cyuediff/binary_layout.hpp>
 namespace cyuediff::desktop {
@@ -59,9 +60,13 @@ std::string Document::status() const {
         return diff->status();
     return before && before->complete_input ? "ready" : "incomplete";
 }
-Json Document::report() const {
-    if (container)
-        return {{"status", status()}, {"container", container->report()}};
+detail::JsonObject Document::report_view() const {
+    detail::JsonObject result;
+    result.own("status", status());
+    if (container) {
+        result.object("container", [this] { return container->report_view(); });
+        return result;
+    }
     auto package = [](const std::shared_ptr<const Package> &p) -> Json {
         if (!p)
             return nullptr;
@@ -70,66 +75,75 @@ Json Document::report() const {
                 {"completeInput", p->complete_input},
                 {"diagnostics", p->diagnostics}};
     };
-    Json images = Json::array();
-    for (const auto &preview : previews)
-        images.push_back({{"object", preview.object_path},
-                          {"after", preview.after},
-                          {"width", preview.image.width},
-                          {"height", preview.image.height}});
-    Json differences = Json::array();
-    for (const auto &d : texture_differences)
-        differences.push_back(
-            {{"before", d.before_object},
-             {"after", d.after_object},
-             {"comparison", d.hdr_comparison ? d.hdr_comparison->to_json() : d.comparison.to_json()},
-             {"diagnostic", d.diagnostic}});
     auto mesh = [](const std::shared_ptr<const MeshGeometry> &m) -> Json {
-        if (!m) return Json(nullptr);
-        Json result = {{"vertices", m->vertices.size()}, {"triangles", m->triangles.size()}};
+        if (!m)
+            return nullptr;
+        Json value = {{"vertices", m->vertices.size()}, {"triangles", m->triangles.size()}};
         if (m->skin) {
-            result["sourceBones"] = m->skin->bones.size();
-            result["skinProfiles"] = m->skin->profiles.size();
+            value["sourceBones"] = m->skin->bones.size();
+            value["skinProfiles"] = m->skin->profiles.size();
         }
         if (m->morphs)
-            result["morphTargets"] = m->morphs->targets.size();
-        return result;
+            value["morphTargets"] = m->morphs->targets.size();
+        return value;
     };
-    Json result = {{"status", status()},
-                   {"before", package(before)},
-                   {"after", package(after)},
-                   {"project", project ? project->to_json() : Json(nullptr)},
-                   {"afterProject", after_project ? after_project->to_json() : Json(nullptr)},
-                   {"diff", diff ? diff->to_json() : Json(nullptr)},
-                   {"previews", images},
-                   {"textureDifferences", differences},
-                   {"beforeMesh", mesh(before_mesh)},
-                   {"afterMesh", mesh(after_mesh)},
-                   {"diagnostics", diagnostics},
-                   {"animationPose", animation_pose_report(*this)}};
+    result.produce("before", [this, package] { return package(before); });
+    result.produce("after", [this, package] { return package(after); });
+    result.produce("project", [this] { return project ? project->to_json() : Json(nullptr); });
+    result.produce("afterProject",
+                   [this] { return after_project ? after_project->to_json() : Json(nullptr); });
+    if (diff)
+        result.object("diff", [this] { return detail::diff_report(*diff); });
+    else
+        result.own("diff", nullptr);
+    result.array("previews", previews.size(), [this](std::size_t i) {
+        const auto &p = previews[i];
+        return Json{{"object", p.object_path},
+                    {"after", p.after},
+                    {"width", p.image.width},
+                    {"height", p.image.height}};
+    });
+    result.array("textureDifferences", texture_differences.size(), [this](std::size_t i) {
+        const auto &d = texture_differences[i];
+        return Json{{"before", d.before_object},
+                    {"after", d.after_object},
+                    {"comparison", d.hdr_comparison ? d.hdr_comparison->to_json() : d.comparison.to_json()},
+                    {"diagnostic", d.diagnostic}};
+    });
+    result.produce("beforeMesh", [this, mesh] { return mesh(before_mesh); });
+    result.produce("afterMesh", [this, mesh] { return mesh(after_mesh); });
+    result.own("diagnostics", diagnostics);
+    result.produce("animationPose", [this] { return animation_pose_report(*this); });
     const auto &after_limits =
         request.inherit_after_source_limits ? request.source_limits : request.after_source_limits;
     if (!request.source_limits.is_default() || !after_limits.is_default())
-        result["readLimits"] = {{"before", request.source_limits.to_json()},
-                                {"after", after_limits.to_json()}};
+        result.own("readLimits",
+                   {{"before", request.source_limits.to_json()}, {"after", after_limits.to_json()}});
     if (request.physical_cloth_profile != PhysicalClothProfile::unspecified ||
         request.after_physical_cloth_profile != PhysicalClothProfile::unspecified) {
-        auto rows = [](const auto &assets) {
-            Json result = Json::array();
-            for (const auto &a : assets)
-                result.push_back(a->to_json());
-            return result;
-        };
-        result["physicalCloth"] = {{"before", rows(before_physical_cloth)},
-                                   {"after", rows(after_physical_cloth)}};
+        result.object("physicalCloth", [this] {
+            detail::JsonObject data;
+            data.array("before", before_physical_cloth.size(),
+                       [this](std::size_t i) { return before_physical_cloth[i]->to_json(); });
+            data.array("after", after_physical_cloth.size(),
+                       [this](std::size_t i) { return after_physical_cloth[i]->to_json(); });
+            return data;
+        });
     }
-    if (!layout_contexts.is_null()) result["layoutContexts"] = layout_contexts;
+    if (!layout_contexts.is_null())
+        result.borrow("layoutContexts", layout_contexts);
 #ifdef CYUEDIFF_HAS_GIT
-    result["git"] = git ? git->to_json() : Json(nullptr);
+    if (git)
+        result.object("git", [this] { return detail::git_report(*git); });
+    else
+        result.own("git", nullptr);
 #else
-    result["git"] = nullptr;
+    result.own("git", nullptr);
 #endif
     return result;
 }
+Json Document::report() const { return report_view().to_json(); }
+
 std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     if (request.before.empty() && !request.container)
         throw Error("desktop-input", "Choose a package before loading");
@@ -248,8 +262,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
         protect_revision(comparison.after);
         document->before = comparison.before_package;
         document->after = comparison.after_package;
-        document->diff = comparison.diff;
         document->git = std::make_shared<const GitComparison>(std::move(comparison));
+        document->diff = std::shared_ptr<const DiffResult>(document->git, &document->git->diff);
 #else
         throw Error("desktop-git", "This desktop build does not include the Git adapter");
 #endif
@@ -280,7 +294,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
         document->before = open(resolve(request.before), read);
         if (!request.after.empty()) {
             document->after = open(resolve(request.after, true), after_read);
-            document->diff = compare(*document->before, *document->after, request.control);
+            document->diff = std::make_shared<const DiffResult>(
+                compare(*document->before, *document->after, request.control));
         }
     }
     if (document->before && document->after &&

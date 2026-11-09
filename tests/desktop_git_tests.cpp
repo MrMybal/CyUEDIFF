@@ -120,6 +120,8 @@ int main(int argc, char **argv) {
         request.previews = false;
         request.git = GitSource{repo_path, {}, before, after};
         auto document = load_document(request);
+        check(document->git && document->diff.get() == &document->git->diff,
+              "Git documents share one immutable comparison result");
         check(document->status() == "changed" && document->diff && document->git,
               "Git document has semantic diff and provenance");
         check(document->before->exports[0].properties["Value"]["value"] == 1 &&

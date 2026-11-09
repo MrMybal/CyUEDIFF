@@ -14,6 +14,9 @@
 #include <optional>
 #include <thread>
 
+namespace cyuediff::detail {
+class JsonObject;
+}
 namespace cyuediff::desktop {
 struct GitSource {
     fs::path repository, lfs_objects;
@@ -68,7 +71,7 @@ struct Document {
     Json animation_pose_comparison = nullptr;
     std::vector<std::string> animation_pose_diagnostics;
     std::optional<ProjectContext> project, after_project;
-    std::optional<DiffResult> diff;
+    std::shared_ptr<const DiffResult> diff;
     std::vector<Preview> previews;
     std::vector<TextureDifference> texture_differences;
     std::shared_ptr<const MeshGeometry> before_mesh, after_mesh;
@@ -84,6 +87,7 @@ struct Document {
 #endif
     std::string status() const;
     Json report() const;
+    detail::JsonObject report_view() const;
 };
 // Pair equal object paths, or the sole decoded texture on each side.
 std::vector<TextureDifference> compare_previews(const std::vector<Preview> &);

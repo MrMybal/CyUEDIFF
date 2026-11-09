@@ -1,74 +1,74 @@
 #include <cyuediff/mesh_overlaps.hpp>
+#include "../../src/json_output.hpp"
 #include <cyuediff/vertex_attributes.hpp>
 #include "container_document.hpp"
 #include <algorithm>
 #include <map>
 namespace cyuediff::desktop {
-Json ContainerDocument::report() const {
-    Json pairs = Json::array();
-    for (std::size_t i = 0; i < members.size(); ++i) {
+detail::JsonObject ContainerDocument::report_view() const {
+    detail::JsonObject result;
+    result.own("schema", "cyuediff.desktop-container/1");
+    result.array("members", members.size(), [this](std::size_t i) {
         const auto &row = members[i];
-        pairs.push_back(
-            {{"key", row.key},
-             {"state", member_states[i]},
-             {"beforeId", row.before ? Json(input->entries()[*row.before].id) : Json(nullptr)},
-             {"afterId", row.after ? Json(after->input->entries()[*row.after].id) : Json(nullptr)}});
-    }
-    Json schema = schema_manifest ? schema_manifest->to_json() : Json(nullptr);
-    if (schema_manifest) {
-        schema["mappingLoaded"] = schema_loaded;
-        schema["contextSha256"] = zen ? zen->schema_context_sha256 : std::string{};
-    }
-    Json pixels = Json::array();
-    for (const auto &p : previews)
-        pixels.push_back({{"key", p.key},
-                          {"object", p.object_path},
-                          {"format", p.format},
-                          {"mip", p.mip},
-                          {"width", p.image.width},
-                          {"height", p.image.height},
-                          {"hdr", p.hdr.has_value()}});
-    Json differences = Json::array();
-    for (const auto &d : pixel_differences)
-        differences.push_back(
-            {{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}});
-    Json nanite = Json::array();
-    for (const auto &p : nanite_previews)
-        nanite.push_back({{"object", p.object_path}, {"resource", p.resource->information()}});
-    Json physical = Json::array();
-    for (const auto &p : physical_cloth_previews)
-        physical.push_back(p.model->to_json(false));
-    return {{"schema", "cyuediff.desktop-container/1"},
-            {"physicalCloth", std::move(physical)},
-            {"physicalClothDiagnostics", physical_cloth_diagnostics},
-            {"animations", animations},
-            {"animationDiagnostics", animation_diagnostics},
-            {"physics", physics},
-            {"physicsDifference", physics_difference},
-            {"physicsEdges", physics_wire.edge_count()},
-            {"physicsDiagnostics", physics_diagnostics},
-            {"collisions", collisions},
-            {"collisionDifference", collision_difference},
-            {"collisionEdges", collision_wire.edge_count()},
-            {"collisionDiagnostics", collision_diagnostics},
-            {"meshes", meshes},
-            {"meshDifferences", mesh_differences},
-            {"meshPreviews", mesh_previews.size()},
-            {"naniteResources", std::move(nanite)},
-            {"meshDiagnostics", mesh_diagnostics},
-            {"textures", textures},
-            {"texturePreviews", std::move(pixels)},
-            {"textureDifferences", std::move(differences)},
-            {"textureDiagnostics", texture_diagnostics},
-            {"metadata", metadata},
-            {"inspection", inspection},
-            {"zen", zen ? zen->to_json() : Json(nullptr)},
-            {"schemaContext", std::move(schema)},
-            {"after", after ? after->report() : Json(nullptr)},
-            {"members", std::move(pairs)},
-            {"comparison", comparison},
-            {"selectedComparison", selected_comparison}};
+        return Json{{"key", row.key},
+                    {"state", member_states[i]},
+                    {"beforeId", row.before ? Json(input->entries()[*row.before].id) : Json(nullptr)},
+                    {"afterId", row.after ? Json(after->input->entries()[*row.after].id) : Json(nullptr)}};
+    });
+    result.produce("schemaContext", [this]() -> Json {
+        if (!schema_manifest)
+            return nullptr;
+        auto data = schema_manifest->to_json();
+        data["mappingLoaded"] = schema_loaded;
+        data["contextSha256"] = zen ? zen->schema_context_sha256 : std::string{};
+        return data;
+    });
+    result.array("texturePreviews", previews.size(), [this](std::size_t i) {
+        const auto &p = previews[i];
+        return Json{
+            {"key", p.key},           {"object", p.object_path},  {"format", p.format},      {"mip", p.mip},
+            {"width", p.image.width}, {"height", p.image.height}, {"hdr", p.hdr.has_value()}};
+    });
+    result.array("textureDifferences", pixel_differences.size(), [this](std::size_t i) {
+        const auto &d = pixel_differences[i];
+        return Json{{"key", d.key}, {"comparison", d.hdr ? d.hdr->to_json() : d.comparison.to_json()}};
+    });
+    result.array("naniteResources", nanite_previews.size(), [this](std::size_t i) {
+        const auto &p = nanite_previews[i];
+        return Json{{"object", p.object_path}, {"resource", p.resource->information()}};
+    });
+    result.array("physicalCloth", physical_cloth_previews.size(),
+                 [this](std::size_t i) { return physical_cloth_previews[i].model->to_json(false); });
+    result.own("physicalClothDiagnostics", physical_cloth_diagnostics);
+    result.borrow("animations", animations);
+    result.own("animationDiagnostics", animation_diagnostics);
+    result.borrow("physics", physics);
+    result.borrow("physicsDifference", physics_difference);
+    result.own("physicsEdges", physics_wire.edge_count());
+    result.own("physicsDiagnostics", physics_diagnostics);
+    result.borrow("collisions", collisions);
+    result.borrow("collisionDifference", collision_difference);
+    result.own("collisionEdges", collision_wire.edge_count());
+    result.own("collisionDiagnostics", collision_diagnostics);
+    result.borrow("meshes", meshes);
+    result.borrow("meshDifferences", mesh_differences);
+    result.own("meshPreviews", mesh_previews.size());
+    result.own("meshDiagnostics", mesh_diagnostics);
+    result.borrow("textures", textures);
+    result.own("textureDiagnostics", texture_diagnostics);
+    result.borrow("metadata", metadata);
+    result.borrow("inspection", inspection);
+    result.produce("zen", [this] { return zen ? zen->to_json() : Json(nullptr); });
+    if (after)
+        result.object("after", [this] { return after->report_view(); });
+    else
+        result.own("after", nullptr);
+    result.borrow("comparison", comparison);
+    result.borrow("selectedComparison", selected_comparison);
+    return result;
 }
+Json ContainerDocument::report() const { return report_view().to_json(); }
+
 namespace {
 std::shared_ptr<const ContainerDocument> load_single(const ContainerSource &source, const fs::path &codec,
                                                      const OperationControl &control) {

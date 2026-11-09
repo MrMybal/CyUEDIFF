@@ -1,4 +1,6 @@
 #include "binary_commands.hpp"
+#include "../../src/json_output.hpp"
+#include "../../src/atomic_output.hpp"
 #include <cyuediff/curves.hpp>
 #include <cyuediff/animation.hpp>
 #include <cyuediff/cooked_animation.hpp>
@@ -832,6 +834,10 @@ int run(const std::vector<std::string> &args) {
     for (const auto &root : {texture_options.virtualized_payload_root, after_texture_options.virtualized_payload_root})
         if (!root.empty()) protected_directories.push_back(root);
     Json output;
+    std::optional<DiffResult> streamed_diff;
+#ifdef CYUEDIFF_HAS_GIT
+    std::optional<GitComparison> streamed_git;
+#endif
     std::vector<std::uint8_t> raw_bytes;
     fs::path raw_destination;
     MeshGeometry obj;
@@ -1622,8 +1628,8 @@ int run(const std::vector<std::string> &args) {
             }
             protect_revision(comparison.before);
             protect_revision(comparison.after);
-            output = comparison.to_json();
-            auto status = comparison.status();
+            const auto status = comparison.status();
+            streamed_git = std::move(comparison);
             exit_code =
                 status == "identical" ? 0 : ((status == "incomplete" || status == "unverified") ? 2 : 1);
         }
@@ -1933,13 +1939,14 @@ int run(const std::vector<std::string> &args) {
             throw Error("arguments", "Diff requires fingerprints and property reading");
         auto before = read(positional[0], "--before-project", options),
              after = read(positional[1], "--after-project", options);
-        auto result = compare(before, after);
-        output = result.to_json();
+        streamed_diff = compare(before, after);
         output["beforeDiagnostics"] = before.diagnostics;
         output["afterDiagnostics"] = after.diagnostics;
-        exit_code = result.status() == "identical"
-                        ? 0
-                        : ((result.status() == "incomplete" || result.status() == "unverified") ? 2 : 1);
+        exit_code =
+            streamed_diff->status() == "identical"
+                ? 0
+                : ((streamed_diff->status() == "incomplete" || streamed_diff->status() == "unverified") ? 2
+                                                                                                        : 1);
     } else if (command == "catalog") {
         auto context = ProjectContext::open(fs::u8path(positional[0]), root);
         auto catalog = catalog_assets(context, catalog_options());
@@ -1976,7 +1983,7 @@ int run(const std::vector<std::string> &args) {
                                     {"contextChanged", before_layouts != after_layouts &&
                                         (!before_layouts || !after_layouts || before_layouts->sha256() != after_layouts->sha256())}};
     }
-    auto text = output.dump(2, ' ', false, Json::error_handler_t::replace) + "\n";
+
     auto destination = (command == "preview" || command == "zen-preview" || command == "export-mesh" ||
                         command == "zen-export-mesh" || command == "zen-export-physical-cloth" ||
                         command == "export-physical-cloth" || command == "container-read")
@@ -2040,16 +2047,29 @@ int run(const std::vector<std::string> &args) {
         write_obj(obj_destination, obj);
     if (!png_destination.empty())
         write_png(png_destination, png);
-    if (destination.empty())
-        std::cout << text;
-    else {
-        std::ofstream stream(destination, std::ios::binary);
-        if (!stream)
-            throw Error("io", "Cannot create output file");
-        stream << text;
+    auto write_report = [&](std::ostream &stream) {
+        if (streamed_diff)
+            streamed_diff->write_json(stream, 2, output);
+#ifdef CYUEDIFF_HAS_GIT
+        else if (streamed_git) {
+            auto report = detail::git_report(*streamed_git);
+            for (auto i = output.begin(); i != output.end(); ++i)
+                report.borrow(i.key(), i.value());
+            report.write(stream);
+        }
+#endif
+        else {
+            detail::JsonOutput writer(stream, 2);
+            writer.value(output);
+        }
+        stream.put('\n');
         if (!stream)
             throw Error("io", "Cannot write output file");
-    }
+    };
+    if (destination.empty())
+        write_report(std::cout);
+    else
+        detail::atomic_output(destination, write_report);
     return exit_code;
 }
 int checked_run(const std::vector<std::string> &args) {

@@ -1,6 +1,7 @@
 #include <cyuediff/visual_diff.hpp>
 #include <cyuediff/property_page.hpp>
 #include <algorithm>
+#include "json_equality.hpp"
 #include <set>
 namespace cyuediff {
 const char *change_name(ChangeKind change) {
@@ -22,7 +23,7 @@ ChangeKind classify_change(const Json *before, const Json *after) {
         return after ? ChangeKind::added : ChangeKind::unchanged;
     if (!after)
         return ChangeKind::removed;
-    return *before == *after ? ChangeKind::unchanged : ChangeKind::modified;
+    return detail::json_equal(*before, *after) ? ChangeKind::unchanged : ChangeKind::modified;
 }
 void ChangeCounts::add(ChangeKind change) {
     switch (change) {
@@ -218,7 +219,7 @@ class CoverageIndex {
         if (a == b)
             return true;
         if (a->type() != b->type())
-            return a->is_number() && b->is_number() && *a == *b;
+            return a->is_number() && b->is_number() && detail::numeric_equal(*a, *b);
         if (a->is_object()) {
             auto i = a->begin(), j = b->begin();
             while (i != a->end() || j != b->end()) {

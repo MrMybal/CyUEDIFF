@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.190.0 — Borrowed comparison and streamed reports
+
+Generic source comparisons use existing property/native trees and retain owned changed values. Mixed integer/float comparisons preserve exact large integer differences. Core and Git expose `write_json`; CLI and desktop JSON file reports use buffered sibling-file replacement and avoid duplicate output trees. The installed independent source consumer demonstrates the new API. Format/availability semantics remain explicit; the last verified Windows archive is still 0.182. See [ownership, memory and limits](docs/COMPARISON_MEMORY.md).
+
 ## 0.189.0 — Source comparison availability
 
 Source comparisons retain known fields while marking unread values and incompatible decoder projections as unverified. Scoped EN/FR properties distinguish unavailable values, context and actual absence; dependent graph/material/skeleton/collision visuals avoid invented removals, and pending mesh previews no longer imply deletion. Dedicated source material/collision/skeleton diffs share coverage. Rebuild against matching 0.189 headers/library. The last verified Windows archive remains 0.182. See [the availability contract](docs/SOURCE_AVAILABILITY.md).

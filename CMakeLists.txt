@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.189.0 LANGUAGES C CXX)
+project(CyUEDiff VERSION 0.190.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -35,7 +35,7 @@ add_library(cyuediff_core STATIC
     src/cloth.cpp src/mesh_overlaps.cpp src/vertex_attributes.cpp
     src/compressed_morphs.cpp
     src/tagged_types.cpp
-    src/source_availability.cpp src/source_limits.cpp src/physical_cloth.cpp src/physical_cloth_diff.cpp src/render_morphs.cpp src/compressed_curves.cpp src/cooked_animation.cpp src/animation_compression.cpp src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
+    src/atomic_output.cpp src/json_output.cpp src/json_equality.cpp src/source_availability.cpp src/source_limits.cpp src/physical_cloth.cpp src/physical_cloth_diff.cpp src/render_morphs.cpp src/compressed_curves.cpp src/cooked_animation.cpp src/animation_compression.cpp src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
 target_sources(cyuediff_core PRIVATE src/nanite_attributes.cpp src/nanite_surface_diff.cpp src/cooked_nanite.cpp src/nanite_geometry.cpp $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
@@ -605,6 +605,15 @@ if(BUILD_TESTING)
     add_executable(cyuediff_physical_cloth_tests tests/physical_cloth_tests.cpp)
     target_link_libraries(cyuediff_physical_cloth_tests PRIVATE CyUEDiff::Core)
     add_test(NAME physical_cloth COMMAND cyuediff_physical_cloth_tests)
+    add_executable(cyuediff_streaming_report_tests tests/streaming_report_tests.cpp)
+    target_link_libraries(cyuediff_streaming_report_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME streaming_report COMMAND cyuediff_streaming_report_tests)
+    add_executable(cyuediff_borrowed_diff_tests tests/borrowed_diff_tests.cpp)
+    target_link_libraries(cyuediff_borrowed_diff_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME borrowed_diff COMMAND cyuediff_borrowed_diff_tests)
+    add_executable(cyuediff_json_equality_tests tests/json_equality_tests.cpp)
+    target_link_libraries(cyuediff_json_equality_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME json_equality COMMAND cyuediff_json_equality_tests)
     add_executable(cyuediff_value_coverage_tests tests/value_coverage_tests.cpp)
     target_link_libraries(cyuediff_value_coverage_tests PRIVATE CyUEDiff::Core)
     add_test(NAME value_coverage COMMAND cyuediff_value_coverage_tests)
@@ -859,6 +868,9 @@ if(BUILD_TESTING)
         add_executable(cyuediff_container_view_tests tests/container_view_tests.cpp apps/desktop/container_view.cpp)
         target_link_libraries(cyuediff_container_view_tests PRIVATE cyuediff_desktop_model CyUEDiff::UI)
         add_test(NAME desktop_container_view COMMAND cyuediff_container_view_tests)
+        add_executable(cyuediff_desktop_streaming_tests tests/desktop_streaming_tests.cpp)
+        target_link_libraries(cyuediff_desktop_streaming_tests PRIVATE cyuediff_desktop_model)
+        add_test(NAME desktop_streaming_report COMMAND cyuediff_desktop_streaming_tests)
         add_executable(cyuediff_document_tabs_tests tests/document_tabs_tests.cpp apps/desktop/document_tabs.cpp)
         target_link_libraries(cyuediff_document_tabs_tests PRIVATE cyuediff_desktop_model CyUEDiff::UI)
         add_test(NAME desktop_document_tabs COMMAND cyuediff_document_tabs_tests)
@@ -1197,6 +1209,7 @@ install(DIRECTORY examples/cooked_nanite_consumer DESTINATION ${CMAKE_INSTALL_DA
 
 install(DIRECTORY examples/cooked_nanite_comparison_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 
+install(DIRECTORY examples/source_diff_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/property_page_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 
 install(DIRECTORY examples/physical_cloth_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)

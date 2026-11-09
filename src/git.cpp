@@ -1,4 +1,5 @@
 #include "git_process.hpp"
+#include "json_output.hpp"
 #include "git_project.hpp"
 #include "git_history.hpp"
 #include "descriptor.hpp"
@@ -615,18 +616,29 @@ std::string GitComparison::status() const {
         return "changed";
     return diff.status();
 }
-Json GitComparison::to_json() const {
-    Json result = {{"schema", "cyuediff.git-diff/1"},
-                   {"status", status()},
-                   {"before", before.to_json()},
-                   {"after", after.to_json()},
-                   {"comparison", diff.to_json()}};
-    if (!before_context.is_null() || !after_context.is_null()) {
-        result["projectContexts"] = {{"before", before_context}, {"after", after_context}};
-        result["contextChanges"] = context_changes;
+detail::JsonObject detail::git_report(const GitComparison &d) {
+    JsonObject result;
+    result.own("schema", "cyuediff.git-diff/1");
+    result.own("status", d.status());
+    result.produce("before", [&d] { return d.before.to_json(); });
+    result.produce("after", [&d] { return d.after.to_json(); });
+    result.object("comparison", [&d] { return diff_report(d.diff); });
+    if (!d.before_context.is_null() || !d.after_context.is_null()) {
+        result.object("projectContexts", [&d] {
+            JsonObject contexts;
+            contexts.borrow("before", d.before_context);
+            contexts.borrow("after", d.after_context);
+            return contexts;
+        });
+        result.borrow("contextChanges", d.context_changes);
     }
     return result;
 }
+Json GitComparison::to_json() const { return detail::git_report(*this).to_json(); }
+void GitComparison::write_json(std::ostream &out, int indent, const OperationControl &control) const {
+    detail::git_report(*this).write(out, indent, control);
+}
+
 GitComparison compare_git(const GitRepository &repo, const std::string &before_revision,
                           const std::string &after_revision, const std::string &before_path,
                           const std::string &after_path, const ReadOptions &options, const ReadOptions &after_options) {

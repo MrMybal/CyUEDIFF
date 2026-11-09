@@ -7,6 +7,7 @@
 #include <vector>
 #include <array>
 #include <functional>
+#include <iosfwd>
 #include <map>
 #include <memory>
 namespace cyuediff {
@@ -258,6 +259,10 @@ struct DiffResult {
     Json source_contexts = nullptr;
     std::string status() const;
     Json to_json() const;
+    // Stream borrowed result arrays; additional object fields cannot override core report fields.
+    // The stream may contain a partial document if writing/cancellation fails.
+    void write_json(std::ostream &, int indent = 2, const Json &additional = Json::object(),
+                    const OperationControl & = {}) const;
 };
 DiffResult compare(const Package &before, const Package &after, const OperationControl &control = {});
 struct MaterialComparison {

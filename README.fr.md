@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.189.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.190.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.189.0**
+> **EN DÉVELOPPEMENT · 0.190.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -45,6 +45,7 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 
 ## Fonctionnalités
 
+- **Comparaisons et rapports moins coûteux :** les comparaisons source parcourent les propriétés existantes, distinguent exactement entiers et flottants et écrivent les rapports en flux dans Core/CLI/Git/interface. [Mémoire et propriété des données](docs/COMPARISON_MEMORY.md).
 - **Couverture des comparaisons source :** les champs lisibles restent comparables à côté des valeurs indisponibles ; les propriétés EN/FR distinguent données indéterminées, contexte des décodeurs et vrais retraits. [Contrat](docs/SOURCE_AVAILABILITY.md).
 - **Tissus physiques source :** les packages balisés UE 5.3 sélectionnés partagent le modèle physique, les requêtes/OBJ/différences et le bureau EN/FR réutilisable, avec objets indépendants et valeurs par défaut indéterminées visibles. [Contrat](docs/SOURCE_PHYSICAL_CLOTH.md).
 - **Différences d’assets lisibles** : propriétés typées consultables par recherche, références d’objets stables, textes structurés des pins Blueprint, graphes de matériau et paramètres d’instance enregistrés, avec une couverture partielle ou opaque explicitée.
@@ -81,7 +82,7 @@ Liez `CyUEDiff::Core` avec `add_subdirectory`, ou installez le SDK et utilisez `
 
 ## Installation
 
-**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources 0.189 non poussées disposent d’une validation locale Windows. L’archive locale 0.182 précédemment vérifiée comprend un manuel HTML hors ligne bilingue et les métadonnées de version/composants. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
+**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources 0.190 non poussées disposent d’une validation locale Windows. L’archive locale 0.182 précédemment vérifiée comprend un manuel HTML hors ligne bilingue et les métadonnées de version/composants. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
 
 Les builds Windows utilisant le runtime MSVC dynamique par défaut nécessitent le runtime Microsoft Visual C++ x64 correspondant. Les fonctions Git nécessitent une installation séparée de Git 2.45+ ; l’inspection de fichiers libres n’en dépend pas. Conservez les archives CPack extraites avec leur documentation et leurs notices de licence. Voir les [conditions de distribution et d’exécution](docs/DISTRIBUTION.md).
 

@@ -118,6 +118,7 @@ struct GitComparison {
     Json context_changes = Json::array();
     std::string status() const;
     Json to_json() const;
+    void write_json(std::ostream &, int indent = 2, const OperationControl & = {}) const;
 };
 GitComparison compare_git(const GitRepository &, const std::string &before_revision,
                           const std::string &after_revision, const std::string &before_path,

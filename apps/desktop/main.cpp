@@ -1,4 +1,6 @@
 #include "path_guard.hpp"
+#include "../../src/json_output.hpp"
+#include "../../src/atomic_output.hpp"
 #include "document.hpp"
 #include "workspace.hpp"
 #include "workspace_file.hpp"
@@ -1624,36 +1626,45 @@ class Shell {
         }
         return {};
     }
-    Json workspace_report() const {
-        Json entries = Json::array();
-        for (const auto &entry : session_.documents()) {
+    detail::JsonObject workspace_report_view() const {
+        detail::JsonObject result;
+        result.own("schema", "cyuediff.desktop-workspace/1");
+        result.own("active", session_.active_id());
+        result.own("maximum", session_.maximum());
+        result.own("closedDocuments", session_.closed().size());
+        result.borrow("actions", action_results_);
+        result.objects("documents", session_.documents().size(), [this](std::size_t index) {
+            const auto &entry = session_.documents()[index];
             const auto &view = *presentations_.at(entry.id);
-            entries.push_back({{"id", entry.id},
-                               {"active", entry.id == session_.active_id()},
-                               {"busy", entry.busy},
-                               {"cancelled", entry.cancelled},
-                               {"error", entry.error},
-                               {"actionError", view.dialog_error},
-                               {"revision", entry.revision},
-                               {"before", view.settings.before},
-                               {"after", view.settings.after},
-                               {"project", view.settings.project},
-                               {"engine", view.settings.engine},
-                               {"container", view.settings.container_path},
-                               {"source", view.settings.source},
-                               {"uploadedPreviews", view.images.size()},
-                               {"containerSelection", view.container_view.selected_key()},
-                               {"visibleMembers", view.container_view.visible_count()},
-                               {"containerTab", view.container_view.active_tab()},
-                               {"viewState", presentation_state(view)},
-                               {"document", entry.document ? entry.document->report() : Json(nullptr)}});
-        }
-        return {{"schema", "cyuediff.desktop-workspace/1"},
-                {"active", session_.active_id()},
-                {"maximum", session_.maximum()},
-                {"closedDocuments", session_.closed().size()},
-                {"actions", action_results_},
-                {"documents", std::move(entries)}};
+            detail::JsonObject row;
+            Json fields = {{"id", entry.id},
+                           {"active", entry.id == session_.active_id()},
+                           {"busy", entry.busy},
+                           {"cancelled", entry.cancelled},
+                           {"error", entry.error},
+                           {"actionError", view.dialog_error},
+                           {"revision", entry.revision},
+                           {"before", view.settings.before},
+                           {"after", view.settings.after},
+                           {"project", view.settings.project},
+                           {"engine", view.settings.engine},
+                           {"container", view.settings.container_path},
+                           {"source", view.settings.source},
+                           {"uploadedPreviews", view.images.size()},
+                           {"containerSelection", view.container_view.selected_key()},
+                           {"visibleMembers", view.container_view.visible_count()},
+                           {"containerTab", view.container_view.active_tab()},
+                           {"viewState", presentation_state(view)}};
+            for (auto i = fields.begin(); i != fields.end(); ++i)
+                row.own(i.key(), std::move(i.value()));
+            if (entry.document) {
+                const auto document = entry.document;
+                row.object("document", [document] { return document->report_view(); });
+            } else
+                row.own("document", nullptr);
+            return row;
+        });
+        return result;
     }
     void update_tabs() {
         std::vector<DocumentTab> tabs;
@@ -3121,54 +3132,61 @@ int run(Options options) {
             shell.protect(options);
             if (!options.capture.empty())
                 write_png(options.capture, renderer.capture());
-            Json report = {
-                {"schema", "cyuediff.desktop/1"},
-                {"version", CYUEDIFF_VERSION},
-                {"releaseChannel", "development"},
-                {"license", "MIT"},
-                {"status", shell.result_error().empty() ? "ready" : "failed"},
-                {"error", shell.result_error()},
-                {"frames", frames},
-                {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
-                {"renderer", "Direct3D11 WARP"},
-                {"theme", cyui::currentThemeKey()},
-                {"locale", cyui::locale()},
-                {"view", options.view},
-                {"preferences",
-                 {{"enabled", !options.preferences.empty()},
-                  {"loaded", saved.loaded},
-                  {"saved", preferences_saved},
-                  {"diagnostic", options.preferences_diagnostic},
-                  {"values",
-                   [&] {
-                       auto value = shell.preferences();
-                       value.window = window.placement();
-                       return value.to_json();
-                   }()}}},
-                {"session",
-                 {{"enabled", shell.restore_session()},
-                  {"path", options.session_path.u8string()},
-                  {"loaded", saved_session.loaded},
-                  {"restored", session_restored},
-                  {"saved", session_saved},
-                  {"diagnostic", options.session_diagnostic}}},
-                {"window",
-                 {{"restored", window.placement_restored},
-                  {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
-                {"uploadedPreviews", shell.images()},
-                {"browser", shell.browser_report()},
-                {"history", shell.history_report()},
-                {"workspace", shell.workspace_report()},
-                {"workspaceFile", shell.workspace_file_report()},
-                {"containerView", shell.container_view_report()},
-                {"sourcePhysicalClothView", shell.source_physical_report()},
-                {"document",
-                 shell.session().document() ? shell.session().document()->report() : Json(nullptr)}};
             if (!options.report.empty()) {
-                std::ofstream file(options.report, std::ios::binary);
-                file << report.dump(2) << '\n';
-                if (!file)
-                    throw Error("desktop-output", "Cannot write report");
+                Json report = {
+                    {"schema", "cyuediff.desktop/1"},
+                    {"version", CYUEDIFF_VERSION},
+                    {"releaseChannel", "development"},
+                    {"license", "MIT"},
+                    {"status", shell.result_error().empty() ? "ready" : "failed"},
+                    {"error", shell.result_error()},
+                    {"frames", frames},
+                    {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
+                    {"renderer", "Direct3D11 WARP"},
+                    {"theme", cyui::currentThemeKey()},
+                    {"locale", cyui::locale()},
+                    {"view", options.view},
+                    {"preferences",
+                     {{"enabled", !options.preferences.empty()},
+                      {"loaded", saved.loaded},
+                      {"saved", preferences_saved},
+                      {"diagnostic", options.preferences_diagnostic},
+                      {"values",
+                       [&] {
+                           auto value = shell.preferences();
+                           value.window = window.placement();
+                           return value.to_json();
+                       }()}}},
+                    {"session",
+                     {{"enabled", shell.restore_session()},
+                      {"path", options.session_path.u8string()},
+                      {"loaded", saved_session.loaded},
+                      {"restored", session_restored},
+                      {"saved", session_saved},
+                      {"diagnostic", options.session_diagnostic}}},
+                    {"window",
+                     {{"restored", window.placement_restored},
+                      {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
+                    {"uploadedPreviews", shell.images()},
+                    {"browser", shell.browser_report()},
+                    {"history", shell.history_report()},
+                    {"workspaceFile", shell.workspace_file_report()},
+                    {"containerView", shell.container_view_report()},
+                    {"sourcePhysicalClothView", shell.source_physical_report()},
+                };
+                detail::JsonObject output;
+                for (auto i = report.begin(); i != report.end(); ++i)
+                    output.own(i.key(), std::move(i.value()));
+                output.object("workspace", [&shell] { return shell.workspace_report_view(); });
+                if (shell.session().document()) {
+                    const auto document = shell.session().document();
+                    output.object("document", [document] { return document->report_view(); });
+                } else
+                    output.own("document", nullptr);
+                detail::atomic_output(options.report, [&](std::ostream &stream) {
+                    output.write(stream);
+                    stream.put('\n');
+                });
             }
             return shell.result_error().empty() ? 0 : 2;
         }

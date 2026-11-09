@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.190.0 — Comparaison sans copie complète et rapports en flux
+
+Les comparaisons source parcourent les propriétés/données natives existantes et conservent leurs propres valeurs modifiées. Les comparaisons entier/flottant distinguent les grands entiers exactement. Core et Git proposent `write_json` ; les rapports JSON CLI/interface utilisent un fichier temporaire voisin avant remplacement et évitent les arbres de sortie dupliqués. Un exemple SDK indépendant montre cette API. Les limites de lecture et valeurs inconnues restent explicites ; la dernière archive Windows vérifiée est encore la 0.182. Voir [le contrat mémoire](docs/COMPARISON_MEMORY.md).
+
 ## 0.189.0 — Disponibilité des comparaisons source
 
 Les comparaisons source conservent les champs lisibles et signalent les valeurs illisibles ou projections de décodeurs incompatibles comme non vérifiées. Les propriétés EN/FR distinguent valeur indisponible, contexte et absence réelle ; les vues de graphes/matériaux/squelettes/collisions évitent les faux retraits, et une géométrie non préparée ne devient plus une suppression. Les API dédiées de comparaison source partagent cette couverture. Recompilez avec les en-têtes/bibliothèques 0.189 correspondants. La dernière archive Windows vérifiée reste la 0.182. Voir [le contrat](docs/SOURCE_AVAILABILITY.md).

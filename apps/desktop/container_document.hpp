@@ -8,6 +8,9 @@
 #include <cyuediff/physical_cloth.hpp>
 #include <cyuediff/collision_wireframe.hpp>
 #include <optional>
+namespace cyuediff::detail {
+class JsonObject;
+}
 namespace cyuediff::desktop {
 struct ContainerSource {
     fs::path path, script_objects, schema;
@@ -102,6 +105,7 @@ struct ContainerDocument {
     Json comparison = nullptr, selected_comparison = nullptr;
     std::vector<fs::path> protected_files;
     Json report() const;
+    detail::JsonObject report_view() const;
 };
 // Exact object/LOD identity first. Explicit independently selected package members
 // can also pair the same LOD when each package contains exactly one mesh export.

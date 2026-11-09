@@ -8,6 +8,9 @@
 #include <cyuediff/skeleton.hpp>
 #include <cyuediff/attachments.hpp>
 #include "source_availability.hpp"
+#include <algorithm>
+#include "json_equality.hpp"
+#include "json_output.hpp"
 namespace cyuediff {
 namespace {
 std::string pointer_token(const std::string &input) {
@@ -25,7 +28,7 @@ std::string pointer_token(const std::string &input) {
 void walk(const Json &before, const Json &after, const std::string &path, Json &changes,
           const OperationControl &control = {}, const detail::SourceCoverage *coverage = nullptr) {
     control.check();
-    if ((coverage && coverage->excludes(path)) || before == after)
+    if ((coverage && coverage->excludes(path)) || detail::json_equal(before, after, control))
         return;
     if (before.is_object() && after.is_object()) {
         for (auto it = before.begin(); it != before.end(); ++it) {
@@ -61,6 +64,109 @@ void walk(const Json &before, const Json &after, const std::string &path, Json &
         }
     } else
         changes.push_back({{"op", "replace"}, {"path", path}, {"before", before}, {"after", after}});
+}
+// The snapshot contract is retained, but matched export payloads are borrowed.
+Json object_metadata(const Package &p, const ObjectExport &e) {
+    return {{"class", e.class_name},
+            {"category", e.category},
+            {"flags", e.flags},
+            {"super", p.reference(e.super_index)},
+            {"template", p.reference(e.template_index)}};
+}
+Json object_snapshot(const Package &p, const ObjectExport &e) {
+    auto value = object_metadata(p, e);
+    value["properties"] = e.properties;
+    value["opaque"] = e.opaque;
+    if (!e.native_data.empty())
+        value["native"] = e.native_data;
+    return value;
+}
+Json dependencies(const Package &p, const OperationControl &control) {
+    Json out = Json::object();
+    for (std::size_t i = 0; i < p.imports.size(); ++i) {
+        control.check();
+        auto key = p.reference(-static_cast<int>(i) - 1);
+        if (!out.contains(key))
+            out[key] = Json::array();
+        const auto &entry = p.imports[i];
+        out[key].push_back({{"class", entry.class_name},
+                            {"classPackage", entry.class_package},
+                            {"package", entry.package_name}});
+    }
+    for (auto &entries : out) {
+        control.check();
+        std::sort(entries.begin(), entries.end());
+    }
+    return out;
+}
+void compare_objects(const Package &before, const Package &after, Json &changes,
+                     const detail::SourceCoverage &coverage, const OperationControl &control) {
+    std::map<std::string, const ObjectExport *> a, b;
+    for (const auto &entry : before.exports) {
+        control.check();
+        a.emplace(entry.path, &entry);
+    }
+    for (const auto &entry : after.exports) {
+        control.check();
+        b.emplace(entry.path, &entry);
+    }
+    for (const auto &entry : a) {
+        control.check();
+        const auto path = "/objects/" + pointer_token(entry.first);
+        if (coverage.excludes(path))
+            continue;
+        auto peer = b.find(entry.first);
+        if (peer == b.end()) {
+            changes.push_back(
+                {{"op", "remove"}, {"path", path}, {"before", object_snapshot(before, *entry.second)}});
+            continue;
+        }
+        auto x = object_metadata(before, *entry.second), y = object_metadata(after, *peer->second);
+        using Fields = std::map<std::string, const Json *>;
+        Fields left, right;
+        auto fields = [](const ObjectExport &e, const Json &metadata, Fields &out) {
+            for (auto i = metadata.begin(); i != metadata.end(); ++i)
+                out.emplace(i.key(), &i.value());
+            out.emplace("properties", &e.properties);
+            out.emplace("opaque", &e.opaque);
+            if (!e.native_data.empty())
+                out.emplace("native", &e.native_data);
+        };
+        fields(*entry.second, x, left);
+        fields(*peer->second, y, right);
+        for (const auto &field : left) {
+            const auto child = path + "/" + field.first;
+            if (coverage.excludes(child))
+                continue;
+            auto other = right.find(field.first);
+            if (other == right.end())
+                changes.push_back({{"op", "remove"}, {"path", child}, {"before", *field.second}});
+            else
+                walk(*field.second, *other->second, child, changes, control, &coverage);
+        }
+        for (const auto &field : right)
+            if (!left.count(field.first)) {
+                auto child = path + "/" + field.first;
+                if (!coverage.excludes(child))
+                    changes.push_back({{"op", "add"}, {"path", child}, {"after", *field.second}});
+            }
+    }
+    for (const auto &entry : b)
+        if (!a.count(entry.first)) {
+            control.check();
+            auto path = "/objects/" + pointer_token(entry.first);
+            if (!coverage.excludes(path))
+                changes.push_back(
+                    {{"op", "add"}, {"path", path}, {"after", object_snapshot(after, *entry.second)}});
+        }
+}
+void append_projection(const Json &rows, const char *prefix, Json &changes, const OperationControl &control) {
+    for (const auto &row : rows) {
+        control.check();
+        auto value = row;
+        value["path"] = std::string(prefix) + row.at("path").get<std::string>();
+        changes.push_back(std::move(value));
+    }
 }
 detail::SourceCoverage source_projection_coverage(const Package &before, const Package &after, const Json &a,
                                                   const Json &b, const std::string &domain,
@@ -163,30 +269,70 @@ std::string DiffResult::status() const {
         return "unverified";
     return binary_changed ? "binary-only" : "identical";
 }
-Json DiffResult::to_json() const {
+namespace {
+Json diff_header(const DiffResult &d) {
     Json result = {{"schema", "cyuediff.diff/1"},
-                   {"status", status()},
-                   {"binaryComparisonAvailable", binary_comparison_available},
-                   {"binaryChanged", binary_comparison_available ? Json(binary_changed) : Json(nullptr)},
-                   {"completeInput", complete_input},
+                   {"status", d.status()},
+                   {"binaryComparisonAvailable", d.binary_comparison_available},
+                   {"binaryChanged", d.binary_comparison_available ? Json(d.binary_changed) : Json(nullptr)},
+                   {"completeInput", d.complete_input},
                    {"projectionComparisonComplete",
-                    complete_input && !source_read_limit_failed && unavailable_scopes.empty()},
-                   {"changes", changes},
-                   {"graphChanges", graph_changes},
-                   {"textureChanges", texture_changes},
-                   {"meshChanges", mesh_changes},
-                   {"materialChanges", material_changes},
-                   {"collisionChanges", collision_changes},
-                   {"skeletonChanges", skeleton_changes},
-                   {"diagnostics", diagnostics}};
-    if (source_read_limit_failed)
+                    d.complete_input && !d.source_read_limit_failed && d.unavailable_scopes.empty()},
+                   {"diagnostics", d.diagnostics}};
+    if (d.source_read_limit_failed)
         result["sourceReadLimitFailed"] = true;
-    if (!unavailable_scopes.empty())
-        result["unavailableScopes"] = unavailable_scopes;
-    if (!source_contexts.is_null())
-        result["sourceContexts"] = source_contexts;
     return result;
 }
+} // namespace
+detail::JsonObject detail::diff_report(const DiffResult &d) {
+    JsonObject result;
+    auto header = diff_header(d);
+    for (auto i = header.begin(); i != header.end(); ++i)
+        result.own(i.key(), std::move(i.value()));
+    result.borrow("changes", d.changes);
+    result.borrow("graphChanges", d.graph_changes);
+    result.borrow("textureChanges", d.texture_changes);
+    result.borrow("meshChanges", d.mesh_changes);
+    result.borrow("materialChanges", d.material_changes);
+    result.borrow("collisionChanges", d.collision_changes);
+    result.borrow("skeletonChanges", d.skeleton_changes);
+    if (!d.unavailable_scopes.empty())
+        result.borrow("unavailableScopes", d.unavailable_scopes);
+    if (!d.source_contexts.is_null())
+        result.borrow("sourceContexts", d.source_contexts);
+    return result;
+}
+Json DiffResult::to_json() const { return detail::diff_report(*this).to_json(); }
+void DiffResult::write_json(std::ostream &stream, int indent, const Json &additional,
+                            const OperationControl &control) const {
+    if (!additional.is_object())
+        throw Error("report-field", "Additional report fields must be an object");
+    static const std::set<std::string> reserved = {"schema",
+                                                   "status",
+                                                   "binaryComparisonAvailable",
+                                                   "binaryChanged",
+                                                   "completeInput",
+                                                   "projectionComparisonComplete",
+                                                   "diagnostics",
+                                                   "sourceReadLimitFailed",
+                                                   "changes",
+                                                   "graphChanges",
+                                                   "textureChanges",
+                                                   "meshChanges",
+                                                   "materialChanges",
+                                                   "collisionChanges",
+                                                   "skeletonChanges",
+                                                   "unavailableScopes",
+                                                   "sourceContexts"};
+    auto report = detail::diff_report(*this);
+    for (auto i = additional.begin(); i != additional.end(); ++i) {
+        if (reserved.count(i.key()))
+            throw Error("report-field", "Additional fields cannot override the core report contract");
+        report.borrow(i.key(), i.value());
+    }
+    report.write(stream, indent, control);
+}
+
 std::string MaterialComparison::status() const {
     return !complete ? "incomplete" : (changes.empty() ? "identical" : "changed");
 }
@@ -449,18 +595,26 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
         walk(a, b, "", changes, control, &masked);
         return masked;
     };
-    auto a = before.semantic_snapshot(), b = after.semantic_snapshot();
-    auto textures = projection(Json{{"schema", "cyuediff.textures/1"}, {"textures", a.at("textures")}},
-                               Json{{"schema", "cyuediff.textures/1"}, {"textures", b.at("textures")}},
-                               result.texture_changes, "textures");
-    auto meshes = projection(a.at("meshes"), b.at("meshes"), result.mesh_changes, "meshes");
-    auto materials = projection(a.at("materials"), b.at("materials"), result.material_changes, "materials");
-    for (const auto *pair : {&textures, &meshes, &materials}) {
-        const auto prefix = pair == &textures ? "" : pair == &meshes ? "/meshes" : "/materials";
-        for (const auto &path : pair->suppressed)
-            coverage.suppressed.insert(prefix + path);
+    // Each projected model is materialized only for its own comparison, then released.
+    {
+        const auto a = before.texture_snapshot(), b = after.texture_snapshot();
+        projection(a, b, result.texture_changes, "textures");
     }
-    walk(a, b, "", result.changes, control, &coverage);
+    {
+        const auto a = before.mesh_snapshot(), b = after.mesh_snapshot();
+        projection(a, b, result.mesh_changes, "meshes");
+    }
+    {
+        const auto a = before.material_snapshot(), b = after.material_snapshot();
+        projection(a, b, result.material_changes, "materials");
+    }
+    // Match the public snapshot's sorted root/field traversal and owned result semantics.
+    walk(dependencies(before, control), dependencies(after, control), "/dependencies", result.changes,
+         control);
+    append_projection(result.material_changes, "/materials", result.changes, control);
+    append_projection(result.mesh_changes, "/meshes", result.changes, control);
+    compare_objects(before, after, result.changes, coverage, control);
+    append_projection(result.texture_changes, "", result.changes, control);
     projection(before.blueprint_snapshot(), after.blueprint_snapshot(), result.graph_changes, "blueprint");
     CollisionOptions collision_options;
     collision_options.control = control;
