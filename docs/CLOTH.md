@@ -48,3 +48,8 @@ This selected format covers stored render mappings. Physical cloth asset/configu
 
 
 Post-0.182 source adds [explicit hybrid struct bindings](HYBRID_STRUCTS.md) for selected mapped physical cloth properties, native tether values and exact raw transition records. This is a separate generic projection; it does not change this render-mapping model’s `simulationMeshBoundsVerified: false` contract. Dedicated physical geometry/bounds and interpreted transition work remain open.
+
+
+## Physical data projection in 0.184 source
+
+The separate [physical-cloth Core/CLI model](PHYSICAL_CLOTH.md) now supplies physical positions/topology/bones/tethers, interpreted native transitions and reference-pose wrap queries. Explicit base render GUID/LOD binding can certify source-vertex bounds against that model; biased sources remain explicitly selected. The existing standalone render-mapping model keeps its original unbound status until a host supplies the physical resource. Dedicated physical desktop binding, defaults and simulation remain separate work.

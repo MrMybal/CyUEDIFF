@@ -2,6 +2,12 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.184.0 — Sources locales du tissu physique
+
+Le Core indépendant et la CLI projettent désormais la géométrie physique de tissu UE 5.3 sélectionnée, les données d’os/poids/attaches et les transitions natives modernes. Les requêtes ciblées, différences stockées nommées, correspondances de pose de référence Chaos, export OBJ et contrôles explicites des indices de rendu sont disponibles via un nouvel exemple de SDK installé. Les deltas de cartes et valeurs par défaut de constructeurs absentes gardent une couverture incomplète ; l’intégration desktop physique dédiée reste à réaliser. Voir [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).
+
+La dernière archive Windows locale vérifiée reste 0.182.0. Ce jalon des sources ne téléverse, ne publie et ne remplace pas cette archive.
+
 ## 0.183.0 — Développement local des sources
 
 Ce jalon des sources et de l’API ajoute des liaisons de structures hybrides explicites : préfixe de propriétés réfléchies certifié, suivi de données natives déclaratives bornées. Les contextes de schéma version quatre conservent la provenance des descriptions et les identités avant/après indépendantes. Le profil de tissu UE 5.3 Windows sélectionné expose les propriétés physiques associées, les valeurs natives des attaches et les enregistrements bruts des transitions. Il ne déduit pas les valeurs par défaut absentes, n’exécute pas de simulation et ne découvre pas les sérialiseurs arbitraires des plugins.

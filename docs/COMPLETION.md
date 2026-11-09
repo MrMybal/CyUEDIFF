@@ -15,7 +15,7 @@ The product goal is the originally requested reusable Unreal inspection/diff eng
 
 ## Current facts
 
-Current 0.183.0 source adds explicit hybrid struct tails with independent physical cloth property evidence and paged source/cooked inspection; the remaining scope is recorded below. Version 0.182.0 remains a locally verified Windows development archive with CLI/desktop, Core/Git SDK and a bilingual offline HTML manual. The other workstreams below still require their remaining acceptance evidence; this does not complete the full product goal. The previous 0.181.0 milestone already supplies the foundational Core, optional Git adapter, source readers, declarative native layouts, container and Zen tables, explicit schema reads, source visuals, local virtualized resources, multiple documents, workspaces and file/block reconstruction. The public website, bilingual README and MIT license are published. Hosted Windows/Ubuntu Core Git-on/off and secret checks pass at commit d0ad51c. The detailed format contracts and remaining reader coverage are tracked in ROADMAP.md.
+Current 0.184.0 source adds typed physical cloth geometry/transitions/CLI queries on the independently verified hybrid/paged foundations; the remaining scope is recorded below. Version 0.182.0 remains a locally verified Windows development archive with CLI/desktop, Core/Git SDK and a bilingual offline HTML manual. The other workstreams below still require their remaining acceptance evidence; this does not complete the full product goal. The previous 0.181.0 milestone already supplies the foundational Core, optional Git adapter, source readers, declarative native layouts, container and Zen tables, explicit schema reads, source visuals, local virtualized resources, multiple documents, workspaces and file/block reconstruction. The public website, bilingual README and MIT license are published. Hosted Windows/Ubuntu Core Git-on/off and secret checks pass at commit d0ad51c. The detailed format contracts and remaining reader coverage are tracked in ROADMAP.md.
 
 ## Reader work log (chronological)
 
@@ -140,3 +140,10 @@ The generic expanded inspector's 20,000-row ceiling is verified on a large decod
 Core `property_page` and reusable EN/FR `PropertyBrowserView` now provide bounded direct-child pages, actual raw paths, typed/tag inspection, parent/root navigation, last-page and index selection, clipped-row scrolling and workspace scope restoration. Loose source packages expose stored-property, native-field and opaque-metadata roots without copying the complete source into the UI; cooked objects use the owner-held property snapshots. Unknown/partial peers remain independent inspections. See [PROPERTY_BROWSER.md](PROPERTY_BROWSER.md).
 
 This resolves the identified large-object navigation gap for these desktop paths. It does not complete dedicated physical geometry, interpreted transitions, render/simulation correspondence bounds, missing defaults, broader source/native/producer acceptance or the updated final distribution. The verified 0.182 archive remains unchanged; no push or public release is implied.
+
+
+## Typed physical cloth Core/CLI — 0.184 source
+
+The physical model, focused vertex/transition queries, named stored comparisons, source-pose transition coordinates, OBJ geometry export and explicit base render-source bounds are implemented through Core/CLI/installed SDK. Actual Engine API/native serializers and Chaos CPU wrap references exercise this scope. See [PHYSICAL_CLOTH.md](PHYSICAL_CLOTH.md).
+
+This addresses the typed physical geometry/transition foundation, not the whole product goal. A dedicated physical desktop view, full constructor/default reconstruction, further source/native/plugin/producer acceptance and the final updated distribution remain required. Nonreplacement map inventories retain incomplete coverage. The earlier 0.182 delivery archive remains unchanged; no push or public release is implied.

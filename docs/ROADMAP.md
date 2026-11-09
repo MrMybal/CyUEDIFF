@@ -124,3 +124,8 @@ Explicit schema/context `struct_tails` and version-four manifests bind certified
 ### Paged property navigation
 
 The original large-object expanded-table limit now has a practical source/cooked browser: direct-child pages, raw JSON-pointer scopes, tag fields, parent/root controls, last-page/index access and retained workspace selection. Original source projections and actual cooked physical-cloth values exercise this path. See [PROPERTY_BROWSER.md](PROPERTY_BROWSER.md). The parser/profile and dedicated physical/runtime/distribution workstreams remain separate.
+
+
+### Physical cloth Core/CLI
+
+Selected UE 5.3 physical geometry, twelve-slot bone records, stored maps/tethers, interpreted transitions and reference-pose wrap queries now have an owned typed Core model and CLI/installed-SDK paths. Explicit base render-source GUID/LOD/index bounds are checked against actual physical vertices. Nonreplacement map defaults and unavailable fields remain incomplete. See [PHYSICAL_CLOTH.md](PHYSICAL_CLOTH.md). Dedicated physical desktop review and the broader source/native/default/delivery workstreams remain open.

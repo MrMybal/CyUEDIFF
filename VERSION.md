@@ -2,6 +2,12 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.184.0 — Local physical-cloth source development
+
+The independent Core/CLI now project selected UE 5.3 physical cloth geometry, bone/weight/tether data and modern native transitions. Focused queries, named stored differences, reference-pose Chaos wrap algebra, OBJ output and explicitly bound render-source index checks are available through a fresh installed SDK example. Map deltas and missing constructor defaults retain incomplete coverage; dedicated physical desktop binding remains subsequent work. See [PHYSICAL_CLOTH.md](docs/PHYSICAL_CLOTH.md).
+
+The last verified local Windows archive remains 0.182.0. This source milestone does not upload, publish or replace that archive.
+
 ## 0.183.0 — Local source development
 
 This source/API milestone adds explicit hybrid struct bindings: a certified reflected property prefix followed by a bounded declarative native tail. Version-four schema contexts preserve layout provenance and independent before/after identities. The selected UE 5.3 Windows cloth profile exposes mapped physical properties, native tether values and raw native transition records. It does not infer missing class defaults, execute simulation or discover arbitrary plugin serializers.

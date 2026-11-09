@@ -3,6 +3,8 @@
 #include "ClothingAsset.h"
 #include "ClothLODData.h"
 #include "ChaosCloth/ChaosClothConfig.h"
+#include "ChaosCloth/ChaosClothingSimulationMesh.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "HAL/IConsoleManager.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimBoneCompressionCodec.h"
@@ -759,6 +761,112 @@ FString UCyUEDiffReferenceLibrary::ExportPhysicalClothReference(UObject *Asset) 
     FString Result;
     auto Writer = TJsonWriterFactory<>::Create(&Result);
     FJsonSerializer::Serialize(Out, Writer);
+    return Result;
+}
+FString UCyUEDiffReferenceLibrary::ExportPhysicalClothGeometryReference(UObject *Asset) {
+    auto *Mesh = Cast<USkeletalMesh>(Asset);
+    if (!Mesh)
+        return FString();
+    const auto Base = ExportPhysicalClothReference(Asset);
+    TSharedPtr<FJsonObject> Out;
+    if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Base), Out) || !Out.IsValid())
+        return FString();
+    Out->SetStringField(TEXT("schema"), TEXT("cyuediff.unreal-physical-cloth-geometry-reference/1"));
+    Out->SetBoolField(TEXT("hasVertexColors"), Mesh->GetHasVertexColors());
+    auto Mapping = [](const FMeshToMeshVertData &M) {
+        auto V = MakeShared<FJsonObject>();
+        V->SetField(TEXT("position"), Vec4(M.PositionBaryCoordsAndDist));
+        V->SetField(TEXT("normal"), Vec4(M.NormalBaryCoordsAndDist));
+        V->SetField(TEXT("tangent"), Vec4(M.TangentBaryCoordsAndDist));
+        Values Indices;
+        for (int32 I = 0; I < 4; ++I)
+            Indices.Add(Number(M.SourceMeshVertIndices[I]));
+        V->SetArrayField(TEXT("sourceIndices"), Indices);
+        V->SetNumberField(TEXT("weight"), M.Weight);
+        V->SetNumberField(TEXT("padding"), M.Padding);
+        return Obj(V);
+    };
+    auto Bounds = [](const auto &Positions) -> TSharedPtr<FJsonValue> {
+        FBox3f Box(ForceInit);
+        for (const auto &P : Positions)
+            Box += FVector3f(P);
+        if (!Box.IsValid)
+            return MakeShared<FJsonValueNull>();
+        auto B = MakeShared<FJsonObject>();
+        B->SetField(TEXT("min"), Vec3(Box.Min));
+        B->SetField(TEXT("max"), Vec3(Box.Max));
+        return Obj(B);
+    };
+    auto *Component = NewObject<USkeletalMeshComponent>();
+    int32 AssetIndex = 0;
+    for (const auto &BaseAsset : Mesh->GetMeshClothingAssets()) {
+        const auto *Cloth = Cast<UClothingAssetCommon>(BaseAsset.Get());
+        if (!Cloth)
+            continue;
+        auto A = Out->GetArrayField(TEXT("assets"))[AssetIndex++]->AsObject();
+        PRAGMA_DISABLE_DEPRECATION_WARNINGS
+        Chaos::FClothingSimulationMesh MeshAPI(Cloth, Component);
+        PRAGMA_ENABLE_DEPRECATION_WARNINGS
+        for (int32 I = 0; I < Cloth->LodData.Num(); ++I) {
+            const auto &LOD = Cloth->LodData[I];
+            auto L = A->GetArrayField(TEXT("lods"))[I]->AsObject();
+            L->SetField(TEXT("bounds"), Bounds(LOD.PhysicalMeshData.Vertices));
+            Values Up, Down;
+            for (const auto &M : LOD.TransitionUpSkinData)
+                Up.Add(Mapping(M));
+            for (const auto &M : LOD.TransitionDownSkinData)
+                Down.Add(Mapping(M));
+            L->SetArrayField(TEXT("transitionUp"), Up);
+            L->SetArrayField(TEXT("transitionDown"), Down);
+            for (bool bUp : {true, false}) {
+                const auto Key = bUp ? TEXT("wrapUp") : TEXT("wrapDown");
+                const int32 From = bUp ? I - 1 : I + 1;
+                if (!Cloth->LodData.IsValidIndex(From)) {
+                    L->SetField(Key, MakeShared<FJsonValueNull>());
+                    continue;
+                }
+                const auto &Source = Cloth->LodData[From].PhysicalMeshData;
+                const auto &Records = bUp ? LOD.TransitionUpSkinData : LOD.TransitionDownSkinData;
+                bool Valid = Records.Num() == LOD.PhysicalMeshData.Vertices.Num() &&
+                             Source.Normals.Num() == Source.Vertices.Num();
+                for (const auto &M : Records)
+                    for (int32 K = 0; K < 3; ++K)
+                        Valid = Valid && Source.Vertices.IsValidIndex(M.SourceMeshVertIndices[K]);
+                if (!Valid) {
+                    L->SetField(Key, MakeShared<FJsonValueNull>());
+                    continue;
+                }
+                TArray<Chaos::Softs::FSolverVec3> Positions, Normals, Wrapped;
+                for (const auto &V : Source.Vertices)
+                    Positions.Add(Chaos::Softs::FSolverVec3(V));
+                for (const auto &V : Source.Normals)
+                    Normals.Add(Chaos::Softs::FSolverVec3(V));
+                Wrapped.SetNumUninitialized(LOD.PhysicalMeshData.Vertices.Num());
+                PRAGMA_DISABLE_DEPRECATION_WARNINGS
+                const bool bWrapped =
+                    MeshAPI.WrapDeformLOD(From, I, Normals.GetData(), Positions.GetData(), Wrapped.GetData());
+                PRAGMA_ENABLE_DEPRECATION_WARNINGS
+                if (!bWrapped)
+                    return FString();
+                Values ValuesOut;
+                for (const auto &V : Wrapped)
+                    ValuesOut.Add(Vec3(V));
+                auto W = MakeShared<FJsonObject>();
+                W->SetNumberField(TEXT("sourceLOD"), From);
+                W->SetArrayField(TEXT("positions"), ValuesOut);
+                W->SetField(TEXT("bounds"), Bounds(Wrapped));
+                L->SetObjectField(Key, W);
+            }
+        }
+    }
+    TSharedPtr<FJsonObject> Render;
+    if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(ExportClothReference(Asset)), Render) ||
+        !Render.IsValid())
+        return FString();
+    Out->SetObjectField(TEXT("renderMappings"), Render);
+    FString Result;
+    auto Writer = TJsonWriterFactory<>::Create(&Result);
+    FJsonSerializer::Serialize(Out.ToSharedRef(), Writer);
     return Result;
 }
 bool UCyUEDiffReferenceLibrary::PreparePrivateOverlaps(UObject *Asset, int32 Variant) {

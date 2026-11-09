@@ -41,6 +41,9 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     // Read-only actual physical mesh, config and native tether/transition references.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportPhysicalClothReference(UObject *Asset);
+    // Direct physical geometry/transition fields and actual Chaos 5.3 CPU wrap results; never saves.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportPhysicalClothGeometryReference(UObject *Asset);
     // Private source UV variant and read-only native overlap reference; caller owns saving.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static bool PreparePrivateOverlaps(UObject *Asset, int32 Variant);

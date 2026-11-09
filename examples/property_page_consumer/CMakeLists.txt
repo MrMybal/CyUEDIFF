@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(CyUEDiffPropertyPageConsumer LANGUAGES CXX)
-find_package(CyUEDiff 0.183 CONFIG REQUIRED)
+find_package(CyUEDiff 0.184 CONFIG REQUIRED)
 add_executable(property_page_consumer main.cpp)
 target_link_libraries(property_page_consumer PRIVATE CyUEDiff::Core)
 target_compile_features(property_page_consumer PRIVATE cxx_std_17)

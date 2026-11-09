@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Application license</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.183.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
+      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.184.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
       <p><sub>Windows x64 desktop<br>No public application release yet</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspect Unreal Engine assets and understand what changed **without launching Unreal Editor**. CyUEDiff provides a Windows desktop application, a JSON command-line tool and a reusable C++17 reader for Unreal developers, technical artists and tool authors.
 
-> **IN DEVELOPMENT · 0.183.0**
+> **IN DEVELOPMENT · 0.184.0**
 >
 > This source version provides explicit, evolving format coverage. Unknown data keeps its diagnostics and byte fingerprints. Read the [version notes, supported platforms and known limitations](VERSION.md) before choosing a workflow.
 
@@ -57,6 +57,7 @@ These are real desktop and embeddable CyUI captures using original generated dem
 - **Stored motion data:** reference/retarget skeleton poses, sockets, supported local animation keys, explicitly Skeleton-bound source joint/socket origins and rich curves with supported weighted evaluation. Selected UE 5.3 Windows per-track compressed transforms and compatible compressed curves also support fractional sampling and dedicated EN/FR review. These inspect stored data without runtime retargeting, blending or skinned rendering. [Cooked animation](docs/COOKED_ANIMATIONS.md).
 - **Project and revision context:** separate before/after project and engine roots, local Git history/LFS reads, supported Pak 10/11 and IoStore TOC 3–8 members (with explicit supported storage arrangements), cooked Zen tables and explicitly mapped USMAP properties.
 - **Large property inspection:** paged source/cooked values, nested scopes, serialization fields, direct index navigation and retained workspace selection. [Browser contract](docs/PROPERTY_BROWSER.md).
+- **Physical cloth Core/CLI:** selected UE 5.3 stored physical geometry, twelve-slot bones, tethers, interpreted transitions, named differences, reference-pose wrap queries and explicit render-source bounds. Dedicated desktop binding remains in development. [Scope and limits](docs/PHYSICAL_CLOTH.md).
 - **Hybrid native structures:** explicitly bind a reflected property prefix followed by a declarative native tail, with named fields, shared budgets and opaque recovery. Selected physical cloth properties and stored tethers are checked independently; transition records remain raw. [Contract](docs/HYBRID_STRUCTS.md).
 - **Extensible readers:** bounded native decoder callbacks and declarative binary layouts with explicit version profiles; local virtualized editor payload stores require full raw BLAKE3 verification. Loading supports cooperative cancellation, progress and a verified package cache.
 - **Reusable block deltas:** generate, compose and reconstruct file/block differences with SHA-256 verification. This is a separate binary reconstruction API; remote object hosting and synchronization are not implemented.

@@ -49,6 +49,10 @@ Unreal's `GetPathName` uses a colon at the asset/subobject boundary while Core's
 See [the Core-only installed example](../examples/hybrid_struct_consumer/) and `scripts/validate_physical_cloth.py`. The example reads explicit members and independent contexts without Git, CyUI, Unreal or an optional codec. The validator checks matching API references, exact native bytes and unchanged protected inputs. Private source/cooked assets, mappings, Engine code and reference outputs remain outside the distribution. The last verified 0.182 archive predates this source feature.
 
 
+## Subsequent typed physical projection
+
+Version 0.184 adds a separate [physical cloth Core/CLI model](PHYSICAL_CLOTH.md) on top of these certified properties/tails. It interprets the modern transition records, creates physical geometry, provides named stored differences/reference-pose wrap queries and validates explicit render-source bounds. The generic schema projection itself retains its raw transition bytes. Dedicated physical desktop binding and unresolved class defaults remain open.
+
 ## Verification and present limits
 
 The original hybrid fixtures pass 102 Core checks, including native USMAP traits, repeated values, following-property boundaries, every truncated prefix, canonical binding conflicts, budgets, cancellation and whole opaque fallback. Public CLI and desktop checks cover both supported Zen header profiles, named tail differences, protected outputs, workspace/locale retention and an unavailable peer that must not imply removed properties. The original hybrid checkpoint passed 153 Core suites and 238 Windows desktop/Git/native suites; version metadata is additionally checked after the 0.183 minor-version change.
