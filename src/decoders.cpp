@@ -17,8 +17,13 @@ bool SerializationProfile::matches(const PackageSummary &summary) const {
     }
     return true;
 }
-DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_ptr<const TaggedTypes> types)
-    : entries_(std::move(entries)), tagged_types_(std::move(types)) {
+DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_ptr<const TaggedTypes> types,
+                                 std::string context)
+    : entries_(std::move(entries)), tagged_types_(std::move(types)), context_sha256_(std::move(context)) {
+    if (!context_sha256_.empty() &&
+        (context_sha256_.size() != 64 ||
+         context_sha256_.find_first_not_of("0123456789abcdef") != std::string::npos))
+        throw Error("decoder-registration", "Expected a canonical decoder context SHA-256");
     std::set<std::string> ids;
     auto range = [](VersionRange r) {
         if (r.min > r.max)

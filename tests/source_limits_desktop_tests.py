@@ -22,6 +22,9 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-source-limits-desktop-',dir=P
         old=root/'legacy.json';old.write_text(json.dumps(legacy),encoding='utf-8')
         upgraded=run('--workspace',old,'--save-workspace',workspace);assert 'readLimits' not in upgraded['document']
         settings=json.loads(workspace.read_text(encoding='utf-8'))['documents'][0]['settings'];assert settings['max_properties']==100000 and settings['max_property_bytes']==33554432 and settings['inherit_after_source_limits']
+    physical=run('--before',source,'--view','physical-cloth','--save-workspace',workspace)
+    assert json.loads(workspace.read_text(encoding='utf-8'))['documents'][0]['view']=='physical-cloth'
+    assert run('--workspace',workspace)['document']==physical['document']
     unavailable=run('--before',source,'--after',source,'--after-max-properties',1,code=2);assert unavailable is None or unavailable.get('error') or unavailable.get('workspace')
     for flag,value in [('--max-properties','0'),('--max-properties','4000001'),('--max-property-bytes','268435457'),('--max-property-bytes','-1')]:run('--before',source,flag,value,code=2)
     run('--before',source,'--after-max-properties',2000000,code=2)

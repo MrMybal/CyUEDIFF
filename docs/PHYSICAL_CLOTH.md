@@ -58,3 +58,7 @@ A representative launch is:
 ```sh
 cyuediff_desktop --container input.utoc --container-entry MEMBER --cooked-profile ue5.3 --script-objects global.utoc --schema context.json --physical-cloth-profile ue5.3-windows --container-tab physical-cloth
 ```
+
+## Tagged source path — 0.188
+
+The same owned model and reusable physical view now accept explicitly mapped tagged source packages, with independent source type/native provenance and unresolved map defaults. See [SOURCE_PHYSICAL_CLOTH.md](SOURCE_PHYSICAL_CLOTH.md) for preparation, CLI/SDK operations, desktop selection and limits.

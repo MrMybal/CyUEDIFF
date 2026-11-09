@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Application license</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.187.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
+      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.188.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
       <p><sub>Windows x64 desktop<br>No public application release yet</sub></p>
     </td>
   </tr>
@@ -45,6 +45,7 @@ These are real desktop and embeddable CyUI captures using original generated dem
 
 ## Features
 
+- **Source physical cloth:** explicit UE 5.3 tagged packages now share the physical model, queries/OBJ/differences and reusable EN/FR desktop, with independently selected objects and unresolved defaults kept visible. [Contract](docs/SOURCE_PHYSICAL_CLOTH.md).
 - **Readable asset differences:** searchable typed properties, stable object references, structured Blueprint pin texts, stored material graphs and instance parameters, with explicit partial/opaque coverage.
 - **Source image and geometry review:** supported Texture2D LDR/HDR sources and mips, pixel/sample differences, modern MeshDescription wireframes, geometry differences and base-geometry OBJ export. Modern skeletal source bones, raw weight profiles and named morph deltas are fixture-validated.
 - **Selected cooked native assets:** explicit UE 5.3 Windows texture mips, static/skeletal render LODs and native Chaos geometry, with verified bulk windows, named differences and EN/FR desktop inspectors. [Textures](docs/COOKED_TEXTURES.md) · [Meshes](docs/COOKED_MESHES.md) · [Physics](docs/COOKED_PHYSICS.md).

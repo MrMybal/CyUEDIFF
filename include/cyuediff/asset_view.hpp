@@ -13,13 +13,26 @@
 #include <cyuediff/property_browser_view.hpp>
 #include <cyuediff/collision_view.hpp>
 #include <cyuediff/skeleton_view.hpp>
+#include <cyuediff/physical_cloth_view.hpp>
 #include <cyui/modules/Diff.h>
 #include <memory>
 #include <optional>
 namespace cyuediff {
 // The host owns the window/backend and loads packages outside its render loop.
 // No platform window, Unreal dependency or file I/O is introduced by draw().
-enum class AssetTab { properties, blueprint, materials, textures, meshes, comparison, collisions, skeleton, animations, curves };
+enum class AssetTab {
+    properties,
+    blueprint,
+    materials,
+    textures,
+    meshes,
+    comparison,
+    collisions,
+    skeleton,
+    animations,
+    curves,
+    physical_cloth
+};
 class AssetView {
     ViewLayout layout_;
     std::shared_ptr<const Package> before_, after_;
@@ -53,6 +66,11 @@ class AssetView {
     bool sockets_bound_ = false, sockets_preview_ = false;
     bool pose_bound_ = false, pose_preview_ = false;
     CurveView curves_;
+    PhysicalClothView physical_cloth_;
+    std::vector<std::shared_ptr<const PhysicalClothAsset>> before_physical_, after_physical_;
+    std::size_t before_physical_selected_ = 0, after_physical_selected_ = 0;
+    bool physical_explicit_pair_ = false, physical_comparing_ = false;
+    void bind_physical_cloth();
     bool material_after_ = false;
     MeshView before_mesh_, after_mesh_;
     bool mesh_after_ = false, skin_inspection_ = false, morph_inspection_ = false;
@@ -78,6 +96,12 @@ class AssetView {
     void set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after = {},
                       bool compare_missing_side = false);
     // Prepared by the host worker; drawing never resolves an external Skeleton.
+    void set_physical_cloth_assets(std::vector<std::shared_ptr<const PhysicalClothAsset>> before,
+                                   std::vector<std::shared_ptr<const PhysicalClothAsset>> after = {},
+                                   bool comparing = false);
+    bool select_physical_cloth(bool after, const std::string &object);
+    void set_physical_cloth_pair(bool enabled);
+    const PhysicalClothView &physical_cloth() const { return physical_cloth_; }
     void set_animation_poses(const AnimationPose *before, const AnimationPose *after = nullptr, bool comparing = false);
     void set_animation_socket_poses(const AnimationSocketPose *before, const AnimationSocketPose *after = nullptr, bool comparing = false);
     bool set_texture_preview(const std::string &object_path, const cyui::ImageData &, bool after = false);

@@ -355,6 +355,9 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
         } else if (kind == "asset") {
+            child("physicalCloth", "physical-cloth");
+            string({"physicalClothBefore", "physicalClothAfter"});
+            flag({"physicalClothPair"});
             child("propertyBrowser", "property-browser");
             flag({"browseProperties"});
             string({"browserObject"});

@@ -183,6 +183,12 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff zen-physics CONTAINER ENTRY --physics-profile ue5.3-windows [cooked context]\n"
                "  cyuediff zen-physics-wire CONTAINER ENTRY [same explicit cooked physics context]\n"
                "  cyuediff zen-physics-diff BEFORE ENTRY AFTER ENTRY [same cooked context]\n"
+               "  cyuediff physical-cloth ASSET --layouts CONTEXT.json --physical-cloth-profile "
+               "ue5.3-windows [--include-values 0|1]\n"
+               "  cyuediff physical-cloth-vertex|physical-cloth-transition|physical-cloth-wrap ASSET [same "
+               "context] [--lod N] [--vertex N] [--transition up|down]\n"
+               "  cyuediff export-physical-cloth ASSET [same context] [--lod N] --out MESH.obj\n"
+               "  cyuediff physical-cloth-diff BEFORE AFTER [independent source contexts]\n"
                "  cyuediff zen-physical-cloth CONTAINER ENTRY --cooked-profile ue5.3 --schema CONTEXT.json "
                "--physical-cloth-profile ue5.3-windows [--include-values 0|1]\n"
                "  cyuediff zen-physical-cloth-vertex|zen-physical-cloth-transition CONTAINER ENTRY [same "
@@ -349,12 +355,17 @@ int run(const std::vector<std::string> &args) {
     const bool source_socket = command == "animation-socket-pose" || command == "animation-socket-pose-diff";
     const bool source_pose_single = command == "animation-pose" || command == "animation-socket-pose";
     const bool source_pose_diff = command == "animation-pose-diff" || command == "animation-socket-pose-diff";
-    auto required = (command == "diff" || command == "resolve" || command == "image-diff" ||
-                     source_pose_single || source_pose_diff || command == "animation-frame-diff" || command == "curve-value-diff" || command == "curves-diff" || command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" || command == "skeleton-animation-diff" || command == "skeleton-pose-diff" || command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
-                     command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
-                     command == "container-diff")
-                        ? 2u
-                        : 1u;
+    auto required =
+        (command == "physical-cloth-diff" || command == "diff" || command == "resolve" ||
+         command == "image-diff" || source_pose_single || source_pose_diff ||
+         command == "animation-frame-diff" || command == "curve-value-diff" || command == "curves-diff" ||
+         command == "animation-diff" || command == "attachments-diff" || command == "socket-pose-diff" ||
+         command == "skeleton-animation-diff" || command == "skeleton-pose-diff" ||
+         command == "collision-diff" || command == "skeleton-diff" || command == "mesh-diff" ||
+         command == "material-diff" || command == "hdr-diff" || command == "container-read" ||
+         command == "container-diff")
+            ? 2u
+            : 1u;
     const bool git_command = command == "git-inspect" || command == "git-diff" || command == "git-project" ||
                              command == "git-catalog" || command == "git-history";
     const bool schema_command = command == "usmap";
@@ -365,6 +376,9 @@ int run(const std::vector<std::string> &args) {
     const bool cooked_collision =
         command == "zen-collision" || command == "zen-collision-wire" || command == "zen-collision-diff";
     const bool cooked_collision_diff = command == "zen-collision-diff";
+    const bool source_physical = command == "physical-cloth" || command == "physical-cloth-vertex" ||
+                                 command == "physical-cloth-transition" || command == "physical-cloth-wrap" ||
+                                 command == "export-physical-cloth" || command == "physical-cloth-diff";
     const bool physical_cloth =
         command == "zen-physical-cloth" || command == "zen-physical-cloth-vertex" ||
         command == "zen-physical-cloth-transition" || command == "zen-physical-cloth-wrap" ||
@@ -407,7 +421,13 @@ int run(const std::vector<std::string> &args) {
     }
     if (positional.size() != required)
         throw Error("arguments", "Wrong number of arguments; use --help");
-    const std::set<std::string> source_commands = {"inspect",
+    const std::set<std::string> source_commands = {"physical-cloth",
+                                                   "physical-cloth-vertex",
+                                                   "physical-cloth-transition",
+                                                   "physical-cloth-wrap",
+                                                   "export-physical-cloth",
+                                                   "physical-cloth-diff",
+                                                   "inspect",
                                                    "textconv",
                                                    "diff",
                                                    "graph",
@@ -463,6 +483,23 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Source read limits require a source decode command");
             if (key.rfind("--after-", 0) == 0 && !source_compare)
                 throw Error("arguments", "Independent source limits require a source comparison");
+            continue;
+        }
+        if (source_physical) {
+            const bool common = key == "--out" || key == "--layouts" || key == "--project" ||
+                                key == "--before-project" || key == "--engine-root" ||
+                                key == "--physical-cloth-profile" || key == "--export-index";
+            const bool pair =
+                source_compare && (key == "--after-layouts" || key == "--after-project" ||
+                                   key == "--after-physical-cloth-profile" || key == "--after-export-index");
+            const bool lod = key == "--lod" && command != "physical-cloth" && !source_compare;
+            const bool vertex = key == "--vertex" && (command == "physical-cloth-vertex" ||
+                                                      command == "physical-cloth-transition");
+            const bool transition = key == "--transition" && (command == "physical-cloth-transition" ||
+                                                              command == "physical-cloth-wrap");
+            if (!(common || pair || lod || vertex || transition ||
+                  (key == "--include-values" && command == "physical-cloth")))
+                throw Error("arguments", "Unsupported source physical cloth option: " + key);
             continue;
         }
         if (source_types) {
@@ -810,6 +847,71 @@ int run(const std::vector<std::string> &args) {
     after_limits.apply(after_read_options);
     after_read_options.decoders = after_decoders;
     after_read_options.narrow_string_encoding = after_layouts ? after_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
+    auto physical_options = [&](bool after, PhysicalClothOptions fallback) {
+        const std::string key = after ? "--after-physical-cloth-profile" : "--physical-cloth-profile";
+        if (flags.contains(key)) {
+            if (flags.at(key).get<std::string>() != "ue5.3-windows")
+                throw Error("arguments", "Supported physical cloth profile: ue5.3-windows");
+            fallback.profile = PhysicalClothProfile::unreal_5_3_windows;
+        }
+        if (fallback.profile == PhysicalClothProfile::unspecified)
+            throw Error("arguments", "Select --physical-cloth-profile ue5.3-windows");
+        return fallback;
+    };
+    auto selected_physical_export = [&](const char *key) -> std::size_t {
+        return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
+    };
+    auto physical_output = [&](const PhysicalClothAsset &before) {
+        const auto physical_command = command.rfind("zen-", 0) == 0 ? command.substr(4) : command;
+        if (physical_command == "physical-cloth") {
+            output = before.to_json(flags.contains("--include-values") &&
+                                    integer_option("--include-values", 1) != 0);
+            exit_code = before.available() ? 0 : 2;
+        } else {
+            const auto lod = static_cast<std::uint32_t>(integer_option("--lod", 127));
+            if (physical_command == "export-physical-cloth") {
+                if (!before.available() || lod >= before.lods().size() || !before.lods()[lod].geometry)
+                    throw Error("physical-cloth-unavailable", "Physical geometry is unavailable");
+                obj = *before.lods()[lod].geometry;
+                obj_destination = path_option("--out");
+                if (obj_destination.empty())
+                    throw Error("arguments", "Physical OBJ export requires --out");
+                output = {{"schema", "cyuediff.physical-cloth-export/1"},
+                          {"object", before.object_path()},
+                          {"lod", lod},
+                          {"vertices", obj.vertices.size()},
+                          {"triangles", obj.triangles.size()}};
+            } else if (physical_command == "physical-cloth-vertex") {
+                output = {{"schema", "cyuediff.physical-cloth-vertex/1"},
+                          {"object", before.object_path()},
+                          {"lod", lod},
+                          {"value", before.vertex(lod, static_cast<std::uint32_t>(
+                                                           integer_option("--vertex", UINT32_MAX)))}};
+            } else {
+                const auto direction = flags.value("--transition", std::string("up"));
+                if (direction != "up" && direction != "down")
+                    throw Error("arguments", "Select --transition up or down");
+                const bool up = direction == "up";
+                if (physical_command == "physical-cloth-transition")
+                    output = {{"schema", "cyuediff.physical-cloth-transition/1"},
+                              {"object", before.object_path()},
+                              {"lod", lod},
+                              {"direction", direction},
+                              {"value", before.transition(lod, up,
+                                                          static_cast<std::uint32_t>(
+                                                              integer_option("--vertex", UINT32_MAX)))}};
+                else
+                    output = {{"schema", "cyuediff.physical-cloth-wrap/1"},
+                              {"object", before.object_path()},
+                              {"lod", lod},
+                              {"direction", direction},
+                              {"scope", "Chaos-5.3-stored-source-pose-transition"},
+                              {"simulationEvaluated", false},
+                              {"positions", before.wrap_transition(lod, up)}};
+            }
+        }
+        output["provenance"] = before.to_json().at("provenance");
+    };
     if (command == "layouts") {
         const auto input = fs::u8path(positional[0]);
         protected_files.push_back(input);
@@ -1249,24 +1351,11 @@ int run(const std::vector<std::string> &args) {
                 exit_code = !output.at("complete").get<bool>() ? 2 : output.at("changes").empty() ? 0 : 1;
             }
         } else if (physical_cloth) {
-            auto native_options = [&](bool after, PhysicalClothOptions fallback) {
-                const std::string key = after ? "--after-physical-cloth-profile" : "--physical-cloth-profile";
-                if (flags.contains(key)) {
-                    if (flags.at(key).get<std::string>() != "ue5.3-windows")
-                        throw Error("arguments", "Supported physical cloth profile: ue5.3-windows");
-                    fallback.profile = PhysicalClothProfile::unreal_5_3_windows;
-                }
-                if (fallback.profile == PhysicalClothProfile::unspecified)
-                    throw Error("arguments", "Select --physical-cloth-profile ue5.3-windows");
-                return fallback;
-            };
-            auto selected_export = [&](const char *key) -> std::size_t {
-                return flags.contains(key) ? integer_option(key, 1'000'000) : SIZE_MAX;
-            };
-            const auto opts = native_options(false, {});
+            const auto opts = physical_options(false, {});
             const auto package =
                 read_zen_package(input, select(input, positional[1]), before_options, read_options);
-            const auto before = read_physical_cloth(package, opts, selected_export("--export-index"));
+            const auto before =
+                read_physical_cloth(package, opts, selected_physical_export("--export-index"));
             if (physical_cloth_diff) {
                 auto after_options = before_options;
                 after_options.profile = profile("--after-cooked-profile", before_options.profile);
@@ -1277,59 +1366,14 @@ int run(const std::vector<std::string> &args) {
                 const auto other = open(fs::u8path(positional[2]));
                 const auto after_package =
                     read_zen_package(other, select(other, positional[3]), after_options, read_options);
-                const auto after = read_physical_cloth(after_package, native_options(true, opts),
-                                                       selected_export("--after-export-index"));
+                const auto after = read_physical_cloth(after_package, physical_options(true, opts),
+                                                       selected_physical_export("--after-export-index"));
                 PhysicalClothComparisonOptions compare;
                 compare.explicit_object_pair = true;
                 output = compare_physical_cloth(before, after, compare);
                 exit_code = !output.at("complete").get<bool>() ? 2 : output.at("changes").empty() ? 0 : 1;
-            } else if (command == "zen-physical-cloth") {
-                output = before.to_json(flags.contains("--include-values") &&
-                                        integer_option("--include-values", 1) != 0);
-                exit_code = before.available() ? 0 : 2;
-            } else {
-                const auto lod = static_cast<std::uint32_t>(integer_option("--lod", 127));
-                if (command == "zen-export-physical-cloth") {
-                    if (!before.available() || lod >= before.lods().size() || !before.lods()[lod].geometry)
-                        throw Error("physical-cloth-unavailable", "Physical geometry is unavailable");
-                    obj = *before.lods()[lod].geometry;
-                    obj_destination = path_option("--out");
-                    if (obj_destination.empty())
-                        throw Error("arguments", "Physical OBJ export requires --out");
-                    output = {{"schema", "cyuediff.physical-cloth-export/1"},
-                              {"object", before.object_path()},
-                              {"lod", lod},
-                              {"vertices", obj.vertices.size()},
-                              {"triangles", obj.triangles.size()}};
-                } else if (command == "zen-physical-cloth-vertex") {
-                    output = {{"schema", "cyuediff.physical-cloth-vertex/1"},
-                              {"object", before.object_path()},
-                              {"lod", lod},
-                              {"value", before.vertex(lod, static_cast<std::uint32_t>(
-                                                               integer_option("--vertex", UINT32_MAX)))}};
-                } else {
-                    const auto direction = flags.value("--transition", std::string("up"));
-                    if (direction != "up" && direction != "down")
-                        throw Error("arguments", "Select --transition up or down");
-                    const bool up = direction == "up";
-                    if (command == "zen-physical-cloth-transition")
-                        output = {{"schema", "cyuediff.physical-cloth-transition/1"},
-                                  {"object", before.object_path()},
-                                  {"lod", lod},
-                                  {"direction", direction},
-                                  {"value", before.transition(lod, up,
-                                                              static_cast<std::uint32_t>(
-                                                                  integer_option("--vertex", UINT32_MAX)))}};
-                    else
-                        output = {{"schema", "cyuediff.physical-cloth-wrap/1"},
-                                  {"object", before.object_path()},
-                                  {"lod", lod},
-                                  {"direction", direction},
-                                  {"scope", "Chaos-5.3-stored-source-pose-transition"},
-                                  {"simulationEvaluated", false},
-                                  {"positions", before.wrap_transition(lod, up)}};
-                }
-            }
+            } else
+                physical_output(before);
         } else if (cooked_collision) {
             auto before = read_zen_package(input, select(input, positional[1]), before_options, read_options);
             if (command == "zen-collision")
@@ -1674,6 +1718,20 @@ int run(const std::vector<std::string> &args) {
             output=animation_frame(before,integer_option("--frame",INT32_MAX),flags.value("--object",std::string{}));
         else output=animation_snapshot(before);
         if(!before.complete_input)exit_code=2;
+    } else if (source_physical) {
+        const auto opts = physical_options(false, {});
+        const auto package = read(positional[0], "--before-project", options);
+        const auto before = read_physical_cloth(package, opts, selected_physical_export("--export-index"));
+        if (source_compare) {
+            const auto after_package = read(positional[1], "--after-project", options);
+            const auto after = read_physical_cloth(after_package, physical_options(true, opts),
+                                                   selected_physical_export("--after-export-index"));
+            PhysicalClothComparisonOptions compare;
+            compare.explicit_object_pair = true;
+            output = compare_physical_cloth(before, after, compare);
+            exit_code = !output.at("complete").get<bool>() ? 2 : output.at("changes").empty() ? 0 : 1;
+        } else
+            physical_output(before);
     } else if (command == "inspect" || command == "textconv" || command == "graph" || command == "texture" ||
                command == "mesh" || command == "material" || command == "collision" ||
                command == "collision-preview" || command == "skeleton" || command == "skeleton-animation" ||
@@ -1921,7 +1979,7 @@ int run(const std::vector<std::string> &args) {
     auto text = output.dump(2, ' ', false, Json::error_handler_t::replace) + "\n";
     auto destination = (command == "preview" || command == "zen-preview" || command == "export-mesh" ||
                         command == "zen-export-mesh" || command == "zen-export-physical-cloth" ||
-                        command == "container-read")
+                        command == "export-physical-cloth" || command == "container-read")
                            ? fs::path{}
                            : path_option("--out");
     auto guarded_path = [](const fs::path &path) {

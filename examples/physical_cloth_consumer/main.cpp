@@ -1,5 +1,7 @@
 #include <cyuediff/physical_cloth.hpp>
 #include <cyuediff/schema_context.hpp>
+#include <cyuediff/binary_layout.hpp>
+#include <cyuediff/source_limits.hpp>
 #include <cyuediff/cooked_skeletal.hpp>
 #include <iostream>
 namespace {
@@ -79,6 +81,51 @@ cyuediff::Json binding(const std::vector<std::string> &args, std::size_t at,
 }
 int run(std::vector<std::string> args) {
     using namespace cyuediff;
+    if (!args.empty() && args[0] == "--source") {
+        try {
+            SourceReadLimits limits;
+            if (args.size() >= 3 && args[args.size() - 2] == "--max-properties") {
+                const auto &text = args.back();
+                if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos)
+                    throw Error("arguments", "Expected a bounded work limit");
+                const auto value = std::stoull(text);
+                if (value > SourceReadLimits::maximum_work)
+                    throw Error("arguments", "Work limit exceeds supported range");
+                limits.max_properties = static_cast<std::uint32_t>(value);
+                limits.validate();
+                args.resize(args.size() - 2);
+            }
+            if (args.size() != 3 && args.size() != 5)
+                throw Error("arguments", "Usage: physical_cloth_consumer --source BEFORE.uasset LAYOUTS.json "
+                                         "[AFTER.uasset AFTER_LAYOUTS.json] [--max-properties N]");
+            PhysicalClothOptions selected;
+            selected.profile = PhysicalClothProfile::unreal_5_3_windows;
+            auto source = [&](std::size_t at) {
+                const auto layouts = BinaryLayouts::read(fs::u8path(args.at(at + 1)));
+                ReadOptions options;
+                limits.apply(options);
+                options.decoders = layouts.decoder_registry();
+                options.narrow_string_encoding = layouts.narrow_string_encoding();
+                return read_physical_cloth(Package::open(fs::u8path(args.at(at)), options), selected);
+            };
+            const auto before = source(1);
+            Json output = {{"before", project(before)}};
+            bool failed = !before.available();
+            if (args.size() == 5) {
+                const auto after = source(3);
+                output["after"] = project(after);
+                PhysicalClothComparisonOptions compare;
+                compare.explicit_object_pair = true;
+                output["comparison"] = compare_physical_cloth(before, after, compare);
+                failed = failed || !after.available();
+            }
+            std::cout << output.dump() << '\n';
+            return failed ? 2 : 0;
+        } catch (const std::exception &error) {
+            std::cerr << error.what() << '\n';
+            return 2;
+        }
+    }
     bool bounds = false, keep = false, colors = false;
     if (args.size() >= 3 && args[args.size() - 3] == "--render-facts") {
         if ((args[args.size() - 2] != "0" && args[args.size() - 2] != "1") ||

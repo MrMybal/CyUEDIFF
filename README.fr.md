@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.187.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.188.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -45,6 +45,7 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 
 ## Fonctionnalités
 
+- **Tissus physiques source :** les packages balisés UE 5.3 sélectionnés partagent le modèle physique, les requêtes/OBJ/différences et le bureau EN/FR réutilisable, avec objets indépendants et valeurs par défaut indéterminées visibles. [Contrat](docs/SOURCE_PHYSICAL_CLOTH.md).
 - **Différences d’assets lisibles** : propriétés typées consultables par recherche, références d’objets stables, textes structurés des pins Blueprint, graphes de matériau et paramètres d’instance enregistrés, avec une couverture partielle ou opaque explicitée.
 - **Inspection des images et géométries sources** : sources et mips Texture2D LDR/HDR pris en charge, différences de pixels/échantillons, filaires MeshDescription modernes, différences de géométrie et export OBJ de la géométrie de base. Les os sources modernes, profils de poids bruts et deltas de morph nommés sont validés sur des jeux de test synthétiques.
 - **Assets natifs cuits ciblés :** mips de textures, LOD de rendu statiques/squelettiques et géométries Chaos natives UE 5.3 Windows explicites, avec fenêtres bulk vérifiées, différences nommées et inspecteurs desktop EN/FR. [Textures](docs/COOKED_TEXTURES.md) · [Meshes](docs/COOKED_MESHES.md) · [Physique](docs/COOKED_PHYSICS.md).

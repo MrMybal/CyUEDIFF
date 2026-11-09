@@ -229,6 +229,7 @@ struct Package {
     Json source_type_context = nullptr;
     Json source_read_limits = nullptr;
     bool source_read_limit_failed = false;
+    std::string decoder_context_sha256;
     static Package open(const fs::path &file, const ReadOptions &options = {});
     std::string reference(std::int32_t index) const;
     Json semantic_snapshot() const;

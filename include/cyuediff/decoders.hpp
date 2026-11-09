@@ -77,10 +77,13 @@ class TaggedTypes;
 class DecoderRegistry {
     const std::vector<AssetDecoder> entries_;
     std::shared_ptr<const TaggedTypes> tagged_types_;
+    std::string context_sha256_;
     std::map<std::pair<DecoderKind, std::string>, std::vector<std::size_t>> index_;
 
   public:
-    explicit DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_ptr<const TaggedTypes> = {});
+    explicit DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_ptr<const TaggedTypes> = {},
+                             std::string context_sha256 = {});
+    const std::string &context_sha256() const { return context_sha256_; }
     const std::shared_ptr<const TaggedTypes> &tagged_types() const {
         return tagged_types_;
     }

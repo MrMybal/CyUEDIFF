@@ -41,6 +41,8 @@ struct LoadRequest {
     bool inherit_after_payload_root = true;
     SourceReadLimits source_limits, after_source_limits;
     bool inherit_after_source_limits = true;
+    PhysicalClothProfile physical_cloth_profile = PhysicalClothProfile::unspecified,
+                         after_physical_cloth_profile = PhysicalClothProfile::unspecified;
 };
 struct Preview {
     std::string object_path;
@@ -70,6 +72,7 @@ struct Document {
     std::vector<Preview> previews;
     std::vector<TextureDifference> texture_differences;
     std::shared_ptr<const MeshGeometry> before_mesh, after_mesh;
+    std::vector<std::shared_ptr<const PhysicalClothAsset>> before_physical_cloth, after_physical_cloth;
     std::vector<std::string> diagnostics;
     Json layout_contexts = nullptr;
     std::vector<fs::path> protected_files, protected_directories;

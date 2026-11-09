@@ -144,3 +144,7 @@ Selected USMAP roots now supply immutable type completion for older tagged maps/
 ## Source read policies — 0.187
 
 Explicit source work/window limits are available in Core, CLI and EN/FR desktop, with independent after policies and workspace format 14 retention. Versions 1–13 preserve their original default policy. A failed limit/count guard keeps inspection fingerprints/diagnostics and prevents invented semantic removals in a paired comparison. The selected real Humanoid source can use a deliberately larger work policy; dedicated source physical projection, defaults, broader acceptance and final delivery remain open. See [SOURCE_READ_LIMITS.md](SOURCE_READ_LIMITS.md).
+
+## Typed source physical cloth — 0.188
+
+Implemented the explicit source overload of the shared physical model, focused CLI operations/OBJ/differences, installed consumer and EN/FR source tab with independent object/profile selection and workspace state. Actual Cube/Humanoid stored geometry/native transitions and reference-pose wraps have independent API evidence. Class/default inventories, runtime simulation and broader source render correspondence remain separate acceptance work.

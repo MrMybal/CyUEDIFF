@@ -62,6 +62,8 @@ AssetTab tab(const std::string &name) {
     if(name=="skeleton") return AssetTab::skeleton;
     if(name=="animations")return AssetTab::animations;
     if(name=="curves")return AssetTab::curves;
+    if (name == "physical-cloth")
+        return AssetTab::physical_cloth;
     if (name == "collisions")
         return AssetTab::collisions;
     if (name == "comparison")
@@ -256,10 +258,8 @@ Options parse_one(const std::vector<std::string> &args) {
         } else if (argument == "--physical-cloth-profile" || argument == "--after-physical-cloth-profile") {
             if (value() != "ue5.3-windows")
                 throw Error("desktop-option", "Supported physical cloth profile: ue5.3-windows");
-            options.container_parameters = true;
             if (argument == "--after-physical-cloth-profile") {
                 options.settings.after_physical_cloth_profile = 1;
-                options.after_container_parameters = true;
             } else
                 options.settings.physical_cloth_profile = 1;
         } else if (argument == "--animation-profile" || argument == "--after-animation-profile") {
@@ -1191,6 +1191,13 @@ class Shell {
         result["open"] = browser_open_;
         return result;
     }
+    Json source_physical_report() const {
+        if (!current().displayed || current().displayed->container ||
+            (current().displayed->before_physical_cloth.empty() &&
+             current().displayed->after_physical_cloth.empty()))
+            return nullptr;
+        return current().view.physical_cloth().report();
+    }
     Json container_view_report() const {
         if (!current().displayed || !current().displayed->container)
             return nullptr;
@@ -1400,14 +1407,18 @@ class Shell {
     WorkspaceFile saved_workspace() const {
         WorkspaceFile result;
         result.documents.clear();
-        const char *views[] = {"properties", "blueprint",  "materials", "textures",
-                               "meshes",     "comparison", "collisions", "skeleton", "animations", "curves"};
+        const char *views[] = {"properties", "blueprint",  "materials",     "textures",
+                               "meshes",     "comparison", "collisions",    "skeleton",
+                               "animations", "curves",     "physical-cloth"};
         for (const auto &entry : session_.documents()) {
             const auto &p = *presentations_.at(entry.id);
             SavedDocument d;
             d.settings = p.settings;
             d.view_state = presentation_state(p);
-            d.view = views[static_cast<int>(p.displayed ? p.view.active_tab() : p.initial_tab)];
+            const auto tab = static_cast<std::size_t>(p.displayed ? p.view.active_tab() : p.initial_tab);
+            if (tab >= std::size(views))
+                throw Error("desktop-view", "Unknown source view");
+            d.view = views[tab];
             d.container_tab =
                 p.displayed && p.displayed->container ? p.container_view.active_tab() : p.container_tab;
             d.cooked_view = p.displayed && p.displayed->container
@@ -1757,6 +1768,9 @@ class Shell {
         current().container_view.set_document({});
         current().view.set_packages(current().displayed->before, current().displayed->after,
                                     current().displayed->request.git.has_value());
+        current().view.set_physical_cloth_assets(
+            current().displayed->before_physical_cloth, current().displayed->after_physical_cloth,
+            current().displayed->request.git.has_value() || current().displayed->after != nullptr);
         current().view.set_animation_poses(current().displayed->before_animation_pose?&*current().displayed->before_animation_pose:nullptr,
                                             current().displayed->after_animation_pose?&*current().displayed->after_animation_pose:nullptr,
                                             current().displayed->request.git.has_value() || current().displayed->after!=nullptr);
@@ -2331,6 +2345,23 @@ class Shell {
                             }
                         }
                         cyui::textDim("%s", cyui::tr("Choose a layout JSON file, then Load.").c_str());
+                        cyui::endSection();
+                    }
+                    if (current().layout.section("physical-cloth-native", "Physical cloth settings",
+                                                 current().settings.physical_cloth_profile ||
+                                                     current().settings.after_physical_cloth_profile,
+                                                 false, false)) {
+                        const auto disabled = cyui::tr("Disabled");
+                        const char *profiles[] = {disabled.c_str(), "UE 5.3 Windows"};
+                        if (cyui::beginProperties("##source-physical-cloth", 150)) {
+                            cyui::property(cyui::tr("Before physical cloth profile").c_str());
+                            ImGui::Combo("##source-before-physical",
+                                         &current().settings.physical_cloth_profile, profiles, 2);
+                            cyui::property(cyui::tr("After physical cloth profile").c_str());
+                            ImGui::Combo("##source-after-physical",
+                                         &current().settings.after_physical_cloth_profile, profiles, 2);
+                            cyui::endProperties();
+                        }
                         cyui::endSection();
                     }
                     if (current().layout.section("sourceLimits", "Source read limits", false, false, false)) {
@@ -3130,6 +3161,7 @@ int run(Options options) {
                 {"workspace", shell.workspace_report()},
                 {"workspaceFile", shell.workspace_file_report()},
                 {"containerView", shell.container_view_report()},
+                {"sourcePhysicalClothView", shell.source_physical_report()},
                 {"document",
                  shell.session().document() ? shell.session().document()->report() : Json(nullptr)}};
             if (!options.report.empty()) {

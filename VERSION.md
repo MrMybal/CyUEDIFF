@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.188.0 — Source physical cloth
+
+Selected UE 5.3 tagged source assets now use the owned physical cloth model, CLI queries/differences/OBJ export and reusable EN/FR desktop tab. Per-side type/native catalogues retain exact provenance; unresolved class/map defaults remain unavailable. Rebuild against matching 0.188 headers/libraries after the Package, DecoderRegistry, PhysicalClothAsset and AssetView additions. The last verified local Windows archive remains 0.182. See [the source physical contract](docs/SOURCE_PHYSICAL_CLOTH.md).
+
 ## 0.187.0 — Source read policies
 
 Source work/window limits are now explicit in the public Core helper, CLI and EN/FR desktop, with independent after values and workspace 14 retention. A failed limit/count guard makes semantic comparison unverified instead of inventing removed fields. Non-default policies retain provenance without creating asset changes. Use matching 0.187 headers/libraries after the Package/DiffResult additions. The last verified local Windows archive remains 0.182. See [SOURCE_READ_LIMITS.md](docs/SOURCE_READ_LIMITS.md).

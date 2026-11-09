@@ -111,6 +111,17 @@ Json Document::report() const {
     if (!request.source_limits.is_default() || !after_limits.is_default())
         result["readLimits"] = {{"before", request.source_limits.to_json()},
                                 {"after", after_limits.to_json()}};
+    if (request.physical_cloth_profile != PhysicalClothProfile::unspecified ||
+        request.after_physical_cloth_profile != PhysicalClothProfile::unspecified) {
+        auto rows = [](const auto &assets) {
+            Json result = Json::array();
+            for (const auto &a : assets)
+                result.push_back(a->to_json());
+            return result;
+        };
+        result["physicalCloth"] = {{"before", rows(before_physical_cloth)},
+                                   {"after", rows(after_physical_cloth)}};
+    }
     if (!layout_contexts.is_null()) result["layoutContexts"] = layout_contexts;
 #ifdef CYUEDIFF_HAS_GIT
     result["git"] = git ? git->to_json() : Json(nullptr);
@@ -276,6 +287,36 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
         (document->before->source_read_limit_failed || document->after->source_read_limit_failed))
         throw Error("source-read-limits", "A source read limit/count guard failed; adjust the source limits "
                                           "or repair the input before reviewing semantic differences.");
+    auto physical = [&](const std::shared_ptr<const Package> &package, PhysicalClothProfile profile,
+                        bool after) {
+        if (!package || profile == PhysicalClothProfile::unspecified)
+            return;
+        auto &assets = after ? document->after_physical_cloth : document->before_physical_cloth;
+        for (std::size_t i = 0; i < package->exports.size(); ++i) {
+            request.control.check();
+            const auto &e = package->exports[i];
+            if (e.class_name != "/Script/ClothingSystemRuntimeCommon.ClothingAssetCommon" || (e.flags & 0x30))
+                continue;
+            if (assets.size() == 16) {
+                document->diagnostics.push_back(
+                    "Physical cloth object limit reached; use the CLI export index for other instances.");
+                break;
+            }
+            try {
+                PhysicalClothOptions selected;
+                selected.profile = profile;
+                selected.control = request.control;
+                assets.push_back(
+                    std::make_shared<const PhysicalClothAsset>(read_physical_cloth(*package, selected, i)));
+            } catch (const Error &error) {
+                if (error.code == "cancelled")
+                    throw;
+                document->diagnostics.push_back(std::string(after ? "After: " : "Before: ") + error.what());
+            }
+        }
+    };
+    physical(document->before, request.physical_cloth_profile, false);
+    physical(document->after, request.after_physical_cloth_profile, true);
     prepare_animation_poses(*document, request, read, after_read);
     if (!request.previews)
         return document;

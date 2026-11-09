@@ -201,9 +201,24 @@ Json compare_physical_cloth(const PhysicalClothAsset &a, const PhysicalClothAsse
     const auto ac = a.to_json(false, o.control)["provenance"], bc = b.to_json(false, o.control)["provenance"];
     out["beforeContext"] = ac;
     out["afterContext"] = bc;
-    out["contextChanged"] = ac["schemaContextSha256"] != bc["schemaContextSha256"] ||
-                            ac["scriptObjectsSha256"] != bc["scriptObjectsSha256"];
-    out["rawPackageChanged"] = ac["packageSha256"] != bc["packageSha256"];
+    const bool source_a = ac.value("storage", Json{}) == "tagged-source",
+               source_b = bc.value("storage", Json{}) == "tagged-source";
+    if (source_a && source_b) {
+        out["contextChanged"] = false;
+        for (const auto *key : {"sourceTypeContext", "decoderContextSha256", "ue4Version", "ue5Version",
+                                "licenseeVersion", "nativeDecoderIds"})
+            if (ac.at(key) != bc.at(key))
+                out["contextChanged"] = true;
+        out["rawPackageChanged"] = ac.at("fileFingerprints") != bc.at("fileFingerprints");
+    } else if (!source_a && !source_b) {
+        out["contextChanged"] = ac.at("schemaContextSha256") != bc.at("schemaContextSha256") ||
+                                ac.at("scriptObjectsSha256") != bc.at("scriptObjectsSha256");
+        out["rawPackageChanged"] = ac.at("packageSha256") != bc.at("packageSha256");
+    } else {
+        out["contextChanged"] = true;
+        out["rawPackageChanged"] = nullptr;
+        out["rawPackageComparable"] = false;
+    }
     return out;
 }
 Json verify_cloth_source_bounds(const ClothSection &s, std::uint32_t bias, const PhysicalClothAsset &a,

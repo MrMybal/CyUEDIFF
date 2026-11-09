@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <ostream>
 #include <streambuf>
+#include <set>
 namespace cyuediff::detail {
 namespace {
 struct PresentationTextLimit {};
@@ -62,6 +63,11 @@ void AssetView::set_animation_socket_poses(const AnimationSocketPose *a, const A
     animation_sockets_.set_socket_poses(a,b,comparing);sockets_bound_=a||b;sockets_preview_=false;
 }
 void AssetView::register_translations() {
+    PhysicalClothView::register_translations();
+    cyui::registerTranslations(
+        "fr", {{"Select a source physical cloth profile and matching layouts, then Load.",
+                "Choisissez un profil de tissu source et les structures correspondantes, puis Charger."},
+               {"Compare selected physical objects", "Comparer les objets physiques sélectionnés"}});
     PropertyBrowserView::register_translations();
     cyui::registerTranslations("fr",
                                {{"Browse by level", "Parcourir par niveau"},
@@ -377,6 +383,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     set_animation_poses(nullptr);
     set_animation_socket_poses(nullptr);
     curves_.set_packages(before_.get(),after_.get(),comparison_);
+    set_physical_cloth_assets({});
     before_geometry_.reset();
     after_geometry_.reset();
     graph_after_ = texture_after_ = mesh_after_ = material_after_ = !before_;
@@ -552,6 +559,50 @@ bool AssetView::set_property_scope(const std::string &scope, std::size_t first, 
     browse_properties_ = true;
     return true;
 }
+void AssetView::bind_physical_cloth() {
+    auto selected = [](const auto &v, std::size_t i) {
+        return i < v.size() ? v[i] : std::shared_ptr<const PhysicalClothAsset>{};
+    };
+    physical_cloth_.set_assets(selected(before_physical_, before_physical_selected_),
+                               selected(after_physical_, after_physical_selected_), physical_comparing_,
+                               physical_explicit_pair_);
+}
+void AssetView::set_physical_cloth_assets(std::vector<std::shared_ptr<const PhysicalClothAsset>> before,
+                                          std::vector<std::shared_ptr<const PhysicalClothAsset>> after,
+                                          bool comparing) {
+    auto valid = [](const auto &v) {
+        if (v.size() > 16)
+            throw Error("physical-cloth-selection",
+                        "The asset view accepts at most sixteen physical assets per side");
+        std::set<std::string> paths;
+        for (const auto &a : v)
+            if (!a || !paths.insert(a->object_path()).second)
+                throw Error("physical-cloth-selection", "Expected unique nonnull physical models");
+    };
+    valid(before);
+    valid(after);
+    before_physical_ = std::move(before);
+    after_physical_ = std::move(after);
+    before_physical_selected_ = after_physical_selected_ = 0;
+    physical_explicit_pair_ = false;
+    physical_comparing_ = comparing;
+    physical_cloth_.set_assets(before_physical_.empty() ? nullptr : before_physical_[0],
+                               after_physical_.empty() ? nullptr : after_physical_[0], comparing, false);
+}
+bool AssetView::select_physical_cloth(bool after, const std::string &object) {
+    const auto &assets = after ? after_physical_ : before_physical_;
+    for (std::size_t i = 0; i < assets.size(); ++i)
+        if (assets[i]->object_path() == object) {
+            (after ? after_physical_selected_ : before_physical_selected_) = i;
+            bind_physical_cloth();
+            return true;
+        }
+    return false;
+}
+void AssetView::set_physical_cloth_pair(bool enabled) {
+    physical_explicit_pair_ = enabled;
+    bind_physical_cloth();
+}
 Json AssetView::view_state() const {
     const auto &p = properties_after_ ? after_ : before_;
     const auto &t = texture_after_ ? after_textures_ : before_textures_;
@@ -603,6 +654,16 @@ Json AssetView::view_state() const {
     if(sockets_bound_){result["animationSockets"]=animation_sockets_.view_state();result["animationSocketsPreview"]=sockets_preview_;}
     if(pose_bound_){result["animationPose"]=animation_pose_.view_state();result["animationPosePreview"]=pose_preview_;}
     if(!curves_.empty())result["curves"]=curves_.view_state();
+    if (!before_physical_.empty() || !after_physical_.empty()) {
+        result["physicalCloth"] = physical_cloth_.view_state();
+        result["physicalClothPair"] = physical_explicit_pair_;
+        result["physicalClothBefore"] = before_physical_selected_ < before_physical_.size()
+                                            ? before_physical_[before_physical_selected_]->object_path()
+                                            : std::string{};
+        result["physicalClothAfter"] = after_physical_selected_ < after_physical_.size()
+                                           ? after_physical_[after_physical_selected_]->object_path()
+                                           : std::string{};
+    }
     if ((before_geometry_ && before_geometry_->skin) || (after_geometry_ && after_geometry_->skin)) {
         result["meshSkin"] = skin_.view_state();
         result["meshSkinInspection"] = skin_inspection_;
@@ -637,6 +698,23 @@ void AssetView::restore_view_state(const Json &state) {
     if(state.contains("animationPose"))animation_pose_.restore_view_state(state["animationPose"]);
     if(state.contains("animationPosePreview"))pose_preview_=pose_bound_ && state["animationPosePreview"].get<bool>();
     if(state.contains("curves"))curves_.restore_view_state(state["curves"]);
+    bool physical_identity_matches = true;
+    if (state.contains("physicalClothBefore")) {
+        const auto &path = state["physicalClothBefore"].get_ref<const std::string &>();
+        physical_identity_matches =
+            (path.empty() ? before_physical_.empty() : select_physical_cloth(false, path)) &&
+            physical_identity_matches;
+    }
+    if (state.contains("physicalClothAfter")) {
+        const auto &path = state["physicalClothAfter"].get_ref<const std::string &>();
+        physical_identity_matches =
+            (path.empty() ? after_physical_.empty() : select_physical_cloth(true, path)) &&
+            physical_identity_matches;
+    }
+    if (state.contains("physicalClothPair"))
+        set_physical_cloth_pair(physical_identity_matches && state["physicalClothPair"].get<bool>());
+    if (physical_identity_matches && state.contains("physicalCloth"))
+        physical_cloth_.restore_view_state(state["physicalCloth"]);
     auto flag = [&](const char *key, bool &out) {
         if (state.contains(key))
             out = state[key].get<bool>();
@@ -936,6 +1014,42 @@ void AssetView::draw(const char *id, bool show_language) {
         if (ImGui::BeginTabItem(cyui::trLabel("Skeleton").c_str(), nullptr, flags(AssetTab::skeleton))) {
             active_tab_ = AssetTab::skeleton;
             skeleton_.draw();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(cyui::trLabel("Physical cloth").c_str(), nullptr,
+                                flags(AssetTab::physical_cloth))) {
+            active_tab_ = AssetTab::physical_cloth;
+            if (before_physical_.empty() && after_physical_.empty())
+                ImGui::TextWrapped(
+                    "%s", cyui::tr("Select a source physical cloth profile and matching layouts, then Load.")
+                              .c_str());
+            else {
+                auto objects = [&](bool after) {
+                    const auto &assets = after ? after_physical_ : before_physical_;
+                    auto &index = after ? after_physical_selected_ : before_physical_selected_;
+                    if (assets.empty())
+                        return;
+                    ImGui::PushID(after ? 1 : 0);
+                    ImGui::TextUnformatted(cyui::tr(after ? "After" : "Before").c_str());
+                    ImGui::SameLine();
+                    if (ImGui::BeginCombo("##physical-object", assets[index]->object_path().c_str())) {
+                        for (std::size_t i = 0; i < assets.size(); ++i)
+                            if (ImGui::Selectable(assets[i]->object_path().c_str(), i == index)) {
+                                index = i;
+                                bind_physical_cloth();
+                            }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::PopID();
+                };
+                objects(false);
+                objects(true);
+                if (physical_comparing_ &&
+                    ImGui::Checkbox(cyui::trLabel("Compare selected physical objects").c_str(),
+                                    &physical_explicit_pair_))
+                    bind_physical_cloth();
+                physical_cloth_.draw();
+            }
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(cyui::trLabel("Collisions").c_str(), nullptr, flags(AssetTab::collisions))) {

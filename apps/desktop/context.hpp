@@ -160,6 +160,11 @@ struct Settings {
         result.source_limits.validate();
         result.after_source_limits.validate();
         result.inherit_after_source_limits = inherit_after_source_limits;
+        result.physical_cloth_profile = physical_cloth_profile == 1 ? PhysicalClothProfile::unreal_5_3_windows
+                                                                    : PhysicalClothProfile::unspecified;
+        result.after_physical_cloth_profile = after_physical_cloth_profile == 1
+                                                  ? PhysicalClothProfile::unreal_5_3_windows
+                                                  : PhysicalClothProfile::unspecified;
         result.after_project = fs::u8path(after_project);
         result.after_engine_root = fs::u8path(after_engine);
         if (pose_enabled) {

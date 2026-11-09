@@ -526,6 +526,6 @@ BinaryLayouts::decoder_registry(const BinaryLayoutReadOptions &options) const {
             };
             result.push_back(std::move(entry));
         }
-    return std::make_shared<const DecoderRegistry>(std::move(result), impl_->tagged_types);
+    return std::make_shared<const DecoderRegistry>(std::move(result), impl_->tagged_types, impl_->hash);
 }
 } // namespace cyuediff

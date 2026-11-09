@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.188.0 — Tissus physiques source
+
+Les assets source balisés UE 5.3 sélectionnés utilisent le modèle physique autonome, les requêtes/différences/export OBJ en CLI et un onglet de bureau réutilisable EN/FR. Les catalogues de types/structures indépendants conservent leur provenance exacte ; les valeurs par défaut de classes/maps restent indéterminées. Recompilez avec les en-têtes et bibliothèques 0.188 correspondants après les ajouts à Package, DecoderRegistry, PhysicalClothAsset et AssetView. La dernière archive Windows locale vérifiée reste la 0.182. Voir [le contrat des tissus source](docs/SOURCE_PHYSICAL_CLOTH.md).
+
 ## 0.187.0 — Politiques de lecture source
 
 Les limites de travail/taille source sont explicites dans le Core, la CLI et l’interface EN/FR, avec valeurs après indépendantes et conservation dans les espaces de travail 14. Un échec de limite/compteur rend la comparaison sémantique non vérifiable au lieu d’inventer des suppressions. Les politiques choisies gardent leur provenance sans créer de changements d’asset. Utilisez les en-têtes/bibliothèques 0.187 correspondants après les ajouts à Package/DiffResult. La dernière archive Windows locale vérifiée reste 0.182. Voir [SOURCE_READ_LIMITS.md](docs/SOURCE_READ_LIMITS.md).

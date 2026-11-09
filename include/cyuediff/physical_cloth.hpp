@@ -58,6 +58,8 @@ class PhysicalClothAsset {
     bool configs_replaced_ = false;
     std::vector<std::string> removed_configs_;
     std::size_t report_values_ = 4'000'000;
+    Json provenance_ = nullptr;
+    friend struct PhysicalClothBuilder;
     friend PhysicalClothAsset read_physical_cloth(const ZenPackage &, const PhysicalClothOptions &,
                                                   std::size_t);
 
@@ -91,6 +93,9 @@ class PhysicalClothAsset {
 // Exact qualified mapped properties plus modern 64-byte native transition records; no defaults or Engine
 // execution. Missing decoded property regions return available=false; malformed known data fails atomically.
 PhysicalClothAsset read_physical_cloth(const ZenPackage &, const PhysicalClothOptions &,
+                                       std::size_t export_index = SIZE_MAX);
+// Explicit source profile, stored tagged metadata/native tails; no Engine/default evaluation.
+PhysicalClothAsset read_physical_cloth(const Package &, const PhysicalClothOptions &,
                                        std::size_t export_index = SIZE_MAX);
 struct PhysicalClothComparisonOptions {
     bool explicit_object_pair = false;

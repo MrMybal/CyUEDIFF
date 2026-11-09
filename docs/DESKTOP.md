@@ -433,3 +433,7 @@ The explicitly selected UE 5.3 physical-cloth profile now binds owned Core model
 ## Source read policies — 0.187
 
 Explicit source work/window limits are available in Core, CLI and EN/FR desktop, with independent after policies and workspace format 14 retention. Versions 1–13 preserve their original default policy. A failed limit/count guard keeps inspection fingerprints/diagnostics and prevents invented semantic removals in a paired comparison. The selected real Humanoid source can use a deliberately larger work policy; dedicated source physical projection, defaults, broader acceptance and final delivery remain open. See [SOURCE_READ_LIMITS.md](SOURCE_READ_LIMITS.md).
+
+## Source physical tab — 0.188
+
+Source and local Git documents now prepare selected physical instance models in the worker, using independent Physical cloth settings profiles and native/type catalogues. The Physical cloth tab selects objects per side, explicitly pairs differing paths, and retains nested LOD/vertex/tether/transition/configuration/camera state. Models are also prepared with ordinary image previews disabled. See [SOURCE_PHYSICAL_CLOTH.md](SOURCE_PHYSICAL_CLOTH.md).

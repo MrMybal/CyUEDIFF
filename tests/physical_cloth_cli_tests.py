@@ -28,6 +28,9 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-physical-cli-',dir=Path.cwd()
     for flag,value in [('--physical-cloth-profile','ue5.3-windows'),('--transition','up'),('--vertex','1'),('--include-values','1')]:
         run('inspect',root/'absent.uasset',flag,value,error='arguments')
     run('zen-physical-cloth',*common,'--export-index','999999',error='physical-cloth-selection')
+    for command,extra in [('physical-cloth',['--after-physical-cloth-profile','ue5.3-windows']),('physical-cloth-wrap',['--vertex','0']),('physical-cloth-vertex',['--include-values','1']),('export-physical-cloth',['--transition','down']),('physical-cloth',['--snapshot']),('physical-cloth',['--cooked-profile','ue5.3']),('physical-cloth',['--after-layouts',root/'unknown.json'])]:
+        run(command,root/'absent.uasset','--physical-cloth-profile','ue5.3-windows',*extra,error='arguments')
+    run('physical-cloth-diff',root/'absent.uasset',error='arguments')
     assert all(hashlib.sha256(p.read_bytes()).hexdigest()==h for p,h in hashes.items())
     checks+=1
 print(str(checks)+' physical CLI context/class/argument guards passed')
