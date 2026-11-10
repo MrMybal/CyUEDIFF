@@ -6,6 +6,8 @@
 
 The EN/FR desktop now verifies prepared native default contexts on its worker, resolves each selected root and presents stored properties, effective values and typed effective differences separately. Before/after contexts, explicit objects and review state persist per document in workspace15; older workspaces remain readable. Invalid or absent peers do not become fabricated changes. The broader product coverage remains open. [Contract](docs/EFFECTIVE_DEFAULTS.md).
 
+A local matching Windows AMD64 development ZIP now passes extracted application/CLI/manual and standalone SDK checks, including the prepared native effective workflow and typed-name/cooked regression cases. Stale SDK example version requirements are corrected and checked at configuration. No publication is implied.
+
 ## 0.198.0 — Prepared effective source defaults
 
 The standalone Core and CLI now resolve and compare selected source properties against a prepared native CDO context, with capture-time file fingerprints, optional pinned input copies, qualified fields and scoped unavailable data. Real native assets verify inherited/member defaults, array replacement, container updates, native math and effective differences. Name components remain explicit. This is the documented UE5.3.2 Windows source profile; broader Blueprint/cooked/archetype/runtime behavior and desktop binding remain open. The latest assembled Windows archive remains 0.194.0. [Contract](docs/EFFECTIVE_DEFAULTS.md).

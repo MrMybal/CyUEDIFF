@@ -88,7 +88,7 @@ Link `CyUEDiff::Core` through `add_subdirectory`, or install the SDK and use `fi
 
 ## Installation
 
-**No public application release is available yet.** Build from source using the instructions below. The earlier 0.181 Core/CLI milestone passed hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled; the unpushed 0.194 source has local Windows validation. Local Windows development archives include the bilingual offline HTML manual and version/component/runtime metadata; they are prepared and validated separately from public releases. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
+**No public application release is available yet.** Build from source using the instructions below. The earlier 0.181 Core/CLI milestone passed hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled; the 0.199 development source has local Windows validation. The local 0.199 Windows archive has passed extraction, startup and SDK consumer checks with a statically linked MSVC runtime. Local Windows development archives include the bilingual offline HTML manual and version/component/runtime metadata; they are prepared and validated separately from public releases. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
 
 Windows builds using the default dynamic MSVC runtime need the matching Microsoft Visual C++ x64 runtime. Git features require a separate Git 2.45+ installation; loose-file inspection does not. Keep an extracted CPack archive together with its documentation and license notices. See [distribution and runtime requirements](docs/DISTRIBUTION.md).
 

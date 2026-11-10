@@ -6,6 +6,8 @@
 
 L’interface EN/FR vérifie désormais les contextes natifs préparés dans son worker et présente les propriétés enregistrées, les valeurs effectives et leurs différences typées. Les contextes avant/après, objets explicites et choix de vue sont conservés par document dans les espaces de travail15 ; les anciens formats restent lisibles. Un côté absent ou invalide ne produit pas de faux changements. La couverture complète du produit reste ouverte. [Contract](docs/EFFECTIVE_DEFAULTS.md).
 
+Un ZIP local de développement Windows AMD64 correspondant aux sources passe désormais les contrôles après extraction de l’application, de la CLI, du manuel et du SDK, y compris les propriétés effectives natives et les régressions de noms typés/cooked. Les anciennes contraintes de version des exemples SDK sont corrigées et vérifiées à la configuration. Aucune publication n’est impliquée.
+
 ## 0.198.0 — Valeurs effectives depuis un contexte préparé
 
 Le Core autonome et la CLI reconstruisent et comparent les propriétés source prises en charge à partir d’un CDO natif préparé, avec empreintes des fichiers enregistrées pendant la capture, copies locales figées facultatives, champs qualifiés et valeurs indisponibles explicites. Les assets natifs réels valident héritage, défauts de membres, remplacement des tableaux, mises à jour des conteneurs, transformations et diffs effectifs. Le profil actuel concerne les sources Windows UE5.3.2 ; Blueprint, cooked, archétypes, comportements d’exécution et branchement dans l’interface restent à compléter. La dernière archive Windows assemblée reste la version 0.194.0. [Contrat](docs/EFFECTIVE_DEFAULTS.md).
