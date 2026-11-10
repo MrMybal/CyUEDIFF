@@ -64,6 +64,7 @@ void AssetView::set_animation_socket_poses(const AnimationSocketPose *a, const A
     animation_sockets_.set_socket_poses(a,b,comparing);sockets_bound_=a||b;sockets_preview_=false;
 }
 void AssetView::register_translations() {
+    EffectiveDefaultsView::register_translations();
     PhysicalClothView::register_translations();
     cyui::registerTranslations(
         "fr", {{"Geometry comparison is unavailable until both source previews are prepared.",
@@ -735,6 +736,8 @@ Json AssetView::view_state() const {
         {"propertiesAfter", properties_after_},
         {"rawProperties", raw_properties_},
         {"browseProperties", browse_properties_},
+        {"effectiveProperties", effective_properties_},
+        {"effectiveDefaults", effective_defaults_.view_state()},
         {"browserRoot", browser_root_},
         {"browserObject", browser_object_},
         {"propertyBrowser", property_browser_.view_state()},
@@ -801,6 +804,10 @@ Json AssetView::view_state() const {
 }
 void AssetView::restore_view_state(const Json &state) {
     cyuediff::view_state::validate(state, "asset");
+    if (state.contains("effectiveProperties"))
+        effective_properties_ = state.at("effectiveProperties").get<bool>();
+    if (state.contains("effectiveDefaults"))
+        effective_defaults_.restore_view_state(state.at("effectiveDefaults"));
     if (state.contains("meshMorphs"))
         morphs_.restore_view_state(state["meshMorphs"]);
     if (state.contains("meshMorphInspection"))
@@ -958,85 +965,95 @@ void AssetView::draw(const char *id, bool show_language) {
         };
         if (ImGui::BeginTabItem(cyui::trLabel("Properties").c_str(), nullptr, flags(AssetTab::properties))) {
             active_tab_ = AssetTab::properties;
-            if (before_ && after_) {
-                if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !properties_after_)) {
-                    properties_after_ = false;
-                    selected_ = 0;
-                }
-                ImGui::SameLine();
-                if (ImGui::RadioButton(cyui::trLabel("After").c_str(), properties_after_)) {
-                    properties_after_ = true;
-                    selected_ = 0;
-                }
-            }
-            const auto &package = properties_after_ ? after_ : before_;
-            const auto &inspection = properties_after_ ? after_properties_ : before_properties_;
-            cyui::filterBox("##objects-filter", filter_);
-            if (package->exports.empty())
-                cyui::emptyState(cyui::tr("Empty package").c_str(),
-                                 cyui::tr("This package has no exported objects.").c_str(),
-                                 cyui::icon::document);
-            else if (layout_.begin_table("##inspection", "objectColumns", 2)) {
-                layout_.column("##objects", 0, 1);
-                layout_.column("##properties", 1, 2);
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                if (ImGui::BeginChild("##objects"))
-                    for (std::size_t i = 0; i < package->exports.size(); ++i) {
-                        const auto &entry = package->exports[i];
-                        if (!filter_.matches(entry.path.c_str(), entry.class_name.c_str()))
-                            continue;
-                        const auto &table =
-                            (properties_after_ ? after_inspection_ : before_inspection_)[i].table();
-                        bool changed = comparison_ && !table.rows.empty() &&
-                                       table.rows.front().change != ChangeKind::unchanged;
-                        if (changed)
-                            ImGui::PushStyleColor(ImGuiCol_Text,
-                                                  detail::change_color(table.rows.front().change));
-                        if (ImGui::Selectable(entry.path.c_str(), selected_ == i))
-                            selected_ = i;
-                        if (changed)
-                            ImGui::PopStyleColor();
+            if (ImGui::RadioButton(cyui::trLabel("Stored properties").c_str(), !effective_properties_))
+                effective_properties_ = false;
+            ImGui::SameLine();
+            if (ImGui::RadioButton(cyui::trLabel("Effective properties").c_str(), effective_properties_))
+                effective_properties_ = true;
+            if (effective_properties_)
+                effective_defaults_.draw();
+            else {
+                if (before_ && after_) {
+                    if (ImGui::RadioButton(cyui::trLabel("Before").c_str(), !properties_after_)) {
+                        properties_after_ = false;
+                        selected_ = 0;
                     }
-                ImGui::EndChild();
-                ImGui::TableSetColumnIndex(1);
-                const auto &entry = package->exports[selected_];
-                cyui::textDim("%s", entry.class_name.c_str());
-                cyui::textDim("%s", entry.coverage.c_str());
-                ImGui::Checkbox(cyui::trLabel("Raw JSON").c_str(), &raw_properties_);
-                if (raw_properties_) {
-                    if (ImGui::BeginChild("##properties", {}, ImGuiChildFlags_None,
-                                          ImGuiWindowFlags_HorizontalScrollbar)) {
-                        if (inspection[selected_].empty())
-                            ImGui::TextWrapped("%s",
-                                               cyui::tr("Raw JSON exceeds the display limits. Use scoped "
-                                                        "properties or export JSON with the CLI.")
-                                                   .c_str());
-                        else
-                            ImGui::TextUnformatted(inspection[selected_].c_str());
+                    ImGui::SameLine();
+                    if (ImGui::RadioButton(cyui::trLabel("After").c_str(), properties_after_)) {
+                        properties_after_ = true;
+                        selected_ = 0;
                     }
+                }
+                const auto &package = properties_after_ ? after_ : before_;
+                const auto &inspection = properties_after_ ? after_properties_ : before_properties_;
+                cyui::filterBox("##objects-filter", filter_);
+                if (package->exports.empty())
+                    cyui::emptyState(cyui::tr("Empty package").c_str(),
+                                     cyui::tr("This package has no exported objects.").c_str(),
+                                     cyui::icon::document);
+                else if (layout_.begin_table("##inspection", "objectColumns", 2)) {
+                    layout_.column("##objects", 0, 1);
+                    layout_.column("##properties", 1, 2);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    if (ImGui::BeginChild("##objects"))
+                        for (std::size_t i = 0; i < package->exports.size(); ++i) {
+                            const auto &entry = package->exports[i];
+                            if (!filter_.matches(entry.path.c_str(), entry.class_name.c_str()))
+                                continue;
+                            const auto &table =
+                                (properties_after_ ? after_inspection_ : before_inspection_)[i].table();
+                            bool changed = comparison_ && !table.rows.empty() &&
+                                           table.rows.front().change != ChangeKind::unchanged;
+                            if (changed)
+                                ImGui::PushStyleColor(ImGuiCol_Text,
+                                                      detail::change_color(table.rows.front().change));
+                            if (ImGui::Selectable(entry.path.c_str(), selected_ == i))
+                                selected_ = i;
+                            if (changed)
+                                ImGui::PopStyleColor();
+                        }
                     ImGui::EndChild();
-                } else {
-                    bind_property_browser();
-                    ImGui::Checkbox(cyui::trLabel("Browse by level").c_str(), &browse_properties_);
-                    if (browse_properties_) {
-                        const auto stored = cyui::tr("Stored properties"), native = cyui::tr("Native fields"),
-                                   opaque = cyui::tr("Opaque metadata");
-                        const char *roots[] = {stored.c_str(), native.c_str(), opaque.c_str()};
-                        if (ImGui::Combo("##property-browser-root", &browser_root_, roots, 3))
-                            bind_property_browser();
-                        const auto input = property_browser_inputs();
-                        if (input.unknown)
-                            cyui::callout(
-                                cyui::Tone::info,
-                                cyui::tr(
-                                    "Some source values are unavailable; known fields remain comparable.")
-                                    .c_str());
-                        property_browser_.draw(input.before, input.after);
-                    } else
-                        (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
+                    ImGui::TableSetColumnIndex(1);
+                    const auto &entry = package->exports[selected_];
+                    cyui::textDim("%s", entry.class_name.c_str());
+                    cyui::textDim("%s", entry.coverage.c_str());
+                    ImGui::Checkbox(cyui::trLabel("Raw JSON").c_str(), &raw_properties_);
+                    if (raw_properties_) {
+                        if (ImGui::BeginChild("##properties", {}, ImGuiChildFlags_None,
+                                              ImGuiWindowFlags_HorizontalScrollbar)) {
+                            if (inspection[selected_].empty())
+                                ImGui::TextWrapped("%s",
+                                                   cyui::tr("Raw JSON exceeds the display limits. Use scoped "
+                                                            "properties or export JSON with the CLI.")
+                                                       .c_str());
+                            else
+                                ImGui::TextUnformatted(inspection[selected_].c_str());
+                        }
+                        ImGui::EndChild();
+                    } else {
+                        bind_property_browser();
+                        ImGui::Checkbox(cyui::trLabel("Browse by level").c_str(), &browse_properties_);
+                        if (browse_properties_) {
+                            const auto stored = cyui::tr("Stored properties"),
+                                       native = cyui::tr("Native fields"),
+                                       opaque = cyui::tr("Opaque metadata");
+                            const char *roots[] = {stored.c_str(), native.c_str(), opaque.c_str()};
+                            if (ImGui::Combo("##property-browser-root", &browser_root_, roots, 3))
+                                bind_property_browser();
+                            const auto input = property_browser_inputs();
+                            if (input.unknown)
+                                cyui::callout(
+                                    cyui::Tone::info,
+                                    cyui::tr(
+                                        "Some source values are unavailable; known fields remain comparable.")
+                                        .c_str());
+                            property_browser_.draw(input.before, input.after);
+                        } else
+                            (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
+                    }
+                    layout_.end_table();
                 }
-                layout_.end_table();
             }
             ImGui::EndTabItem();
         }

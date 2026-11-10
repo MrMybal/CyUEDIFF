@@ -83,9 +83,9 @@ inline void validate(const Json &v, std::string_view kind) {
                 known = true;
             }
             flag({"schema", "project", "historicalProject", "lfs", "contextChanges", "diagnostics",
-                  "animationPose", "binaryLayouts", "virtualizedPayloads", "sourceLimits", "mesh-native",
-                  "physics-native", "animation-native", "skeletal-native", "nanite-native",
-                  "physical-cloth-native"});
+                  "animationPose", "binaryLayouts", "virtualizedPayloads", "sourceLimits",
+                  "effectiveDefaults", "mesh-native", "physics-native", "animation-native", "skeletal-native",
+                  "nanite-native", "physical-cloth-native"});
         } else if (kind == "property-layout") {
             columns("singleColumns", 3);
             columns("comparisonColumns", 5);
@@ -354,7 +354,16 @@ inline void validate(const Json &v, std::string_view kind) {
                 }
                 known = true;
             }
+        } else if (kind == "effective-defaults") {
+            child("before", "property-browser");
+            child("after", "property-browser");
+            child("changes", "property");
+            string({"mode"});
+            if (key == "mode")
+                require(x == "changes" || x == "before" || x == "after");
         } else if (kind == "asset") {
+            flag({"effectiveProperties"});
+            child("effectiveDefaults", "effective-defaults");
             child("physicalCloth", "physical-cloth");
             string({"physicalClothBefore", "physicalClothAfter"});
             flag({"physicalClothPair"});

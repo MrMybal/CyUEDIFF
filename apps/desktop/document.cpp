@@ -4,6 +4,7 @@
 #include "../../src/json_output.hpp"
 #include "animation_document.hpp"
 #include <cyuediff/binary_layout.hpp>
+#include "effective_document.hpp"
 namespace cyuediff::desktop {
 std::vector<TextureDifference> compare_previews(const std::vector<Preview> &previews) {
     std::vector<const Preview *> a, b;
@@ -52,6 +53,13 @@ std::vector<TextureDifference> compare_previews(const std::vector<Preview> &prev
 std::string Document::status() const {
     if (container)
         return "ready";
+    if (effective_defaults) {
+        if (effective_defaults->comparison)
+            return effective_defaults->comparison->status();
+        if (request.git || !request.after.empty())
+            return "unverified";
+        return effective_defaults->before && effective_defaults->before->complete ? "ready" : "incomplete";
+    }
 #ifdef CYUEDIFF_HAS_GIT
     if (git)
         return git->status();
@@ -130,6 +138,8 @@ detail::JsonObject Document::report_view() const {
             return data;
         });
     }
+    if (effective_defaults)
+        result.object("effectiveDefaults", [this] { return effective_defaults->report_view(); });
     if (!layout_contexts.is_null())
         result.borrow("layoutContexts", layout_contexts);
 #ifdef CYUEDIFF_HAS_GIT
@@ -159,6 +169,8 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
     document->request.cache.reset();
     document->request.control = {}; // Do not retain session callbacks in a completed document.
     if (request.container) {
+        if (request.effective_defaults)
+            throw Error("desktop-defaults", "Prepared source defaults require loose or Git packages");
         if (!request.source_limits.is_default() || !request.after_source_limits.is_default() ||
             !request.inherit_after_source_limits)
             throw Error("desktop-read-limits", "Source read limits require loose or Git packages");
@@ -198,6 +210,7 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
                                      {"contextChanged", before_layouts != after_layouts &&
                                          (!before_layouts || !after_layouts || before_layouts->sha256() != after_layouts->sha256())}};
     }
+    PreparedDefaultContexts default_contexts(*document, request, read, after_read);
     if (request.git) {
 #ifdef CYUEDIFF_HAS_GIT
         const auto &source = *request.git;
@@ -302,6 +315,7 @@ std::shared_ptr<const Document> load_document(const LoadRequest &request) {
         (document->before->source_read_limit_failed || document->after->source_read_limit_failed))
         throw Error("source-read-limits", "A source read limit/count guard failed; adjust the source limits "
                                           "or repair the input before reviewing semantic differences.");
+    default_contexts.resolve(*document, request);
     auto physical = [&](const std::shared_ptr<const Package> &package, PhysicalClothProfile profile,
                         bool after) {
         if (!package || profile == PhysicalClothProfile::unspecified)

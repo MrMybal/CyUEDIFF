@@ -38,6 +38,32 @@ int main() {
         check(data["readLimits"]["before"]["maxProperties"] == 2000000 &&
                   data["layoutContexts"]["contextChanged"] == true,
               "Independent source policy and decoder provenance remain present");
+        auto effective = std::make_shared<EffectiveDefaultsDocument>();
+        auto left = std::make_shared<EffectiveDefaults>();
+        left->complete = true;
+        left->fields = {{"/Script/Test.Class.Large", {{"value", std::int64_t(9007199254740993LL)}}}};
+        auto right = std::make_shared<EffectiveDefaults>(*left);
+        right->fields["/Script/Test.Class.Large"]["value"] = std::int64_t(9007199254740994LL);
+        auto typed = std::make_shared<EffectiveDefaultsComparison>();
+        typed->changes = changes->changes;
+        effective->before = left;
+        effective->after = right;
+        effective->comparison = typed;
+        effective->before_error = "A diagnostic retained as owned text";
+        d.effective_defaults = effective;
+        data = streamed(d.report_view());
+        check(data["effectiveDefaults"]["before"] == left->to_json() &&
+                  data["effectiveDefaults"]["after"] == right->to_json() &&
+                  data["effectiveDefaults"]["comparison"] == typed->to_json(),
+              "Effective streamed models retain exact typed values and comparison provenance");
+        check(data["effectiveDefaults"]["beforeError"] == effective->before_error &&
+                  data["status"] == "changed",
+              "Owned diagnostics and effective status survive streaming");
+        auto view = effective->report_view();
+        left->fields["/Script/Test.Class.Large"]["value"] = std::int64_t(9007199254740995LL);
+        check(streamed(view)["before"]["fields"] == left->fields,
+              "Effective view borrows immutable model containers rather than snapshot copies");
+        d.effective_defaults.reset();
         PhysicalClothOptions options;
         options.profile = PhysicalClothProfile::unreal_5_3_windows;
         auto source = test::source_physical_fixture();

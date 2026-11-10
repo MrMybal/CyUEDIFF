@@ -437,3 +437,7 @@ Explicit source work/window limits are available in Core, CLI and EN/FR desktop,
 ## Source physical tab — 0.188
 
 Source and local Git documents now prepare selected physical instance models in the worker, using independent Physical cloth settings profiles and native/type catalogues. The Physical cloth tab selects objects per side, explicitly pairs differing paths, and retains nested LOD/vertex/tether/transition/configuration/camera state. Models are also prepared with ordinary image previews disabled. See [SOURCE_PHYSICAL_CLOTH.md](SOURCE_PHYSICAL_CLOTH.md).
+
+## Prepared effective source properties
+
+Source0.199 adds before/after native default contexts to the source panel and a Stored/Effective switch in Properties. The document worker verifies each prepared context and resolves the selected root before publishing values or typed differences. Missing or invalid peers remain unavailable. Contexts, explicit root paths and review/filter/navigation state persist in workspace15 and sessions; older workspaces keep their original context-free behavior. See [preparation, controls and scope](EFFECTIVE_DEFAULTS.md#desktop-review). This selected source/native workflow does not resolve arbitrary Blueprint or cooked defaults.

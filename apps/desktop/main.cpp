@@ -443,6 +443,24 @@ Options parse_one(const std::vector<std::string> &args) {
                 options.settings.after_max_property_bytes = parsed;
                 after_byte_limit = true;
             }
+        } else if (argument == "--defaults-context")
+            options.settings.defaults_context = value();
+        else if (argument == "--after-defaults-context") {
+            options.settings.after_defaults_context = value();
+            options.settings.inherit_after_defaults_context = false;
+        } else if (argument == "--no-after-defaults-context") {
+            options.settings.after_defaults_context.clear();
+            options.settings.inherit_after_defaults_context = false;
+        } else if (argument == "--defaults-object")
+            options.settings.defaults_object = value();
+        else if (argument == "--after-defaults-object")
+            options.settings.after_defaults_object = value();
+        else if (argument == "--effective-view") {
+            auto mode = value();
+            if (mode != "changes" && mode != "before" && mode != "after")
+                throw Error("desktop-option", "Effective view requires changes, before or after");
+            options.view_state["asset"]["effectiveProperties"] = true;
+            options.view_state["asset"]["effectiveDefaults"]["mode"] = mode;
         } else if (argument == "--layouts")
             options.settings.layouts = value();
         else if (argument == "--after-layouts") {
@@ -739,6 +757,17 @@ void register_translations() {
          {"Reset read limits", "Réinitialiser les limites"},
          {"Larger source limits can use more memory. Apply with Load.",
           "Des limites source plus grandes peuvent utiliser plus de mémoire. Appliquer avec Charger."},
+         {"Prepared default contexts", "Contextes de valeurs par défaut préparés"},
+         {"Before defaults", "Défauts avant"},
+         {"After defaults", "Défauts après"},
+         {"Before root object", "Objet racine avant"},
+         {"After root object", "Objet racine après"},
+         {"Choose before defaults", "Choisir les défauts avant"},
+         {"Choose after defaults", "Choisir les défauts après"},
+         {"Use before defaults after", "Réutiliser les défauts avant"},
+         {"Empty object selects the sole matching root. Contexts are verified when you Load.",
+          "Un objet vide sélectionne l’unique racine correspondante. Les contextes sont vérifiés au "
+          "chargement."},
          {"Native structure layouts", "Formats des structures natives"},
          {"Before layout file", "Description avant"},
          {"After layout file", "Description après"},
@@ -994,7 +1023,8 @@ void protect_outputs(const Options &options, const std::shared_ptr<const Documen
                            browser->protected_directories.end());
     }
     for (auto path : {options.settings.project, options.settings.after_project, options.settings.codec,
-                      options.settings.layouts, options.settings.after_layouts})
+                      options.settings.layouts, options.settings.after_layouts,
+                      options.settings.defaults_context, options.settings.after_defaults_context})
         if (!path.empty())
             inputs.push_back(fs::u8path(path));
     for (const auto &root : {options.settings.payload_root, options.settings.after_payload_root})
@@ -1051,6 +1081,8 @@ enum class Action {
     container_object,
     before_schema,
     after_schema,
+    before_defaults,
+    after_defaults,
     document_tab,
     new_document,
     close_document,
@@ -1193,6 +1225,7 @@ class Shell {
         result["open"] = browser_open_;
         return result;
     }
+    Json effective_defaults_report() const { return current().view.effective_defaults().report(); }
     Json source_physical_report() const {
         if (!current().displayed || current().displayed->container ||
             (current().displayed->before_physical_cloth.empty() &&
@@ -1737,7 +1770,8 @@ class Shell {
         Json previous_pose_state=Json::object();
         if(current().displayed && !current().displayed->container) {
             const auto previous=current().view.view_state();
-            for(const char *key:{"animationPose","animationPosePreview","animationSockets","animationSocketsPreview"})
+            for (const char *key : {"animationPose", "animationPosePreview", "animationSockets",
+                                    "animationSocketsPreview", "effectiveProperties", "effectiveDefaults"})
                 if(previous.contains(key))previous_pose_state[key]=previous.at(key);
         }
         current().displayed = session_.document();
@@ -1779,6 +1813,12 @@ class Shell {
         current().container_view.set_document({});
         current().view.set_packages(current().displayed->before, current().displayed->after,
                                     current().displayed->request.git.has_value());
+        if (const auto &defaults = current().displayed->effective_defaults)
+            current().view.effective_defaults().set_models(defaults->before, defaults->after,
+                                                           defaults->comparison, defaults->changes,
+                                                           defaults->before_error, defaults->after_error);
+        else
+            current().view.effective_defaults().set_models({}, {}, {}, {});
         current().view.set_physical_cloth_assets(
             current().displayed->before_physical_cloth, current().displayed->after_physical_cloth,
             current().displayed->request.git.has_value() || current().displayed->after != nullptr);
@@ -1788,7 +1828,7 @@ class Shell {
         current().view.set_animation_socket_poses(current().displayed->before_animation_sockets?&*current().displayed->before_animation_sockets:nullptr,
                                                  current().displayed->after_animation_sockets?&*current().displayed->after_animation_sockets:nullptr,
                                                  current().displayed->request.git.has_value() || current().displayed->after!=nullptr);
-        if(current().displayed->request.animation_pose && !previous_pose_state.empty())
+        if (!previous_pose_state.empty())
             current().view.restore_view_state(previous_pose_state);
         current().context_details.clear();
 #ifdef CYUEDIFF_HAS_GIT
@@ -1993,12 +2033,20 @@ class Shell {
 #ifdef CYUEDIFF_HAS_GIT
                 const auto git_label = cyui::tr("Git revisions");
                 const char *sources[] = {local_label.c_str(), git_label.c_str(), container_label.c_str()};
-                if(cyui::segmented("##source", sources, 3, &current().settings.source, cyui::dp(-1)))current().settings.pose_enabled=false;
+                if (cyui::segmented("##source", sources, 3, &current().settings.source, cyui::dp(-1))) {
+                    current().settings.pose_enabled = false;
+                    if (current().settings.source == 2)
+                        current().settings.clear_default_contexts();
+                }
 #else
                 const char *sources[] = {local_label.c_str(), container_label.c_str()};
                 int mode = current().settings.source == 2 ? 1 : 0;
-                if (cyui::segmented("##source", sources, 2, &mode, cyui::dp(-1)))
-                    {current().settings.source = mode ? 2 : 0;current().settings.pose_enabled=false;}
+                if (cyui::segmented("##source", sources, 2, &mode, cyui::dp(-1))) {
+                    current().settings.source = mode ? 2 : 0;
+                    current().settings.pose_enabled = false;
+                    if (current().settings.source == 2)
+                        current().settings.clear_default_contexts();
+                }
 #endif
                 if (current().settings.source == 2) {
                     if (cyui::button(cyui::trLabel("Open container...").c_str()))
@@ -2337,6 +2385,41 @@ class Shell {
                             }
                         }
                         cyui::textDim("%s", cyui::tr("Choose a local payload store, then Load.").c_str());
+                        cyui::endSection();
+                    }
+                    if (current().layout.section("effectiveDefaults", "Prepared default contexts",
+                                                 !current().settings.defaults_context.empty(), false,
+                                                 false)) {
+                        auto &settings = current().settings;
+                        if (cyui::beginProperties("##default-contexts", 100)) {
+                            cyui::property(cyui::tr("Before defaults").c_str());
+                            field("##before-defaults", settings.defaults_context);
+                            cyui::property(cyui::tr("Before root object").c_str());
+                            field("##before-default-object", settings.defaults_object);
+                            cyui::endProperties();
+                        }
+                        if (cyui::button(cyui::trLabel("Choose before defaults").c_str()))
+                            action = Action::before_defaults;
+                        cyui::toggleSwitch(cyui::trLabel("Use before defaults after").c_str(),
+                                           &settings.inherit_after_defaults_context);
+                        {
+                            cyui::ScopedDisabled inherited(settings.inherit_after_defaults_context);
+                            if (cyui::beginProperties("##after-default-context", 100)) {
+                                cyui::property(cyui::tr("After defaults").c_str());
+                                field("##after-defaults", settings.after_defaults_context);
+                                cyui::endProperties();
+                            }
+                            if (cyui::button(cyui::trLabel("Choose after defaults").c_str()))
+                                action = Action::after_defaults;
+                        }
+                        if (cyui::beginProperties("##after-default-object", 100)) {
+                            cyui::property(cyui::tr("After root object").c_str());
+                            field("##after-default-object", settings.after_defaults_object);
+                            cyui::endProperties();
+                        }
+                        ImGui::TextWrapped("%s", cyui::tr("Empty object selects the sole matching root. "
+                                                          "Contexts are verified when you Load.")
+                                                     .c_str());
                         cyui::endSection();
                     }
                     if (current().layout.section("binaryLayouts", "Native structure layouts", false, false, false)) {
@@ -2820,6 +2903,11 @@ class Shell {
                 if (!path)
                     return;
                 current().settings.source = 2;
+                current().settings.defaults_context.clear();
+                current().settings.after_defaults_context.clear();
+                current().settings.defaults_object.clear();
+                current().settings.after_defaults_object.clear();
+                current().settings.inherit_after_defaults_context = true;
                 current().settings.pose_enabled = false;
                 current().settings.container_path = path->u8string();
                 current().settings.container_entry.clear();
@@ -2835,6 +2923,16 @@ class Shell {
             if(action==Action::pose_before_skeleton || action==Action::pose_after_skeleton) {
                 if(current().settings.source!=0)return;
                 if(auto path=window.choose_file())(action==Action::pose_before_skeleton?current().settings.pose_before_skeleton:current().settings.pose_after_skeleton)=path->u8string();
+                return;
+            }
+            if (action == Action::before_defaults || action == Action::after_defaults) {
+                if (auto path = window.choose_workspace(false)) {
+                    (action == Action::before_defaults ? current().settings.defaults_context
+                                                       : current().settings.after_defaults_context) =
+                        path->u8string();
+                    if (action == Action::after_defaults)
+                        current().settings.inherit_after_defaults_context = false;
+                }
                 return;
             }
             if (action == Action::before_schema || action == Action::after_schema) {
@@ -2881,6 +2979,8 @@ class Shell {
                         path->u8string();
                 }
             } else if (action == Action::swap) {
+                if (current().settings.source != 2)
+                    current().settings.swap_default_contexts();
                 if (current().settings.source != 2 && (!current().settings.payload_root.empty() ||
                     !current().settings.after_payload_root.empty() || !current().settings.inherit_after_payload_root)) {
                     if (current().settings.inherit_after_payload_root)
@@ -2938,6 +3038,9 @@ int run(Options options) {
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
                "  [--payload-root DIRECTORY] [--after-payload-root DIRECTORY | --no-after-payload-root]\n"
+               "  [--defaults-context JSON] [--after-defaults-context JSON | --no-after-defaults-context]\n"
+               "  [--defaults-object EXPORT] [--after-defaults-object EXPORT] [--effective-view "
+               "changes|before|after]\n"
                "  [--layouts JSON] [--after-layouts JSON | --no-after-layouts] : native wire descriptions\n"
                "  [--max-properties COUNT] [--max-property-bytes BYTES] : source read limits\n"
                "  [--after-max-properties COUNT] [--after-max-property-bytes BYTES] : independent after "
@@ -3173,6 +3276,7 @@ int run(Options options) {
                     {"workspaceFile", shell.workspace_file_report()},
                     {"containerView", shell.container_view_report()},
                     {"sourcePhysicalClothView", shell.source_physical_report()},
+                    {"effectiveDefaultsView", shell.effective_defaults_report()},
                 };
                 detail::JsonObject output;
                 for (auto i = report.begin(); i != report.end(); ++i)

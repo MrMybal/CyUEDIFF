@@ -24,6 +24,10 @@ std::string bytes(const fs::path &p) {
 }
 void strip_limits(Json &j) {
     for (auto &d : j["documents"])
+        for (const char *key : {"defaults_context", "after_defaults_context", "defaults_object",
+                                "after_defaults_object", "inherit_after_defaults_context"})
+            d["settings"].erase(key);
+    for (auto &d : j["documents"])
         for (const char *key : {"max_properties", "max_property_bytes", "after_max_properties",
                                 "after_max_property_bytes", "inherit_after_source_limits"})
             d["settings"].erase(key);
@@ -115,6 +119,56 @@ int main() {
         value.documents.push_back(git);
         value.documents.push_back(cooked);
         value.active = 2;
+        Settings no_defaults;
+        no_defaults.swap_default_contexts();
+        check(!no_defaults.request().effective_defaults,
+              "Ordinary source swap never activates effective mode");
+        Settings inherited_defaults;
+        inherited_defaults.defaults_context = "cdo.json";
+        inherited_defaults.defaults_object = "A";
+        inherited_defaults.after_defaults_object = "B";
+        inherited_defaults.swap_default_contexts();
+        check(!inherited_defaults.inherit_after_defaults_context &&
+                  inherited_defaults.defaults_context == "cdo.json" &&
+                  inherited_defaults.after_defaults_context == "cdo.json" &&
+                  inherited_defaults.defaults_object == "B" &&
+                  inherited_defaults.after_defaults_object == "A",
+              "Swapping follows each source with materialized contexts and roots");
+        inherited_defaults.clear_default_contexts();
+        check(!inherited_defaults.request().effective_defaults,
+              "Container switch clears inactive source defaults");
+        auto defaults = value.to_json();
+        auto &ds = defaults["documents"][0]["settings"];
+        ds["defaults_context"] = "contexts/before.json";
+        ds["after_defaults_context"] = "contexts/after.json";
+        ds["defaults_object"] = "BeforeRoot";
+        ds["after_defaults_object"] = "AfterRoot";
+        ds["inherit_after_defaults_context"] = false;
+        const auto dc = WorkspaceFile::from_json(defaults).documents[0].settings.request().effective_defaults;
+        check(dc && dc->before_context == fs::path("contexts/before.json") &&
+                  dc->after_context == fs::path("contexts/after.json") && !dc->inherit_after_context &&
+                  dc->before_object == "BeforeRoot" && dc->after_object == "AfterRoot",
+              "Independent native defaults round trip");
+        auto fourteen = value.to_json();
+        fourteen["schema"] = "cyuediff.workspace/14";
+        for (auto &d : fourteen["documents"])
+            for (const char *key : {"defaults_context", "after_defaults_context", "defaults_object",
+                                    "after_defaults_object", "inherit_after_defaults_context"})
+                d["settings"].erase(key);
+        check(!WorkspaceFile::from_json(fourteen).documents[0].settings.request().effective_defaults,
+              "Legacy14 has no inferred default context");
+        auto missing_defaults = defaults;
+        missing_defaults["documents"][0]["settings"].erase("inherit_after_defaults_context");
+        rejects([&] { WorkspaceFile::from_json(missing_defaults); });
+        auto wrong_defaults = defaults;
+        wrong_defaults["documents"][0]["settings"]["defaults_object"] = 7;
+        rejects([&] { WorkspaceFile::from_json(wrong_defaults); });
+        auto cooked_defaults = WorkspaceFile::from_json(defaults).documents[2].settings;
+        cooked_defaults.defaults_context = "explicit.json";
+        rejects([&] { cooked_defaults.request(); });
+        auto invalid_view = value.to_json();
+        invalid_view["documents"][0]["viewState"]["asset"]["effectiveDefaults"]["mode"] = "execute";
+        rejects([&] { WorkspaceFile::from_json(invalid_view); });
         check(value.to_json().dump().find("NEVER_AUTO_LOAD") == std::string::npos, "Codec path is excluded");
         cooked.settings.nanite_profile = 1;
         cooked.settings.after_nanite_profile = 1;
@@ -557,7 +611,7 @@ int main() {
                 d["settings"].erase(key);
         const auto upgraded = WorkspaceFile::from_json(legacy_three);
         check(!upgraded.documents[0].settings.pose_enabled &&
-                  upgraded.to_json()["schema"] == "cyuediff.workspace/14",
+                  upgraded.to_json()["schema"] == "cyuediff.workspace/15",
               "Actual version three settings upgrade with binding disabled");
         for (const Json bad_frame : std::vector<Json>{-1, 1.5, "2", std::uint64_t(INT32_MAX) + 1}) {
             auto invalid = pose_json;
@@ -584,7 +638,7 @@ int main() {
             doc["settings"].erase("physical_cloth_profile");
             doc["settings"].erase("after_physical_cloth_profile");
         }
-        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/14",
+        check(WorkspaceFile::from_json(version_two).to_json()["schema"] == "cyuediff.workspace/15",
               "Version two presentation files upgrade on explicit save");
         auto with_layout = value.to_json();
         with_layout["documents"][0]["viewState"]["layout"] = {{"sidebarWidth", 420}, {"project", true}};
@@ -615,7 +669,7 @@ int main() {
         write(path, legacy.dump());
         auto migrated = read_workspace(path);
         check(migrated.documents[0].view_state.empty() &&
-                  migrated.to_json()["schema"] == "cyuediff.workspace/14",
+                  migrated.to_json()["schema"] == "cyuediff.workspace/15",
               "Version-one inputs migrate without invented view state");
         save_workspace(path, read);
         auto first = bytes(path);

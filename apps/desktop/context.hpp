@@ -4,6 +4,8 @@
 namespace cyuediff::desktop {
 struct Settings {
     std::string before, after, project, engine, codec, repository, lfs_objects, after_project, after_engine;
+    std::string defaults_context, after_defaults_context, defaults_object, after_defaults_object;
+    bool inherit_after_defaults_context = true;
     std::string layouts, after_layouts;
     bool inherit_after_layouts = true;
     int max_properties = 100'000, max_property_bytes = 32 * 1024 * 1024;
@@ -36,6 +38,23 @@ struct Settings {
         after_bone_settings_entry, after_skeleton_entry;
     bool compare_container_payloads = false;
     bool previews = true, discover_engine = true, include_engine = false;
+    void clear_default_contexts() {
+        defaults_context.clear();
+        after_defaults_context.clear();
+        defaults_object.clear();
+        after_defaults_object.clear();
+        inherit_after_defaults_context = true;
+    }
+    void swap_default_contexts() {
+        if (defaults_context.empty() && after_defaults_context.empty() && defaults_object.empty() &&
+            after_defaults_object.empty() && inherit_after_defaults_context)
+            return;
+        if (inherit_after_defaults_context)
+            after_defaults_context = defaults_context;
+        inherit_after_defaults_context = false;
+        std::swap(defaults_context, after_defaults_context);
+        std::swap(defaults_object, after_defaults_object);
+    }
     bool ready() const {
         if (source == 2)
             return !container_path.empty();
@@ -55,6 +74,9 @@ struct Settings {
         if (pose_enabled && source == 2)
             throw Error("desktop-animation-pose", "External Skeleton bindings require loose or Git packages");
         if (source == 2) {
+            if (!defaults_context.empty() || !after_defaults_context.empty() || !defaults_object.empty() ||
+                !after_defaults_object.empty() || !inherit_after_defaults_context)
+                throw Error("desktop-defaults", "Prepared source defaults require loose or Git packages");
             if (!layouts.empty() || !after_layouts.empty() || !inherit_after_layouts)
                 throw Error("desktop-layouts", "Cooked structures use inline schema context layouts");
             LoadRequest result;
@@ -147,6 +169,11 @@ struct Settings {
         }
         LoadRequest result{before,  after, fs::u8path(project), fs::u8path(engine), fs::u8path(codec),
                            previews};
+        if (!defaults_context.empty() || !after_defaults_context.empty() || !defaults_object.empty() ||
+            !after_defaults_object.empty() || !inherit_after_defaults_context)
+            result.effective_defaults = EffectiveDefaultsRequest{
+                fs::u8path(defaults_context), fs::u8path(after_defaults_context), defaults_object,
+                after_defaults_object, inherit_after_defaults_context};
         result.payload_root = fs::u8path(payload_root);
         result.after_payload_root = inherit_after_payload_root ? fs::path{} : fs::u8path(after_payload_root);
         result.inherit_after_payload_root = inherit_after_payload_root;

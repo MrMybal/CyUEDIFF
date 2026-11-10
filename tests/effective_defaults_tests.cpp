@@ -157,6 +157,9 @@ int main(int argc, char **argv) {
         }
         Prepared f(dir);
         auto context = f.read();
+        check(context.input_files().size() == 7 &&
+                  context.input_files().front() == fs::absolute(dir / "context.json").lexically_normal(),
+              "Verified manifest, capture and all recorded inputs are exposed to host guards");
         auto p = f.package();
         const auto original = p.semantic_snapshot();
         auto result = resolve_source_defaults(p, "Asset", context);

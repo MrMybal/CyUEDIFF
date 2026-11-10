@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Application license</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.198.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
+      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.199.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
       <p><sub>Windows x64 desktop<br>No public application release yet</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspect Unreal Engine assets and understand what changed **without launching Unreal Editor**. CyUEDiff provides a Windows desktop application, a JSON command-line tool and a reusable C++17 reader for Unreal developers, technical artists and tool authors.
 
-> **IN DEVELOPMENT · 0.198.0**
+> **IN DEVELOPMENT · 0.199.0**
 >
 > This source version provides explicit, evolving format coverage. Unknown data keeps its diagnostics and byte fingerprints. Read the [version notes, supported platforms and known limitations](VERSION.md) before choosing a workflow.
 

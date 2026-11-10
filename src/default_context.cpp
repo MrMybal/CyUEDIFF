@@ -106,6 +106,7 @@ std::pair<Json, std::string> document(const fs::path &path, const SchemaReadOpti
 struct DefaultContext::Impl {
     DefaultSnapshot snapshot;
     Json source, provenance;
+    std::vector<fs::path> inputs;
     std::string hash;
     explicit Impl(DefaultSnapshot value) : snapshot(std::move(value)) {}
 };
@@ -175,6 +176,7 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
                    (options.document.control.cancelled && options.document.control.cancelled());
         };
         auto p = std::make_shared<Impl>(DefaultSnapshot::read(file_path(base, capture.at("file")), read));
+        p->inputs = {fs::absolute(path).lexically_normal(), file_path(base, capture.at("file"))};
         const auto &provenance = p->snapshot.provenance();
         require(provenance.at("blueprintClass") == false && provenance.at("classGeneratedBy").is_null(),
                 "Blueprint defaults require dependency/template binding not supplied by this profile");
@@ -218,6 +220,7 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
                 return fs::absolute(candidate).lexically_normal();
             };
             const auto file = path_value(dep.at("file"));
+            p->inputs.push_back(file);
             if (!pinned)
                 require(file == path_value(it->at("file")),
                         "Prepared dependency path differs from captured environment");
@@ -266,6 +269,7 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
     }
 }
 const DefaultSnapshot &DefaultContext::snapshot() const { return impl_->snapshot; }
+const std::vector<fs::path> &DefaultContext::input_files() const { return impl_->inputs; }
 const Json &DefaultContext::source_profile() const { return impl_->source; }
 const Json &DefaultContext::provenance() const { return impl_->provenance; }
 const std::string &DefaultContext::sha256() const { return impl_->hash; }

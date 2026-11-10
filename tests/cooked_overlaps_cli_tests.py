@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-overlaps-', dir=Path.cwd()) a
             d = json.loads(report.read_text(encoding='utf-8'))
             assert d['locale'] == locale and d['document']['container']['meshDifferences'][0]['comparison']['status'] == 'changed'
             assert all(v['comparisonKnown'] and v['changes']['modified'] == 2 for v in d['containerView']['meshViews'])
-            assert json.loads(workspace.read_text(encoding='utf-8'))['schema'] == 'cyuediff.workspace/14'
+            assert json.loads(workspace.read_text(encoding='utf-8'))['schema'] == 'cyuediff.workspace/15'
             checks += 4
     for name in ('overlaps.utoc','overlaps.ucas','overlaps-changed.utoc','overlaps-changed.ucas','global.utoc','global.ucas','native.usmap','context.json'):
         run('zen-skeletal-diff',before,entry,after,entry,'--out',root/name,code=2)

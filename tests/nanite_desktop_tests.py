@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-nanite-desktop-', dir=Path.cw
     assert v['coverage'][0]['source']['schemaContextSha256'] != v['coverage'][1]['source']['schemaContextSha256']
     saved = json.loads(workspace.read_text(encoding='utf-8'))
     d = saved['documents'][0]
-    assert saved['schema'] == 'cyuediff.workspace/14' and d['containerTab'] == 10
+    assert saved['schema'] == 'cyuediff.workspace/15' and d['containerTab'] == 10
     assert d['settings']['nanite_profile'] == d['settings']['after_nanite_profile'] == 1
     assert d['settings']['nanite_attributes'] and d['settings']['after_nanite_attributes']
     assert d['viewState']['container']['beforeNanite'] == v['beforeObject']
@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-nanite-desktop-', dir=Path.cw
     old = json.loads(workspace.read_text(encoding='utf-8'))
     old['schema'] = 'cyuediff.workspace/11'
     for doc in old['documents']:
-        for key in ('max_properties','max_property_bytes','after_max_properties','after_max_property_bytes','inherit_after_source_limits','physical_cloth_profile', 'after_physical_cloth_profile', 'nanite_profile', 'after_nanite_profile', 'nanite_attributes', 'after_nanite_attributes'):
+        for key in ('defaults_context','after_defaults_context','defaults_object','after_defaults_object','inherit_after_defaults_context','max_properties','max_property_bytes','after_max_properties','after_max_property_bytes','inherit_after_source_limits','physical_cloth_profile', 'after_physical_cloth_profile', 'nanite_profile', 'after_nanite_profile', 'nanite_attributes', 'after_nanite_attributes'):
             doc['settings'].pop(key)
         for key in ('nanite', 'beforeNanite', 'afterNanite'):
             doc['viewState']['container'].pop(key)

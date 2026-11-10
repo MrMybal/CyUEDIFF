@@ -1,5 +1,7 @@
 #pragma once
 #include <cyuediff/cache.hpp>
+#include <cyuediff/defaults.hpp>
+#include <cyuediff/visual_diff.hpp>
 #include <cyuediff/source_limits.hpp>
 #include <cyuediff/animation_pose.hpp>
 #include <cyuediff/animation_socket_pose.hpp>
@@ -27,6 +29,20 @@ struct AnimationPoseRequest {
     std::string before_skeleton, after_skeleton;
     AnimationPoseSelection before, after;
 };
+struct EffectiveDefaultsRequest {
+    fs::path before_context, after_context;
+    std::string before_object, after_object;
+    bool inherit_after_context = true;
+};
+struct EffectiveDefaultsDocument {
+    std::shared_ptr<const EffectiveDefaults> before, after;
+    std::shared_ptr<const EffectiveDefaultsComparison> comparison;
+    PropertyTable changes;
+    Json contexts = Json::object();
+    std::string before_error, after_error;
+    Json report() const;
+    detail::JsonObject report_view() const;
+};
 struct LoadRequest {
     std::string before, after;
     fs::path project, engine_root, codec;
@@ -38,6 +54,7 @@ struct LoadRequest {
     std::shared_ptr<PackageCache> cache;
     std::optional<ContainerSource> container;
     std::optional<AnimationPoseRequest> animation_pose;
+    std::optional<EffectiveDefaultsRequest> effective_defaults;
     fs::path layouts, after_layouts;
     bool inherit_after_layouts = true;
     fs::path payload_root, after_payload_root;
@@ -78,6 +95,7 @@ struct Document {
     std::vector<std::shared_ptr<const PhysicalClothAsset>> before_physical_cloth, after_physical_cloth;
     std::vector<std::string> diagnostics;
     Json layout_contexts = nullptr;
+    std::shared_ptr<const EffectiveDefaultsDocument> effective_defaults;
     std::vector<fs::path> protected_files, protected_directories;
 #ifdef CYUEDIFF_HAS_GIT
     // Own materialized files while packages and previews can still use them.

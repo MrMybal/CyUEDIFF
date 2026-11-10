@@ -10,6 +10,7 @@
 #include <cyuediff/mesh_view.hpp>
 #include <cyuediff/material_view.hpp>
 #include <cyuediff/property_view.hpp>
+#include <cyuediff/effective_defaults_view.hpp>
 #include <cyuediff/property_browser_view.hpp>
 #include <cyuediff/collision_view.hpp>
 #include <cyuediff/skeleton_view.hpp>
@@ -51,6 +52,8 @@ class AssetView {
     std::vector<PropertyView> before_inspection_, after_inspection_;
     PropertyBrowserView property_browser_;
     bool browse_properties_ = false, browser_after_ = false;
+    bool effective_properties_ = false;
+    EffectiveDefaultsView effective_defaults_;
     int browser_root_ = 0, bound_browser_root_ = -1;
     std::string browser_object_;
     struct BrowserInputs {
@@ -99,6 +102,8 @@ class AssetView {
     }
     void restore_view_state(const Json &);
     static void register_translations();
+    EffectiveDefaultsView &effective_defaults() { return effective_defaults_; }
+    const EffectiveDefaultsView &effective_defaults() const { return effective_defaults_; }
     // compare_missing_side enables an addition/removal diff when one side is absent.
     // Paired reads that failed a source limit/count guard reject before changing the view.
     void set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after = {},

@@ -31,6 +31,11 @@ const std::pair<const char *, std::string Settings::*> strings[] = {
     {"container_schema", &Settings::container_schema},
     {"after_container_schema", &Settings::after_container_schema},
 };
+const std::pair<const char *, std::string Settings::*> defaults_strings[] = {
+    {"defaults_context", &Settings::defaults_context},
+    {"after_defaults_context", &Settings::after_defaults_context},
+    {"defaults_object", &Settings::defaults_object},
+    {"after_defaults_object", &Settings::after_defaults_object}};
 const std::pair<const char *, std::string Settings::*> layout_strings[] = {
     {"layouts", &Settings::layouts}, {"after_layouts", &Settings::after_layouts}};
 const std::pair<const char *, std::string Settings::*> payload_strings[] = {
@@ -102,6 +107,8 @@ void normalize(Settings &s, const fs::path &base) {
                         &Settings::skeleton_container,
                         &Settings::after_bone_settings_container,
                         &Settings::after_skeleton_container,
+                        &Settings::defaults_context,
+                        &Settings::after_defaults_context,
                         &Settings::layouts,
                         &Settings::after_layouts,
                         &Settings::payload_root,
@@ -157,6 +164,9 @@ Json WorkspaceFile::to_json() const {
         s["after_animation_profile"] = d.settings.after_animation_profile;
         s["animation_interpolation"] = d.settings.animation_interpolation;
         s["after_animation_interpolation"] = d.settings.after_animation_interpolation;
+        for (const auto &field : defaults_strings)
+            s[field.first] = d.settings.*field.second;
+        s["inherit_after_defaults_context"] = d.settings.inherit_after_defaults_context;
         for (const auto &field : layout_strings)
             s[field.first] = d.settings.*field.second;
         for (const auto &field : payload_strings)
@@ -203,22 +213,23 @@ Json WorkspaceFile::to_json() const {
                         {"cookedView", d.cooked_view},
                         {"viewState", d.view_state}});
     }
-    Json result = {{"schema", "cyuediff.workspace/14"}, {"active", active}, {"documents", docs}};
+    Json result = {{"schema", "cyuediff.workspace/15"}, {"active", active}, {"documents", docs}};
     from_json(result);
     return result;
 }
 WorkspaceFile WorkspaceFile::from_json(const Json &j) {
-    require(j.is_object() && j.size() == 3 && j.contains("schema") &&
-                (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
-                 j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
-                 (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
-                  (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
-                   (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10" ||
-                    (j["schema"] == "cyuediff.workspace/11" ||
-                     (j["schema"] == "cyuediff.workspace/12" || j["schema"] == "cyuediff.workspace/13" ||
-                      j["schema"] == "cyuediff.workspace/14")))))) &&
-                j.contains("active") && j.contains("documents"),
-            "Unsupported workspace format");
+    require(
+        j.is_object() && j.size() == 3 && j.contains("schema") &&
+            (j["schema"] == "cyuediff.workspace/1" || j["schema"] == "cyuediff.workspace/2" ||
+             j["schema"] == "cyuediff.workspace/3" || j["schema"] == "cyuediff.workspace/4" ||
+             (j["schema"] == "cyuediff.workspace/5" || j["schema"] == "cyuediff.workspace/6" ||
+              (j["schema"] == "cyuediff.workspace/7" || j["schema"] == "cyuediff.workspace/8" ||
+               (j["schema"] == "cyuediff.workspace/9" || j["schema"] == "cyuediff.workspace/10" ||
+                (j["schema"] == "cyuediff.workspace/11" ||
+                 (j["schema"] == "cyuediff.workspace/12" || j["schema"] == "cyuediff.workspace/13" ||
+                  (j["schema"] == "cyuediff.workspace/14" || j["schema"] == "cyuediff.workspace/15"))))))) &&
+            j.contains("active") && j.contains("documents"),
+        "Unsupported workspace format");
     const auto &docs = j["documents"];
     require(docs.is_array() && !docs.empty() && docs.size() <= 8,
             "Workspace requires one to eight documents");
@@ -244,7 +255,8 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         require(views.count(saved.view) && (saved.cooked_view.empty() || saved.cooked_view == "properties" ||
                                             saved.cooked_view == "object"),
                 "Unsupported workspace view");
-        const bool source_limits_extension = j["schema"] == "cyuediff.workspace/14";
+        const bool defaults_extension = j["schema"] == "cyuediff.workspace/15";
+        const bool source_limits_extension = j["schema"] == "cyuediff.workspace/14" || defaults_extension;
         const bool physical_cloth_extension =
             j["schema"] == "cyuediff.workspace/13" || source_limits_extension;
         const bool nanite_extension = j["schema"] == "cyuediff.workspace/12" || physical_cloth_extension;
@@ -261,19 +273,31 @@ WorkspaceFile WorkspaceFile::from_json(const Json &j) {
         const bool mesh_extension = j["schema"] == "cyuediff.workspace/7" || physics_extension;
         const bool payload_extension = j["schema"] == "cyuediff.workspace/6" || mesh_extension;
         const bool layout_extension = j["schema"] == "cyuediff.workspace/5" || payload_extension;
-        const auto old_fields =
-            std::size(strings) + std::size(flags) + 3 +
-            (layout_extension ? std::size(layout_strings) + 1 : 0) +
-            (payload_extension ? std::size(payload_strings) + 1 : 0) + (mesh_extension ? 4 : 0) +
-            (physics_extension ? 2 : 0) + (skeletal_extension ? 6 : 0) +
-            (animation_extension ? std::size(animation_strings) + 4 : 0) +
-            (curve_extension ? std::size(curve_strings) : 0) + (nanite_extension ? 4 : 0) +
-            (physical_cloth_extension ? 2 : 0) + (source_limits_extension ? 5 : 0);
+        const auto old_fields = std::size(strings) + std::size(flags) + 3 +
+                                (layout_extension ? std::size(layout_strings) + 1 : 0) +
+                                (payload_extension ? std::size(payload_strings) + 1 : 0) +
+                                (mesh_extension ? 4 : 0) + (physics_extension ? 2 : 0) +
+                                (skeletal_extension ? 6 : 0) +
+                                (animation_extension ? std::size(animation_strings) + 4 : 0) +
+                                (curve_extension ? std::size(curve_strings) : 0) +
+                                (nanite_extension ? 4 : 0) + (physical_cloth_extension ? 2 : 0) +
+                                (source_limits_extension ? 5 : 0) + (defaults_extension ? 5 : 0);
         const auto pose_fields = std::size(pose_strings) + 4;
         const bool pose_extension = s.size() == old_fields + pose_fields;
         require(s.is_object() && (pose_extension || (j["schema"] != "cyuediff.workspace/4" &&
                                                      !layout_extension && s.size() == old_fields)),
                 "Unexpected workspace settings");
+        if (defaults_extension) {
+            for (const auto &field : defaults_strings) {
+                require(s.contains(field.first), "Missing prepared default context setting");
+                saved.settings.*field.second = text(s.at(field.first));
+            }
+            require(s.contains("inherit_after_defaults_context") &&
+                        s.at("inherit_after_defaults_context").is_boolean(),
+                    "Missing prepared default inheritance");
+            saved.settings.inherit_after_defaults_context =
+                s.at("inherit_after_defaults_context").get<bool>();
+        }
         if (source_limits_extension) {
             for (const char *key : {"max_properties", "max_property_bytes", "after_max_properties",
                                     "after_max_property_bytes", "inherit_after_source_limits"})

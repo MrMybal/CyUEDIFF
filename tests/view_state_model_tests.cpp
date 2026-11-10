@@ -101,6 +101,14 @@ int main() {
         rejects({{"properties", large}}, "side");
         view_state::validate({{"selected", nullptr}}, "property");
         ++checks;
+        view_state::validate(
+            {{"effectiveProperties", true},
+             {"effectiveDefaults", {{"mode", "before"}, {"before", {{"scope", "/field/value"}}}}}},
+            "asset");
+        view_state::validate({{"effectiveDefaults", true}}, "shell-layout");
+        checks += 2;
+        rejects({{"mode", "execute"}}, "effective-defaults");
+        rejects({{"before", {{"scope", "bad~3"}}}}, "effective-defaults");
         std::cout << checks << " view state model checks passed\n";
         return 0;
     } catch (const std::exception &e) {

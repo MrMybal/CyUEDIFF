@@ -47,6 +47,8 @@ class DefaultContext {
   public:
     static DefaultContext read(const fs::path &, const DefaultContextReadOptions & = {});
     const DefaultSnapshot &snapshot() const;
+    // Resolved manifest, capture and recorded input paths, including captured absences.
+    const std::vector<fs::path> &input_files() const;
     const Json &source_profile() const;
     const Json &provenance() const;
     const std::string &sha256() const;

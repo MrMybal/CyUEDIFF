@@ -14,11 +14,11 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-source-limits-desktop-',dir=P
     for locale in ('en','fr'):
         first=run('--before',source,'--after',source,'--max-properties',2000000,'--after-max-properties',100000,'--locale',locale,'--document-action','view-state:'+json.dumps({'layout':{'sourceLimits':True}}),'--save-workspace',workspace)
         assert first['document']['diff']['status']=='identical' and first['document']['readLimits']['before']['maxProperties']==2000000 and first['document']['readLimits']['after']['maxProperties']==100000
-        saved=json.loads(workspace.read_text(encoding='utf-8'));assert saved['schema']=='cyuediff.workspace/14' and not saved['documents'][0]['settings']['inherit_after_source_limits'] and saved['documents'][0]['viewState']['layout']['sourceLimits']
+        saved=json.loads(workspace.read_text(encoding='utf-8'));assert saved['schema']=='cyuediff.workspace/15' and not saved['documents'][0]['settings']['inherit_after_source_limits'] and saved['documents'][0]['viewState']['layout']['sourceLimits']
         assert run('--workspace',workspace)['document']==first['document']
     for version in range(13,14):
         legacy=json.loads(workspace.read_text(encoding='utf-8'));legacy['schema']='cyuediff.workspace/'+str(version)
-        for key in ('max_properties','max_property_bytes','after_max_properties','after_max_property_bytes','inherit_after_source_limits'):legacy['documents'][0]['settings'].pop(key)
+        for key in ('defaults_context','after_defaults_context','defaults_object','after_defaults_object','inherit_after_defaults_context','max_properties','max_property_bytes','after_max_properties','after_max_property_bytes','inherit_after_source_limits'):legacy['documents'][0]['settings'].pop(key)
         old=root/'legacy.json';old.write_text(json.dumps(legacy),encoding='utf-8')
         upgraded=run('--workspace',old,'--save-workspace',workspace);assert 'readLimits' not in upgraded['document']
         settings=json.loads(workspace.read_text(encoding='utf-8'))['documents'][0]['settings'];assert settings['max_properties']==100000 and settings['max_property_bytes']==33554432 and settings['inherit_after_source_limits']
