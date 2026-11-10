@@ -4,11 +4,11 @@ Source development 0.191 retains explicit per-binding definition identities sepa
 
 ## Declarative binary layouts
 
-`BinaryLayouts::decoder_registry()` computes a canonical SHA-256 for each binding. It covers the ordered wire/output program, referenced definitions, binding kind/target, certified archive/custom-version profile, prefix mode and an explicit interpreter contract version. String nodes use their effective narrow encoding. Object nodes include the selected package-reference mode or the host resolver identity.
+`BinaryLayouts::decoder_registry()` computes a canonical SHA-256 for each binding. It covers the ordered wire/output program, referenced definitions, binding kind/target, prefix mode and an explicit interpreter contract version. String nodes use their effective narrow encoding. Object nodes include the selected package-reference mode or the host resolver identity.
 
 The fingerprint excludes unrelated catalogue entries, local layout names and read/cancellation budgets. Shared layout references are hashed in validated dependency order instead of expanding their output trees. Renaming a layout or replacing an inline node by an equivalent reference preserves the definition identity. Record member names/order, integer sign/width, referenced definitions and effective text interpretation remain significant. These hashes identify supplied descriptions; they do not prove a description matches an Unreal producer.
 
-The whole-catalogue SHA-256 remains separate provenance. Changing an unrelated definition can change that catalogue context without making the current native values incompatible. A profile change is conservatively a different certified binding even if both profiles still accept this particular archive.
+The whole-catalogue SHA-256 remains separate provenance. Changing an unrelated definition can change that catalogue context without making the current native values incompatible. Since 0.192, contract `cyuediff.binary-layout-definition/2` excludes matched profile intervals and GUID selectors: these constrain applicability without altering a matched wire/output program. Version-one historical fingerprints remain distinct.
 
 ## Host callbacks and reference resolvers
 
@@ -30,6 +30,8 @@ The reusable EN/FR property browser shows Unknown for incompatible correspondenc
 
 ## SDK and limits
 
-Rebuild hosts against matching 0.191 headers/libraries: `Package`, `AssetDecoder` and `BinaryLayoutReadOptions` gained members. No catalogue format change or new desktop selection is required. The [installed source comparison example](../examples/source_diff_consumer/) carries independent catalogues through the reader and streams the report. The [callback consumer](../examples/decoder_consumer/) demonstrates host-declared schema hashes, fixture ownership checks and streamed output; its declaration is not callback binary attestation.
+Rebuild hosts against matching 0.192 headers/libraries: `Package`, `AssetDecoder` and `BinaryLayoutReadOptions` gained members. No catalogue format change or new desktop selection is required. The [installed source comparison example](../examples/source_diff_consumer/) carries independent catalogues through the reader and streams the report. The [callback consumer](../examples/decoder_consumer/) demonstrates host-declared schema hashes, fixture ownership checks and streamed output; its declaration is not callback binary attestation.
 
-The implementation validates bounded supplied definitions and supports cancellation. This is interpretation provenance, not a process memory cap, a schema-discovery mechanism or a native serializer sandbox. Struct GUID ownership, class/archetype defaults, canonical logical map keys and additional producer validation remain separate work. See [source availability](SOURCE_AVAILABILITY.md) and [validation](VALIDATION.md).
+The implementation validates bounded supplied definitions and supports cancellation. This is interpretation provenance, not a process memory cap, a schema-discovery mechanism or a native serializer sandbox. Further producer ownership, class/archetype defaults, canonical logical map keys and additional producer validation remain separate work. See [source availability](SOURCE_AVAILABILITY.md) and [validation](VALIDATION.md).
+
+See [stored struct identity](STRUCT_IDENTITY.md) for the 0.192 GUID and explicit serialization contract.

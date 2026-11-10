@@ -42,18 +42,11 @@ struct DefinitionIdentity {
         return hash(normalized);
     }
     std::string binding(const AssetDecoder &entry, const std::string &name) const {
-        Json custom = Json::object();
-        for (const auto &version : entry.profile.custom_versions)
-            custom[version.first] = Json::array({version.second.min, version.second.max});
-        return hash({{"schema", "cyuediff.binary-layout-definition/1"},
+        return hash({{"schema", "cyuediff.binary-layout-definition/2"},
                      {"interpreter", "cyuediff.binary-layout-reader/1"},
                      {"kind", entry.kind == DecoderKind::struct_value ? "struct" : "native-export"},
                      {"target", entry.target},
                      {"prefix", entry.prefix == DecoderPrefix::none ? "none" : "tagged-properties"},
-                     {"profile",
-                      {{"ue4", Json::array({entry.profile.ue4.min, entry.profile.ue4.max})},
-                       {"ue5", Json::array({entry.profile.ue5.min, entry.profile.ue5.max})},
-                       {"customVersions", std::move(custom)}}},
                      {"programSha256", layouts.at(name)}});
     }
 };

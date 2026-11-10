@@ -44,6 +44,10 @@ DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_
             (entry.definition_sha256.size() != 64 ||
              entry.definition_sha256.find_first_not_of("0123456789abcdef") != std::string::npos))
             throw Error("decoder-registration", "Expected a canonical decoder definition SHA-256");
+        if (!entry.struct_guid.empty() &&
+            (entry.kind != DecoderKind::struct_value || entry.struct_guid.size() != 32 ||
+             entry.struct_guid.find_first_not_of("0123456789abcdef") != std::string::npos))
+            throw Error("decoder-registration", "Expected a canonical struct-only GUID selector");
         range(entry.profile.ue4);
         range(entry.profile.ue5);
         for (const auto &version : entry.profile.custom_versions) {
@@ -56,14 +60,16 @@ DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_
     }
 }
 const AssetDecoder *DecoderRegistry::find(DecoderKind kind, const std::string &target,
-                                          const PackageSummary &summary) const {
+                                          const PackageSummary &summary,
+                                          const std::string &struct_guid) const {
     const AssetDecoder *match = nullptr;
     auto candidates = index_.find({kind, target});
     if (candidates == index_.end())
         return nullptr;
     for (auto index : candidates->second) {
         const auto &entry = entries_[index];
-        if (entry.profile.matches(summary)) {
+        if (entry.profile.matches(summary) &&
+            (entry.struct_guid.empty() || entry.struct_guid == struct_guid)) {
             if (match)
                 throw Error("decoder-ambiguous", "Multiple decoder profiles match " + target);
             match = &entry;
@@ -198,7 +204,8 @@ void validate_extension_value(const Json &value, const ReadOptions &options,
 Json decode_extension(Archive &a, const Package &package, const ObjectExport &object,
                       const ReadOptions &options, const AssetDecoder &decoder, std::uint64_t end,
                       bool exact_size, const std::function<void(std::uint32_t, std::uint64_t)> &charge,
-                      unsigned depth, bool prefix_consumed, const Json *tagged_properties) {
+                      unsigned depth, bool prefix_consumed, const Json *tagged_properties,
+                      const TaggedType *effective_type) {
     if (end < a.tell() || end - a.tell() > options.max_property_bytes)
         throw Error("decoder-limit", "Decoder input exceeds byte limit", a.tell());
     Archive::ReadLimit limit(a, end);
@@ -208,8 +215,8 @@ Json decode_extension(Archive &a, const Package &package, const ObjectExport &ob
             throw Error("decoder-limit", "Native decoder exceeds enclosing depth", a.tell());
         auto selected = options;
         selected.max_depth -= depth;
-        auto value = decoder.decode(
-            input, {package.summary, object, exact_size, charge, selected.max_depth, tagged_properties});
+        auto value = decoder.decode(input, {package.summary, object, exact_size, charge, selected.max_depth,
+                                            tagged_properties, effective_type});
         if (input.failed())
             throw Error("decoder-input", "Decoder suppressed an input error", a.tell());
         if ((exact_size && input.remaining()) || (!exact_size && !input.position() && !prefix_consumed))

@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.192.0 — GUID des structures et sérialisation explicite
+
+Les GUID des structures, propriétaires complets et tags internes des anciens tableaux sont conservés. Un certificat de sérialisation réfléchi lit les maps de propriétés stockées vides sans inventer les valeurs par défaut. Les extensions natives peuvent sélectionner un GUID exact et consulter le type effectif emprunté. La comparaison tient compte des identités observées. La version deux des empreintes distingue les contraintes de sélection du programme immuable. Recompilez les intégrations avec les en-têtes et bibliothèques 0.192 correspondants. [Contract](docs/STRUCT_IDENTITY.md).
+
 ## 0.191.0 — Identité des définitions de décodeurs natifs
 
 Les packages source conservent une empreinte par définition liée au décodeur, séparée des valeurs stockées. Les registres déclaratifs suivent les programmes et références sans transformer les ajouts sans rapport au catalogue ou les renommages internes en changements de format natif. Une définition modifiée sous le même identifiant conserve les valeurs lisibles mais rend leur correspondance indéterminée ; les changements indépendants du préfixe réfléchi restent visibles. Les callbacks/résolveurs de l’hôte gardent leurs obligations d’identité stable. Recompilez avec les en-têtes/bibliothèques 0.191 correspondants ; la dernière archive Windows vérifiée reste la 0.182. [Contrat](docs/DECODER_IDENTITY.md).

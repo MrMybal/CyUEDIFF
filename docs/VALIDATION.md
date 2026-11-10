@@ -1403,3 +1403,11 @@ Matching 0.191 headers/libraries are required after the Package/AssetDecoder/Bin
 A final sequential CLI observation on the original large Humanoid pair preserves all 34,550 known rows and one unknown scope against the frozen 0.190 SDK. The only report change is 534 bytes of explicit definition provenance. Peak working sets were 283,160,576 versus 283,209,728 bytes (~270 MiB), with 2.27 versus 2.23 seconds observed. These single process observations are not memory caps or timing guarantees.
 
 All 1,851 previously frozen corpus/reference/SDK/proof files remain unchanged. Precommit Gitleaks 8.30.1 scans 861 publishable files and Git history with zero findings; postcommit evidence is retained separately. No binaries, website or repository changes are pushed or published by this milestone.
+
+## Stored struct identity — 0.192
+
+Ninety-one original source identity checks cover legacy and complete tags, separate member/struct GUIDs, qualified owners, matching/mismatching callback selection, ambiguous registrations, reflected/native certificates, following-field recovery, array inner tags, source correspondence and identity text budgets. The full final Core-only configuration passes 170 suites.
+
+Actual Unreal 5.3.2 serialization of a private user-defined `IntPoint` and native zero/nonzero controls independently confirms the eight-byte collision, stored GUID and API identity. Validation wraps the actual property streams in controlled headers and identifies that distinction explicitly. The installed Core/CLI and a separately compiled callback consumer reject an incorrect native selection and preserve native `(0,0)`/`(9,-4)` controls. A matching tagged certificate reads the stored empty override map without inventing its one omitted declared field.
+
+The fresh installed SDK rechecks 110 original hybrid API values and 819,102 physical API values. A changed matched profile/GUID selector preserves all 22 existing actual source changes and native definition identities while retaining different whole-catalogue provenance. Earlier 2,149 frozen inputs are unchanged. Local archive/runtime/startup/consumer records and native screenshots remain separate delivery evidence; no current hosted run, public release or general producer/default coverage is implied.

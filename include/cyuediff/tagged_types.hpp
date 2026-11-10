@@ -7,13 +7,16 @@ struct TaggedType {
     std::vector<TaggedType> parameters;
     // Exact metadata struct identity. Serialized tag spelling remains separate.
     std::string schema;
+    // Canonical custom struct GUID; empty means unavailable, zero means no custom GUID.
+    std::string struct_guid;
 };
 struct TaggedTypesOptions {
     std::size_t max_nodes = 100'000, max_text_bytes = 2 * 1024 * 1024;
     std::uint32_t max_depth = 48;
     OperationControl control;
 };
-// Immutable explicit source metadata. Completes omitted type parameters, never defaults or serializers.
+// Immutable explicit source metadata. Completes type identities; optional wire certificates never supply defaults.
+enum class TaggedSerialization { unspecified, tagged, native };
 class TaggedTypes {
     struct Impl;
     std::shared_ptr<const Impl> impl_;
@@ -28,6 +31,9 @@ class TaggedTypes {
     const TaggedType *property(const std::string &owner, const std::string &field, std::uint32_t array_index,
                                const PackageSummary &) const;
     bool native(const std::string &owner) const;
+    // Explicit serialization certificate, with profile/GUID consistency checks where declared.
+    TaggedSerialization serialization(const std::string &owner, const std::string &struct_guid,
+                                      const PackageSummary &) const;
     const std::string &sha256() const;
     Json to_json() const;
     static TaggedType complete(const TaggedType &serialized, const TaggedType &declared);

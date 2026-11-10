@@ -107,7 +107,8 @@ int main() {
         }
         other = c;
         other["decoders"][0]["profile"]["ue5"] = {1000, 1018};
-        check(identity(other) != original, "Changed certified profiles retain a distinct definition");
+        check(identity(other) == original,
+              "Matched profile intervals are applicability context rather than wire changes");
         auto strings = catalogue(scalar("string"));
         other = strings;
         other["narrowStringEncoding"] = "ascii";

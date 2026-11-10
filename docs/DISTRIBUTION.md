@@ -50,3 +50,9 @@ The Windows desktop archive includes `START_HERE.txt` in English/French and the 
 Git distribution checks create their own bounded, original two-commit repository with disabled hooks/templates and known bytes, then verify that history/delta reads leave every fixture file unchanged. They do not depend on the source checkout’s ownership, history, user settings or remotes. Original IoStore fixtures now contain matching required BLAKE3-160 metadata; a changed payload with unchanged metadata must be rejected rather than bypassing integrity.
 
 The verifier writes `validation.json` beside the retained extraction only after all requested checks pass. It identifies the archive hash, extracted prefix, version, header count, manual/desktop components and whether SDK consumers were run. The site builder accepts a copied version-matching successful record via `--local-build-record`; download inclusion remains explicit and local.
+
+## Runtime identity and helper selection — 0.192
+
+New build metadata records `msvcRuntime` as `static`, `dynamic`, `host-configured` or `not-applicable`. The bilingual startup file states the matching requirement. A Release consumer of a static-runtime SDK must also configure `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`; the archive verifier checks that its `--static-runtime` selection agrees with declared metadata before compiling consumers. Static runtime linkage does not embed Windows/Direct3D or a Git installation.
+
+Repository helper scripts and script-based tests require Python 3.10 or newer. The build helper passes its validated interpreter to CMake; direct CMake configuration selects a compatible interpreter. Unreal's separate embedded Python used by the optional Engine reference adapter is not substituted for this tooling requirement.

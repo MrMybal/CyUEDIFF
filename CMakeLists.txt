@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.191.0 LANGUAGES C CXX)
+project(CyUEDiff VERSION 0.192.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -441,7 +441,10 @@ if(BUILD_TESTING)
     target_link_libraries(cyuediff_container_tests PRIVATE CyUEDiff::Core)
     add_test(NAME containers COMMAND cyuediff_container_tests)
     if(CYUEDIFF_BUILD_CLI)
-        find_package(Python3 QUIET COMPONENTS Interpreter)
+        find_package(Python3 3.10 QUIET COMPONENTS Interpreter)
+        if(NOT Python3_Interpreter_FOUND)
+            message(STATUS "Python 3.10+ not found: script-based CLI/desktop tests are disabled")
+        endif()
         if(Python3_Interpreter_FOUND)
             add_test(NAME mesh_morph_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/mesh_morph_cli_tests.py" "$<TARGET_FILE:cyuediff>"
@@ -617,6 +620,9 @@ if(BUILD_TESTING)
     add_executable(cyuediff_value_coverage_tests tests/value_coverage_tests.cpp)
     target_link_libraries(cyuediff_value_coverage_tests PRIVATE CyUEDiff::Core)
     add_test(NAME value_coverage COMMAND cyuediff_value_coverage_tests)
+    add_executable(cyuediff_struct_identity_tests tests/struct_identity_tests.cpp)
+    target_link_libraries(cyuediff_struct_identity_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME struct_identity COMMAND cyuediff_struct_identity_tests)
     add_executable(cyuediff_decoder_identity_tests tests/decoder_identity_tests.cpp)
     target_link_libraries(cyuediff_decoder_identity_tests PRIVATE CyUEDiff::Core)
     add_test(NAME decoder_identity COMMAND cyuediff_decoder_identity_tests)
@@ -1077,6 +1083,26 @@ if(CYUEDIFF_OFFLINE_MANUAL_DIR)
         DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/manual
         PATTERN ".cyuediff-site-output" EXCLUDE PATTERN "downloads" EXCLUDE)
 endif()
+set(CYUEDIFF_INFO_MSVC_RUNTIME "not-applicable")
+set(CYUEDIFF_RUNTIME_EN "This build uses the platform C/C++ runtime.")
+set(CYUEDIFF_RUNTIME_FR "Ce build utilise le runtime C/C++ de la plateforme.")
+if(MSVC)
+    if(CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreaded" OR
+       CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        set(CYUEDIFF_INFO_MSVC_RUNTIME "static")
+        set(CYUEDIFF_RUNTIME_EN "The MSVC runtime is linked statically. Release SDK consumers must configure -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded.")
+        set(CYUEDIFF_RUNTIME_FR "Le runtime MSVC est lié statiquement. Les clients SDK Release doivent configurer -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded.")
+    elseif(NOT CMAKE_MSVC_RUNTIME_LIBRARY OR CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreadedDLL" OR
+           CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+        set(CYUEDIFF_INFO_MSVC_RUNTIME "dynamic")
+        set(CYUEDIFF_RUNTIME_EN "The Windows build requires the matching Visual C++ x64 runtime. SDK consumers must use its matching dynamic runtime.")
+        set(CYUEDIFF_RUNTIME_FR "Le build Windows nécessite le runtime Visual C++ x64 correspondant. Les clients SDK doivent utiliser le même runtime dynamique.")
+    else()
+        set(CYUEDIFF_INFO_MSVC_RUNTIME "host-configured")
+        set(CYUEDIFF_RUNTIME_EN "The host selected a custom MSVC runtime expression. Match that runtime when linking the SDK.")
+        set(CYUEDIFF_RUNTIME_FR "L’hôte a choisi une expression de runtime MSVC personnalisée. Utilisez le même runtime pour lier le SDK.")
+    endif()
+endif()
 if(CYUEDIFF_BUILD_DESKTOP)
     configure_file(packaging/START_HERE.txt.in "${CMAKE_CURRENT_BINARY_DIR}/START_HERE.txt" @ONLY)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/START_HERE.txt" DESTINATION .)
@@ -1173,6 +1199,7 @@ foreach(reference_file IN ITEMS README.md export_reference.py
         CyUEDiffReference/CyUEDiffReference.uplugin
         CyUEDiffReference/Source/CyUEDiffReference/CyUEDiffReference.Build.cs
         CyUEDiffReference/Source/CyUEDiffReference/Public/CyUEDiffReferenceLibrary.h
+        CyUEDiffReference/Source/CyUEDiffReference/Private/CyUEDiffStructIdentityReference.cpp
         CyUEDiffReference/Source/CyUEDiffReference/Private/CyUEDiffReferenceLibrary.cpp)
     get_filename_component(reference_dir "${reference_file}" DIRECTORY)
     install(FILES "tools/unreal_reference/${reference_file}"

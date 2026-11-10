@@ -8,6 +8,7 @@
 #include "skeleton_native.hpp"
 #include "decoders.hpp"
 #include "archive_text.hpp"
+#include "struct_identity.hpp"
 #include <cmath>
 #include <memory>
 #include <set>
@@ -125,15 +126,7 @@ void read_summary(Archive &a, PackageSummary &s) {
     table_range(a, s.export_offset, s.export_count, 80, s.header_size);
 }
 using Type = TaggedType;
-Json type_json(const Type &t) {
-    Json j = {{"name", t.name}};
-    if (!t.parameters.empty()) {
-        j["parameters"] = Json::array();
-        for (const auto &child : t.parameters)
-            j["parameters"].push_back(type_json(child));
-    }
-    return j;
-}
+Json type_json(const Type &t) { return tagged_type_json(t, false); }
 bool read_limit_failed(const Error &error) {
     return error.code == "limit" || error.code == "decoder-limit" || error.code == "layout-limit" ||
            error.code == "text-limit";
@@ -153,6 +146,26 @@ class PropertyReader {
     const ReadOptions &options;
     std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0, native_nodes_ = 0;
     std::uint64_t text_blob_bytes_ = 0, extension_nodes_ = 0, extension_text_ = 0;
+    std::uint64_t identity_text_ = 0;
+    void charge_identity(std::size_t bytes) {
+        if (bytes > options.max_property_bytes - identity_text_)
+            throw Error("text-limit", "Stored type identity text exceeds its source budget", a.tell());
+        identity_text_ += bytes;
+    }
+    std::string identity_name() {
+        auto name = fname(a, p);
+        charge_identity(name.size());
+        return name;
+    }
+    void validate_struct_types(const Type &type) const {
+        if (type.name == "StructProperty") {
+            if (!type.parameters.empty() || p.summary.ue5_version >= 1012)
+                (void)detail::struct_identity(type);
+        } else if (type.name == "ArrayProperty" || type.name == "SetProperty" || type.name == "MapProperty" ||
+                   type.name == "OptionalProperty")
+            for (const auto &part : type.parameters)
+                validate_struct_types(part);
+    }
     std::uint32_t opaque_properties_ = 0;
     void charge_extension(std::uint32_t values, std::uint64_t bytes) {
         options.control.check();
@@ -174,10 +187,17 @@ class PropertyReader {
         if (++type_nodes_ > options.max_properties)
             throw Error("limit", "Type nodes exceed limit", a.tell());
         Type t;
-        t.name = fname(a, p);
+        t.name = identity_name();
         auto n = a.count(options.max_properties);
         for (std::uint32_t i = 0; i < n; ++i)
             t.parameters.push_back(full_type(depth + 1));
+        if (t.name == "StructProperty" && !t.parameters.empty()) {
+            t.schema = detail::struct_symbol_owner(t.parameters[0], false);
+            if (t.parameters.size() == 1)
+                t.struct_guid = detail::zero_struct_guid();
+            else if (t.parameters.size() == 2)
+                t.struct_guid = detail::normalized_struct_guid(t.parameters[1].name);
+        }
         return t;
     }
     Json extensions() {
@@ -195,7 +215,7 @@ class PropertyReader {
     }
     Tag tag() {
         Tag t;
-        t.name = fname(a, p);
+        t.name = identity_name();
         if (t.name == "None")
             return t;
         if (++count_ > options.max_properties || extension_nodes_ > options.max_properties - count_)
@@ -215,14 +235,15 @@ class PropertyReader {
                 t.extensions = extensions();
             t.boolean = (t.flags & 0x10) != 0;
         } else {
-            t.type.name = fname(a, p);
+            t.type.name = identity_name();
             t.bytes = a.count(
                 static_cast<std::uint32_t>(std::min<std::uint64_t>(options.max_property_bytes, UINT32_MAX)));
             t.index = a.count();
-            auto add = [&]() { t.type.parameters.push_back({fname(a, p), {}}); };
+            auto add = [&]() { t.type.parameters.push_back({identity_name(), {}}); };
             if (t.type.name == "StructProperty") {
                 add();
-                a.skip(16);
+                t.type.struct_guid = a.guid();
+                charge_identity(t.type.struct_guid.size());
             } else if (t.type.name == "BoolProperty")
                 t.boolean = a.get<std::uint8_t>() != 0;
             else if (t.type.name == "ByteProperty" || t.type.name == "EnumProperty" ||
@@ -245,7 +266,8 @@ class PropertyReader {
             return value;
         return {{"nonFinite", std::isnan(value) ? "NaN" : (value > 0 ? "Infinity" : "-Infinity")}};
     }
-    Json value(const Type &t, std::uint64_t end, unsigned depth, bool exact_size = true) {
+    Json value(const Type &t, std::uint64_t end, unsigned depth, bool exact_size = true,
+               Type *observed = nullptr, Json *wire_types = nullptr, const std::string &type_path = {}) {
         depth_check(depth);
         const auto &n = t.name;
         if (n == "IntProperty")
@@ -299,13 +321,20 @@ class PropertyReader {
             return path + (sub.empty() ? "" : ":" + sub);
         }
         if (n == "StructProperty" && !t.parameters.empty()) {
-            const auto &s = t.parameters[0].name;
+            const auto identity = detail::struct_identity(t);
+            const auto &s = identity.name;
+            auto serialization = TaggedSerialization::unspecified;
+            const auto owner = identity.owner.empty() ? s : identity.owner;
+            if (options.decoders && options.decoders->tagged_types())
+                serialization =
+                    options.decoders->tagged_types()->serialization(owner, identity.guid, p.summary);
             const AssetDecoder *selected_decoder = nullptr;
             if (options.decoders) {
-                selected_decoder = options.decoders->find(DecoderKind::struct_value, s, p.summary);
-                if (!t.schema.empty() && t.schema != s) {
-                    const auto *qualified =
-                        options.decoders->find(DecoderKind::struct_value, t.schema, p.summary);
+                selected_decoder =
+                    options.decoders->find(DecoderKind::struct_value, s, p.summary, identity.guid);
+                if (!identity.owner.empty() && identity.owner != s) {
+                    const auto *qualified = options.decoders->find(DecoderKind::struct_value, identity.owner,
+                                                                   p.summary, identity.guid);
                     if (qualified && selected_decoder && qualified != selected_decoder)
                         throw Error("decoder-ambiguous", "Both qualified and short struct decoders match",
                                     a.tell());
@@ -330,7 +359,7 @@ class PropertyReader {
                     a, p, object, options, *decoder, end, exact_size,
                     [&](std::uint32_t values, std::uint64_t bytes) { charge_extension(values, bytes); },
                     depth, a.tell() != begin,
-                    decoder->prefix == DecoderPrefix::tagged_properties ? &prefix : nullptr);
+                    decoder->prefix == DecoderPrefix::tagged_properties ? &prefix : nullptr, &t);
                 if (decoder->prefix == DecoderPrefix::tagged_properties) {
                     result["prefix"] = "tagged-properties";
                     result["data"] = {{"properties", std::move(prefix)},
@@ -338,219 +367,219 @@ class PropertyReader {
                 }
                 return result;
             }
-            if (!t.schema.empty() && t.schema.find_first_of("./") != std::string::npos) {
-                static const std::set<std::string> core_builtins = {
-                    "Guid",   "DateTime", "Timespan",    "Box",       "Box3f",       "Box3d",
-                    "Sphere", "Sphere3f", "Sphere3d",    "Matrix",    "Matrix44f",   "Matrix44d",
-                    "Plane",  "Plane4f",  "Plane4d",     "Transform", "Transform3f", "Transform3d",
-                    "Vector", "Rotator",  "Vector3f",    "Vector3d",  "Vector2D",    "Quat",
-                    "Quat4f", "Vector4",  "LinearColor", "IntPoint",  "IntVector",   "Color"};
-                const auto module =
-                    core_builtins.count(s) ? "CoreUObject"
-                    : (s == "RichCurveKey" || s == "RawAnimSequenceTrack" || detail::is_material_input(s))
-                        ? "Engine"
-                        : "";
-                if (*module && t.schema != std::string("/Script/") + module + '.' + s)
-                    throw Error("tagged-types-identity",
-                                "Qualified source type cannot select an unrelated built-in serializer",
-                                a.tell());
-            }
-            if (s == "RichCurveKey") {
-                if (p.summary.ue4_version != 522 || p.summary.licensee_version ||
-                    (p.summary.ue5_version != 0 && p.summary.ue5_version != 1004 &&
-                     p.summary.ue5_version != 1013))
-                    throw Error("curve-layout", "Unverified rich curve key profile", a.tell());
-                if (exact_size && (a.tell() > end || end - a.tell() != 27))
-                    throw Error("curve-layout", "Rich curve key must contain exactly 27 bytes", a.tell());
-                if (native_nodes_ > options.max_properties || options.max_properties - native_nodes_ < 9)
-                    throw Error("limit", "Rich curve key work budget exceeded", a.tell());
-                native_nodes_ += 9;
-                Json out = {{"kind", "rich-curve-key"}};
-                for (const char *field : {"interpMode", "tangentMode", "tangentWeightMode"}) {
-                    options.control.checkpoint("Reading rich curve keys", native_nodes_,
-                                               options.max_properties);
-                    out[field] = a.get<std::uint8_t>();
-                }
-                for (const char *field : {"time", "value", "arriveTangent", "arriveTangentWeight",
-                                          "leaveTangent", "leaveTangentWeight"}) {
-                    options.control.check();
-                    const auto number = a.get<float>();
-                    if (!std::isfinite(number))
-                        throw Error("curve-value", "Non-finite rich curve key", a.tell());
-                    out[field] = number;
-                }
-                return out;
-            }
-            if (s == "RawAnimSequenceTrack") {
-                const auto version = p.summary.custom_versions.value("d89b5e4224bd4d468412aca8df641779", -1);
-                if (version >= 39) {
-                    if (version > 51 || p.summary.ue4_version != 522 ||
-                        (p.summary.ue5_version != 1004 && p.summary.ue5_version != 1013) ||
-                        p.summary.licensee_version)
-                        throw Error("animation-layout", "Unverified raw animation key profile", a.tell());
-                    Json out = {{"kind", "raw-animation-keys"}};
-                    for (const auto &channel :
-                         {std::make_pair("positions", 3u), std::make_pair("rotations", 4u),
-                          std::make_pair("scales", 3u)}) {
+            auto builtin_owner = detail::builtin_struct_owner(s);
+            if (builtin_owner.empty() && detail::is_material_input(s))
+                builtin_owner = "/Script/Engine." + s;
+            const bool builtin_allowed = !identity.custom_guid() &&
+                                         serialization != TaggedSerialization::tagged &&
+                                         (identity.owner.empty() || identity.owner == builtin_owner);
+            if (builtin_allowed) {
+                if (s == "RichCurveKey") {
+                    if (p.summary.ue4_version != 522 || p.summary.licensee_version ||
+                        (p.summary.ue5_version != 0 && p.summary.ue5_version != 1004 &&
+                         p.summary.ue5_version != 1013))
+                        throw Error("curve-layout", "Unverified rich curve key profile", a.tell());
+                    if (exact_size && (a.tell() > end || end - a.tell() != 27))
+                        throw Error("curve-layout", "Rich curve key must contain exactly 27 bytes", a.tell());
+                    if (native_nodes_ > options.max_properties || options.max_properties - native_nodes_ < 9)
+                        throw Error("limit", "Rich curve key work budget exceeded", a.tell());
+                    native_nodes_ += 9;
+                    Json out = {{"kind", "rich-curve-key"}};
+                    for (const char *field : {"interpMode", "tangentMode", "tangentWeightMode"}) {
+                        options.control.checkpoint("Reading rich curve keys", native_nodes_,
+                                                   options.max_properties);
+                        out[field] = a.get<std::uint8_t>();
+                    }
+                    for (const char *field : {"time", "value", "arriveTangent", "arriveTangentWeight",
+                                              "leaveTangent", "leaveTangentWeight"}) {
                         options.control.check();
-                        if (a.get<std::int32_t>() != static_cast<int>(channel.second * 4))
-                            throw Error("animation-layout", "Raw animation key element size mismatch",
-                                        a.tell());
-                        const auto count = a.count(options.max_properties);
-                        if (native_nodes_ > options.max_properties ||
-                            count > (options.max_properties - native_nodes_) / channel.second)
-                            throw Error("limit", "Raw animation key aggregate budget exceeded", a.tell());
-                        Json keys = Json::array();
-                        for (std::uint32_t key = 0; key < count; ++key) {
-                            options.control.checkpoint("Reading raw animation keys", key, count);
-                            Json components = Json::array();
-                            for (unsigned c = 0; c < channel.second; ++c) {
-                                options.control.check();
-                                ++native_nodes_;
-                                const auto component = a.get<float>();
-                                if (!std::isfinite(component))
-                                    throw Error("animation-value", "Non-finite raw animation key", a.tell());
-                                components.push_back(component);
-                            }
-                            keys.push_back(std::move(components));
-                        }
-                        out[channel.first] = std::move(keys);
+                        const auto number = a.get<float>();
+                        if (!std::isfinite(number))
+                            throw Error("curve-value", "Non-finite rich curve key", a.tell());
+                        out[field] = number;
                     }
                     return out;
                 }
-                // Versions before 39 use ordinary tagged property serialization.
-            }
-            if (s == "Guid")
-                return a.guid();
-            if (s == "DateTime" || s == "Timespan")
-                return Json{{"ticks", a.get<std::int64_t>()}};
-            const bool box = s == "Box" || s == "Box3f" || s == "Box3d";
-            const bool sphere = s == "Sphere" || s == "Sphere3f" || s == "Sphere3d";
-            const bool matrix = s == "Matrix" || s == "Matrix44f" || s == "Matrix44d";
-            const bool plane = s == "Plane" || s == "Plane4f" || s == "Plane4d";
-            if (box || sphere || matrix || plane) {
-                const bool narrow = s == "Box3f" || s == "Sphere3f" || s == "Matrix44f" || s == "Plane4f";
-                const bool doubles = !narrow && p.summary.ue5_version >= 1004;
-                // Sphere is immutable binary reflection; combined bounds are ordinary reflected fields.
-                if (s == "Sphere3d" && p.summary.ue5_version < 1004)
-                    throw Error("native-layout", "Pre-LWC explicit double sphere is not certified", a.tell());
-                const std::uint64_t expected = (matrix ? 16
-                                                : box  ? 6
-                                                       : 4) *
-                                                   (doubles ? 8ull : 4ull) +
-                                               (box ? 1 : 0);
-                if (exact_size && (a.tell() > end || end - a.tell() != expected))
-                    throw Error("native-layout", "Native geometry property has an unexpected wire size",
-                                a.tell());
-                auto component = [&]() {
-                    depth_check(depth + 1);
-                    options.control.check();
-                    if (++native_nodes_ > options.max_properties)
-                        throw Error("limit", "Native struct work exceeds configured limit", a.tell());
-                    const double value = doubles ? a.get<double>() : a.get<float>();
-                    if (!std::isfinite(value))
-                        throw Error("native-value", "Non-finite native geometry component", a.tell());
-                    return Json(value);
-                };
-                auto vector = [&]() {
-                    Json result = Json::array();
-                    for (unsigned i = 0; i < 3; ++i)
-                        result.push_back(component());
-                    return result;
-                };
-                if (matrix) {
-                    Json rows = Json::array();
-                    for (unsigned row = 0; row < 4; ++row) {
-                        Json columns = Json::array();
-                        for (unsigned column = 0; column < 4; ++column)
-                            columns.push_back(component());
-                        rows.push_back(std::move(columns));
+                if (s == "RawAnimSequenceTrack") {
+                    const auto version =
+                        p.summary.custom_versions.value("d89b5e4224bd4d468412aca8df641779", -1);
+                    if (version >= 39) {
+                        if (version > 51 || p.summary.ue4_version != 522 ||
+                            (p.summary.ue5_version != 1004 && p.summary.ue5_version != 1013) ||
+                            p.summary.licensee_version)
+                            throw Error("animation-layout", "Unverified raw animation key profile", a.tell());
+                        Json out = {{"kind", "raw-animation-keys"}};
+                        for (const auto &channel :
+                             {std::make_pair("positions", 3u), std::make_pair("rotations", 4u),
+                              std::make_pair("scales", 3u)}) {
+                            options.control.check();
+                            if (a.get<std::int32_t>() != static_cast<int>(channel.second * 4))
+                                throw Error("animation-layout", "Raw animation key element size mismatch",
+                                            a.tell());
+                            const auto count = a.count(options.max_properties);
+                            if (native_nodes_ > options.max_properties ||
+                                count > (options.max_properties - native_nodes_) / channel.second)
+                                throw Error("limit", "Raw animation key aggregate budget exceeded", a.tell());
+                            Json keys = Json::array();
+                            for (std::uint32_t key = 0; key < count; ++key) {
+                                options.control.checkpoint("Reading raw animation keys", key, count);
+                                Json components = Json::array();
+                                for (unsigned c = 0; c < channel.second; ++c) {
+                                    options.control.check();
+                                    ++native_nodes_;
+                                    const auto component = a.get<float>();
+                                    if (!std::isfinite(component))
+                                        throw Error("animation-value", "Non-finite raw animation key",
+                                                    a.tell());
+                                    components.push_back(component);
+                                }
+                                keys.push_back(std::move(components));
+                            }
+                            out[channel.first] = std::move(keys);
+                        }
+                        return out;
                     }
-                    return rows;
+                    // Versions before 39 use ordinary tagged property serialization.
                 }
-                if (plane) {
-                    auto normal = vector(), distance = component();
-                    return {{"normal", std::move(normal)}, {"distance", std::move(distance)}};
+                if (s == "Guid")
+                    return a.guid();
+                if (s == "DateTime" || s == "Timespan")
+                    return Json{{"ticks", a.get<std::int64_t>()}};
+                const bool box = s == "Box" || s == "Box3f" || s == "Box3d";
+                const bool sphere = s == "Sphere" || s == "Sphere3f" || s == "Sphere3d";
+                const bool matrix = s == "Matrix" || s == "Matrix44f" || s == "Matrix44d";
+                const bool plane = s == "Plane" || s == "Plane4f" || s == "Plane4d";
+                if (box || sphere || matrix || plane) {
+                    const bool narrow = s == "Box3f" || s == "Sphere3f" || s == "Matrix44f" || s == "Plane4f";
+                    const bool doubles = !narrow && p.summary.ue5_version >= 1004;
+                    // Sphere is immutable binary reflection; combined bounds are ordinary reflected fields.
+                    if (s == "Sphere3d" && p.summary.ue5_version < 1004)
+                        throw Error("native-layout", "Pre-LWC explicit double sphere is not certified",
+                                    a.tell());
+                    const std::uint64_t expected = (matrix ? 16
+                                                    : box  ? 6
+                                                           : 4) *
+                                                       (doubles ? 8ull : 4ull) +
+                                                   (box ? 1 : 0);
+                    if (exact_size && (a.tell() > end || end - a.tell() != expected))
+                        throw Error("native-layout", "Native geometry property has an unexpected wire size",
+                                    a.tell());
+                    auto component = [&]() {
+                        depth_check(depth + 1);
+                        options.control.check();
+                        if (++native_nodes_ > options.max_properties)
+                            throw Error("limit", "Native struct work exceeds configured limit", a.tell());
+                        const double value = doubles ? a.get<double>() : a.get<float>();
+                        if (!std::isfinite(value))
+                            throw Error("native-value", "Non-finite native geometry component", a.tell());
+                        return Json(value);
+                    };
+                    auto vector = [&]() {
+                        Json result = Json::array();
+                        for (unsigned i = 0; i < 3; ++i)
+                            result.push_back(component());
+                        return result;
+                    };
+                    if (matrix) {
+                        Json rows = Json::array();
+                        for (unsigned row = 0; row < 4; ++row) {
+                            Json columns = Json::array();
+                            for (unsigned column = 0; column < 4; ++column)
+                                columns.push_back(component());
+                            rows.push_back(std::move(columns));
+                        }
+                        return rows;
+                    }
+                    if (plane) {
+                        auto normal = vector(), distance = component();
+                        return {{"normal", std::move(normal)}, {"distance", std::move(distance)}};
+                    }
+                    if (sphere) {
+                        auto center = vector(), radius = component();
+                        return {{"center", std::move(center)}, {"radius", std::move(radius)}};
+                    }
+                    if (box) {
+                        auto minimum = vector(), maximum = vector();
+                        if (++native_nodes_ > options.max_properties)
+                            throw Error("limit", "Native struct work exceeds configured limit", a.tell());
+                        const auto validity = a.get<std::uint8_t>();
+                        return {
+                            {"min", std::move(minimum)}, {"max", std::move(maximum)}, {"isValid", validity}};
+                    }
                 }
-                if (sphere) {
-                    auto center = vector(), radius = component();
-                    return {{"center", std::move(center)}, {"radius", std::move(radius)}};
+                if (s == "Transform3f" || s == "Transform3d" ||
+                    (s == "Transform" && p.summary.ue5_version < 1004)) {
+                    const bool wide =
+                        s == "Transform3d" || (s != "Transform3f" && p.summary.ue5_version >= 1004);
+                    if ((s == "Transform3f" || s == "Transform3d") && p.summary.ue5_version < 1004)
+                        throw Error("native-layout", "Explicit transform variants require an LWC profile",
+                                    a.tell());
+                    if (exact_size && (a.tell() > end || end - a.tell() != (wide ? 80u : 40u)))
+                        throw Error("native-layout", "Immutable transform byte size disagrees with profile",
+                                    a.tell());
+                    if (native_nodes_ > options.max_properties || options.max_properties - native_nodes_ < 10)
+                        throw Error("limit", "Native transform work budget exceeded", a.tell());
+                    native_nodes_ += 10;
+                    auto vector = [&](unsigned count) {
+                        Json values = Json::array();
+                        for (unsigned i = 0; i < count; ++i)
+                            values.push_back(number(wide ? a.get<double>() : a.get<float>()));
+                        return values;
+                    };
+                    Json result;
+                    result["rotation"] = vector(4);
+                    result["translation"] = vector(3);
+                    result["scale"] = vector(3);
+                    return result;
                 }
-                if (box) {
-                    auto minimum = vector(), maximum = vector();
-                    if (++native_nodes_ > options.max_properties)
-                        throw Error("limit", "Native struct work exceeds configured limit", a.tell());
-                    const auto validity = a.get<std::uint8_t>();
-                    return {{"min", std::move(minimum)}, {"max", std::move(maximum)}, {"isValid", validity}};
+                if (detail::is_material_input(s)) {
+                    if (!options.native_materials)
+                        throw Error("material-disabled", "Native material inputs disabled", a.tell());
+                    if (detail::native_material_input(p.summary))
+                        return detail::decode_material_input(a, p, s, end);
+                }
+                unsigned components = 0;
+                bool doubles = false, integers = false;
+                if (s == "Vector" || s == "Rotator" || s == "Vector3f" || s == "Vector3d") {
+                    components = 3;
+                    doubles = s != "Vector3f" && p.summary.ue5_version >= 1004;
+                } else if (s == "Vector2D") {
+                    components = 2;
+                    doubles = p.summary.ue5_version >= 1004;
+                } else if (s == "Quat" || s == "Quat4f" || s == "Vector4") {
+                    components = 4;
+                    doubles = s != "Quat4f" && p.summary.ue5_version >= 1004;
+                } else if (s == "LinearColor")
+                    components = 4;
+                else if (s == "IntPoint") {
+                    components = 2;
+                    integers = true;
+                } else if (s == "IntVector") {
+                    components = 3;
+                    integers = true;
+                } else if (s == "Color") {
+                    Json c = Json::array();
+                    for (int i = 0; i < 4; ++i)
+                        c.push_back(a.get<std::uint8_t>());
+                    return c;
+                }
+                if (components) {
+                    Json v = Json::array();
+                    for (unsigned i = 0; i < components; ++i)
+                        v.push_back(integers ? Json(a.get<std::int32_t>())
+                                             : number(doubles ? a.get<double>() : a.get<float>()));
+                    return v;
                 }
             }
-            if (s == "Transform3f" || s == "Transform3d" ||
-                (s == "Transform" && p.summary.ue5_version < 1004)) {
-                const bool wide = s == "Transform3d" || (s != "Transform3f" && p.summary.ue5_version >= 1004);
-                if ((s == "Transform3f" || s == "Transform3d") && p.summary.ue5_version < 1004)
-                    throw Error("native-layout", "Explicit transform variants require an LWC profile",
-                                a.tell());
-                if (exact_size && (a.tell() > end || end - a.tell() != (wide ? 80u : 40u)))
-                    throw Error("native-layout", "Immutable transform byte size disagrees with profile",
-                                a.tell());
-                if (native_nodes_ > options.max_properties || options.max_properties - native_nodes_ < 10)
-                    throw Error("limit", "Native transform work budget exceeded", a.tell());
-                native_nodes_ += 10;
-                auto vector = [&](unsigned count) {
-                    Json values = Json::array();
-                    for (unsigned i = 0; i < count; ++i)
-                        values.push_back(number(wide ? a.get<double>() : a.get<float>()));
-                    return values;
-                };
-                Json result;
-                result["rotation"] = vector(4);
-                result["translation"] = vector(3);
-                result["scale"] = vector(3);
-                return result;
-            }
-            if (detail::is_material_input(s)) {
-                if (!options.native_materials)
-                    throw Error("material-disabled", "Native material inputs disabled", a.tell());
-                if (detail::native_material_input(p.summary))
-                    return detail::decode_material_input(a, p, s, end);
-            }
-            unsigned components = 0;
-            bool doubles = false, integers = false;
-            if (s == "Vector" || s == "Rotator" || s == "Vector3f" || s == "Vector3d") {
-                components = 3;
-                doubles = s != "Vector3f" && p.summary.ue5_version >= 1004;
-            } else if (s == "Vector2D") {
-                components = 2;
-                doubles = p.summary.ue5_version >= 1004;
-            } else if (s == "Quat" || s == "Quat4f" || s == "Vector4") {
-                components = 4;
-                doubles = s != "Quat4f" && p.summary.ue5_version >= 1004;
-            } else if (s == "LinearColor")
-                components = 4;
-            else if (s == "IntPoint") {
-                components = 2;
-                integers = true;
-            } else if (s == "IntVector") {
-                components = 3;
-                integers = true;
-            } else if (s == "Color") {
-                Json c = Json::array();
-                for (int i = 0; i < 4; ++i)
-                    c.push_back(a.get<std::uint8_t>());
-                return c;
-            }
-            if (components) {
-                Json v = Json::array();
-                for (unsigned i = 0; i < components; ++i)
-                    v.push_back(integers ? Json(a.get<std::int32_t>())
-                                         : number(doubles ? a.get<double>() : a.get<float>()));
-                return v;
-            }
-            if (options.decoders && options.decoders->tagged_types() &&
-                options.decoders->tagged_types()->native(t.schema.empty() ? s : t.schema))
+            if (serialization == TaggedSerialization::native)
                 throw Error("tagged-types-native", "Native struct needs an explicit serializer binding",
                             a.tell());
-            return properties(end, depth + 1, false, t.schema.empty() ? s : t.schema);
+            auto reflected = properties(end, depth + 1, false, owner);
+            if (reflected.empty() && serialization != TaggedSerialization::tagged)
+                throw Error("struct-serialization-ambiguous",
+                            "Empty struct bytes need a tagged serialization certificate or native binding",
+                            a.tell());
+            return reflected;
         }
         if ((n == "MapProperty" && t.parameters.size() == 2) ||
             (n == "SetProperty" && t.parameters.size() == 1)) {
@@ -565,16 +594,23 @@ class PropertyReader {
             };
             auto removed_count = a.count(options.max_properties);
             for (std::uint32_t i = 0; i < removed_count; ++i) {
-                auto key = value(t.parameters[0], end, depth + 1, false);
+                auto key =
+                    value(t.parameters[0], end, depth + 1, false,
+                          observed ? &observed->parameters[0] : nullptr, wire_types, type_path + "/key");
                 insert(removed, key, key);
             }
             auto count = a.count(options.max_properties);
             if (count > options.max_properties - removed_count)
                 throw Error("limit", "Map/set entry budget exceeded", a.tell());
             for (std::uint32_t i = 0; i < count; ++i) {
-                auto key = value(t.parameters[0], end, depth + 1, false);
-                Json data =
-                    map ? Json{{"key", key}, {"value", value(t.parameters[1], end, depth + 1, false)}} : key;
+                auto key =
+                    value(t.parameters[0], end, depth + 1, false,
+                          observed ? &observed->parameters[0] : nullptr, wire_types, type_path + "/key");
+                Json data = map ? Json{{"key", key},
+                                       {"value", value(t.parameters[1], end, depth + 1, false,
+                                                       observed ? &observed->parameters[1] : nullptr,
+                                                       wire_types, type_path + "/value")}}
+                                : key;
                 insert(entries, key, std::move(data));
             }
             return Json{{"kind", map ? "stored-map-delta" : "stored-set-delta"},
@@ -589,16 +625,29 @@ class PropertyReader {
                 auto element = tag();
                 if (element.type.name != "StructProperty" || element.type.parameters.empty())
                     throw Error("array-tag", "Invalid struct array element tag", a.tell());
+                if (wire_types) {
+                    const auto key = type_path + "/*";
+                    const auto raw = type_json(element.type);
+                    if (wire_types->contains(key) && (*wire_types)[key] != raw)
+                        throw Error("array-tag-identity", "Nested array struct identities disagree",
+                                    a.tell());
+                    (*wire_types)[key] = raw;
+                }
                 inner = inner.schema.empty() ? std::move(element.type)
                                              : TaggedTypes::complete(element.type, inner);
             }
             // Legacy array tags omit the enum type. Exact size distinguishes FNames from raw bytes.
+            if (observed)
+                observed->parameters[0] = inner;
             bool enum_names = inner.name == "ByteProperty" && inner.parameters.empty() && count &&
                               p.summary.ue5_version < 1012 && end - a.tell() == std::uint64_t(count) * 8;
             for (std::uint32_t i = 0; i < count; ++i) {
                 if (a.tell() >= end)
                     throw Error("bounds", "Array exceeds property payload", a.tell());
-                values.push_back(enum_names ? Json(fname(a, p)) : value(inner, end, depth + 1, false));
+                values.push_back(enum_names ? Json(fname(a, p))
+                                            : value(inner, end, depth + 1, false,
+                                                    observed ? &observed->parameters[0] : nullptr, wire_types,
+                                                    type_path + "/*"));
             }
             return values;
         }
@@ -633,8 +682,10 @@ class PropertyReader {
                 entry["serializationFlags"] = t.flags;
             if (!t.extensions.is_null())
                 entry["extensions"] = t.extensions;
+            Json wire_types = Json::object();
             try {
                 Archive::ReadLimit property_limit(a, next);
+                validate_struct_types(t.type);
                 auto effective = t.type;
                 if (options.decoders && options.decoders->tagged_types()) {
                     const auto &hints = *options.decoders->tagged_types();
@@ -652,8 +703,12 @@ class PropertyReader {
                     entry["value"] = t.boolean;
                 else if (t.flags & 0x20)
                     entry["value"] = nullptr;
-                else
-                    entry["value"] = value(effective, next, depth + 1);
+                else {
+                    auto observed = effective;
+                    entry["value"] = value(effective, next, depth + 1, true, &observed, &wire_types);
+                    if (tagged_type_json(observed) != tagged_type_json(t.type))
+                        entry["resolvedType"] = tagged_type_json(observed);
+                }
                 if (a.tell() != next)
                     throw Error("opaque", "Property decoder did not consume exact payload", a.tell());
             } catch (const Error &e) {
@@ -667,6 +722,8 @@ class PropertyReader {
                 if (options.fingerprints)
                     entry["opaque"]["sha256"] = a.hash(start, t.bytes);
             }
+            if (!wire_types.empty())
+                entry["wireTypes"] = std::move(wire_types);
             a.seek(next);
             auto key = t.name + (t.index ? "[" + std::to_string(t.index) + "]" : "");
             if (result.contains(key))

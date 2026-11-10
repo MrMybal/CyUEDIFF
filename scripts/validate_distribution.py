@@ -41,6 +41,10 @@ info_path=prefix/'share/CyUEDiff/build-info.json'
 info=json.loads(info_path.read_text(encoding='utf-8')) if info_path.is_file() else None
 if info:
  if info.get('schema')!='cyuediff.build-info/1' or not re.fullmatch(r'\d+\.\d+\.\d+',info.get('version','')):raise RuntimeError('Invalid package build metadata')
+ runtime=info.get('msvcRuntime')
+ if os.name=='nt' and runtime is not None:
+  if runtime not in ('static','dynamic','host-configured'):raise RuntimeError('Invalid MSVC runtime metadata')
+  if runtime in ('static','dynamic') and (runtime=='static')!=args.static_runtime:raise RuntimeError('Match --static-runtime to the archive MSVC runtime metadata')
  if info.get('channel')!='development' or info.get('license')!='MIT' or info['components'].get('uiSdk') is not False:raise RuntimeError('Unexpected package scope')
  if not any(p.parent.name=='CyUEDiff' and p.parent.parent.name=='cmake' for p in prefix.rglob('CyUEDiffConfigVersion.cmake')):raise RuntimeError('Missing installed CMake version contract')
 print('Package metadata: '+(info['version']+' '+info['channel'] if info else 'legacy archive without build metadata'))

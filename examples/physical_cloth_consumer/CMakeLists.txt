@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(CyUEDiffPhysicalClothConsumer LANGUAGES CXX)
-find_package(CyUEDiff 0.191 CONFIG REQUIRED)
+find_package(CyUEDiff 0.192 CONFIG REQUIRED)
 add_executable(physical_cloth_consumer main.cpp)
 target_link_libraries(physical_cloth_consumer PRIVATE CyUEDiff::Core)
 target_compile_features(physical_cloth_consumer PRIVATE cxx_std_17)

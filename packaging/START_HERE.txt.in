@@ -11,7 +11,7 @@ Keep the manual directory together; it uses local scripts, styles and images.
 Build metadata: share/CyUEDiff/build-info.json
 SDK examples: share/CyUEDiff/examples
 License and third-party notices: share/CyUEDiff
-The Windows build requires the matching Visual C++ x64 runtime.
+@CYUEDIFF_RUNTIME_EN@
 Git features require a separate Git installation. Unreal Editor is not a reader dependency.
 This preview has explicit format/profile coverage; see the manual and version notes.
 
@@ -26,6 +26,6 @@ Conservez le dossier du manuel complet : scripts, styles et images sont locaux.
 Métadonnées du build : share/CyUEDiff/build-info.json
 Exemples SDK : share/CyUEDiff/examples
 Licence et notices tierces : share/CyUEDiff
-Le build Windows nécessite le runtime Visual C++ x64 correspondant.
+@CYUEDIFF_RUNTIME_FR@
 Les fonctions Git nécessitent une installation séparée de Git. La lecture ne dépend pas d’Unreal Editor.
 Cet aperçu couvre des profils/formats explicites ; consultez le manuel et les notes de version.

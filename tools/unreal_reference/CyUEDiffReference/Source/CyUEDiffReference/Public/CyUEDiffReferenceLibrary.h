@@ -75,6 +75,10 @@ class CYUEDIFFREFERENCE_API UCyUEDiffReferenceLibrary : public UBlueprintFunctio
     // Bounded original wire fixtures, sampled by the actual per-track codec. No asset writes.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportPerTrackSyntheticReference(UObject *CodecOwner);
+    // Actual tagged/native struct streams for a caller-created private IntPoint user struct.
+    // No asset/file is written here; the type must be in /Game/Corpus/StructIdentity192/.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
+    static FString ExportStructIdentityReference(UObject *Asset);
     // Read-only engine API values, returned as JSON. Caller owns the output destination.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Validation")
     static FString ExportReference(UObject *Asset);

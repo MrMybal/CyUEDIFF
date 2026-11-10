@@ -1,5 +1,6 @@
 #include <cyuediff/tagged_types.hpp>
 #include <cyuediff/schema.hpp>
+#include "struct_identity.hpp"
 #include <cyuediff/string_encoding.hpp>
 #include <set>
 #include <cmath>
@@ -115,9 +116,14 @@ struct Budget {
 TaggedType parse_type(const Json &j, unsigned depth, const TaggedTypesOptions &o, bool symbol = false) {
     if (depth > o.max_depth)
         throw Error("tagged-types-limit", "Metadata type nesting exceeded");
-    fields(j, {"name", "parameters", "schema"});
+    fields(j, {"name", "parameters", "schema", "structGuid"});
     TaggedType t;
     t.name = text(j.at("name"));
+    if (j.contains("structGuid")) {
+        t.struct_guid = text(j["structGuid"]);
+        need(t.name == "StructProperty" && detail::canonical_struct_guid(t.struct_guid),
+             "Expected a canonical struct-property GUID");
+    }
     if (j.contains("schema"))
         t.schema = text(j["schema"]);
     if (j.contains("parameters")) {
@@ -128,7 +134,8 @@ TaggedType parse_type(const Json &j, unsigned depth, const TaggedTypesOptions &o
                                                   t.name == "ByteProperty"));
     }
     if (symbol) {
-        need(t.parameters.empty() && t.schema.empty(), "Metadata identity cannot contain a wire type");
+        need(t.parameters.empty() && t.schema.empty() && t.struct_guid.empty(),
+             "Metadata identity cannot contain a wire type");
         return t;
     }
     bool known = false;
@@ -164,6 +171,8 @@ struct TaggedTypes::Impl {
     struct Schema {
         std::string name, super;
         bool native = false;
+        TaggedSerialization serialization = TaggedSerialization::unspecified;
+        std::string struct_guid;
         std::map<std::string, Property> own, all;
     };
     Json document;
@@ -202,7 +211,7 @@ TaggedTypes TaggedTypes::parse(const Json &j, const TaggedTypesOptions &o) {
         for (auto it = j["schemas"].begin(); it != j["schemas"].end(); ++it) {
             o.control.check();
             text(it.key());
-            fields(it.value(), {"super", "native", "properties"});
+            fields(it.value(), {"super", "native", "properties", "serialization", "structGuid"});
             Impl::Schema s;
             s.name = it.key();
             if (it.value().contains("super") && !it.value()["super"].get_ref<const std::string &>().empty())
@@ -210,6 +219,16 @@ TaggedTypes TaggedTypes::parse(const Json &j, const TaggedTypesOptions &o) {
             if (it.value().contains("native")) {
                 need(it.value()["native"].is_boolean(), "Expected native serializer metadata flag");
                 s.native = it.value()["native"].get<bool>();
+            }
+            if (it.value().contains("serialization")) {
+                const auto mode = text(it.value()["serialization"]);
+                need(mode == "tagged" || mode == "native", "Unsupported struct serialization certificate");
+                s.serialization =
+                    mode == "tagged" ? TaggedSerialization::tagged : TaggedSerialization::native;
+            }
+            if (it.value().contains("structGuid")) {
+                s.struct_guid = text(it.value()["structGuid"]);
+                need(detail::canonical_struct_guid(s.struct_guid), "Invalid source schema struct GUID");
             }
             const auto &props = it.value().at("properties");
             need(props.is_object(), "Expected named metadata properties");
@@ -282,6 +301,19 @@ bool TaggedTypes::native(const std::string &owner) const {
     const auto *s = impl_->find(owner);
     return s && s->native;
 }
+TaggedSerialization TaggedTypes::serialization(const std::string &owner, const std::string &guid,
+                                               const PackageSummary &summary) const {
+    const auto *s = impl_->find(owner);
+    if (!s)
+        return TaggedSerialization::unspecified;
+    if (!matches(summary))
+        throw Error("tagged-types-profile", "Source serialization profile disagrees");
+    if (!s->struct_guid.empty() && !guid.empty() && s->struct_guid != guid)
+        throw Error("tagged-types-guid", "Stored struct GUID contradicts its source context");
+    if (s->serialization != TaggedSerialization::unspecified)
+        return s->serialization;
+    return s->native ? TaggedSerialization::native : TaggedSerialization::unspecified;
+}
 const std::string &TaggedTypes::sha256() const {
     return impl_->hash;
 }
@@ -295,6 +327,8 @@ Json tagged_type_json(const TaggedType &t, bool metadata) {
         for (const auto &p : t.parameters)
             j["parameters"].push_back(tagged_type_json(p, metadata));
     }
+    if (!t.struct_guid.empty())
+        j["structGuid"] = t.struct_guid;
     if (metadata && !t.schema.empty())
         j["schema"] = t.schema;
     return j;
@@ -310,6 +344,12 @@ TaggedType TaggedTypes::complete(const TaggedType &wire, const TaggedType &decl)
         throw Error("tagged-types-conflict", "Stored property kind contradicts metadata");
     }
     auto out = wire;
+    if (wire.name == "StructProperty") {
+        if (!wire.struct_guid.empty() && !decl.struct_guid.empty() && wire.struct_guid != decl.struct_guid)
+            throw Error("tagged-types-conflict", "Stored struct GUID contradicts declared type");
+        if (out.struct_guid.empty())
+            out.struct_guid = decl.struct_guid;
+    }
     if (wire.name == "StructProperty" || wire.name == "EnumProperty" || wire.name == "ByteProperty") {
         if (!wire.parameters.empty() && !decl.parameters.empty() &&
             !identity(wire.parameters[0].name, decl.parameters[0].name))

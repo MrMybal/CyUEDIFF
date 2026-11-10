@@ -25,7 +25,7 @@ const Json &member(const Json &v, const char *key) {
     return i == v.end() ? empty : *i;
 }
 bool same_tag(const Json &a, const Json &b) {
-    for (const auto *key : {"type", "guid", "serializationFlags", "extensions"})
+    for (const auto *key : {"type", "guid", "serializationFlags", "extensions", "wireTypes"})
         if (member(a, key) != member(b, key))
             return false;
     const auto &x = a.contains("resolvedType") ? a["resolvedType"] : a["type"],

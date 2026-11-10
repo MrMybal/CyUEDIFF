@@ -111,10 +111,12 @@ VersionRange version_range(const Json &value) {
     return result;
 }
 AssetDecoder binding(const Json &value) {
-    fields(value, {"id", "kind", "target", "profile", "layout", "prefix"});
+    fields(value, {"id", "kind", "target", "profile", "layout", "prefix", "structGuid"});
     AssetDecoder result;
     result.id = word(value.at("id"));
     result.target = word(value.at("target"));
+    if (value.contains("structGuid"))
+        result.struct_guid = word(value.at("structGuid"));
     const auto kind = word(value.at("kind"));
     require(kind == "struct" || kind == "native-export", "Unsupported layout decoder kind");
     result.kind = kind == "struct" ? DecoderKind::struct_value : DecoderKind::native_export;

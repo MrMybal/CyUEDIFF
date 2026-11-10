@@ -96,3 +96,5 @@ Le script vérifie le changement contrôlé `42 → 44`, l’égalité sur un m�
 Since 0.173, hosts can create this registry from bounded JSON descriptions with `BinaryLayouts::decoder_registry()`, without a C++ callback for each serialized type. See [binary layouts](BINARY_LAYOUTS.md). Exact target/profile selection and opaque-on-error behavior are shared with this API.
 
 Source development 0.191 adds [per-binding native definition identity](DECODER_IDENTITY.md). Interpretation hashes stay separate from asset members; explicit incompatible definitions preserve readable values and mark native correspondence unknown.
+
+Source development 0.192 retains [stored struct GUID/owner identities](STRUCT_IDENTITY.md), supports exact GUID selectors and separates matched profile applicability from immutable declarative program identity.

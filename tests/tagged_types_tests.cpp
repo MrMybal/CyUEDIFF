@@ -161,8 +161,10 @@ int main(int argc, char **argv) {
         auto foreign_options = options;
         foreign_options.decoders = BinaryLayouts::parse(foreign_catalog).decoder_registry();
         auto foreign_package = Package::open(root / "foreign-vector.uasset", foreign_options);
-        check(foreign_package.exports[0].properties["Native"]["opaque"]["reason"] ==
-                      "tagged-types-identity" &&
+        check(!foreign_package.exports[0].properties["Native"].contains("value") &&
+                  foreign_package.exports[0].properties["Native"]["opaque"]["bytes"] == 24 &&
+                  foreign_package.exports[0].properties["Native"]["resolvedType"]["schema"] ==
+                      "/Script/Foreign.Vector" &&
                   foreign_package.exports[0].properties["AfterNative"]["value"] == 987,
               "A foreign qualified basename never silently selects an Engine built-in serializer");
         auto qualified = document;

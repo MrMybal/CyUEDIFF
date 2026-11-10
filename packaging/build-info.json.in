@@ -5,6 +5,7 @@
   "license": "MIT",
   "platform": "@CMAKE_SYSTEM_NAME@",
   "architecture": "@CMAKE_SYSTEM_PROCESSOR@",
+  "msvcRuntime": "@CYUEDIFF_INFO_MSVC_RUNTIME@",
   "components": { "core": true, "cli": @CYUEDIFF_INFO_CLI@, "git": @CYUEDIFF_INFO_GIT@, "desktop": @CYUEDIFF_INFO_DESKTOP@, "uiSdk": false, "manual": @CYUEDIFF_INFO_MANUAL@ },
   "workspaceSchema": @CYUEDIFF_INFO_WORKSPACE@
 }

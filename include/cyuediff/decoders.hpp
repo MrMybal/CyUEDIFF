@@ -18,6 +18,7 @@ struct SerializationProfile {
 };
 enum class DecoderKind { struct_value, native_export };
 enum class DecoderPrefix { none, tagged_properties };
+struct TaggedType;
 struct DecoderContext {
     const PackageSummary &summary;
     const ObjectExport &object;
@@ -28,6 +29,8 @@ struct DecoderContext {
     std::uint32_t max_depth = UINT32_MAX;
     // Borrowed for this callback only. Present for a certified tagged-prefix native tail.
     const Json *tagged_properties = nullptr;
+    // Borrowed for this callback only; nullptr for a native export. Includes effective owner/GUID.
+    const TaggedType *effective_type = nullptr;
 };
 // Sequential, little-endian, borrowed for the callback duration. No seek or whole-file access.
 class DecoderInput {
@@ -74,6 +77,8 @@ struct AssetDecoder {
     // Optional canonical SHA-256 of this implementation/schema, separate from stored values.
     // Hosts remain responsible for stable versioned IDs and honest callback/state identities.
     std::string definition_sha256;
+    // Optional exact canonical struct GUID selector; valid only for struct_value registrations.
+    std::string struct_guid;
 };
 // Immutable after construction. Callbacks and their captured state must support the host's threading.
 class TaggedTypes;
@@ -91,7 +96,8 @@ class DecoderRegistry {
         return tagged_types_;
     }
     // No match returns nullptr; overlapping matches fail instead of depending on registration order.
-    const AssetDecoder *find(DecoderKind, const std::string &target, const PackageSummary &) const;
+    const AssetDecoder *find(DecoderKind, const std::string &target, const PackageSummary &,
+                             const std::string &struct_guid = {}) const;
     std::size_t size() const;
     // Explicit definition hashes for registrations matching this archive profile.
     std::map<std::string, std::string> definitions(const PackageSummary &,

@@ -105,3 +105,5 @@ Optional decoder field `prefix: "tagged-properties"` certifies a source struct's
 Optional top-level `taggedTypes` carries a profile-bound `cyuediff.tagged-types/1` context. `source-types` can prepare it from explicitly selected USMAP roots while preserving a base catalogue. Existing independent CLI/Git/desktop selections carry it, including fingerprints/cache/workspaces. It fills missing type parameters while preserving stored tags, rejecting contradictions and requiring separate certified native bindings. See [TAGGED_TYPES.md](TAGGED_TYPES.md) for the public API, format, budgets and actual source evidence.
 
 Source development 0.191 adds [per-binding native definition identity](DECODER_IDENTITY.md). Interpretation hashes stay separate from asset members; explicit incompatible definitions preserve readable values and mark native correspondence unknown.
+
+Source development 0.192 retains [stored struct GUID/owner identities](STRUCT_IDENTITY.md), supports exact GUID selectors and separates matched profile applicability from immutable declarative program identity.

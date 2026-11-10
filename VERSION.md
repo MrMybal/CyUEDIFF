@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.192.0 — Stored struct GUIDs and explicit serialization
+
+Preserves custom struct GUIDs, complete owners and legacy array inner tags; explicit matching tagged certificates read empty override maps without inventing defaults. Native extensions may select an exact GUID and borrow the effective type. Source value correspondence includes observed identities. Declarative definition contract version two separates matched applicability constraints from immutable program identity. Rebuild integrations against matching 0.192 headers/libraries. [Contract](docs/STRUCT_IDENTITY.md).
+
 ## 0.191.0 — Native decoder definition identity
 
 Source packages retain explicit per-binding definition hashes, separate from stored values. Declarative registries track referenced wire/output programs and certified bindings without treating unrelated catalogue entries or local layout renaming as a native format change. Same-ID changed definitions keep readable values but mark their correspondence unknown, preserving independent hybrid-prefix changes. Host callbacks/resolvers retain explicit stable identity obligations. Rebuild against matching 0.191 headers/libraries; the last verified Windows archive remains 0.182. [Contract](docs/DECODER_IDENTITY.md).

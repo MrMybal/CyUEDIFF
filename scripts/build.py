@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--desktop', action='store_true', help='Build the Windows desktop host (requires --cyui or a cached checkout)')
@@ -12,6 +13,8 @@ parser.add_argument('--oodle-sdk', type=Path, help='Optional host-provided Oodle
 parser.add_argument('--no-git', action='store_true', help='Build only the reader/optional UI, without the Git adapter')
 parser.add_argument('--build-dir', type=Path, default=Path('build-native'))
 args = parser.parse_args()
+if sys.version_info < (3, 10):
+    parser.error("Python 3.10 or newer is required for the helper scripts and script tests")
 root = Path(__file__).resolve().parents[1]
 cmake = shutil.which('cmake')
 if not cmake and os.name == 'nt':
@@ -22,7 +25,7 @@ if not cmake and os.name == 'nt':
 if not cmake:
     parser.error('CMake not found. Install CMake or add it to PATH.')
 env = {key.upper() if os.name == 'nt' else key: value for key, value in os.environ.items()}
-configure = [cmake, '-S', str(root), '-B', str(args.build_dir)]
+configure = [cmake, '-S', str(root), '-B', str(args.build_dir), '-DPython3_EXECUTABLE=' + sys.executable]
 if os.name == 'nt':
     configure += ['-G', 'Visual Studio 17 2022', '-A', 'x64']
 if args.cyui:
