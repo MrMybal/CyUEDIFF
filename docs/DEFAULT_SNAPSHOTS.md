@@ -49,3 +49,7 @@ The selected UE 5.3.2 producer supplies two native class CDOs with source and ed
 The original zero-override asset has no stored root properties while the matching captured CDO contains Count=41. This demonstrates why the missing-value problem matters; it is not a claim that the standalone Core already reconstructs that asset's full effective state.
 
 In 0.196, opt-in [typed name observations](VALUE_IDENTITIES.md) retain exact components and field-relative paths; identity budgets and host charges span the captured fields. The observation index does not implement container equality or resolve asset defaults.
+
+## Prepared source binding (0.198)
+
+The snapshot reader remains unbound. The separate [prepared effective-default context](EFFECTIVE_DEFAULTS.md) now verifies capture-time input fingerprints and applies the documented native/source profile through Core and CLI inspection/differences. It preserves stored package values and offers scoped unavailable results. This selected working path does not complete the broader Blueprint/archetype/cooked/runtime reconstruction described above.

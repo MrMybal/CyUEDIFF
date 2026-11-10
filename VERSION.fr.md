@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.198.0 — Valeurs effectives depuis un contexte préparé
+
+Le Core autonome et la CLI reconstruisent et comparent les propriétés source prises en charge à partir d’un CDO natif préparé, avec empreintes des fichiers enregistrées pendant la capture, copies locales figées facultatives, champs qualifiés et valeurs indisponibles explicites. Les assets natifs réels valident héritage, défauts de membres, remplacement des tableaux, mises à jour des conteneurs, transformations et diffs effectifs. Le profil actuel concerne les sources Windows UE5.3.2 ; Blueprint, cooked, archétypes, comportements d’exécution et branchement dans l’interface restent à compléter. La dernière archive Windows assemblée reste la version 0.194.0. [Contrat](docs/EFFECTIVE_DEFAULTS.md).
+
 ## 0.197.0 — Clés de conteneurs avec identité des noms
 
 Les lecteurs source et par schéma distinguent désormais les clés FName de maps/sets ayant le même affichage, grâce à un format versionné conservant leurs composants. La lecture fonctionne indépendamment des limites des observations facultatives ; les vrais doublons et les budgets de lecture épuisés restent des échecs explicites. Des formats de clés incompatibles restent indéterminés au lieu de créer de faux ajouts/suppressions. Les valeurs effectives par défaut, l’égalité à l’exécution et la comparaison des composants scalaires restent à réaliser. La dernière archive Windows assemblée reste la version 0.194.0. [Contrat](docs/VALUE_IDENTITIES.md).

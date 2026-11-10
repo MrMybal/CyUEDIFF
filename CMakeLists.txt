@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.197.0 LANGUAGES C CXX)
+project(CyUEDiff VERSION 0.198.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     set(CYUEDIFF_TOP_LEVEL ON)
@@ -38,7 +38,7 @@ add_library(cyuediff_core STATIC
     src/atomic_output.cpp src/json_output.cpp src/json_equality.cpp src/source_availability.cpp src/source_limits.cpp src/physical_cloth.cpp src/physical_cloth_diff.cpp src/render_morphs.cpp src/compressed_curves.cpp src/cooked_animation.cpp src/animation_compression.cpp src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
-target_sources(cyuediff_core PRIVATE src/defaults.cpp src/nanite_attributes.cpp src/nanite_surface_diff.cpp src/cooked_nanite.cpp src/nanite_geometry.cpp $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
+target_sources(cyuediff_core PRIVATE src/defaults.cpp src/default_context.cpp src/effective_defaults.cpp src/effective_defaults_diff.cpp src/nanite_attributes.cpp src/nanite_surface_diff.cpp src/cooked_nanite.cpp src/nanite_geometry.cpp $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
 target_compile_features(cyuediff_core PUBLIC cxx_std_17)
 target_include_directories(cyuediff_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -73,7 +73,7 @@ if(CYUEDIFF_BUILD_GIT)
     install(FILES include/cyuediff/git.hpp include/cyuediff/git_binary_delta.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cyuediff)
 endif()
 if(CYUEDIFF_BUILD_CLI)
-    add_executable(cyuediff apps/cli/main.cpp apps/cli/binary_commands.cpp)
+    add_executable(cyuediff apps/cli/main.cpp apps/cli/binary_commands.cpp apps/cli/effective_commands.cpp)
     target_link_libraries(cyuediff PRIVATE CyUEDiff::Core)
     target_compile_definitions(cyuediff PRIVATE CYUEDIFF_VERSION="${PROJECT_VERSION}")
     if(CYUEDIFF_BUILD_GIT)
@@ -126,6 +126,9 @@ if(CYUEDIFF_BUILD_DESKTOP)
     target_link_libraries(cyuediff_desktop PRIVATE cyuediff_desktop_model CyUEDiff::UI d3d11 dxgi comdlg32 shell32)
 endif()
 if(BUILD_TESTING)
+    add_executable(cyuediff_effective_defaults_tests tests/effective_defaults_tests.cpp)
+    target_link_libraries(cyuediff_effective_defaults_tests PRIVATE CyUEDiff::Core)
+    add_test(NAME effective_defaults COMMAND cyuediff_effective_defaults_tests)
     add_executable(cyuediff_value_identity_tests tests/value_identity_tests.cpp)
     target_link_libraries(cyuediff_value_identity_tests PRIVATE CyUEDiff::Core)
     add_test(NAME value_identities COMMAND cyuediff_value_identity_tests)
@@ -458,6 +461,9 @@ if(BUILD_TESTING)
             message(STATUS "Python 3.10+ not found: script-based CLI/desktop tests are disabled")
         endif()
         if(Python3_Interpreter_FOUND)
+            add_test(NAME effective_defaults_cli COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/effective_defaults_cli_tests.py"
+                "$<TARGET_FILE:cyuediff>" "$<TARGET_FILE:cyuediff_effective_defaults_tests>")
             add_test(NAME mesh_morph_cli COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/mesh_morph_cli_tests.py" "$<TARGET_FILE:cyuediff>"
                 "$<TARGET_FILE:cyuediff_mesh_morph_tests>")
@@ -1264,6 +1270,7 @@ install(DIRECTORY examples/property_page_consumer DESTINATION ${CMAKE_INSTALL_DA
 
 install(DIRECTORY examples/physical_cloth_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/default_snapshot_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
+install(DIRECTORY examples/effective_defaults_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY tools/defaults_exporter DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/tools
     PATTERN "Binaries" EXCLUDE PATTERN "Intermediate" EXCLUDE)
 install(FILES docs/DEFAULT_SNAPSHOTS.md DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/docs)
@@ -1277,3 +1284,5 @@ install(FILES scripts/validate_source_physical.py DESTINATION ${CMAKE_INSTALL_DA
 
 install(DIRECTORY examples/value_identity_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(FILES docs/VALUE_IDENTITIES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/docs)
+
+install(FILES scripts/prepare_default_context.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)

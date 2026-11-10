@@ -1,4 +1,5 @@
 #include "binary_commands.hpp"
+#include "effective_commands.hpp"
 #include "../../src/json_output.hpp"
 #include "../../src/atomic_output.hpp"
 #include <cyuediff/curves.hpp>
@@ -58,6 +59,10 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff source-types MAPPING.usmap UE4_VERSION UE5_VERSION ROOT [ROOT...]\n"
                "    [--layouts BASE.json] [--codec MODULE.dll] [--out CATALOGUE.json]\n"
                "  cyuediff layouts DESCRIPTION.json [--out REPORT.json]\n"
+               "  cyuediff effective-inspect ASSET CONTEXT.json [--object EXPORT] [--expect-context SHA256] "
+               "[--out NEW_REPORT.json]\n"
+               "  cyuediff effective-diff BEFORE AFTER --before-context JSON --after-context JSON [--out "
+               "NEW_REPORT.json]\n"
                "  inspect/diff/git-inspect/git-diff accept --layouts DESCRIPTION.json.\n"
                "  diff/git-diff accept independent --after-layouts DESCRIPTION.json.\n"
                "  inspect/git-inspect/zen-inspect accept --name-identities for typed FName components.\n"
@@ -225,6 +230,8 @@ int run(const std::vector<std::string> &args) {
                "Diff exit codes: 0 identical, 1 changes, 2 error/incomplete/unverified.\n";
         return 0;
     }
+    if (args[0] == "effective-inspect" || args[0] == "effective-diff")
+        return run_effective_command(args);
     if (is_binary_command(args[0]))
         return run_binary_command(args);
     std::vector<std::string> positional;

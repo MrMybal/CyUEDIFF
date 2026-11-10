@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.197.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.198.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.197.0**
+> **EN DÉVELOPPEMENT · 0.198.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 

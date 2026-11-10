@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.198.0 — Prepared effective source defaults
+
+The standalone Core and CLI now resolve and compare selected source properties against a prepared native CDO context, with capture-time file fingerprints, optional pinned input copies, qualified fields and scoped unavailable data. Real native assets verify inherited/member defaults, array replacement, container updates, native math and effective differences. Name components remain explicit. This is the documented UE5.3.2 Windows source profile; broader Blueprint/cooked/archetype/runtime behavior and desktop binding remain open. The latest assembled Windows archive remains 0.194.0. [Contract](docs/EFFECTIVE_DEFAULTS.md).
+
 ## 0.197.0 — Typed name container keys
 
 Source and schema readers now distinguish equal-display FName map/set keys using an explicitly versioned component-aware key domain. Functional decoding is independent of optional name observation limits; duplicate keys and exhausted read budgets remain explicit failures. Incompatible legacy/current key domains stay unavailable instead of creating artificial removals/additions. Effective defaults, runtime equality and component-aware scalar comparison remain open. The latest assembled Windows archive remains 0.194.0. [Contract](docs/VALUE_IDENTITIES.md).

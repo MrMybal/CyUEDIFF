@@ -1,8 +1,14 @@
 #include "CyUEDiffDefaultLibrary.h"
+#include "CyUEDiffDefaultSha256.h"
+#include "HAL/FileManager.h"
 #include "Dom/JsonObject.h"
 #include "Engine/UserDefinedStruct.h"
 #include "Internationalization/Text.h"
 #include "Misc/EngineVersion.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/Paths.h"
+#include "HAL/PlatformProcess.h"
+#include "Hash/Blake3.h"
 #include "Modules/ModuleManager.h"
 #include "Serialization/CustomVersion.h"
 #include "Serialization/JsonSerializer.h"
@@ -168,6 +174,105 @@ struct FCapture {
         Work += Units;
         Text += Bytes;
         return true;
+    }
+    JObject Environment() {
+        auto Result = MakeShared<FJsonObject>();
+        Result->SetStringField(TEXT("format"), TEXT("cyuediff.engine-default-environment/1"));
+        Result->SetStringField(TEXT("platform"), PLATFORM_WINDOWS ? TEXT("Windows") : TEXT("Other"));
+        Result->SetStringField(TEXT("byteOrder"), PLATFORM_LITTLE_ENDIAN ? TEXT("little") : TEXT("big"));
+        Result->SetBoolField(TEXT("configurationFileIOFrozen"),
+                             GConfig && GConfig->AreFileOperationsDisabled());
+        auto Files = MakeShared<FJsonObject>();
+        uint64 FileBytes = 0;
+        TArray<uint8> Buffer;
+        Buffer.SetNumUninitialized(64 * 1024);
+        auto Add = [&](const FString &Id, const FString &Role, const FString &Path) {
+            if (!Charge(0, static_cast<int64>(Id.Len() + Role.Len() + Path.Len()) * 3))
+                return;
+            auto File = MakeShared<FJsonObject>();
+            File->SetStringField(TEXT("role"), Role);
+            const FString FullPath = FPaths::ConvertRelativePathToFull(Path);
+            File->SetStringField(TEXT("file"), FullPath);
+            const bool Present = FPaths::FileExists(FullPath);
+            File->SetBoolField(TEXT("present"), Present);
+            if (Present) {
+                TUniquePtr<FArchive> Input(IFileManager::Get().CreateFileReader(*FullPath, FILEREAD_Silent));
+                if (!Input || Input->TotalSize() < 0 ||
+                    static_cast<uint64>(Input->TotalSize()) > 8ull * 1024 * 1024 * 1024 - FileBytes) {
+                    Failed = true;
+                    return;
+                }
+                const uint64 Size = static_cast<uint64>(Input->TotalSize());
+                FileBytes += Size;
+                cyuediff::detail::Sha256 Hash;
+                for (uint64 Read = 0; Read < Size;) {
+                    if (!Charge())
+                        return;
+                    const int64 Count = static_cast<int64>(FMath::Min<uint64>(Buffer.Num(), Size - Read));
+                    Input->Serialize(Buffer.GetData(), Count);
+                    if (Input->IsError()) {
+                        Failed = true;
+                        return;
+                    }
+                    Hash.update(Buffer.GetData(), static_cast<size_t>(Count));
+                    Read += static_cast<uint64>(Count);
+                }
+                if (IFileManager::Get().FileSize(*FullPath) != static_cast<int64>(Size)) {
+                    Failed = true;
+                    return;
+                }
+                File->SetStringField(TEXT("bytes"),
+                                     FString::Printf(TEXT("%llu"), static_cast<unsigned long long>(Size)));
+                File->SetStringField(TEXT("sha256"), UTF8_TO_TCHAR(Hash.finish().c_str()));
+            }
+            Files->SetObjectField(Id, File);
+        };
+        TArray<FModuleStatus> Modules;
+        FModuleManager::Get().QueryModules(Modules);
+        for (const auto &Module : Modules)
+            if (Module.bIsLoaded)
+                Add(TEXT("module:") + Module.Name, TEXT("module"), Module.FilePath);
+        TArray<FString> Configs;
+        if (GConfig)
+            GConfig->GetConfigFilenames(Configs);
+        Configs.Sort();
+        auto ConfigDigests = MakeShared<FJsonObject>();
+        for (int32 I = 0; I < Configs.Num(); ++I) {
+            const FString Id = FString::Printf(TEXT("config:%d"), I);
+            Add(Id, TEXT("config"), Configs[I]);
+            if (const FConfigFile *File = GConfig->FindConfigFile(Configs[I])) {
+                for (const auto &Layer : File->SourceIniHierarchy)
+                    Add(Id + FString::Printf(TEXT(":layer:%d"), Layer.Key), TEXT("config"), Layer.Value);
+                FBlake3 Hash;
+                auto HashText = [&](const FString &Text) {
+                    const uint64 Size = static_cast<uint64>(Text.Len()) * sizeof(TCHAR);
+                    if (!Charge(0, static_cast<int64>(Size)))
+                        return;
+                    Hash.Update(&Size, sizeof(Size));
+                    Hash.Update(*Text, Size);
+                };
+                // Read the live sections directly: FConfigFile owns pointers and must not be shallow-copied.
+                // Length-framed section/key/value text never leaves this process.
+                const uint64 SectionCount = File->Num();
+                Hash.Update(&SectionCount, sizeof(SectionCount));
+                for (const auto &Section : *File) {
+                    HashText(Section.Key);
+                    const uint64 ValueCount = Section.Value.Num();
+                    Hash.Update(&ValueCount, sizeof(ValueCount));
+                    for (const auto &Pair : Section.Value) {
+                        HashText(Pair.Key.ToString());
+                        HashText(Pair.Value.GetValue());
+                    }
+                }
+                ConfigDigests->SetStringField(Id, LexToString(Hash.Finalize()).ToLower());
+            }
+        }
+        Result->SetObjectField(TEXT("mergedConfigBlake3"), ConfigDigests);
+        Add(TEXT("executable"), TEXT("executable"), FPlatformProcess::ExecutablePath());
+        Add(TEXT("engine-build"), TEXT("engine-build"), FPaths::EngineDir() / TEXT("Build/Build.version"));
+        Add(TEXT("project"), TEXT("project"), FPaths::GetProjectFilePath());
+        Result->SetObjectField(TEXT("files"), Files);
+        return Result;
     }
     FString Str(const FString &S) {
         Charge(0, static_cast<int64>(S.Len()) * 3);
@@ -424,6 +529,7 @@ struct FCapture {
         auto J = MakeShared<FJsonObject>();
         Structures->SetObjectField(Str(Path), J);
         J->SetStringField(TEXT("schema"), Path);
+        J->SetBoolField(TEXT("postSerialize"), (Type->StructFlags & STRUCT_PostSerializeNative) != 0);
         J->SetStringField(TEXT("structGuid"), Type->GetCustomGuid().ToString(EGuidFormats::Digits).ToLower());
         FStructOnScope Initialized(Type);
         if (const auto *User = Cast<UUserDefinedStruct>(Type)) {
@@ -468,6 +574,7 @@ FString UCyUEDiffDefaultLibrary::Capture(UObject *Object, bool FilterEditorOnly)
     J->SetObjectField(TEXT("structures"), Reader.Structures);
     J->SetObjectField(TEXT("declarations"), Reader.Declarations);
     J->SetObjectField(TEXT("enumerations"), Reader.Enumerations);
+    J->SetObjectField(TEXT("environment"), Reader.Environment());
     J->SetBoolField(TEXT("completeCapture"), !Reader.Failed);
     J->SetNumberField(TEXT("work"), Reader.Work);
     J->SetNumberField(TEXT("textBudgetUsed"), Reader.Text);
@@ -479,6 +586,12 @@ FString UCyUEDiffDefaultLibrary::Capture(UObject *Object, bool FilterEditorOnly)
         J->RemoveField(TEXT("enumerations"));
     }
     return Write(J);
+}
+bool UCyUEDiffDefaultLibrary::BeginReadOnlyCommandletCapture() {
+    if (!IsRunningCommandlet() || !GConfig)
+        return false;
+    GConfig->DisableFileOperations();
+    return true;
 }
 FString UCyUEDiffDefaultLibrary::CaptureNameCaseMap() {
     auto J = MakeShared<FJsonObject>();

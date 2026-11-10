@@ -24,3 +24,7 @@ Only explicitly selected objects are inspected. There is no asset discovery, aut
 Serialization operates on property copies. Arbitrary constructors/native serializers can execute plugin code and cannot be given a universal execution-time bound. Capture limits restrict output/reflection expansion; they do not make unknown serializers discoverable. The field memory archive is independent of source/cooked package serialization.
 
 See [the complete reader contract](../../docs/DEFAULT_SNAPSHOTS.md) and [the installed Core consumer](../../examples/default_snapshot_consumer/README.md).
+
+## Effective source contexts
+
+Version0.198 adds capture-time SHA256 file identities, bounded recorded environment inputs, merged configuration digests and a commandlet-only `BeginReadOnlyCommandletCapture` helper. Warm the selected CDO/reflected initializers with normal configuration IO first; the helper freezes that owned commandlet's configuration file IO for final capture/shutdown and returns false in an interactive editor. It does not save assets. See [preparation, pinned local inputs and Core/CLI resolution](../../docs/EFFECTIVE_DEFAULTS.md). Captures remain data supplied by the explicitly invoked trusted producer; input consistency is not producer authentication or arbitrary runtime emulation. The private SHA256 header is the original MIT Core implementation; independent validation also uses Python hashlib.

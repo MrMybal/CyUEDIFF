@@ -409,6 +409,11 @@ DefaultSnapshot DefaultSnapshot::parse(const std::vector<std::uint8_t> &bytes,
                                               {"fields", reader.fields(it.key(), it->at("fields"))}};
             }
         }
+        for (auto it = document.at("structures").begin(); it != document.at("structures").end(); ++it)
+            if (it->contains("postSerialize")) {
+                require(it->at("postSerialize").is_boolean(), "Invalid captured post-serializer policy");
+                impl->structures[it.key()]["postSerialize"] = it->at("postSerialize");
+            }
         impl->hash = hash;
         impl->provenance = {{"schema", "cyuediff.default-snapshot/1"},
                             {"binding", "unbound"},
@@ -425,6 +430,8 @@ DefaultSnapshot DefaultSnapshot::parse(const std::vector<std::uint8_t> &bytes,
                             {"wireBytes", reader.wire_bytes},
                             {"valuesRead", reader.values_read},
                             {"valueTextBytes", reader.text_bytes}};
+        if (document.contains("environment"))
+            impl->provenance["environment"] = document.at("environment");
         if (options.values.value_identities.names) {
             impl->provenance["identityNamesRead"] = reader.identity_names;
             impl->provenance["identityTextBytes"] = reader.identity_text;
