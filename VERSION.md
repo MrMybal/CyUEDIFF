@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.197.0 — Typed name container keys
+
+Source and schema readers now distinguish equal-display FName map/set keys using an explicitly versioned component-aware key domain. Functional decoding is independent of optional name observation limits; duplicate keys and exhausted read budgets remain explicit failures. Incompatible legacy/current key domains stay unavailable instead of creating artificial removals/additions. Effective defaults, runtime equality and component-aware scalar comparison remain open. The latest assembled Windows archive remains 0.194.0. [Contract](docs/VALUE_IDENTITIES.md).
+
 ## 0.196.0 — Typed name component observations
 
 Optional bounded Core/CLI observations preserve FName plain names and internal numbers without changing legacy display values or container IDs. Source, unversioned, cooked and default-capture reads retain value-relative locations; cache profiles include selection/limits and charged reads bypass retention. Native source assets prove equal displays can conceal different identities. Component-aware key codecs, comparisons and effective-default integration remain open. The latest assembled Windows archive remains 0.194.0. [Contract](docs/VALUE_IDENTITIES.md).

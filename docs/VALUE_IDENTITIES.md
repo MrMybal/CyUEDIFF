@@ -2,7 +2,7 @@
 
 Unreal serializes an FName using a plain name-table entry and an internal number. A literal base `Item_1` with number 0 and base `Item` with number 2 both display as `Item_1`. They are different names in the tested Engine. A display string is insufficient for default/container reconstruction.
 
-The optional Core observation journal retains those components alongside decoded values. It does not change existing property values, encoded container IDs, read-format inventories or asset files. It does not implement runtime name/key equality, effective-default merging or a new name-aware comparison algorithm.
+The optional Core observation journal retains those components alongside decoded values. The journal itself does not change property values, encoded container IDs, read-format inventories or asset files. The independent functional key codec described below changes IDs for keys containing typed names from version 0.197 onward. It does not implement runtime name/key equality, effective-default merging or a new name-aware comparison algorithm.
 
 ## Public reads
 
@@ -32,8 +32,20 @@ Failed source property/export transactions discard observations that cannot addr
 
 `max_names` and `max_text_bytes` default to 100,000 observations and 4 MiB per enclosing operation. Text accounting includes name bases, pointer paths and relocated key paths; failed preparation remains charged. Exhaustion reports an incomplete journal while preserving readable stored values and known observations. Cancellation still aborts the operation. Optional `charge` callbacks run during the read; cache reads with an active charging callback bypass retention. Cached packages distinguish observation selection and limits, and do not retain the callback. These are metadata/work bounds, not a whole-process heap limit.
 
+## Functional container key codec (0.197)
+
+Typed source and schema map/set keys, including removals and reflected/nested children, use their actual FName base/internal number. A key with no observed typed names retains its existing canonical JSON ID. A name-bearing key uses `ue-name/1:[canonicalKey,namesByRelativePointer]`, where each name entry contains only `base` and `number`. The readable key stays in the value. Wire and zero-mask origins do not affect the ID; name-table positions do not affect it. Raw native callback JSON is never reinterpreted as typed names merely because its field names resemble the observation format.
+
+Functional capture runs even with optional observations disabled or exhausted. It uses the enclosing reader's mandatory work/text budgets and aborts the key on incomplete capture; it never falls back to an ambiguous display ID. Completed functional observations may then be replayed into the optional journal, whose independent limits still preserve readable values. Discarded functional preparation remains charged to mandatory reader budgets; optional journal charges apply to observations replayed into that journal.
+
+Legacy canonical JSON and the new typed domain are disjoint. Source and cooked correspondence guards compare populated key domains, including nested source keys. Incompatible domains suppress membership changes and report unavailable correspondence. An empty peer has no IDs to reinterpret and can still show additions/removals. Mixed-domain collections are conservative: a change in the populated domain set may require rereading both sides with the current reader. Existing saved JSON pointers containing old name-bearing IDs must be refreshed; automatic pointer migration is not supplied.
+
+These are stored identities. Case is preserved, without suffix parsing or a claim of Unreal runtime name equality. Custom native equality/hashing, arbitrary Unicode case rules and comparison of hidden scalar-name components remain outside this codec.
+
 ## Evidence and remaining work
 
-Two original UE 5.3.2 source assets reload with native property equality and prove that equal display names can be different FNames. Fourteen published source observations retain the native components, while raw property snapshots agree exactly with the frozen 0.195 reader. Scalar, array and mapped values change their components across the pair without changing their display strings. Native fixture preparation and the Core consumer are separate processes.
+Two original UE 5.3.2 source assets reload with native property equality and prove that equal display names can be different FNames. The 0.196 checkpoint retained fourteen published source observations while raw property snapshots agreed exactly with the frozen 0.195 reader. Scalar, array and mapped values change their components across the pair without changing their display strings. Native fixture preparation and the Core consumer are separate processes.
 
-The fixture also contains two genuinely different map keys with the same display. Existing display-derived container IDs collide, so that property remains opaque; its discarded observations are not exposed as valid value paths. A component-aware key codec and identity-aware comparison/default resolution remain required. Unicode bytes are preserved without case conversion; no universal Unicode or custom native key equality contract is claimed. The desktop has no new component-specific inspector or preference in this milestone.
+The fixture also contains two genuinely different map keys with the same display. The 0.196 display-derived IDs collided and left that property opaque. Version 0.197 introduces the typed key codec to retain both entries. Identity-aware comparison/default resolution remain required. Unicode bytes are preserved without case conversion; no universal Unicode or custom native key equality contract is claimed. The desktop has no new component-specific inspector or preference in this milestone.
+
+The 0.197 native-source proof publishes eighteen names across the same two protected assets, including both formerly colliding keys and their actual integer values 11/22. The installed Core source example agrees with the CLI. Twelve actual cooked packages preserve legacy-readable property values after explicitly projecting the new key IDs back into the old domain; 59 typed-name observations still dereference their decoded values. This projection is a validation method, not an automatic compatibility converter exposed to applications.

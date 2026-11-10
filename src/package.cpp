@@ -394,6 +394,8 @@ class PropertyReader {
                 const auto opaque_before = opaque_properties_;
                 Json prefix;
                 if (decoder->prefix == DecoderPrefix::tagged_properties) {
+                    detail::ValueIdentityJournal::Scope hybrid_data(identities_, "data"),
+                        hybrid_properties(identities_, "properties");
                     prefix = properties(end, depth + 1, false, t.schema.empty() ? s : t.schema);
                     if (opaque_properties_ != opaque_before)
                         throw Error("hybrid-prefix", "Tagged prefix contains unavailable properties", begin);
@@ -641,13 +643,28 @@ class PropertyReader {
             const bool map = n == "MapProperty";
             // These are stored deltas; inherited/default values are deliberately not fabricated.
             Json removed = Json::object(), entries = Json::object();
-            auto key_identity = [&](Json &target, const Json &key) {
-                auto identity = detail::source_key_identity(key, options.control, [&](std::uint64_t bytes) {
-                    if (bytes > options.max_property_bytes - key_text_)
-                        throw Error("text-limit", "Encoded source key identities exceed their text budget",
-                                    a.tell());
-                    key_text_ += bytes;
-                });
+            auto key_charge = [&](std::uint64_t bytes) {
+                if (bytes > options.max_property_bytes - key_text_)
+                    throw Error("text-limit", "Encoded source key identities exceed their text budget",
+                                a.tell());
+                key_text_ += bytes;
+            };
+            ValueIdentityOptions key_options;
+            key_options.max_names = options.max_properties;
+            key_options.max_text_bytes = options.max_property_bytes;
+            key_options.charge = [&](std::uint32_t, std::uint64_t bytes) { key_charge(bytes); };
+            auto key_identity = [&](Json &target, const Json &key,
+                                    detail::ValueIdentityJournal::KeyProbe &probe) {
+                if (!probe.complete())
+                    throw Error("limit", "Functional key name capture exceeded its budget", a.tell());
+                auto names = probe.names();
+                auto identity = detail::named_key_identity(
+                    key, names,
+                    [&](const Json &v, bool raw) {
+                        return detail::source_key_identity(v, options.control, key_charge, !raw);
+                    },
+                    key_charge);
+                probe.publish();
                 if (target.contains(identity))
                     throw Error("container-identity", "Duplicate map/set key", a.tell());
                 return identity;
@@ -655,10 +672,11 @@ class PropertyReader {
             auto removed_count = a.count(options.max_properties);
             for (std::uint32_t i = 0; i < removed_count; ++i) {
                 detail::ValueIdentityJournal::Buffer key_names(identities_);
+                detail::ValueIdentityJournal::KeyProbe probe(identities_, key_options);
                 auto key = value(t.parameters[0], end, depth + 1, false,
                                  observed ? &observed->parameters[0] : nullptr, wire_types,
                                  type_path + "/key", read_formats);
-                auto id = key_identity(removed, key);
+                auto id = key_identity(removed, key, probe);
                 key_names.commit_at({"removed", id});
                 removed[id] = std::move(key);
             }
@@ -667,10 +685,11 @@ class PropertyReader {
                 throw Error("limit", "Map/set entry budget exceeded", a.tell());
             for (std::uint32_t i = 0; i < count; ++i) {
                 detail::ValueIdentityJournal::Buffer key_names(identities_);
+                detail::ValueIdentityJournal::KeyProbe probe(identities_, key_options);
                 auto key = value(t.parameters[0], end, depth + 1, false,
                                  observed ? &observed->parameters[0] : nullptr, wire_types,
                                  type_path + "/key", read_formats);
-                auto id = key_identity(entries, key);
+                auto id = key_identity(entries, key, probe);
                 if (map) {
                     key_names.commit_at({"entries", id, "key"});
                     detail::ValueIdentityJournal::Scope list(identities_, "entries"), item(identities_, id),

@@ -198,6 +198,88 @@ class ValueIdentityJournal {
                 journal_->target_ = previous_;
         }
     };
+    // Functional key capture is independent of optional observation limits. Parent scopes
+    // and transactions stay alive but dormant until this nested frame is restored.
+    class KeyProbe {
+        ValueIdentityJournal &journal_;
+        ValueIdentityOptions options_;
+        Json names_;
+        Json *target_;
+        std::string path_;
+        std::uint32_t entries_;
+        std::uint64_t text_;
+        bool limited_;
+        unsigned paused_, blocked_;
+        bool restored_ = false;
+        void restore() noexcept {
+            if (restored_)
+                return;
+            journal_.options_ = std::move(options_);
+            journal_.names_ = std::move(names_);
+            journal_.target_ = target_;
+            journal_.path_ = std::move(path_);
+            journal_.entries_ = entries_;
+            journal_.text_ = text_;
+            journal_.limited_ = limited_;
+            journal_.paused_ = paused_;
+            journal_.blocked_ = blocked_;
+            restored_ = true;
+        }
+
+      public:
+        KeyProbe(ValueIdentityJournal &journal, ValueIdentityOptions options)
+            : journal_(journal), options_(std::move(journal.options_)), names_(std::move(journal.names_)),
+              target_(journal.target_), path_(std::move(journal.path_)), entries_(journal.entries_),
+              text_(journal.text_), limited_(journal.limited_), paused_(journal.paused_),
+              blocked_(journal.blocked_) {
+            options.names = true;
+            journal_.options_ = std::move(options);
+            journal_.names_ = nullptr;
+            journal_.target_ = &journal_.names_;
+            journal_.path_.clear();
+            journal_.entries_ = 0;
+            journal_.text_ = 0;
+            journal_.limited_ = false;
+            journal_.paused_ = 0;
+            journal_.blocked_ = 0;
+        }
+        KeyProbe(const KeyProbe &) = delete;
+        KeyProbe &operator=(const KeyProbe &) = delete;
+        bool complete() const { return !journal_.limited_; }
+        Json names() const {
+            Json result = Json::object();
+            for (auto it = journal_.names_.begin(); it != journal_.names_.end(); ++it) {
+                journal_.control_.check();
+                result[it.key()] = {{"base", it->at("base")}, {"number", it->at("number")}};
+            }
+            return result;
+        }
+        void publish() {
+            Json observed = std::move(journal_.names_);
+            restore();
+            if (!journal_.options_.names || journal_.limited_ || journal_.paused_ || journal_.blocked_)
+                return;
+            const auto prefix_size = journal_.path_.size();
+            struct RestorePath {
+                std::string &path;
+                std::size_t size;
+                ~RestorePath() { path.resize(size); }
+            } path_scope{journal_.path_, prefix_size};
+            for (auto it = observed.begin(); it != observed.end(); ++it) {
+                journal_.control_.check();
+                if (prefix_size > journal_.options_.max_text_bytes ||
+                    it.key().size() > journal_.options_.max_text_bytes - prefix_size) {
+                    journal_.limited_ = true;
+                    break;
+                }
+                journal_.path_.resize(prefix_size);
+                journal_.path_ += it.key();
+                journal_.name(it->at("base").get_ref<const std::string &>(),
+                              it->at("number").get<std::uint32_t>(), it->at("source") == "zero-mask");
+            }
+        }
+        ~KeyProbe() { restore(); }
+    };
     // Native text/declarative callbacks without a value path cannot claim an identity location.
     class Pause {
         ValueIdentityJournal &journal_;

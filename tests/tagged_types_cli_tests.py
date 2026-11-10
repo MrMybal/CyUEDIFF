@@ -1,4 +1,5 @@
 """Explicit source type metadata preparation/selection, without Engine code execution."""
+from name_key_fixture import name_key_id, key_token
 from pathlib import Path
 import hashlib,json,os,subprocess,sys,tempfile
 exe,fixture=(str(Path(x).resolve()) for x in sys.argv[1:3]);checks=0
@@ -25,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-tagged-types-cli-',dir=Path.c
         run('source-types',root/'types.usmap',522,1004,'DemoAsset','--layouts',root/'base.json','--out',target,code=2)
     before=root/'before.uasset';after=root/'after.uasset';catalog=root/'types.json'
     decoded=run('inspect',before,'--layouts',catalog);props=decoded['snapshot']['objects']['TestAsset']['properties']
-    assert props['Native']['value']['data']['properties']['Lookup']['value']['entries']['"TailName"']['value']['data']['properties']['Marker']['value']==31
+    assert props['Native']['value']['data']['properties']['Lookup']['value']['entries'][name_key_id('TailName')]['value']['data']['properties']['Marker']['value']==31
     assert decoded['sourceTypeContext']['profileMatched'] and not decoded['sourceTypeContext']['defaultsResolved']
     changed=run('diff',before,after,'--layouts',catalog,code=1)
     assert any(x['path'].endswith('/properties/Mode/value') for x in changed['changes'])

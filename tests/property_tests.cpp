@@ -1,3 +1,4 @@
+#include "name_key_fixture.hpp"
 #include "package_fixture.hpp"
 #include <chrono>
 #include <iostream>
@@ -133,9 +134,9 @@ int main() {
             auto a = Package::open(save(root, "before", example(version)));
             auto b = Package::open(save(root, "after", example(version, true)));
             const auto &p = a.exports.at(0).properties;
-            check(p.at("Map").at("value").at("entries").at("\"Alpha\"").at("value") == 10,
+            check(p.at("Map").at("value").at("entries").at(test_name_key_id("Alpha")).at("value") == 10,
                   "Map keys carry stable typed values");
-            check(p.at("Map").at("value").at("removed").at("\"Beta\"") == "Beta",
+            check(p.at("Map").at("value").at("removed").at(test_name_key_id("Beta")) == "Beta",
                   "Removed map keys remain explicit deltas");
             check(p.at("Set").at("value").at("removed").at("99") == 99, "Set removal retained");
             check(p.at("Set").at("value").at("entries").size() == 2, "Set elements decoded");

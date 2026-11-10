@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/core.hpp>
 #include <cmath>
+#include <set>
 namespace cyuediff::detail {
 inline bool source_key_tag(const Json &value) {
     if (!value.is_object() || (!value.contains("value") && !value.contains("opaque")))
@@ -95,5 +96,52 @@ std::string source_key_identity(const Json &key, const OperationControl &control
     };
     write(key, normalize ? Mode::source : Mode::raw, 0);
     return output;
+}
+// Legacy keys are canonical JSON; typed keys use a disjoint, explicitly versioned domain.
+inline std::string key_encoding(const std::string &id) {
+    if (id.compare(0, 8, "ue-name/") != 0)
+        return "json";
+    const auto end = id.find(':', 8);
+    return end != std::string::npos && end <= 64 ? id.substr(0, end) : "ue-name/unknown";
+}
+template <class Visit> void collection_key_encodings(const Json &value, Visit visit) {
+    for (const auto *part : {"removed", "entries"}) {
+        const auto found = value.find(part);
+        if (found == value.end() || !found->is_object())
+            continue;
+        for (auto it = found->begin(); it != found->end(); ++it)
+            visit(key_encoding(it.key()));
+    }
+}
+inline bool compatible_key_encodings(const Json &a, const Json &b, const OperationControl &control) {
+    std::set<std::string> af, bf;
+    collection_key_encodings(a, [&](const std::string &format) {
+        control.check();
+        af.insert(format);
+    });
+    collection_key_encodings(b, [&](const std::string &format) {
+        control.check();
+        bf.insert(format);
+    });
+    // An empty peer has no IDs to reinterpret. Mixed domains stay conservative.
+    return af.empty() || bf.empty() || af == bf;
+}
+// Distinguish real serialized names from raw JSON objects that merely resemble them.
+// The display tree remains readable; names are indexed by their actual value-relative paths.
+template <class Canonical, class Charge>
+std::string named_key_identity(const Json &key, const Json &names, Canonical canonical, Charge charge) {
+    if (names.empty())
+        return canonical(key, false);
+    auto append = [&](std::string &out, const std::string &text) {
+        charge(text.size());
+        out += text;
+    };
+    std::string result;
+    append(result, "ue-name/1:[");
+    result += canonical(key, false);
+    append(result, ",");
+    result += canonical(names, true);
+    append(result, "]");
+    return result;
 }
 } // namespace cyuediff::detail

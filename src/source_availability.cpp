@@ -193,6 +193,10 @@ struct Builder {
             const auto kind = v.value("kind", Json{});
             if (kind == "stored-map-delta" || kind == "stored-set-delta") {
                 const bool map = kind == "stored-map-delta";
+                collection_key_encodings(v, [&](const std::string &encoding) {
+                    tick();
+                    key_format(formats, path + "/identity", encoding);
+                });
                 for (const auto &key : v.at("removed"))
                     if (unread_key(key, definition_incompatible, formats, path + "/key", depth + 1))
                         return true;
@@ -215,6 +219,10 @@ struct Builder {
     bool unread_map_keys(const Json &v, bool &definition_incompatible, KeyFormats &formats, bool map) {
         if (!v.is_object())
             return false;
+        collection_key_encodings(v, [&](const std::string &encoding) {
+            tick();
+            key_format(formats, "/identity", encoding);
+        });
         auto removed = v.find("removed");
         if (removed != v.end())
             for (const auto &key : *removed)

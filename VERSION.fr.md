@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.197.0 — Clés de conteneurs avec identité des noms
+
+Les lecteurs source et par schéma distinguent désormais les clés FName de maps/sets ayant le même affichage, grâce à un format versionné conservant leurs composants. La lecture fonctionne indépendamment des limites des observations facultatives ; les vrais doublons et les budgets de lecture épuisés restent des échecs explicites. Des formats de clés incompatibles restent indéterminés au lieu de créer de faux ajouts/suppressions. Les valeurs effectives par défaut, l’égalité à l’exécution et la comparaison des composants scalaires restent à réaliser. La dernière archive Windows assemblée reste la version 0.194.0. [Contrat](docs/VALUE_IDENTITIES.md).
+
 ## 0.196.0 — Composants des noms typés
 
 Des observations optionnelles et bornées dans le Core et la CLI conservent les noms de base et les numéros internes des FName, sans modifier les valeurs affichées ni les identifiants actuels des conteneurs. Les lectures source, non versionnées, cooked et de captures de défauts conservent les chemins des valeurs ; le cache distingue les options et leurs limites. Des assets natifs prouvent que deux identités peuvent avoir le même affichage. Le codec de clés, les comparaisons et la reconstruction effective restent à intégrer. La dernière archive Windows assemblée reste la 0.194.0. [Contrat](docs/VALUE_IDENTITIES.md).

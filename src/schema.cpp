@@ -1,6 +1,7 @@
 #include <cyuediff/schema.hpp>
 #include "string_value.hpp"
 #include "value_identity.hpp"
+#include "key_identity.hpp"
 #include <cyuediff/string_encoding.hpp>
 #include "archive.hpp"
 #include "text_value.hpp"
@@ -1329,10 +1330,31 @@ struct PropertyReader {
                 throw Error("schema-value", "Invalid map/set removal count", r.pos - 4);
             if (static_cast<std::uint32_t>(removed_count) > options.max_values - result.values_read)
                 throw Error("schema-limit", "Map/set removal count exceeds remaining work", r.pos - 4);
+            ValueIdentityOptions key_options;
+            key_options.max_names = options.max_values;
+            key_options.max_text_bytes = options.max_text_bytes;
+            key_options.charge = [&](std::uint32_t work, std::uint64_t bytes) {
+                for (std::uint32_t i = 0; i < work; ++i)
+                    charge();
+                text(bytes);
+            };
             auto read_item = [&](Json &target, bool pair, const std::string &part) {
                 detail::ValueIdentityJournal::Buffer key_names(identities);
+                detail::ValueIdentityJournal::KeyProbe probe(identities, key_options);
                 auto key = read_value(type.arguments.at(0), false, nesting + 1);
-                auto id = identity(key, type.arguments.at(0));
+                if (!probe.complete())
+                    throw Error("schema-limit", "Functional key name capture exceeded its budget", r.pos);
+                auto names = probe.names();
+                auto id = detail::named_key_identity(
+                    key, names,
+                    [&](const Json &v, bool raw) {
+                        if (!raw)
+                            return identity(v, type.arguments.at(0));
+                        return detail::source_key_identity(
+                            v, options.control, [&](std::uint64_t bytes) { text(bytes); }, false);
+                    },
+                    [&](std::uint64_t bytes) { text(bytes); });
+                probe.publish();
                 if (target.contains(id))
                     throw Error("schema-identity", "Duplicate serialized map/set identity", r.pos);
                 if (pair) {

@@ -1,4 +1,5 @@
 """Cooked collection projections, property diff paths, opaque fallback and immutable sources."""
+from name_key_fixture import name_key_id, key_token
 import hashlib
 import json
 import os
@@ -34,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-schema-collections-', dir=Pat
     assert package['propertyExportsDecoded'] == 2 and package['propertyExportsFailed'] == 0
     props = package['exports'][0]['propertyRead']['properties']
     assert props[lookup]['value']['kind'] == 'stored-map-delta' and not props[lookup]['value']['replace']
-    assert props[lookup]['value']['removed']['"Nested"'] == 'Nested'
+    assert props[lookup]['value']['removed'][name_key_id('Nested')] == 'Nested'
     assert props[tags]['value']['removed']['99'] == 99
     assert props[tags]['value']['entries'] == {'3': 3, '5': 5}
     assert package['exports'][0]['propertyRead']['defaultsResolved'] is False
@@ -42,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-schema-collections-', dir=Pat
     assert snapshot['objects'][object_path]['properties'] == props
     assert run('zen-diff', before, entry, before, entry, *context)['status'] == 'identical'
     diff = run('zen-diff', before, entry, changed, entry, *context, code=1)
-    assert any(c['path'].endswith('/properties/~1Script~1Test.Collections.Lookup/value/entries/"None"/value') and c['before'] == 20 and c['after'] == 99 for c in diff['changes'])
+    assert any(c['path'].endswith('/properties/~1Script~1Test.Collections.Lookup/value/entries/' + key_token(name_key_id('None')) + '/value') and c['before'] == 20 and c['after'] == 99 for c in diff['changes'])
     diff = run('zen-diff', before, entry, reordered, entry, *context, code=1)
     assert len(diff['changes']) == 1 and diff['changes'][0]['path'].endswith('/opaque/sha256')
     assert run('zen-inspect', reordered, entry, *context, '--snapshot')['objects'][object_path]['properties'] == props

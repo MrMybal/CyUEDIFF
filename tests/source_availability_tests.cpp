@@ -231,6 +231,30 @@ int main() {
                           {"removed", Json::object()},
                           {"entries", {{id, {{"key", key}, {"value", 99}}}}}}}};
         };
+        a.exports[0].properties["Opaque"] = map("Item_1", "\"Item_1\"");
+        b = a;
+        b.exports[0].properties["Opaque"] = map("Item_1", "ue-name/1:[\"Item_1\",{}]");
+        diff = compare(a, b);
+        check(diff.changes.empty() && diff.unavailable_scopes.size() == 1 &&
+                  diff.unavailable_scopes[0]["reason"] == "map-key-format-incompatible",
+              "A new typed-key domain cannot fabricate removals and additions against a legacy reader");
+        a = b;
+        check(compare(a, b).changes.empty() && compare(a, b).unavailable_scopes.empty(),
+              "Equal current typed-key domains preserve source correspondence");
+        a.exports[0].properties["Opaque"]["value"]["entries"] = Json::object();
+        diff = compare(a, b);
+        check(diff.unavailable_scopes.empty() && !diff.changes.empty(),
+              "An empty peer needs no key-domain conversion to report a genuine addition");
+        a = fixture();
+        const auto nested_legacy = map("Item_1", "\"Item_1\"").at("value");
+        const auto nested_current = map("Item_1", "ue-name/1:[\"Item_1\",{}]").at("value");
+        a.exports[0].properties["Opaque"] = map(nested_legacy, "old-outer");
+        b = a;
+        b.exports[0].properties["Opaque"] = map(nested_current, "new-outer");
+        diff = compare(a, b);
+        check(diff.changes.empty() && diff.unavailable_scopes.size() == 1,
+              "Key-domain guards also inspect name-bearing containers nested inside a map key");
+        a = fixture();
         a.exports[0].properties["Opaque"] = map(Json{{"Part", value(1)}}, "known-key");
         b = a;
         b.exports[0].properties["Opaque"] = map(Json{{"Part", unknown()}}, "unread-key");

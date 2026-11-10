@@ -262,6 +262,29 @@ int main(int argc, char **argv) {
                   slots["unavailableScopes"].size() == 2 &&
                   slots["unavailableScopes"][0]["reason"] == "cooked-schema-slot-incompatible",
               "Changed schema slot assignments cannot fabricate named value edits");
+        auto legacy_keys = package(key_context(false), key_values(false));
+        auto migrated_keys = legacy_keys;
+        auto &migrated_delta = migrated_keys.exports[0].property_read["properties"][lookup]["value"];
+        for (const auto *part : {"entries", "removed"}) {
+            Json rewritten = Json::object();
+            for (auto it = migrated_delta[part].begin(); it != migrated_delta[part].end(); ++it)
+                rewritten["ue-name/1:" + it.key()] = it.value();
+            migrated_delta[part] = std::move(rewritten);
+        }
+        const auto migrated = compare_zen_packages(legacy_keys, migrated_keys);
+        check(migrated["changes"].empty() && migrated["unavailableScopes"].size() == 2,
+              "Cooked typed-key migrations cannot invent stored removals or additions");
+        const auto migrated_coverage = cooked_property_coverage(&legacy_keys.exports[0].property_read,
+                                                                &migrated_keys.exports[0].property_read);
+        check(migrated_coverage.comparison_unavailable.size() == 2,
+              "Cooked property viewers retain unavailable correspondence for migrated key domains");
+        check(compare_zen_packages(migrated_keys, migrated_keys)["status"] == "identical",
+              "Matching typed-key domains retain cooked key correspondence");
+        for (const auto *part : {"entries", "removed"})
+            legacy_keys.exports[0].property_read["properties"][lookup]["value"][part] = Json::object();
+        const auto added_keys = compare_zen_packages(legacy_keys, migrated_keys);
+        check(added_keys["unavailableScopes"].empty() && !added_keys["changes"].empty(),
+              "Empty cooked containers still report genuine additions under the new domain");
         const auto peer = package(context(changed_layout()), bytes);
         auto coverage =
             cooked_property_coverage(&base.exports[0].property_read, &peer.exports[0].property_read);

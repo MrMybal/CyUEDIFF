@@ -1,3 +1,4 @@
+#include "name_key_fixture.hpp"
 #include "tagged_hybrid_fixture.hpp"
 #include "schema_fixture.hpp"
 #include <cyuediff/tagged_types.hpp>
@@ -76,8 +77,8 @@ int main(int argc, char **argv) {
         check(native.contains("value"),
               "Legacy nested map/set struct identities completed from explicit source metadata");
         const auto &props = native["value"]["data"]["properties"];
-        check(props["Lookup"]["value"]["entries"]["\"TailName\""]["value"]["data"]["properties"]["Marker"]
-                   ["value"] == 31,
+        check(props["Lookup"]["value"]["entries"][test_name_key_id("TailName")]["value"]["data"]["properties"]
+                   ["Marker"]["value"] == 31,
               "Legacy map value preserves tagged prefix and native tail");
         check(props["Selected"]["value"]["entries"].size() == 1 &&
                   p.exports[0].properties["AfterNative"]["value"] == 987,

@@ -1,5 +1,6 @@
 #pragma once
 #include <cyuediff/zen.hpp>
+#include "key_identity.hpp"
 #include <set>
 namespace cyuediff::detail {
 using CookedWalk = void (*)(const Json &, const Json &, const std::string &, Json &,
@@ -254,7 +255,7 @@ struct CookedPropertyDiff {
         if (kind == 24 || kind == 25) {
             walk(a.at("replace"), b.at("replace"), path + "/replace", changes, control);
             const auto &ak = at.at("arguments")[0], &bk = bt.at("arguments")[0];
-            if (!compatible(ak, bk)) {
+            if (!compatible(ak, bk) || !compatible_key_encodings(a, b, control)) {
                 if (!a.at("entries").empty() || !b.at("entries").empty())
                     unknown(path + "/entries", "cooked-key-correspondence-unavailable");
                 if (!a.at("removed").empty() || !b.at("removed").empty())

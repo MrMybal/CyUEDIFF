@@ -1,3 +1,4 @@
+#include "name_key_fixture.hpp"
 #include <cyuediff/schema.hpp>
 #include <cyuediff/zen.hpp>
 #include "schema_collection_fixture.hpp"
@@ -93,8 +94,9 @@ int main(int argc, char **argv) {
               "Map/set windows leave following scalar intact");
         check(map.at("kind") == "stored-map-delta" && map.at("replace") == false,
               "Map delta remains explicit");
-        check(map.at("removed").at("\"Nested\"") == "Nested", "Map removal key retained");
-        check(map.at("entries").at("\"Example\"").at("value") == 10, "Map pair key/value decoded");
+        check(map.at("removed").at(test_name_key_id("Nested")) == "Nested", "Map removal key retained");
+        check(map.at("entries").at(test_name_key_id("Example")).at("value") == 10,
+              "Map pair key/value decoded");
         check(set.at("kind") == "stored-set-delta" && set.at("removed").at("99") == 99,
               "Set removal retained");
         check(set.at("entries").at("3") == 3 && set.at("entries").at("5") == 5,
@@ -105,7 +107,7 @@ int main(int argc, char **argv) {
                       .properties.at(lookup)
                       .at("value")
                       .at("entries")
-                      .at("\"None\"")
+                      .at(test_name_key_id("None"))
                       .at("value") == 99,
               "Changed value retains its key identity");
         Bytes zero;
@@ -163,7 +165,8 @@ int main(int argc, char **argv) {
         collection_name(readd, 2);
         readd.i(55);
         auto readded = decode(collection_single(readd), schemas, options).properties.at(lookup).at("value");
-        check(readded.at("removed").contains("\"Example\"") && readded.at("entries").contains("\"Example\""),
+        check(readded.at("removed").contains(test_name_key_id("Example")) &&
+                  readded.at("entries").contains(test_name_key_id("Example")),
               "Removal and re-addition of the same key stay distinct");
         auto arrays_schema = UnversionedSchemas::parse(
             collection_schema_fixture(map_type(collection_type(2), collection_type(8, collection_type(22))))
@@ -378,7 +381,8 @@ int main(int argc, char **argv) {
         bool found = false;
         for (const auto &change : difference["changes"])
             if (change["path"] == "/objects/~1Game~1Example.Example/properties/"
-                                  "~1Script~1Test.Collections.Lookup/value/entries/\"None\"/value")
+                                  "~1Script~1Test.Collections.Lookup/value/entries/" +
+                                      test_key_token(test_name_key_id("None")) + "/value")
                 found = change["before"] == 20 && change["after"] == 99;
         check(found, "Map diff locates the changed key/value");
         auto failed = ZenPackage::parse(collection_zen_fixture(collection_single(unsupported)).data, zen);

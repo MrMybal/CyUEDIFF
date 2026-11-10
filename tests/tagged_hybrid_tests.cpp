@@ -1,3 +1,4 @@
+#include "name_key_fixture.hpp"
 #include "tagged_hybrid_fixture.hpp"
 #include <chrono>
 #include <iostream>
@@ -70,8 +71,8 @@ int main(int argc, char **argv) {
                            tagged_hybrid_fixture(1013, false, SIZE_MAX, false, false, true));
         auto col = Package::open(root / "collections.uasset", options);
         auto &cp = col.exports[0].properties["Native"]["value"]["data"]["properties"];
-        check(cp["Lookup"]["value"]["entries"]["\"TailName\""]["value"]["data"]["properties"]["Marker"]
-                ["value"] == 31,
+        check(cp["Lookup"]["value"]["entries"][test_name_key_id("TailName")]["value"]["data"]["properties"]
+                ["Marker"]["value"] == 31,
               "Full-type map hybrid value");
         check(cp["Selected"]["value"]["entries"].size() == 1, "Full-type set hybrid identity");
         save_tagged_hybrid(root, "legacy-map",
