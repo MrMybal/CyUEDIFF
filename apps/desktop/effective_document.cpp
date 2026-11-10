@@ -116,13 +116,11 @@ PropertyTable changes(const EffectiveDefaultsComparison &c, const EffectiveDefau
 std::string root(const Package &p, const DefaultContext &ctx, std::string object) {
     if (!object.empty())
         return object;
-    const auto &cls = ctx.snapshot().provenance().at("object").at("class");
-    for (const auto &e : p.exports)
-        if (e.outer_index == 0 && e.class_name == cls) {
-            if (!object.empty())
-                throw Error("default-context", "Choose a root export explicitly");
-            object = e.path;
-        }
+    const auto roots = default_root_exports(p, ctx);
+    if (roots.size() > 1)
+        throw Error("default-context", "Choose a root export explicitly");
+    if (!roots.empty())
+        object = roots.front();
     if (object.empty())
         throw Error("default-context", "No root export matches the prepared class");
     return object;

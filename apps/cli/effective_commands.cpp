@@ -18,14 +18,13 @@ Side read_side(const fs::path &asset, DefaultContext context, std::string object
     read.value_identities.max_names = read.max_properties;
     read.value_identities.max_text_bytes = read.max_property_bytes;
     auto package = Package::open(asset, read);
-    if (object.empty())
-        for (const auto &e : package.exports)
-            if (e.outer_index == 0 &&
-                e.class_name == context.snapshot().provenance().at("object").at("class")) {
-                if (!object.empty())
-                    throw Error("arguments", "Choose a root export explicitly");
-                object = e.path;
-            }
+    if (object.empty()) {
+        const auto roots = default_root_exports(package, context);
+        if (roots.size() > 1)
+            throw Error("arguments", "Choose a root export explicitly");
+        if (!roots.empty())
+            object = roots.front();
+    }
     if (object.empty())
         throw Error("default-context", "No root export matches the prepared class");
     auto effective = resolve_source_defaults(package, object, context);

@@ -159,6 +159,11 @@ struct CaptureReader {
                        {"flags", node.at("flags")},
                        {"type", node.at("type")},
                        {"available", false}};
+        if (node.contains("propertyGuid")) {
+            const auto guid = node.at("propertyGuid").get<std::string>();
+            require(hex_string(guid, 32), "Invalid captured property GUID");
+            result["propertyGuid"] = guid;
+        }
         const auto &wire = node.at("wire");
         require(wire.at("available").is_boolean(), "Expected captured field wire availability");
         if (wire.at("available") == false) {
@@ -293,6 +298,10 @@ struct CaptureReader {
                             hex_string(node.at("flags").get<std::string>(), 16),
                         "Captured field disagrees with its declaration");
                 require(!result.contains(key), "Duplicate qualified captured field");
+                if (declaration->contains("propertyGuid"))
+                    require(node.contains("propertyGuid") &&
+                                node.at("propertyGuid") == declaration->at("propertyGuid"),
+                            "Captured property GUID disagrees with declaration");
                 result[key] = field(node, property);
             }
             if (definition->super.empty())
@@ -430,6 +439,8 @@ DefaultSnapshot DefaultSnapshot::parse(const std::vector<std::uint8_t> &bytes,
                             {"wireBytes", reader.wire_bytes},
                             {"valuesRead", reader.values_read},
                             {"valueTextBytes", reader.text_bytes}};
+        if (document.contains("factory"))
+            impl->provenance["factory"] = document.at("factory");
         if (document.contains("environment"))
             impl->provenance["environment"] = document.at("environment");
         if (options.values.value_identities.names) {

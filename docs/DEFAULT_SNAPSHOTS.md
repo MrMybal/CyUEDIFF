@@ -53,3 +53,7 @@ In 0.196, opt-in [typed name observations](VALUE_IDENTITIES.md) retain exact com
 ## Prepared source binding (0.198)
 
 The snapshot reader remains unbound. The separate [prepared effective-default context](EFFECTIVE_DEFAULTS.md) now verifies capture-time input fingerprints and applies the documented native/source profile through Core and CLI inspection/differences. It preserves stored package values and offers scoped unavailable results. This selected working path does not complete the broader Blueprint/archetype/cooked/runtime reconstruction described above.
+
+## Prepared Blueprint binding (0.200)
+
+The separate context2 profile binds selected Blueprint CDO factory seeds or real class CDOs to their explicit source role, generated ancestry, GUIDs and saved package dependency bytes. `DefaultSnapshot` itself remains immutable and unbound. See [Blueprint class defaults and instances](EFFECTIVE_DEFAULTS.md#blueprint-class-defaults-and-instances) for preparation and limitations.

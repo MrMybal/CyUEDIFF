@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.200.0 — Défauts Blueprint préparés
+
+Le Core autonome reconstruit les défauts de classes Blueprint UE5.3.2 Windows pris en charge depuis un état initial préparé indépendamment à partir du modèle parent, et leurs instances depuis le vrai CDO capturé. Héritage qualifié, GUID des champs et empreintes des packages importés/compagnons lient chaque contexte. CLI, clients Core installés et bureau EN/FR utilisent le même sélecteur de racine. Les références natives vérifient l’héritage et le cas d’une instance identique soumise à des défauts différents. Les archétypes/sous-objets généraux, cooked et comportements d’exécution restent ouverts ; la dernière archive Windows assemblée reste la 0.199.0. [Contrat](docs/EFFECTIVE_DEFAULTS.md#blueprint-class-defaults-and-instances).
+
 ## 0.199.0 — Propriétés effectives dans l’interface
 
 L’interface EN/FR vérifie désormais les contextes natifs préparés dans son worker et présente les propriétés enregistrées, les valeurs effectives et leurs différences typées. Les contextes avant/après, objets explicites et choix de vue sont conservés par document dans les espaces de travail15 ; les anciens formats restent lisibles. Un côté absent ou invalide ne produit pas de faux changements. La couverture complète du produit reste ouverte. [Contract](docs/EFFECTIVE_DEFAULTS.md).

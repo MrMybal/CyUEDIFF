@@ -1,4 +1,4 @@
-"""Pin a prepared native CDO and recorded files to an explicit source archive profile."""
+"""Pin a prepared native or Blueprint CDO/factory and recorded files to an explicit source archive profile."""
 import argparse
 import hashlib
 import json
@@ -43,15 +43,20 @@ def main():
     capture = json.loads(capture_file.read_text(encoding='utf-8'))
     if (capture.get('format') != 'cyuediff.engine-default-capture/1'
             or capture.get('completeCapture') is not True or capture.get('classDefault') is not True
-            or capture.get('blueprintClass') is not False):
-        parser.error('Expected a complete prepared native class-default capture')
+            or not isinstance(capture.get('blueprintClass'), bool)):
+        parser.error('Expected a complete prepared class-default capture')
+    blueprint = capture['blueprintClass']
+    factory = 'factory' in capture
+    if factory and not blueprint:
+        parser.error('Factory captures require a Blueprint class')
     environment = capture['environment']
     if environment['platform'] != 'Windows' or environment['byteOrder'] != 'little':
         parser.error('Unsupported prepared platform')
     report = subprocess.run([str(args.reader.resolve(strict=True)), 'inspect',
                              str(args.source.resolve(strict=True)), '--metadata'],
                             capture_output=True, check=True)
-    source = json.loads(report.stdout)['summary']
+    source_report = json.loads(report.stdout)
+    source = source_report['summary']
     dependencies = {}
     total = 0
     copied = args.copy_inputs.resolve() if args.copy_inputs else None
@@ -95,7 +100,7 @@ def main():
     for key, node in files.items():
         path = Path(node['file'])
         if not node['present']:
-            if node['role'] != 'config' or path.exists():
+            if node['role'] not in ('config', 'asset-companion') or path.exists():
                 parser.error('Prepared configuration absence changed')
             dependencies[key] = {'file': str(path), 'absent': True}
             continue
@@ -107,7 +112,7 @@ def main():
     archive = capture['archive']
     capture_size, capture_digest = file_hash(capture_file, 64 * 1024**2)
     prepared = {
-        'format': 'cyuediff.default-context/1',
+        'format': 'cyuediff.default-context/2' if blueprint else 'cyuediff.default-context/1',
         'inputMode': 'pinned-inputs' if copied else 'local-inputs',
         'snapshot': {'file': stored_path(capture_file, capture_size, capture_digest), 'sha256': capture_digest,
                      'engineVersion': capture['engineVersion'], 'filterEditorOnly': capture['filterEditorOnly'],
@@ -117,11 +122,21 @@ def main():
                          ('/Script/CoreUObject.Vector', 'vector3-f64'),
                          ('/Script/CoreUObject.Quat', 'quat-f64')]
                          if name in capture['declarations']}},
-        'sourceProfile': {'profile': 'ue5.3.2-win64-tagged-ascii/1', 'savedEngine': source['savedEngine'],
+        'sourceProfile': {'profile': 'ue5.3.2-win64-blueprint-tagged-ascii/1' if blueprint else 'ue5.3.2-win64-tagged-ascii/1', 'savedEngine': source['savedEngine'],
                           'ue4': source['ue4Version'], 'ue5': source['ue5Version'],
                           'licensee': source['licenseeVersion'], 'customVersions': source['customVersions'],
                           'intraPropertyDelta': True},
         'dependencies': dependencies}
+    if blueprint:
+        binding = environment['blueprintDependencies']
+        if binding['format'] != 'cyuediff.blueprint-default-dependencies/1' or binding['complete'] is not True:
+            parser.error('Incomplete Blueprint dependency inventory')
+        cls = capture['object']['class']
+        package = cls.rsplit('.', 1)[0]
+        prepared['sourceProfile']['objectKind'] = 'class-default' if factory else 'instance'
+        prepared['sourceProfile']['blueprintPackageSha256'] = files['package:'+package]['sha256']
+        if factory and file_hash(args.source.resolve(strict=True), args.max_dependency_bytes)[1] != prepared['sourceProfile']['blueprintPackageSha256']:
+            parser.error('Blueprint factory source must match its captured definition package bytes')
     if archive['ue4'] != 522 or archive['ue5'] != 1009:
         parser.error('Unsupported captured archive')
     with args.out.open('x', encoding='utf-8', newline='\n') as stream:

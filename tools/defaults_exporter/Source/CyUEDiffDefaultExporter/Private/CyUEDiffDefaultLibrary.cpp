@@ -3,6 +3,7 @@
 #include "HAL/FileManager.h"
 #include "Dom/JsonObject.h"
 #include "Engine/UserDefinedStruct.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "Internationalization/Text.h"
 #include "Misc/EngineVersion.h"
 #include "Misc/ConfigCacheIni.h"
@@ -18,6 +19,9 @@
 #include "UObject/StructOnScope.h"
 #include "UObject/ObjectPtr.h"
 #include "UObject/UnrealType.h"
+#include "UObject/LinkerLoad.h"
+#include "Misc/PackageName.h"
+#include "UObject/Package.h"
 #include <limits>
 IMPLEMENT_MODULE(FDefaultModuleImpl, CyUEDiffDefaultExporter)
 namespace {
@@ -175,7 +179,7 @@ struct FCapture {
         Text += Bytes;
         return true;
     }
-    JObject Environment() {
+    JObject Environment(UObject *Root) {
         auto Result = MakeShared<FJsonObject>();
         Result->SetStringField(TEXT("format"), TEXT("cyuediff.engine-default-environment/1"));
         Result->SetStringField(TEXT("platform"), PLATFORM_WINDOWS ? TEXT("Windows") : TEXT("Other"));
@@ -271,6 +275,82 @@ struct FCapture {
         Add(TEXT("executable"), TEXT("executable"), FPlatformProcess::ExecutablePath());
         Add(TEXT("engine-build"), TEXT("engine-build"), FPaths::EngineDir() / TEXT("Build/Build.version"));
         Add(TEXT("project"), TEXT("project"), FPaths::GetProjectFilePath());
+        if (Root->GetClass()->HasAnyClassFlags(CLASS_CompiledFromBlueprint)) {
+            auto Binding = MakeShared<FJsonObject>();
+            Binding->SetStringField(TEXT("format"), TEXT("cyuediff.blueprint-default-dependencies/1"));
+            TArray<JValue> Classes;
+            TArray<FString> Pending;
+            for (UClass *Class = Root->GetClass(); Class && !Failed; Class = Class->GetSuperClass()) {
+                if (!Charge())
+                    break;
+                auto Row = MakeShared<FJsonObject>();
+                Row->SetStringField(TEXT("class"), Str(Class->GetPathName()));
+                Row->SetStringField(TEXT("super"), Class->GetSuperClass()
+                                                       ? Str(Class->GetSuperClass()->GetPathName())
+                                                       : TEXT(""));
+                Row->SetField(TEXT("generatedBy"), ObjectReference(Class->ClassGeneratedBy));
+                Row->SetField(TEXT("defaultObject"), ObjectReference(Class->GetDefaultObject(false)));
+                const bool Blueprint = Class->HasAnyClassFlags(CLASS_CompiledFromBlueprint);
+                Row->SetBoolField(TEXT("blueprint"), Blueprint);
+                if (Blueprint) {
+                    if (!Class->ClassGeneratedBy ||
+                        Class->ClassGeneratedBy->GetOutermost() != Class->GetOutermost()) {
+                        Failed = true;
+                        break;
+                    }
+                    Pending.AddUnique(Class->GetOutermost()->GetName());
+                }
+                Classes.Add(ObjectValue(Row));
+            }
+            auto Packages = MakeShared<FJsonObject>();
+            for (int32 I = 0; I < Pending.Num() && !Failed; ++I) {
+                if (Pending.Num() > 256 || !Charge()) {
+                    Failed = true;
+                    break;
+                }
+                const FString PackageName = Pending[I];
+                UPackage *Package = FindPackage(nullptr, *PackageName);
+                FLinkerLoad *Linker = Package ? Package->GetLinker() : nullptr;
+                FString File;
+                if (!Linker || !FPackageName::DoesPackageExist(PackageName, &File)) {
+                    Failed = true;
+                    break;
+                }
+                auto Row = MakeShared<FJsonObject>();
+                const FString Id = TEXT("package:") + PackageName;
+                Add(Id, TEXT("asset-package"), File);
+                Row->SetStringField(TEXT("fileId"), Id);
+                TArray<JValue> Companions;
+                for (const TCHAR *Extension : {TEXT("uexp"), TEXT("ubulk"), TEXT("uptnl"), TEXT("m.ubulk"),
+                                               TEXT("o.ubulk"), TEXT("upayload")}) {
+                    const FString CompanionId = Id + TEXT(":") + Extension;
+                    Add(CompanionId, TEXT("asset-companion"), FPaths::ChangeExtension(File, Extension));
+                    Companions.Add(StringValue(CompanionId));
+                }
+                Row->SetArrayField(TEXT("companionIds"), MoveTemp(Companions));
+                TArray<FString> Imports;
+                for (const FObjectImport &Import : Linker->ImportMap) {
+                    if (!Charge())
+                        break;
+                    if (Import.OuterIndex.IsNull() && Import.ClassName == TEXT("Package")) {
+                        const FString Name = Import.ObjectName.ToString();
+                        Imports.AddUnique(Name);
+                        if (!Name.StartsWith(TEXT("/Script/")))
+                            Pending.AddUnique(Name);
+                    }
+                }
+                Imports.Sort();
+                TArray<JValue> ImportValues;
+                for (const FString &Import : Imports)
+                    ImportValues.Add(StringValue(Str(Import)));
+                Row->SetArrayField(TEXT("imports"), MoveTemp(ImportValues));
+                Packages->SetObjectField(Str(PackageName), Row);
+            }
+            Binding->SetArrayField(TEXT("classes"), MoveTemp(Classes));
+            Binding->SetObjectField(TEXT("packages"), Packages);
+            Binding->SetBoolField(TEXT("complete"), !Failed);
+            Result->SetObjectField(TEXT("blueprintDependencies"), Binding);
+        }
         Result->SetObjectField(TEXT("files"), Files);
         return Result;
     }
@@ -329,6 +409,10 @@ struct FCapture {
         if (!Charge(Depth))
             return J;
         J->SetObjectField(TEXT("type"), Type(P, Depth));
+        if (const auto *Owner = Cast<UBlueprintGeneratedClass>(P->GetOwnerStruct()))
+            J->SetStringField(TEXT("propertyGuid"), Owner->FindBlueprintPropertyGuidFromName(P->GetFName())
+                                                        .ToString(EGuidFormats::Digits)
+                                                        .ToLower());
         J->SetBoolField(TEXT("available"), true);
         if (auto *BoolProperty = CastField<FBoolProperty>(P))
             J->SetBoolField(TEXT("value"), BoolProperty->GetPropertyValue(Value));
@@ -514,6 +598,11 @@ struct FCapture {
             Field->SetBoolField(TEXT("serialize"), P->ShouldSerializeValue(FieldPolicy));
             Field->SetStringField(TEXT("flags"), Hex64(P->GetPropertyFlags()));
             Field->SetObjectField(TEXT("type"), this->Type(P, Depth + 1));
+            if (const auto *Owner = Cast<UBlueprintGeneratedClass>(Type))
+                Field->SetStringField(TEXT("propertyGuid"),
+                                      Owner->FindBlueprintPropertyGuidFromName(P->GetFName())
+                                          .ToString(EGuidFormats::Digits)
+                                          .ToLower());
             Properties.Add(ObjectValue(Field));
             Index += P->ArrayDim;
         }
@@ -574,7 +663,7 @@ FString UCyUEDiffDefaultLibrary::Capture(UObject *Object, bool FilterEditorOnly)
     J->SetObjectField(TEXT("structures"), Reader.Structures);
     J->SetObjectField(TEXT("declarations"), Reader.Declarations);
     J->SetObjectField(TEXT("enumerations"), Reader.Enumerations);
-    J->SetObjectField(TEXT("environment"), Reader.Environment());
+    J->SetObjectField(TEXT("environment"), Reader.Environment(Object));
     J->SetBoolField(TEXT("completeCapture"), !Reader.Failed);
     J->SetNumberField(TEXT("work"), Reader.Work);
     J->SetNumberField(TEXT("textBudgetUsed"), Reader.Text);
@@ -585,6 +674,38 @@ FString UCyUEDiffDefaultLibrary::Capture(UObject *Object, bool FilterEditorOnly)
         J->RemoveField(TEXT("declarations"));
         J->RemoveField(TEXT("enumerations"));
     }
+    return Write(J);
+}
+FString UCyUEDiffDefaultLibrary::CaptureBlueprintFactory(UClass *Class, bool FilterEditorOnly) {
+    if (!Class || !Class->HasAnyClassFlags(CLASS_CompiledFromBlueprint) || !Class->GetSuperClass() ||
+        !Class->GetDefaultObject(false) || !Class->GetSuperClass()->GetDefaultObject(false))
+        return TEXT("{}");
+    UObject *OriginalDefault = Class->GetDefaultObject(false);
+    UObject *ParentDefault = Class->GetSuperClass()->GetDefaultObject(false);
+    FStaticConstructObjectParameters Params(Class);
+    // Engine canonicalizes every CDO name; isolate the seed in its own transient package.
+    UPackage *SeedPackage =
+        CreatePackage(*(TEXT("/Temp/CyUEDiffFactory_") + FGuid::NewGuid().ToString(EGuidFormats::Digits)));
+    SeedPackage->SetFlags(RF_Transient);
+    Params.Outer = SeedPackage;
+    Params.Name = MakeUniqueObjectName(Params.Outer, Class, TEXT("CyUEDiffFactorySeed"));
+    Params.SetFlags = RF_ClassDefaultObject | RF_ArchetypeObject | RF_Transient;
+    Params.Template = ParentDefault;
+    Params.bAssumeTemplateIsArchetype = true;
+    UObject *Seed = StaticConstructObject_Internal(Params);
+    if (!Seed || Class->GetDefaultObject(false) != OriginalDefault || Seed->GetArchetype() != ParentDefault)
+        return TEXT("{}");
+    TSharedPtr<FJsonObject> J;
+    const FString Captured = Capture(Seed, FilterEditorOnly);
+    if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Captured), J) || !J)
+        return TEXT("{}");
+    auto Factory = MakeShared<FJsonObject>();
+    Factory->SetStringField(TEXT("format"), TEXT("cyuediff.blueprint-cdo-factory/1"));
+    Factory->SetStringField(TEXT("operation"), TEXT("construct-cdo-from-explicit-parent-template"));
+    Factory->SetField(TEXT("class"), Reference(Class));
+    Factory->SetField(TEXT("parentDefault"), Reference(ParentDefault));
+    Factory->SetField(TEXT("targetDefault"), Reference(OriginalDefault));
+    J->SetObjectField(TEXT("factory"), Factory);
     return Write(J);
 }
 bool UCyUEDiffDefaultLibrary::BeginReadOnlyCommandletCapture() {

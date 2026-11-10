@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.200.0 — Prepared Blueprint defaults
+
+The standalone Core reconstructs selected UE5.3.2 Windows Blueprint class defaults from an independently prepared parent-template factory seed, and Blueprint instances from their real captured CDO. Exact generated-class ancestry, field GUIDs and saved import/package/companion fingerprints bind each context. CLI, installed Core consumers and the existing EN/FR effective-property desktop use the shared root selector. Independent native references verify the inheritance and identical-instance/different-default cases. General archetype/subobject, cooked and runtime semantics remain open; the latest assembled Windows archive remains 0.199.0. [Contract](docs/EFFECTIVE_DEFAULTS.md#blueprint-class-defaults-and-instances).
+
 ## 0.199.0 — Effective properties in the desktop
 
 The EN/FR desktop now verifies prepared native default contexts on its worker, resolves each selected root and presents stored properties, effective values and typed effective differences separately. Before/after contexts, explicit objects and review state persist per document in workspace15; older workspaces remain readable. Invalid or absent peers do not become fabricated changes. The broader product coverage remains open. [Contract](docs/EFFECTIVE_DEFAULTS.md).

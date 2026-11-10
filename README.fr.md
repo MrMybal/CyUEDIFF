@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.199.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.200.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.199.0**
+> **EN DÉVELOPPEMENT · 0.200.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -52,7 +52,7 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 - **Identité des définitions natives :** un schéma déclaratif ou explicitement identifié modifié sous le même nom reste indéterminé ; les ajouts sans rapport au catalogue restent du contexte et les champs lisibles restent comparables. [Contrat](docs/DECODER_IDENTITY.md).
 - **Comparaisons et rapports moins coûteux :** les comparaisons source parcourent les propriétés existantes, distinguent exactement entiers et flottants et écrivent les rapports en flux dans Core/CLI/Git/interface. [Mémoire et propriété des données](docs/COMPARISON_MEMORY.md).
 - **Couverture des comparaisons source :** les champs lisibles restent comparables à côté des valeurs indisponibles ; les propriétés EN/FR distinguent données indéterminées, contexte des décodeurs et vrais retraits. [Contrat](docs/SOURCE_AVAILABILITY.md).
-- **Valeurs par défaut capturées (Core) :** lecture des données de champs de CDO et des structures initialisées, avec déclarations qualifiées et provenance du moteur. La reconstruction de l’état effectif des assets reste en développement. [Contrat](docs/DEFAULT_SNAPSHOTS.md).
+- **Propriétés effectives préparées :** reconstruction et comparaison des propriétés source natives et Blueprint prises en charge, avec contextes explicites, défauts hérités et noms typés dans Core/CLI et le bureau EN/FR. La reconstruction générale des défauts cooked et d’exécution reste en développement. [Contrat](docs/EFFECTIVE_DEFAULTS.md).
 - **Tissus physiques source :** les packages balisés UE 5.3 sélectionnés partagent le modèle physique, les requêtes/OBJ/différences et le bureau EN/FR réutilisable, avec objets indépendants et valeurs par défaut indéterminées visibles. [Contrat](docs/SOURCE_PHYSICAL_CLOTH.md).
 - **Différences d’assets lisibles** : propriétés typées consultables par recherche, références d’objets stables, textes structurés des pins Blueprint, graphes de matériau et paramètres d’instance enregistrés, avec une couverture partielle ou opaque explicitée.
 - **Inspection des images et géométries sources** : sources et mips Texture2D LDR/HDR pris en charge, différences de pixels/échantillons, filaires MeshDescription modernes, différences de géométrie et export OBJ de la géométrie de base. Les os sources modernes, profils de poids bruts et deltas de morph nommés sont validés sur des jeux de test synthétiques.
@@ -88,7 +88,7 @@ Liez `CyUEDiff::Core` avec `add_subdirectory`, ou installez le SDK et utilisez `
 
 ## Installation
 
-**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources de développement 0.199 disposent d’une validation locale Windows. L’archive locale Windows 0.199 a passé les contrôles d’extraction, de démarrage et des clients SDK, avec un runtime MSVC lié statiquement. Les archives de développement Windows locales comprennent le manuel HTML bilingue hors ligne et les métadonnées de version, composants et runtime ; leur préparation et validation restent distinctes d’une release publique. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
+**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources de développement 0.200 disposent d’une validation locale Windows. L’archive locale Windows 0.199 a passé les contrôles d’extraction, de démarrage et des clients SDK, avec un runtime MSVC lié statiquement. Les archives de développement Windows locales comprennent le manuel HTML bilingue hors ligne et les métadonnées de version, composants et runtime ; leur préparation et validation restent distinctes d’une release publique. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
 
 Les builds Windows utilisant le runtime MSVC dynamique par défaut nécessitent le runtime Microsoft Visual C++ x64 correspondant. Les fonctions Git nécessitent une installation séparée de Git 2.45+ ; l’inspection de fichiers libres n’en dépend pas. Conservez les archives CPack extraites avec leur documentation et leurs notices de licence. Voir les [conditions de distribution et d’exécution](docs/DISTRIBUTION.md).
 

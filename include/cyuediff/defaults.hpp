@@ -53,6 +53,9 @@ class DefaultContext {
     const Json &provenance() const;
     const std::string &sha256() const;
 };
+// Candidate root identities for this explicit instance/CDO context. No I/O or default application.
+std::vector<std::string> default_root_exports(const Package &, const DefaultContext &,
+                                              const OperationControl & = {});
 struct EffectiveDefaultsOptions {
     std::uint32_t max_nodes = 1'000'000, max_depth = 64;
     std::uint64_t max_text_bytes = 64ull * 1024 * 1024;

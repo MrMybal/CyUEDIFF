@@ -11,6 +11,22 @@ std::string token(const std::string &text) {
         out += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
     return out;
 }
+bool root_class_matches(const Package &p, const ObjectExport &object, const DefaultContext &context) {
+    const auto cls = context.snapshot().provenance().at("object").at("class").get<std::string>();
+    const bool class_default =
+        context.source_profile().at("profile") == "ue5.3.2-win64-blueprint-tagged-ascii/1" &&
+        context.source_profile().at("objectKind") == "class-default";
+    if (object.outer_index != 0 || bool(object.flags & 0x10) != class_default)
+        return false;
+    if (!class_default)
+        return object.class_name == cls;
+    if (object.class_index <= 0 || static_cast<std::size_t>(object.class_index) > p.exports.size())
+        return false;
+    const auto &generated = p.exports[static_cast<std::size_t>(object.class_index - 1)];
+    const auto local = cls.substr(cls.rfind('.') + 1);
+    return object.class_name == local && generated.path == local && generated.outer_index == 0 &&
+           generated.class_name == "/Script/Engine.BlueprintGeneratedClass";
+}
 struct Input {
     const Json *value = nullptr;
     const Json *names = nullptr;
@@ -48,7 +64,9 @@ struct Resolver : detail::EffectiveBudget {
                                                                                  unsigned level) {
             depth(level);
             const auto an = a.is_string() ? a.get<std::string>() : a.at("name").get<std::string>();
-            if (an != b.at("name"))
+            // UE5.3 FObjectPropertyBase::GetID emits ObjectProperty for FClassProperty as well.
+            const bool class_wire = an == "ObjectProperty" && b.at("name") == "ClassProperty";
+            if (an != b.at("name") && !class_wire)
                 unknown("stored-type-does-not-match-context");
             if (an == "StructProperty") {
                 const auto schema = b.at("schema").get<std::string>();
@@ -355,6 +373,10 @@ struct Resolver : detail::EffectiveBudget {
                              tag->at("serializationFlags").is_number_integer() &&
                              (tag->at("serializationFlags").get<std::uint64_t>() & 32)))
                             unknown("stored-property-unavailable");
+                        if (meta.contains("propertyGuid") &&
+                            meta.at("propertyGuid") != std::string(32, '0') &&
+                            (!tag->contains("guid") || tag->at("guid") != meta.at("propertyGuid")))
+                            unknown("stored-blueprint-property-guid-does-not-match");
                         validate_type(*tag, meta.at("type"), d + 1);
                         override = child(child(*stored, *tag, short_name), tag->at("value"), "value");
                     }
@@ -391,6 +413,16 @@ struct Resolver : detail::EffectiveBudget {
     }
 };
 } // namespace
+std::vector<std::string> default_root_exports(const Package &p, const DefaultContext &context,
+                                              const OperationControl &control) {
+    std::vector<std::string> roots;
+    for (const auto &object : p.exports) {
+        control.check();
+        if (root_class_matches(p, object, context))
+            roots.push_back(object.path);
+    }
+    return roots;
+}
 Json EffectiveDefaults::to_json() const {
     auto j = provenance;
     j["schema"] = "cyuediff.effective-defaults/1";
@@ -422,13 +454,40 @@ EffectiveDefaults resolve_source_defaults(const Package &package, const std::str
                 throw Error("default-context", "Ambiguous source export identity");
             object = &e;
         }
-    if (!object || object->class_name != snapshot.provenance().at("object").at("class") ||
-        object->outer_index != 0 || (object->flags & 0x10) ||
-        (object->template_index != 0 &&
-         package.reference(object->template_index) != snapshot.provenance().at("object").at("path")) ||
+    const bool blueprint = profile.at("profile") == "ue5.3.2-win64-blueprint-tagged-ascii/1";
+    const bool class_default = blueprint && profile.at("objectKind") == "class-default";
+    const auto &binding = context.provenance();
+    const auto expected_template =
+        blueprint ? binding.at("blueprintBinding").at(class_default ? "parentDefault" : "sourceDefault")
+                  : snapshot.provenance().at("object").at("path");
+    if (!object || !root_class_matches(package, *object, context) || object->outer_index != 0 ||
+        bool(object->flags & 0x10) != class_default ||
+        (object->template_index != 0 && package.reference(object->template_index) != expected_template) ||
         (object->coverage != "properties" && object->coverage != "partial-properties"))
         throw Error("default-context",
                     "Root source class/template/property inventory does not match default context");
+    if (class_default) {
+        const auto &bp = binding.at("blueprintBinding");
+        const auto cls = snapshot.provenance().at("object").at("class").get<std::string>();
+        if (object->path != "Default__" + cls.substr(cls.rfind('.') + 1) ||
+            !package.fingerprints.contains("package") ||
+            package.fingerprints.at("package").at("sha256") != bp.at("packageSha256"))
+            throw Error(
+                "default-context",
+                "Blueprint CDO source bytes or export identity do not match the prepared factory context");
+        // Companions belong to the same captured package epoch as its header.
+        const auto id = "package:" + cls.substr(0, cls.rfind('.'));
+        for (const char *ext : {"uexp", "ubulk", "uptnl", "m.ubulk", "o.ubulk", "upayload"}) {
+            const auto &dep = binding.at("dependencies").at(id + ":" + ext);
+            const auto file = package.fingerprints.find(std::string(".") + ext);
+            if (dep.contains("absent")
+                    ? file != package.fingerprints.end()
+                    : (file == package.fingerprints.end() || file->at("sha256") != dep.at("sha256") ||
+                       file->at("bytes") != dep.at("bytes")))
+                throw Error("default-context",
+                            "Blueprint CDO companion bytes differ from the prepared factory epoch");
+        }
+    }
     Resolver resolver{context, options};
     const Json *source_names = nullptr;
     if (package.value_identities.is_object() && package.value_identities.contains("names"))
@@ -442,7 +501,7 @@ EffectiveDefaults resolve_source_defaults(const Package &package, const std::str
                                   {"contextSha256", context.sha256()},
                                   {"captureSha256", snapshot.sha256()},
                                   {"object", object->path},
-                                  {"class", object->class_name},
+                                  {"class", snapshot.provenance().at("object").at("class")},
                                   {"keyEquality", "ue5.3-windows-ascii-keys/1"},
                                   {"workNodes", resolver.nodes},
                                   {"textBytes", resolver.text}};

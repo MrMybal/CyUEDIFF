@@ -8,28 +8,22 @@ EffectiveDefaults inspect(const fs::path &path, const DefaultContext &context) {
     options.value_identities.max_names = options.max_properties;
     options.value_identities.max_text_bytes = options.max_property_bytes;
     const auto package = Package::open(path, options);
-    const ObjectExport *selected = nullptr;
-    for (const auto &object : package.exports)
-        if (object.outer_index == 0 &&
-            object.class_name == context.snapshot().provenance().at("object").at("class")) {
-            if (selected)
-                throw Error("arguments", "Choose a package with one matching root export");
-            selected = &object;
-        }
-    if (!selected)
-        throw Error("default-context", "No root export matches the prepared class");
-    return resolve_source_defaults(package, selected->path, context);
+    const auto roots = default_root_exports(package, context);
+    if (roots.size() != 1)
+        throw Error("default-context", "Choose a package with one matching root export");
+    return resolve_source_defaults(package, roots.front(), context);
 }
 int run(const std::vector<fs::path> &args) {
-    if (args.size() != 2 && args.size() != 3)
-        throw Error("arguments", "Usage: effective_defaults_consumer CONTEXT ASSET [AFTER]");
+    if (args.size() < 2 || args.size() > 4)
+        throw Error("arguments", "Usage: effective_defaults_consumer CONTEXT ASSET [AFTER [AFTER_CONTEXT]]");
     const auto context = DefaultContext::read(args[0]);
     const auto before = inspect(args[1], context);
     if (args.size() == 2) {
         std::cout << before.to_json().dump(2) << '\n';
         return before.complete ? 0 : 2;
     }
-    const auto after = inspect(args[2], context);
+    const auto after_context = args.size() == 4 ? DefaultContext::read(args[3]) : context;
+    const auto after = inspect(args[2], after_context);
     const auto diff = compare_effective_defaults(before, after);
     std::cout << diff.to_json().dump(2) << '\n';
     return diff.status() == "identical" ? 0 : diff.status() == "changed" ? 1 : 2;

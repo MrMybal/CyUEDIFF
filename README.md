@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Application license</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.199.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
+      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.200.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
       <p><sub>Windows x64 desktop<br>No public application release yet</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspect Unreal Engine assets and understand what changed **without launching Unreal Editor**. CyUEDiff provides a Windows desktop application, a JSON command-line tool and a reusable C++17 reader for Unreal developers, technical artists and tool authors.
 
-> **IN DEVELOPMENT · 0.199.0**
+> **IN DEVELOPMENT · 0.200.0**
 >
 > This source version provides explicit, evolving format coverage. Unknown data keeps its diagnostics and byte fingerprints. Read the [version notes, supported platforms and known limitations](VERSION.md) before choosing a workflow.
 
@@ -52,7 +52,7 @@ These are real desktop and embeddable CyUI captures using original generated dem
 - **Native definition identity:** changed declarative or explicitly fingerprinted schemas under the same decoder ID stay unknown; unrelated catalogue entries remain context, with readable siblings preserved. [Contract](docs/DECODER_IDENTITY.md).
 - **Lower comparison/report overhead:** source comparisons borrow existing property trees, preserve exact mixed integer/float differences and stream reports through Core/CLI/Git/desktop without duplicate output trees. [Memory and ownership](docs/COMPARISON_MEMORY.md).
 - **Source comparison coverage:** readable fields remain comparable beside unavailable values; scoped EN/FR review separates unknown data, decoder context and actual removals. [Contract](docs/SOURCE_AVAILABILITY.md).
-- **Captured class defaults (Core):** read explicitly prepared CDO field wires and initialized struct fields with qualified declarations and producer provenance. Effective asset reconstruction remains in development. [Contract](docs/DEFAULT_SNAPSHOTS.md).
+- **Prepared effective properties:** reconstruct and compare supported native and Blueprint source properties with explicit matching contexts, inherited defaults and typed names in Core/CLI and the EN/FR desktop. Broader runtime/cooked default reconstruction remains in development. [Contract](docs/EFFECTIVE_DEFAULTS.md).
 - **Source physical cloth:** explicit UE 5.3 tagged packages now share the physical model, queries/OBJ/differences and reusable EN/FR desktop, with independently selected objects and unresolved defaults kept visible. [Contract](docs/SOURCE_PHYSICAL_CLOTH.md).
 - **Readable asset differences:** searchable typed properties, stable object references, structured Blueprint pin texts, stored material graphs and instance parameters, with explicit partial/opaque coverage.
 - **Source image and geometry review:** supported Texture2D LDR/HDR sources and mips, pixel/sample differences, modern MeshDescription wireframes, geometry differences and base-geometry OBJ export. Modern skeletal source bones, raw weight profiles and named morph deltas are fixture-validated.
@@ -88,7 +88,7 @@ Link `CyUEDiff::Core` through `add_subdirectory`, or install the SDK and use `fi
 
 ## Installation
 
-**No public application release is available yet.** Build from source using the instructions below. The earlier 0.181 Core/CLI milestone passed hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled; the 0.199 development source has local Windows validation. The local 0.199 Windows archive has passed extraction, startup and SDK consumer checks with a statically linked MSVC runtime. Local Windows development archives include the bilingual offline HTML manual and version/component/runtime metadata; they are prepared and validated separately from public releases. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
+**No public application release is available yet.** Build from source using the instructions below. The earlier 0.181 Core/CLI milestone passed hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled; the 0.200 development source has local Windows validation. The local 0.199 Windows archive has passed extraction, startup and SDK consumer checks with a statically linked MSVC runtime. Local Windows development archives include the bilingual offline HTML manual and version/component/runtime metadata; they are prepared and validated separately from public releases. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
 
 Windows builds using the default dynamic MSVC runtime need the matching Microsoft Visual C++ x64 runtime. Git features require a separate Git 2.45+ installation; loose-file inspection does not. Keep an extracted CPack archive together with its documentation and license notices. See [distribution and runtime requirements](docs/DISTRIBUTION.md).
 

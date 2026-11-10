@@ -1,4 +1,5 @@
 #include <cyuediff/defaults.hpp>
+#include "blueprint_default_binding.hpp"
 #include "sha256.hpp"
 #include "string_value.hpp"
 #include <fstream>
@@ -118,12 +119,15 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
         require(options.expected_sha256.empty() ||
                     (digest(options.expected_sha256) && options.expected_sha256 == parsed.second),
                 "Default context fingerprint differs");
-        require(doc.at("format") == "cyuediff.default-context/1", "Unsupported default context format");
+        const bool blueprint = doc.at("format") == "cyuediff.default-context/2";
+        require(blueprint || doc.at("format") == "cyuediff.default-context/1",
+                "Unsupported default context format");
         const auto mode = doc.value("inputMode", std::string("local-inputs"));
         require(mode == "local-inputs" || mode == "pinned-inputs", "Unsupported prepared input mode");
         const bool pinned = mode == "pinned-inputs";
         const auto &source = doc.at("sourceProfile");
-        require(source.at("profile") == "ue5.3.2-win64-tagged-ascii/1" &&
+        require(source.at("profile") == (blueprint ? "ue5.3.2-win64-blueprint-tagged-ascii/1"
+                                                   : "ue5.3.2-win64-tagged-ascii/1") &&
                     integer(source.at("ue4"), INT32_MAX) == 522 &&
                     integer(source.at("ue5"), INT32_MAX) == 1009 &&
                     integer(source.at("licensee"), INT32_MAX) == 0 &&
@@ -178,10 +182,12 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
         auto p = std::make_shared<Impl>(DefaultSnapshot::read(file_path(base, capture.at("file")), read));
         p->inputs = {fs::absolute(path).lexically_normal(), file_path(base, capture.at("file"))};
         const auto &provenance = p->snapshot.provenance();
-        require(provenance.at("blueprintClass") == false && provenance.at("classGeneratedBy").is_null(),
-                "Blueprint defaults require dependency/template binding not supplied by this profile");
+        if (!blueprint)
+            require(provenance.at("blueprintClass") == false && provenance.at("classGeneratedBy").is_null(),
+                    "Blueprint defaults require an explicit Blueprint profile");
         const auto cls = word(provenance.at("object").at("class"));
-        require(cls.compare(0, 8, "/Script/") == 0, "Expected a native root class");
+        if (!blueprint)
+            require(cls.compare(0, 8, "/Script/") == 0, "Expected a native root class");
         for (const auto &structure : p->snapshot.structures())
             require(structure.contains("postSerialize") && structure.at("postSerialize").is_boolean(),
                     "Captured post-serializer policy unavailable");
@@ -196,11 +202,18 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
                     files.size() <= options.max_dependencies && files.contains("executable") &&
                     files.contains("project") && files.contains("engine-build"),
                 "Incomplete prepared dependency inventory");
-        const auto dot = cls.find('.', 8);
-        require(dot != std::string::npos && files.contains("module:" + cls.substr(8, dot - 8)),
-                "Native class module not recorded");
-        require(provenance.at("object").at("path") == cls.substr(0, dot) + ".Default__" + cls.substr(dot + 1),
-                "Unsupported native class-default identity");
+        Json blueprint_binding = nullptr;
+        if (blueprint)
+            blueprint_binding = detail::validate_blueprint_default_binding(p->snapshot, source, environment,
+                                                                           options.document.control);
+        else {
+            const auto dot = cls.find('.', 8);
+            require(dot != std::string::npos && files.contains("module:" + cls.substr(8, dot - 8)),
+                    "Native class module not recorded");
+            require(provenance.at("object").at("path") ==
+                        cls.substr(0, dot) + ".Default__" + cls.substr(dot + 1),
+                    "Unsupported native class-default identity");
+        }
         std::uint64_t total = 0;
         Json verified = Json::object();
         for (auto it = files.begin(); it != files.end(); ++it) {
@@ -208,7 +221,8 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
             const auto &dep = dependencies.at(it.key());
             const auto role = word(it->at("role"));
             require(role == "module" || role == "config" || role == "project" || role == "engine-build" ||
-                        role == "executable",
+                        role == "executable" ||
+                        (blueprint && (role == "asset-package" || role == "asset-companion")),
                     "Unsupported dependency role");
             require(it->at("present").is_boolean(), "Expected captured dependency presence");
             const auto path_value = [&](const Json &value) {
@@ -225,7 +239,8 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
                 require(file == path_value(it->at("file")),
                         "Prepared dependency path differs from captured environment");
             if (it->at("present") == false) {
-                require(role == "config" && dep.at("absent") == true,
+                require((role == "config" || (blueprint && role == "asset-companion")) &&
+                            dep.at("absent") == true,
                         "Invalid captured configuration absence");
                 if (!pinned) {
                     std::error_code ec;
@@ -263,6 +278,8 @@ DefaultContext DefaultContext::read(const fs::path &path, const DefaultContextRe
                          {"dependencies", std::move(verified)},
                          {"mergedConfigBlake3", config},
                          {"verifiedBytes", total}};
+        if (blueprint)
+            p->provenance["blueprintBinding"] = std::move(blueprint_binding);
         return DefaultContext(std::move(p));
     } catch (const Json::exception &) {
         throw Error("default-context", "Invalid default context document");

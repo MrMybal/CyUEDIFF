@@ -111,6 +111,139 @@ struct Prepared {
     }
 };
 Json tag(const char *type, Json v) { return {{"type", {{"name", type}}}, {"value", std::move(v)}}; }
+void blueprint_checks(const fs::path &dir) {
+    fs::create_directories(dir);
+    Prepared f(dir);
+    const std::string cls = "/Game/Test/BP.BP_C", pkg = "/Game/Test/BP",
+                      guid = "0123456789abcdef0123456789abcdef";
+    auto encoded = f.capture.dump();
+    for (std::size_t at = 0; (at = encoded.find(root, at)) != std::string::npos; at += cls.size())
+        encoded.replace(at, std::string(root).size(), cls);
+    f.capture = Json::parse(encoded);
+    Json target = {{"path", pkg + ".Default__BP_C"}, {"class", cls}, {"flags", "0000000000000010"}};
+    Json parent = {{"path", "/Script/Test.Default__Base"},
+                   {"class", "/Script/Test.Base"},
+                   {"flags", "0000000000000010"}};
+    Json generated = {
+        {"path", pkg + ".BP"}, {"class", "/Script/Engine.Blueprint"}, {"flags", "0000000000000003"}};
+    f.capture["object"] = target;
+    f.capture["blueprintClass"] = true;
+    f.capture["classGeneratedBy"] = generated;
+    f.capture["archetype"] = parent;
+    for (auto &d : f.capture["declarations"][cls]["properties"])
+        d["propertyGuid"] = guid;
+    for (auto &v : f.capture["fields"])
+        if (v["owner"] == cls)
+            v["propertyGuid"] = guid;
+    const auto id = "package:" + pkg;
+    auto &files = f.capture["environment"]["files"];
+    files[id] = files["module:Test"];
+    files[id]["role"] = "asset-package";
+    f.context["dependencies"][id] = f.context["dependencies"]["module:Test"];
+    Json companions = Json::array();
+    for (const char *ext : {"uexp", "ubulk", "uptnl", "m.ubulk", "o.ubulk", "upayload"}) {
+        const auto key = id + ":" + ext;
+        const auto path = (dir / (std::string("absent.") + ext)).u8string();
+        files[key] = {{"role", "asset-companion"}, {"file", path}, {"present", false}};
+        f.context["dependencies"][key] = {{"file", path}, {"absent", true}};
+        companions.push_back(key);
+    }
+    f.capture["environment"]["blueprintDependencies"] = {
+        {"format", "cyuediff.blueprint-default-dependencies/1"},
+        {"complete", true},
+        {"classes", Json::array({Json{{"class", cls},
+                                      {"super", "/Script/Test.Base"},
+                                      {"defaultObject", target},
+                                      {"generatedBy", generated},
+                                      {"blueprint", true}},
+                                 Json{{"class", "/Script/Test.Base"},
+                                      {"super", ""},
+                                      {"defaultObject", parent},
+                                      {"generatedBy", nullptr},
+                                      {"blueprint", false}}})},
+        {"packages",
+         {{pkg,
+           {{"fileId", id}, {"companionIds", companions}, {"imports", Json::array({"/Script/Test"})}}}}}};
+    f.context["format"] = "cyuediff.default-context/2";
+    f.context["sourceProfile"]["profile"] = "ue5.3.2-win64-blueprint-tagged-ascii/1";
+    f.context["sourceProfile"]["objectKind"] = "instance";
+    f.context["sourceProfile"]["blueprintPackageSha256"] = files[id]["sha256"];
+    auto context = f.read();
+    auto p = f.package();
+    p.exports[0].class_name = cls;
+    check(default_root_exports(p, context) == std::vector<std::string>{"Asset"},
+          "Blueprint instance root is selected through its bound generated class");
+    check(resolve_source_defaults(p, "Asset", context).complete,
+          "Omitted Blueprint instance fields use the actual selected CDO");
+    p.exports[0].properties["Count"] = tag("IntProperty", 99);
+    p.exports[0].properties["Count"]["guid"] = guid;
+    check(resolve_source_defaults(p, "Asset", context).fields.at(cls + ".Count").at("value") == 99,
+          "Stored Blueprint GUID and qualified owner retain override values");
+    p.exports[0].properties["Count"]["guid"] = std::string(32, 'f');
+    check(!resolve_source_defaults(p, "Asset", context).complete,
+          "A renamed/mismatched Blueprint GUID never becomes a guessed field value");
+    p.exports[0].properties["Count"].erase("guid");
+    check(!resolve_source_defaults(p, "Asset", context).complete,
+          "Missing Blueprint field identity is unavailable");
+    const auto saved_capture = f.capture, saved_context = f.context;
+    f.capture["environment"]["blueprintDependencies"]["complete"] = false;
+    rejects([&] { f.read(); });
+    f.capture = saved_capture;
+    f.capture["environment"]["blueprintDependencies"]["packages"][pkg]["imports"].push_back("/Game/Missing");
+    rejects([&] { f.read(); });
+    f.capture = saved_capture;
+    f.capture["environment"]["blueprintDependencies"]["classes"][0]["super"] = "/Script/Test.Wrong";
+    rejects([&] { f.read(); });
+    f.capture = saved_capture;
+    f.context["sourceProfile"]["blueprintPackageSha256"] = std::string(64, '0');
+    rejects([&] { f.read(); });
+    f.context = saved_context;
+    f.context["format"] = "cyuediff.default-context/1";
+    rejects([&] { f.read(); });
+    f.context = saved_context;
+    f.capture["fields"][cls + ".Count"]["propertyGuid"] = std::string(32, '0');
+    rejects([&] { f.read(); });
+    f.capture = saved_capture;
+    write(dir / "absent.uexp", "unexpected companion");
+    rejects([&] { f.read(); });
+    fs::remove(dir / "absent.uexp");
+    f.context["sourceProfile"]["objectKind"] = "class-default";
+    f.capture["factory"] = {
+        {"format", "cyuediff.blueprint-cdo-factory/1"},
+        {"operation", "construct-cdo-from-explicit-parent-template"},
+        {"class",
+         {{"path", cls}, {"class", "/Script/Engine.BlueprintGeneratedClass"}, {"flags", "0000000000000001"}}},
+        {"targetDefault", target},
+        {"parentDefault", parent}};
+    f.capture["object"]["path"] = "/Temp/CyUEDiffFactory_Test.Default__BP_C";
+    context = f.read();
+    p = f.package();
+    p.exports[0].path = p.exports[0].name = "Default__BP_C";
+    p.exports[0].flags = 0x10;
+    p.exports[0].class_name = "BP_C";
+    p.exports[0].class_index = 2;
+    ObjectExport generated_class;
+    generated_class.path = generated_class.name = "BP_C";
+    generated_class.class_name = "/Script/Engine.BlueprintGeneratedClass";
+    p.exports.push_back(generated_class);
+    p.fingerprints["package"] = {{"bytes", fs::file_size(dir / "input.dat")},
+                                 {"sha256", sha256_file(dir / "input.dat")}};
+    check(default_root_exports(p, context) == std::vector<std::string>{"Default__BP_C"},
+          "Blueprint file root uses its local generated-class export, not the editor Blueprint object");
+    check(resolve_source_defaults(p, "Default__BP_C", context).complete,
+          "Blueprint CDO applies stored fields to an explicit independent factory seed");
+    p.fingerprints["package"]["sha256"] = std::string(64, 'f');
+    rejects([&] { resolve_source_defaults(p, "Default__BP_C", context); });
+    p.fingerprints["package"]["sha256"] = sha256_file(dir / "input.dat");
+    p.fingerprints[".uexp"] = {{"bytes", 1}, {"sha256", std::string(64, 'f')}};
+    rejects([&] { resolve_source_defaults(p, "Default__BP_C", context); });
+    p.fingerprints.erase(".uexp");
+    p.exports[0].class_index = 1;
+    check(default_root_exports(p, context).empty(),
+          "A local class-name lookalike without its actual generated-class export is rejected");
+    f.capture["factory"]["parentDefault"]["path"] = "/Script/Test.WrongDefault";
+    rejects([&] { f.read(); });
+}
 } // namespace
 int main(int argc, char **argv) {
     const auto dir =
@@ -508,6 +641,7 @@ int main(int argc, char **argv) {
                                              {"value", {{"Count", tag("IntProperty", 29)}}}};
         check(!resolve_source_defaults(p, "Asset", context).complete,
               "Native post-serialization cannot be replaced by a generic field merge");
+        blueprint_checks(dir / "blueprint");
         std::cout << checks << " effective default checks passed\n";
         fs::remove_all(dir);
         return 0;
