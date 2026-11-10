@@ -305,16 +305,23 @@ bool ContainerView::select_object(std::size_t index) {
     property_available_ = !row.before_values.is_null() || !row.after_values.is_null();
     properties_comparing_ = compare_objects_ && (row.before.is_null() || !row.before_values.is_null()) &&
                             (row.after.is_null() || !row.after_values.is_null());
+    const auto *before_read = row.before.is_null() ? nullptr : &row.before_read;
+    const auto *after_read = row.after.is_null() ? nullptr : &row.after_read;
+    const auto *single_read = !row.before_values.is_null() ? before_read : after_read;
+    property_coverage_ = properties_comparing_ ? cooked_property_coverage(before_read, after_read)
+                                               : cooked_property_coverage(single_read, single_read);
     if (properties_comparing_)
         values_.set_values(row.before_values.is_null() ? nullptr : &row.before_values,
-                           row.after_values.is_null() ? nullptr : &row.after_values, true);
+                           row.after_values.is_null() ? nullptr : &row.after_values, true,
+                           property_coverage_);
     else
         values_.set_values(!row.before_values.is_null()
                                ? &row.before_values
                                : (!row.after_values.is_null() ? &row.after_values : nullptr),
-                           nullptr, false);
+                           nullptr, false, property_coverage_);
     const auto snapshots = property_snapshots();
-    property_browser_.set_values(snapshots.first, snapshots.second, properties_comparing_);
+    property_browser_.set_values(snapshots.first, snapshots.second, properties_comparing_,
+                                 property_coverage_);
     browse_properties_ = values_.table().truncated;
     property_notice_.clear();
     if (document_->after && property_available_ && !properties_comparing_)
@@ -553,6 +560,27 @@ void ContainerView::set_document(std::shared_ptr<const ContainerDocument> value)
                     row.after.erase("properties");
                     row.after.erase("propertyRead");
                 }
+                if (complete && !row.before.is_null() && !row.after.is_null()) {
+                    std::string base = "/objects/";
+                    for (char c : row.path)
+                        base += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+                    bool changed = row.before != row.after, unknown = false;
+                    const auto report = document_->selected_comparison.find("zen");
+                    if (report != document_->selected_comparison.end() && report->is_object()) {
+                        auto belongs = [&](const Json &entry) {
+                            const auto &path = entry.at("path").get_ref<const std::string &>();
+                            return path == base ||
+                                   (path.size() > base.size() && path.compare(0, base.size(), base) == 0 &&
+                                    path[base.size()] == '/');
+                        };
+                        for (const auto &entry : report->at("changes"))
+                            changed = belongs(entry) || changed;
+                        if (report->contains("unavailableScopes"))
+                            for (const auto &entry : report->at("unavailableScopes"))
+                                unknown = belongs(entry) || unknown;
+                    }
+                    row.state = unknown ? "unchecked" : changed ? "modified" : "unchanged";
+                }
                 row.search += " " + row.state;
                 object_rows_.push_back(std::move(row));
             }
@@ -728,7 +756,9 @@ Json ContainerView::property_report() const {
          row ? (browse_properties_ ? property_browser_.properties().visible_count() : values_.visible_count())
              : 0},
         {"displayTruncated", row && property_table().truncated},
-        {"browsing", browse_properties_}};
+        {"browsing", browse_properties_},
+        {"comparisonUnavailable", property_coverage_.comparison_unavailable},
+        {"cookedMetadata", property_coverage_.cooked_properties}};
     if (row && browse_properties_) {
         const auto &page = property_browser_.page();
         const auto selected = property_browser_.properties().selected_row();

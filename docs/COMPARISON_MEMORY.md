@@ -34,3 +34,5 @@ A sequential comparison of the same original large UE 5.3 physical-cloth source 
 The packages, full changed-value arrays, explicitly decoded physical/projection models and UI caches are still owned. A whole-object addition can retain a large value. Some cooked Zen report entries still materialize one complete package at a time. Source work/byte limits and cooperative cancellation do not bound the entire process heap. Streaming does not make arbitrary assets universally readable, resolve defaults or certify additional native producers. Final updated Windows distribution remains separate from this source milestone.
 
 Source development 0.193 adds [source key/reader context and readable serialization metadata](SOURCE_KEY_CONTEXT.md). Reader observations are context, and key encoding is bounded separately from raw native data.
+
+Development 0.194 adds [cooked interpretation and stored key correspondence](COOKED_CONTEXT.md). Inventories share reader budgets; views use a cooked-wrapper context policy rather than allocating one ignore scope per annotation. Default reconstruction and broader producer/projector acceptance remain open.

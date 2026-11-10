@@ -107,3 +107,5 @@ Optional top-level `taggedTypes` carries a profile-bound `cyuediff.tagged-types/
 Source development 0.191 adds [per-binding native definition identity](DECODER_IDENTITY.md). Interpretation hashes stay separate from asset members; explicit incompatible definitions preserve readable values and mark native correspondence unknown.
 
 Source development 0.192 retains [stored struct GUID/owner identities](STRUCT_IDENTITY.md), supports exact GUID selectors and separates matched profile applicability from immutable declarative program identity.
+
+Development 0.194 adds [cooked interpretation and stored key correspondence](COOKED_CONTEXT.md). Inventories share reader budgets; views use a cooked-wrapper context policy rather than allocating one ignore scope per annotation. Default reconstruction and broader producer/projector acceptance remain open.

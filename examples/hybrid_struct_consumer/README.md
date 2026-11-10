@@ -10,3 +10,5 @@ hybrid_struct_consumer BEFORE.utoc ENTRY GLOBAL.utoc BEFORE.json AFTER.utoc ENTR
 ```
 
 The JSON retains both complete package reports and optional named differences. Exit 2 indicates an error or a failed bound property projection; unbound exports and remaining native export suffixes keep their reported coverage. The selected containers must use supported unencrypted copy blocks. See [the hybrid structure contract](../../docs/HYBRID_STRUCTS.md) and supply matching explicit layouts/schema provenance. Do not mix headers and libraries from different SDK builds.
+
+Development 0.194 retains cooked interpretation separately from stored values. Use matching headers/libraries and [the cooked correspondence contract](../../docs/COOKED_CONTEXT.md). The property page example accepts `cookedProperties: true` with raw/unavailable scopes from the cooked coverage API.

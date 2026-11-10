@@ -158,3 +158,5 @@ Source development 0.191 adds [native definition correspondence](DECODER_IDENTIT
 Source development 0.192 preserves [stored struct identity](STRUCT_IDENTITY.md), explicit tagged/native certificates and GUID-selective extensions. Actual Engine serialization demonstrates the builtin-name collision; controlled-header tests do not replace broader whole-package producer acceptance. Default reconstruction, logical key normalization and updated final delivery remain open.
 
 Source development 0.193 corrects [metadata inspection and source key context](SOURCE_KEY_CONTEXT.md). Broader key equality/default semantics, cooked mapping correspondence, projector-owned provenance and producer acceptance remain separate work. Current Windows delivery must be regenerated for this source version before final acceptance.
+
+Development 0.194 adds [cooked interpretation and stored key correspondence](COOKED_CONTEXT.md). Inventories share reader budgets; views use a cooked-wrapper context policy rather than allocating one ignore scope per annotation. Default reconstruction and broader producer/projector acceptance remain open.

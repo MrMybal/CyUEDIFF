@@ -328,8 +328,14 @@ int main(int argc, char **argv) {
         error([&] { decode(body, schemas, cancel); }, "cancelled");
         cancel = options;
         unsigned work = 0;
+        bool identity_work = false;
+        cancel.control.progress = [&](const OperationProgress &p) {
+            if (p.phase == "unversioned-key-identity")
+                identity_work = true;
+        };
         cancel.charge = [&](std::uint32_t n, std::uint64_t) {
-            work += n;
+            if (identity_work)
+                work += n;
             if (work == 4)
                 stop = true;
         };
@@ -345,8 +351,9 @@ int main(int argc, char **argv) {
         cancel.control.cancelled = [&] { return stop; };
         // Request cancellation from the last value's charge, after its final byte read.
         unsigned calls = 0;
+        const auto last_charge = decode(zero_only, schemas, options).values_read;
         cancel.charge = [&](std::uint32_t n, std::uint64_t) {
-            if (n && ++calls == 2)
+            if (n && ++calls == last_charge)
                 stop = true;
         };
         error([&] { decode(zero_only, schemas, cancel); }, "cancelled");

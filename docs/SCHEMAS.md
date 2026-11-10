@@ -381,3 +381,7 @@ Modern engine aliases need serializer evidence independently of their C++ math a
 ## Hybrid reflected/native serializers — post-0.182 development
 
 Version-four contexts add required `structTails` bindings for an explicitly certified reflected prefix followed by a declarative native tail. Runtime hosts can use `struct_tails` in the public read/context options. Prefix and tail share bounds and budgets; damaged/unsupported tails retain the whole opaque result. See [the complete contract and physical cloth scope](HYBRID_STRUCTS.md). The raw schema consumer forwards these bindings from its loaded context.
+
+## Cooked correspondence — 0.194
+
+Qualified schema/type inventories and selected native programme identities now remain separate from stored values. Equivalent layout names/catalogue hashes do not create value changes; incompatible definitions/keys/fields and unread peers retain unavailable scopes. Both property inspectors share these rules. See [the full cooked context contract](COOKED_CONTEXT.md).

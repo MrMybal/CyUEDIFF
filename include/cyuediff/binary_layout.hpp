@@ -18,6 +18,11 @@ struct BinaryLayoutReadOptions {
     // Required with a custom reference resolver in decoder_registry(); direct decode is unchanged.
     std::string reference_identity;
 };
+struct BinaryLayoutDefinition {
+    // Empty when a reference-dependent program has an unnamed host resolver.
+    std::string sha256;
+    bool reference_dependent = false;
+};
 // Immutable descriptions of serialized little-endian bytes, not C++ memory layouts.
 // No engine/plugin code is discovered or executed.
 class BinaryLayouts {
@@ -34,6 +39,9 @@ class BinaryLayouts {
     Json to_json() const;
     NarrowStringEncoding narrow_string_encoding() const;
     Json decode(DecoderInput &, const std::string &, const BinaryLayoutReadOptions & = {}) const;
+    // Merkle program identities exclude local layout names and unrelated catalogue entries.
+    // These describe interpretation, not proof that an input was produced by that layout.
+    std::map<std::string, BinaryLayoutDefinition> definitions(const BinaryLayoutReadOptions & = {}) const;
     std::shared_ptr<const DecoderRegistry> decoder_registry(const BinaryLayoutReadOptions & = {}) const;
 };
 } // namespace cyuediff

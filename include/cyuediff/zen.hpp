@@ -1,6 +1,7 @@
 #pragma once
 #include <cyuediff/container.hpp>
 #include <cyuediff/schema.hpp>
+#include <cyuediff/visual_diff.hpp>
 namespace cyuediff {
 // Unversioned cooked headers require an explicit layout; no automatic engine execution.
 enum class ZenProfile { unspecified, unreal_5_3, unreal_5_5 };
@@ -56,6 +57,10 @@ struct ZenExport {
     Json property_read = nullptr;
     Json to_json() const;
 };
+// Coverage for retained propertyRead JSON (pointers distinguish absent objects from
+// existing unbound/opaque objects). Reuse it for flat tables and paged property views.
+ValueCoverage cooked_property_coverage(const Json *before_read, const Json *after_read,
+                                       const OperationControl & = {});
 struct ZenPackage {
     std::string name, profile, sha256, header_sha256, script_objects_sha256, schema_context_sha256;
     std::uint32_t header_size = 0, cooked_header_size = 0, flags = 0;

@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.193.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.194.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.193.0**
+> **EN DÉVELOPPEMENT · 0.194.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -45,6 +45,7 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 
 ## Fonctionnalités
 
+- **Interprétation cooked :** les programmes natifs équivalents et métadonnées du catalogue restent distincts des changements stockés ; les lecteurs incompatibles restent indéterminés dans les zones concernées, dans le Core et les deux inspecteurs. [Contrat](docs/COOKED_CONTEXT.md).
 - **Contexte des clés source :** les annotations du lecteur restent distinctes des clés de maps/sets stockées ; les formats incompatibles restent indéterminés. Les métadonnées restent consultables à côté des valeurs illisibles. [Contrat](docs/SOURCE_KEY_CONTEXT.md).
 - **Identité des structures stockées :** GUID et propriétaires qualifiés conservés, certificats explicites de sérialisation et extensions natives sélectionnées par GUID. Les octets vides ambigus restent indéterminés. [Contrat](docs/STRUCT_IDENTITY.md).
 - **Identité des définitions natives :** un schéma déclaratif ou explicitement identifié modifié sous le même nom reste indéterminé ; les ajouts sans rapport au catalogue restent du contexte et les champs lisibles restent comparables. [Contrat](docs/DECODER_IDENTITY.md).
@@ -85,7 +86,7 @@ Liez `CyUEDiff::Core` avec `add_subdirectory`, ou installez le SDK et utilisez `
 
 ## Installation
 
-**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources 0.193 non poussées disposent d’une validation locale Windows. Les archives de développement Windows locales comprennent le manuel HTML bilingue hors ligne et les métadonnées de version, composants et runtime ; leur préparation et validation restent distinctes d’une release publique. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
+**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources 0.194 non poussées disposent d’une validation locale Windows. Les archives de développement Windows locales comprennent le manuel HTML bilingue hors ligne et les métadonnées de version, composants et runtime ; leur préparation et validation restent distinctes d’une release publique. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
 
 Les builds Windows utilisant le runtime MSVC dynamique par défaut nécessitent le runtime Microsoft Visual C++ x64 correspondant. Les fonctions Git nécessitent une installation séparée de Git 2.45+ ; l’inspection de fichiers libres n’en dépend pas. Conservez les archives CPack extraites avec leur documentation et leurs notices de licence. Voir les [conditions de distribution et d’exécution](docs/DISTRIBUTION.md).
 

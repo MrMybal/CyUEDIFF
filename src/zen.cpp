@@ -1,3 +1,4 @@
+#include "cooked_property_diff.hpp"
 #include <cyuediff/zen.hpp>
 #include <cyuediff/string_encoding.hpp>
 #include "archive.hpp"
@@ -605,6 +606,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                         }
                         return nullptr;
                     };
+                    props.reference_identity = "cyuediff.zen-package-indices/1";
                     auto decoded =
                         decode_unversioned(bytes, e.offset + b.property_offset, e.size - b.property_offset,
                                            *context.schemas, b.schema, props);
@@ -613,6 +615,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                                        {"offset", b.property_offset},
                                        {"consumedBytes", decoded.consumed_bytes},
                                        {"properties", std::move(decoded.properties)},
+                                       {"interpretation", std::move(decoded.interpretation)},
                                        {"defaultsResolved", false},
                                        {"mappingVerified", false},
                                        {"nativePayloadDecoded", false}};
@@ -843,17 +846,115 @@ ZenPackage read_zen_package(const Container &container, std::size_t entry, const
     read.control = parse.control;
     return ZenPackage::parse(container.read(entry, read), parse);
 }
+ValueCoverage cooked_property_coverage(const Json *before, const Json *after,
+                                       const OperationControl &control) {
+    control.check();
+    ValueCoverage result;
+    result.cooked_properties = true;
+    Json changes = Json::array(), unavailable = Json::array();
+    const Json empty = Json::object();
+    auto decoded = [](const Json *read) {
+        return read && read->is_object() && read->value("status", "") == "decoded";
+    };
+    auto context = [&](const Json *read) -> const Json & {
+        return decoded(read) && read->contains("interpretation") ? read->at("interpretation") : empty;
+    };
+    auto valid = [](const Json &c) { return c.value("format", "") == "cyuediff.cooked-interpretation/1"; };
+    auto noop = +[](const Json &, const Json &, const std::string &, Json &, const OperationControl &) {};
+    // Retain raw scopes independently, including fields whose peer is omitted.
+    // Native program output is never walked here, regardless of its member names.
+    const Json *sides[] = {before, after};
+    for (unsigned side = 0; side < 2; ++side) {
+        if (side && before == after)
+            continue;
+        const auto *read = sides[side];
+        const auto &c = context(read);
+        if (!valid(c))
+            continue;
+        detail::CookedPropertyDiff property{c, c, changes, unavailable, control, noop, &result};
+        property.structure(read->at("properties"), read->at("properties"), c.at("schema"), c.at("schema"), "",
+                           0);
+    }
+    result.comparison_unavailable.clear();
+    if (before != after) {
+        if (before && !decoded(before))
+            result.before_unavailable.push_back("");
+        if (after && !decoded(after))
+            result.after_unavailable.push_back("");
+        if (decoded(before) && decoded(after)) {
+            const auto &ac = context(before), &bc = context(after);
+            detail::CookedPropertyDiff property{ac, bc, changes, unavailable, control, noop, &result};
+            if (!valid(ac) || !valid(bc))
+                property.unknown("", "cooked-interpretation-unavailable");
+            else
+                property.structure(before->at("properties"), after->at("properties"), ac.at("schema"),
+                                   bc.at("schema"), "", 0);
+        }
+    }
+    std::sort(result.raw.begin(), result.raw.end());
+    result.raw.erase(std::unique(result.raw.begin(), result.raw.end()), result.raw.end());
+    std::sort(result.ignored.begin(), result.ignored.end());
+    result.ignored.erase(std::unique(result.ignored.begin(), result.ignored.end()), result.ignored.end());
+    std::sort(result.comparison_unavailable.begin(), result.comparison_unavailable.end());
+    result.comparison_unavailable.erase(
+        std::unique(result.comparison_unavailable.begin(), result.comparison_unavailable.end()),
+        result.comparison_unavailable.end());
+    return result;
+}
 Json compare_zen_packages(const ZenPackage &before, const ZenPackage &after,
                           const OperationControl &control) {
     control.checkpoint("cooked-diff");
-    Json changes = Json::array();
-    walk(before.snapshot(), after.snapshot(), "", changes, control);
+    Json changes = Json::array(), unavailable = Json::array();
+    auto a = before.snapshot(), b = after.snapshot();
+    std::map<std::string, const ZenExport *> peers;
+    for (const auto &entry : after.exports) {
+        control.check();
+        peers.emplace(entry.path, &entry);
+    }
+    const Json empty = Json::object();
+    for (const auto &entry : before.exports) {
+        control.check();
+        const auto found = peers.find(entry.path);
+        if (found == peers.end())
+            continue;
+        const auto &ar = entry.property_read, &br = found->second->property_read;
+        auto &ao = a["objects"][entry.path], &bo = b["objects"][entry.path];
+        ao.erase("properties");
+        bo.erase("properties");
+        ao.erase("propertyRead");
+        bo.erase("propertyRead");
+        if (ar.is_null() && br.is_null())
+            continue;
+        const auto path = "/objects/" + detail::cooked_token(entry.path) + "/properties";
+        const bool decoded = ar.is_object() && br.is_object() && ar.value("status", "") == "decoded" &&
+                             br.value("status", "") == "decoded";
+        const auto &ac = decoded && ar.contains("interpretation") ? ar.at("interpretation") : empty;
+        const auto &bc = decoded && br.contains("interpretation") ? br.at("interpretation") : empty;
+        detail::CookedPropertyDiff property{ac, bc, changes, unavailable, control, walk};
+        if (!decoded)
+            property.unknown(path, "cooked-properties-unavailable");
+        else if (ac.value("format", "") != "cyuediff.cooked-interpretation/1" ||
+                 bc.value("format", "") != "cyuediff.cooked-interpretation/1")
+            property.unknown(path, "cooked-interpretation-unavailable");
+        else
+            property.structure(ar.at("properties"), br.at("properties"), ac.at("schema"), bc.at("schema"),
+                               path, 0);
+    }
+    Json table_changes = Json::array();
+    walk(a, b, "", table_changes, control);
+    // Retain the existing table/opaque-body ordering before named property rows.
+    for (auto &change : changes)
+        table_changes.push_back(std::move(change));
+    changes = std::move(table_changes);
     bool binary = before.sha256 != after.sha256;
-    auto status = changes.empty() ? (binary ? "binary-only" : "identical") : "changed";
+    auto status = !unavailable.empty() ? "incomplete"
+                  : changes.empty()    ? (binary ? "binary-only" : "identical")
+                                       : "changed";
     control.checkpoint("cooked-diff", 1, 1);
     return {
         {"schema", "cyuediff.zen-diff/1"},
         {"status", status},
+        {"unavailableScopes", std::move(unavailable)},
         {"coverage", before.property_exports_decoded || after.property_exports_decoded
                          ? "object-tables-properties-and-opaque-bodies"
                          : "object-tables-and-opaque-bodies"},

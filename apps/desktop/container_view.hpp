@@ -78,6 +78,7 @@ class ContainerView {
     Json object_data_, after_object_data_, schema_details_;
     PropertyView inspection_, properties_, values_, comparison_, schema_;
     PropertyBrowserView property_browser_;
+    ValueCoverage property_coverage_;
     bool browse_properties_ = false;
     std::pair<const Json *, const Json *> property_snapshots() const;
     void rebuild_members();

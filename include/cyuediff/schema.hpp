@@ -132,11 +132,16 @@ struct UnversionedReadOptions {
     OperationControl control;
     // Optional enclosing-operation budget, charged even if this read later fails.
     std::function<void(std::uint32_t, std::uint64_t)> charge;
+    // Stable contract for a custom reference resolver; unnamed callbacks remain readable,
+    // but their reference-dependent values cannot certify paired correspondence.
+    std::string reference_identity;
 };
 struct UnversionedProperties {
     Json properties = Json::object();
     std::uint64_t consumed_bytes = 0, text_bytes = 0;
     std::uint32_t values_read = 0;
+    // Selected qualified schema/type/program inventory, separate from stored asset values.
+    Json interpretation = nullptr;
 };
 // Decodes only properties present in the header. Skipped slots require archetype
 // defaults and are not synthesized. Throws on unsupported types or invalid data;

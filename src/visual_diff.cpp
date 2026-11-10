@@ -152,9 +152,40 @@ bool same_opaque(const Json *a, const Json *b) {
 }
 class CoverageIndex {
     std::set<std::string> before_, after_, unknown_, ignored_, raw_;
+    const Json *root_before_, *root_after_;
+    bool cooked_;
+    static bool cooked_tag(const Json *value) {
+        return value && value->is_object() && !type(value).empty() && value->contains("value") &&
+               value->contains("schemaIndex") && value->at("schemaIndex").is_number_unsigned() &&
+               value->contains("serializedZero") && value->at("serializedZero").is_boolean();
+    }
+    bool cooked_annotation(std::string path) const {
+        if (!cooked_ || raw(path))
+            return false;
+        for (;;) {
+            const auto slash = path.find_last_of('/');
+            if (slash == std::string::npos)
+                return false;
+            const auto key = path.substr(slash + 1);
+            path.resize(slash);
+            if (key == "value" || key == "serializedZero")
+                continue;
+            const Json::json_pointer pointer(path);
+            for (const auto *root : {root_before_, root_after_}) {
+                if (!root)
+                    continue;
+                try {
+                    if (cooked_tag(&root->at(pointer)))
+                        return true;
+                } catch (const Json::exception &) {
+                }
+            }
+        }
+    }
 
   public:
-    explicit CoverageIndex(const ValueCoverage &v) {
+    explicit CoverageIndex(const ValueCoverage &v, const Json *before, const Json *after)
+        : root_before_(before), root_after_(after), cooked_(v.cooked_properties) {
         std::size_t count = 0, bytes = 0;
         auto load = [&](const auto &paths, auto &set) {
             for (const auto &path : paths) {
@@ -199,8 +230,8 @@ class CoverageIndex {
     bool uncertain(const std::string &p) const {
         return intersects(before_, p) || intersects(after_, p) || intersects(unknown_, p);
     }
-    bool ignored(const std::string &p) const { return covers(ignored_, p); }
-    bool context_intersects(const std::string &p) const { return intersects(ignored_, p); }
+    bool ignored(const std::string &p) const { return covers(ignored_, p) || cooked_annotation(p); }
+    bool context_intersects(const std::string &p) const { return cooked_ || intersects(ignored_, p); }
     bool raw(const std::string &p) const { return covers(raw_, p); }
     bool uncertain_at(const std::string &p) const {
         return covers(before_, p) || covers(after_, p) || covers(unknown_, p);
@@ -352,7 +383,7 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
         options.max_compare_nodes > 64'000'000)
         throw Error("property-view-limit", "Invalid property table limits");
     options.control.check();
-    CoverageIndex coverage(options.coverage);
+    CoverageIndex coverage(options.coverage, before, after);
     std::size_t work = 0;
     PropertyTable result;
     std::function<void(const Json *, const Json *, const std::string &, const std::string &, unsigned, bool)>
@@ -488,7 +519,7 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
         std::count(scope.begin(), scope.end(), '/') > 128)
         throw Error("property-page-limit", "Invalid property page limits or scope");
     options.control.check();
-    CoverageIndex coverage(options.coverage);
+    CoverageIndex coverage(options.coverage, before, after);
     std::size_t work = 0;
     Json::json_pointer pointer;
     try {

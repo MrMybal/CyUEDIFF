@@ -591,6 +591,127 @@ struct PropertyReader {
     std::map<std::string, NativeStructLayout> native_structs;
     std::map<std::string, std::string> struct_layouts;
     std::map<std::string, std::string> struct_tails;
+    std::map<std::string, BinaryLayoutDefinition> layout_definitions;
+    bool definitions_ready = false;
+    Json type_context(const SchemaType &type, unsigned nesting) {
+        depth(nesting);
+        charge();
+        Json context = {{"kind", type.kind}};
+        if (!type.name.empty()) {
+            const auto &name =
+                type.kind == 26 ? schemas.enumeration(type.name).path : schemas.schema(type.name).path;
+            text(name.size());
+            context["name"] = name;
+            if (type.kind == 9) {
+                const auto native = native_structs.find(name);
+                const auto whole = struct_layouts.find(name);
+                const auto tail = struct_tails.find(name);
+                if (native != native_structs.end()) {
+                    context["route"] = "builtin";
+                    context["layout"] = native_struct_layout_name(native->second);
+                } else if (whole != struct_layouts.end() || tail != struct_tails.end()) {
+                    context["route"] = whole != struct_layouts.end() ? "layout" : "hybrid";
+                    if (!definitions_ready) {
+                        BinaryLayoutReadOptions read;
+                        read.narrow_string_encoding = options.narrow_string_encoding;
+                        read.reference = options.reference;
+                        read.reference_identity = options.reference_identity;
+                        if (!read.reference) {
+                            read.reference = [](std::int32_t) -> Json {
+                                throw Error("schema-context", "Missing package reference resolver");
+                            };
+                            read.reference_identity = "cyuediff.null-package-indices/1";
+                        }
+                        read.control = options.control;
+                        layout_definitions = options.binary_layouts->definitions(read);
+                        definitions_ready = true;
+                    }
+                    const auto &definition =
+                        layout_definitions.at(whole != struct_layouts.end() ? whole->second : tail->second);
+                    text(definition.sha256.size());
+                    context["definitionSha256"] = definition.sha256;
+                    context["referenceDependent"] = definition.reference_dependent;
+                } else {
+                    const auto &definition = schemas.schema(name);
+                    const bool reflected = options.reflected_structs.count(name) ||
+                                           (options.reflected_structs.count(definition.name) &&
+                                            schemas.schema(definition.name).path == name);
+                    context["route"] = reflected ? "reflected" : "unsupported";
+                }
+            }
+        }
+        if (!type.arguments.empty()) {
+            context["arguments"] = Json::array();
+            for (const auto &argument : type.arguments)
+                context["arguments"].push_back(type_context(argument, nesting + 1));
+        }
+        if (type.kind == 10 || type.kind == 11 || type.kind == 17 || type.kind == 30) {
+            const auto encoding = options.narrow_string_encoding == NarrowStringEncoding::unspecified
+                                      ? NarrowStringEncoding::ascii
+                                      : options.narrow_string_encoding;
+            context["encoding"] = narrow_string_encoding_name(encoding);
+        }
+        if (type.kind == 4 || type.kind == 6 || type.kind == 13 || type.kind == 14 || type.kind == 12 ||
+            type.kind == 27) {
+            text(options.reference_identity.size());
+            context["referenceIdentity"] =
+                options.reference ? options.reference_identity : "cyuediff.null-package-indices/1";
+        }
+        if (type.kind == 6 || type.kind == 13 || type.kind == 14)
+            context["referenceLayout"] = static_cast<unsigned>(options.script_reference_layout);
+        if (type.kind == 11) {
+            context["textLayout"] = static_cast<unsigned>(options.text_layout);
+            context["argumentLayout"] = static_cast<unsigned>(options.text_argument_data_layout);
+        }
+        if (type.kind == 17)
+            context["softPathLayout"] = static_cast<unsigned>(options.soft_path_layout);
+        if (type.kind == 27)
+            context["fieldPathLayout"] = static_cast<unsigned>(options.field_path_layout);
+        if (type.kind == 28)
+            context["optionalLayout"] = static_cast<unsigned>(options.optional_layout);
+        if (type.kind == 29 || type.kind == 30)
+            context["byteStringLayout"] = static_cast<unsigned>(options.byte_string_layout);
+        return context;
+    }
+    void inventory_type(const SchemaType &type, unsigned nesting) {
+        depth(nesting);
+        if (type.kind == 9) {
+            const auto &definition = schemas.schema(type.name);
+            const bool reflected = options.reflected_structs.count(definition.path) ||
+                                   (options.reflected_structs.count(definition.name) &&
+                                    schemas.schema(definition.name).path == definition.path);
+            if (struct_tails.count(definition.path) || reflected)
+                inventory_schema(definition, nesting + 1);
+        }
+        for (const auto &argument : type.arguments)
+            inventory_type(argument, nesting + 1);
+    }
+    void inventory_schema(const SchemaDefinition &schema, unsigned nesting) {
+        auto &inventory = result.interpretation["schemas"];
+        if (inventory.contains(schema.path))
+            return;
+        depth(nesting);
+        charge();
+        text(schema.path.size());
+        inventory[schema.path] = {{"fields", Json::object()}, {"slots", schema.slots}}; // Before cycles.
+        auto &fields = inventory[schema.path]["fields"];
+        for (const auto &pair : schema.properties) {
+            charge();
+            const auto &property = pair.second;
+            auto key = schema.path + "." + property.name;
+            if (property.array_size > 1)
+                key += "[" + std::to_string(pair.first - property.index) + "]";
+            text(key.size());
+            fields[key] = {{"index", pair.first}, {"type", type_context(property.type, 0)}};
+            inventory_type(property.type, nesting + 1);
+        }
+        if (!schema.super.empty()) {
+            const auto &super = schemas.schema(schema.super);
+            text(super.path.size());
+            inventory[schema.path]["super"] = super.path;
+            inventory_schema(super, nesting + 1);
+        }
+    }
     void charge() {
         options.control.check();
         if (result.values_read >= options.max_values)
@@ -822,7 +943,65 @@ struct PropertyReader {
     }
     // Serialize canonical JSON incrementally so a large key cannot allocate an
     // unbounded temporary string before the enclosing text budget is charged.
-    std::string identity(const Json &key) {
+    enum class KeyShape { raw, typed, fields, field, hybrid, collection, entries, entry, keys };
+    struct KeyMode {
+        KeyShape shape = KeyShape::raw;
+        const SchemaType *type = nullptr;
+        const SchemaDefinition *schema = nullptr;
+    };
+    KeyMode key_mode(KeyMode mode) {
+        if (mode.shape != KeyShape::typed)
+            return mode;
+        const auto &type = *mode.type;
+        if (type.kind == 9) {
+            const auto &definition = schemas.schema(type.name);
+            if (native_structs.count(definition.path) || struct_layouts.count(definition.path))
+                return {};
+            return {struct_tails.count(definition.path) ? KeyShape::hybrid : KeyShape::fields, mode.type,
+                    &definition};
+        }
+        if (type.kind == 24 || type.kind == 25)
+            return {KeyShape::collection, mode.type};
+        if (type.kind == 8 || type.kind == 28)
+            return mode;
+        return {};
+    }
+    KeyMode key_child(KeyMode mode, const Json &value, const std::string &key) {
+        if (mode.shape == KeyShape::field)
+            return key == "value" ? KeyMode{KeyShape::typed, mode.type} : KeyMode{};
+        if (mode.shape == KeyShape::fields) {
+            const auto &field = value.at(key);
+            auto index = field.at("schemaIndex").get<std::uint32_t>();
+            auto *schema = mode.schema;
+            while (index >= schema->slots) {
+                options.control.check();
+                index -= schema->slots;
+                schema = &schemas.schema(schema->super);
+            }
+            const auto &type = schema->properties.at(static_cast<std::uint16_t>(index)).type;
+            return {KeyShape::field, &type};
+        }
+        if (mode.shape == KeyShape::hybrid)
+            return key == "properties" ? KeyMode{KeyShape::fields, mode.type, mode.schema} : KeyMode{};
+        if (mode.shape == KeyShape::typed && mode.type->kind == 28)
+            return key == "value" ? KeyMode{KeyShape::typed, &mode.type->arguments.at(0)} : KeyMode{};
+        if (mode.shape == KeyShape::collection) {
+            if (key == "removed")
+                return {KeyShape::keys, &mode.type->arguments.at(0)};
+            if (key == "entries")
+                return mode.type->kind == 24 ? KeyMode{KeyShape::entries, mode.type}
+                                             : KeyMode{KeyShape::keys, &mode.type->arguments.at(0)};
+        }
+        if (mode.shape == KeyShape::keys)
+            return {KeyShape::typed, mode.type};
+        if (mode.shape == KeyShape::entries)
+            return {KeyShape::entry, mode.type};
+        if (mode.shape == KeyShape::entry)
+            return {KeyShape::typed, &mode.type->arguments.at(key == "key" ? 0 : 1)};
+        return {};
+    }
+    std::string identity(const Json &key, const SchemaType &type) {
+        options.control.checkpoint("unversioned-key-identity");
         std::string output;
         auto append = [&](const char *value, std::size_t size) {
             text(size);
@@ -842,9 +1021,11 @@ struct PropertyReader {
             text(bytes);
             output += Json(value).dump();
         };
-        std::function<void(const Json &, unsigned)> write = [&](const Json &value, unsigned nesting) {
+        std::function<void(const Json &, unsigned, KeyMode)> write = [&](const Json &value, unsigned nesting,
+                                                                         KeyMode mode) {
             depth(nesting);
             charge();
+            mode = key_mode(mode);
             if (value.is_string())
                 string(value.get_ref<const std::string &>());
             else if (value.is_array()) {
@@ -852,19 +1033,26 @@ struct PropertyReader {
                 for (std::size_t j = 0; j < value.size(); ++j) {
                     if (j)
                         append(",", 1);
-                    write(value[j], nesting + 1);
+                    const auto child = mode.shape == KeyShape::typed && mode.type->kind == 8
+                                           ? KeyMode{KeyShape::typed, &mode.type->arguments.at(0)}
+                                           : KeyMode{};
+                    write(value[j], nesting + 1, child);
                 }
                 append("]", 1);
             } else if (value.is_object()) {
                 append("{", 1);
                 bool first = true;
                 for (auto it = value.begin(); it != value.end(); ++it) {
+                    // Only field wrappers produced by this reader contain annotations.
+                    // Declarative/builtin native data never enters this mode.
+                    if (mode.shape == KeyShape::field && it.key() != "value")
+                        continue;
                     if (!first)
                         append(",", 1);
                     first = false;
                     string(it.key());
                     append(":", 1);
-                    write(it.value(), nesting + 1);
+                    write(it.value(), nesting + 1, key_child(mode, value, it.key()));
                 }
                 append("}", 1);
             } else {
@@ -876,7 +1064,7 @@ struct PropertyReader {
                 append(token.data(), token.size());
             }
         };
-        write(key, 0);
+        write(key, 0, {KeyShape::typed, &type});
         return output;
     }
     Json collection(const SchemaType &type, bool zero, unsigned nesting) {
@@ -896,7 +1084,7 @@ struct PropertyReader {
             if (static_cast<std::uint32_t>(removed_count) > options.max_values - result.values_read)
                 throw Error("schema-limit", "Map/set removal count exceeds remaining work", r.pos - 4);
             auto insert = [&](Json &target, Json key, bool pair) {
-                auto id = identity(key);
+                auto id = identity(key, type.arguments.at(0));
                 if (target.contains(id))
                     throw Error("schema-identity", "Duplicate serialized map/set identity", r.pos);
                 if (pair) {
@@ -1401,6 +1589,12 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
                                          const std::string &schema, const UnversionedReadOptions &options) {
     if (offset > bytes.size() || size > bytes.size() - offset)
         throw Error("bounds", "Invalid unversioned property window", offset);
+    options.control.check();
+    if ((!options.reference && !options.reference_identity.empty()) ||
+        options.reference_identity.size() > 256 ||
+        std::any_of(options.reference_identity.begin(), options.reference_identity.end(),
+                    [](unsigned char c) { return c < 0x21 || c > 0x7e; }))
+        throw Error("schema-context", "Invalid property reference resolver identity", offset);
     PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}, {}, {}, {}};
     for (const auto &binding : options.native_structs) {
         reader.charge();
@@ -1436,6 +1630,10 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
              schemas.schema(definition.name).path == definition.path))
             throw Error("schema-context", "Conflicting hybrid struct binding: " + definition.path);
     }
+    const auto &root = schemas.schema(schema);
+    reader.result.interpretation = {
+        {"schema", root.path}, {"schemas", Json::object()}, {"format", "cyuediff.cooked-interpretation/1"}};
+    reader.inventory_schema(root, 0);
     reader.result.properties = reader.structure(schema, false, 0);
     reader.result.consumed_bytes = reader.r.pos - offset;
     options.control.check();

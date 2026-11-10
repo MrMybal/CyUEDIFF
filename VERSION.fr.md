@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.194.0 — Interprétation cooked et correspondance des clés
+
+Les valeurs cooked conservent leur inventaire de schémas, types et programmes natifs séparément des valeurs de l’asset. Les layouts locaux équivalents ne créent plus de faux changements. Les définitions, clés, champs incompatibles et lectures échouées restent explicitement indéterminés, tout en conservant les changements connus indépendants. Les inspecteurs plat et paginé utilisent la même correspondance et conservent leurs chemins de navigation. L’empreinte du programme natif exclut les entrées inutilisées du catalogue ; les contrats de références personnalisées restent explicites. [Contract](docs/COOKED_CONTEXT.md).
+
 ## 0.193.0 — Contexte des clés source et métadonnées lisibles
 
 Le texte des clés de maps/sets stockées exclut seulement les annotations connues du lecteur. Son encodage progressif est borné ; les formats et définitions incompatibles restent indéterminés. Les chemins de lecture des structures restent du contexte et les propriétaires intégrés sont complétés de façon cohérente. L’inspection conserve les métadonnées lisibles à côté des valeurs opaques ou ignorées, sans faux ajouts/suppressions. Les membres natifs bruts conservent leur sens. Relisez les deux côtés avec un SDK actuel correspondant. [Contract](docs/SOURCE_KEY_CONTEXT.md).

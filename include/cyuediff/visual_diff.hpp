@@ -33,6 +33,9 @@ struct PropertyRow {
 // Comparison-only scopes keep decoded values visible while their correspondence is unverified.
 struct ValueCoverage {
     std::vector<std::string> before_unavailable, after_unavailable, comparison_unavailable, ignored, raw;
+    // Cooked field wrappers use schemaIndex/serializedZero; their nonvalue annotations
+    // are context. Explicit raw scopes keep native/host JSON out of this protocol.
+    bool cooked_properties = false;
 };
 struct PropertyTableOptions {
     std::size_t max_rows = 20000, max_text_bytes = 2048;

@@ -509,6 +509,53 @@ Json BinaryLayouts::decode(DecoderInput &input, const std::string &name,
     return LayoutReader{input, impl_->document["layouts"], selected}.read(impl_->document["layouts"][name],
                                                                           0);
 }
+std::map<std::string, BinaryLayoutDefinition>
+BinaryLayouts::definitions(const BinaryLayoutReadOptions &options) const {
+    options.control.check();
+    if ((!options.reference && !options.reference_identity.empty()) ||
+        options.reference_identity.size() > 256 ||
+        std::any_of(options.reference_identity.begin(), options.reference_identity.end(),
+                    [](unsigned char c) { return c < 0x21 || c > 0x7e; }))
+        throw Error("layout-reference-identity", "Invalid program reference resolver identity");
+    auto encoding = options.narrow_string_encoding;
+    if (encoding == NarrowStringEncoding::unspecified)
+        encoding = narrow_string_encoding();
+    if (encoding == NarrowStringEncoding::unspecified)
+        encoding = NarrowStringEncoding::ascii;
+    detail::DefinitionIdentity identity{options, encoding, {}};
+    std::map<std::string, BinaryLayoutDefinition> result;
+    std::function<bool(const Json &)> references = [&](const Json &value) {
+        options.control.check();
+        const auto &type = value.at("type").get_ref<const std::string &>();
+        if (type == "ref")
+            return result.at(value.at("layout").get<std::string>()).reference_dependent;
+        if (type == "object")
+            return true;
+        if (type == "record") {
+            bool found = false;
+            for (const auto &field : value.at("fields"))
+                found = references(field.at("value")) || found;
+            return found;
+        }
+        if (type == "array")
+            return references(value.at("element"));
+        if (type == "optional")
+            return references(value.at("value"));
+        return false;
+    };
+    for (const auto &name : impl_->layout_order) {
+        const auto &program = impl_->document.at("layouts").at(name);
+        identity.layouts.emplace(name, identity.node(program));
+        const bool dependent = references(program);
+        auto hash = identity.hash({{"schema", "cyuediff.binary-program-definition/1"},
+                                   {"interpreter", "cyuediff.binary-layout-reader/1"},
+                                   {"programSha256", identity.layouts.at(name)}});
+        if (dependent && options.reference && options.reference_identity.empty())
+            hash.clear();
+        result.emplace(name, BinaryLayoutDefinition{std::move(hash), dependent});
+    }
+    return result;
+}
 std::shared_ptr<const DecoderRegistry>
 BinaryLayouts::decoder_registry(const BinaryLayoutReadOptions &options) const {
     options.control.check();

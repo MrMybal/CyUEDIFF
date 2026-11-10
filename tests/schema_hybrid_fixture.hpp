@@ -68,6 +68,21 @@ inline void write_hybrid_fixtures(const fs::path &root) {
         auto context = hybrid_manifest(sha256_bytes(mapping.data), profile);
         std::ofstream(root / (std::string("hybrid-") + profile + ".json"), std::ios::binary)
             << context.dump(2) << '\n';
+        for (const auto *variant : {"unused", "renamed", "changed-program"}) {
+            auto alternative = context;
+            if (std::string(variant) == "unused")
+                alternative["binaryLayouts"]["layouts"]["Unused"] = {{"type", "u8"}};
+            else if (std::string(variant) == "renamed") {
+                auto &layouts = alternative["binaryLayouts"]["layouts"];
+                layouts["Renamed"] = layouts["Tethers"];
+                layouts.erase("Tethers");
+                alternative["structTails"]["/Script/Test.Record"] = "Renamed";
+            } else
+                alternative["binaryLayouts"]["layouts"]["Tethers"]["fields"][0]["value"]["element"]["element"]
+                           ["fields"][2]["name"] = "restLength";
+            std::ofstream(root / (std::string(variant) + "-" + profile + ".json"), std::ios::binary)
+                << alternative.dump(2) << '\n';
+        }
         auto wrong = context;
         wrong["structTails"] = Json::object();
         wrong["reflectedStructs"] = Json::array({"/Script/Test.Record"});

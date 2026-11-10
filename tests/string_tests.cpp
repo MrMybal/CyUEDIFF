@@ -126,8 +126,13 @@ int main() {
         std::uint64_t charged = 0;
         limited = options;
         limited.charge = [&](std::uint32_t, std::uint64_t text) { charged += text; };
-        decode(raw, utf8, limited);
-        check(charged == field.size() + unicode.size(), "Byte string bytes share enclosing text budget");
+        const auto empty_read = decode(byte_string_value(""), utf8, limited);
+        const auto overhead = charged;
+        charged = 0;
+        const auto full_read = decode(raw, utf8, limited);
+        check(overhead == empty_read.text_bytes && charged == full_read.text_bytes &&
+                  charged - overhead == unicode.size(),
+              "Byte string payload and retained context share the exact enclosing text budget");
         auto old = Package::open(save(root, "old", text_property_fixture(raw, "Utf8StrProperty", 1009)));
         check(old.exports[0].properties["Formatted"]["opaque"]["reason"] == "string-layout",
               "Unchecked tagged profile remains opaque");

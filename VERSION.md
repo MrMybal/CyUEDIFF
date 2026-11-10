@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.194.0 — Cooked interpretation and key correspondence
+
+Cooked mapped values retain qualified schema/type/native programme inventories outside asset values. Equivalent catalogue-local layouts no longer create false changes. Incompatible definitions, keys, fields and failed peers stay explicitly unavailable while independently known values remain comparable. Both flat and paged desktop inspectors use the same correspondence, preserving existing navigation paths. The selected native programme hash excludes unrelated catalogue entries; custom reference contracts remain explicit. [Contract](docs/COOKED_CONTEXT.md).
+
 ## 0.193.0 — Source key context and readable metadata
 
 Stored map/set key text excludes only known reader annotations, with bounded incremental encoding and explicit key format/definition availability. Struct read routes remain separate context; builtin owner interpretation is completed consistently. Serialization inspection keeps readable metadata beside opaque/skipped values and prevents false additions/removals. Native raw members retain their meaning. Reparse both sides using a matching current SDK. [Contract](docs/SOURCE_KEY_CONTEXT.md).

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(binary_layout_consumer LANGUAGES CXX)
-find_package(CyUEDiff 0.193 CONFIG REQUIRED)
+find_package(CyUEDiff 0.194 CONFIG REQUIRED)
 add_executable(binary_layout_consumer main.cpp)
 target_link_libraries(binary_layout_consumer PRIVATE CyUEDiff::Core)
 if(MSVC)

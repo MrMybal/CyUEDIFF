@@ -78,6 +78,32 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-hybrid-cli-', dir=Path.cwd())
                 prop = failed['exports'][0]['propertyRead']
                 assert failed['propertyExportsFailed'] == 1 and prop['status'] == 'opaque' and 'properties' not in prop
             run('zen-inspect', before, entry, *common, '--out', context, code=2)
+        for variant in ['unused', 'renamed', 'changed-program']:
+            alternative = root/(variant+'-'+profile+'.json')
+            incompatible = variant == 'changed-program'
+            if desktop:
+                native_scope = '/~1Script~1Test.Collections.Lookup/value/native'
+                state = {'container': {'object': selected, 'browseProperties': True,
+                         'propertyBrowser': {'scope': native_scope, 'first': 0,
+                         'properties': {'changedOnly': False, 'selected': native_scope}}}}
+                result = run(*common, '--after-container', before, '--after-container-entry', entry,
+                             '--after-cooked-profile', profile, '--after-script-objects', root/'global.utoc',
+                             '--after-schema', alternative, '--locale', 'fr',
+                             '--document-action', 'view-state:'+json.dumps(state), '--save-workspace', workspace)
+                diff = result['document']['container']['selectedComparison']['zen']
+                view = result['containerView']['objectProperties']
+                assert view['comparing'] and view['cookedMetadata']
+                assert len(view['comparisonUnavailable']) == int(incompatible)
+                assert view['browser']['selected']['change'] == ('Unknown' if incompatible else 'Unchanged')
+                restored = run('--workspace', workspace, '--locale', 'en')
+                assert restored['document'] == result['document']
+                assert restored['containerView']['objectProperties'] == view
+            else:
+                diff = run('zen-diff', before, entry, before, entry, *common,
+                           '--after-schema', alternative, code=int(incompatible))
+            assert diff['contextChanged'] and not diff['binaryChanged'] and not diff['changes']
+            assert diff['status'] == ('incomplete' if incompatible else 'identical')
+            assert len(diff['unavailableScopes']) == int(incompatible)
     assert all(hashlib.sha256(p.read_bytes()).hexdigest() == value for p, value in hashes.items())
     assert not (root/'unused-profile').exists()
     checks += 2
