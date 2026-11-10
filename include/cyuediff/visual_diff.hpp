@@ -36,6 +36,8 @@ struct ValueCoverage {
     // Cooked field wrappers use schemaIndex/serializedZero; their nonvalue annotations
     // are context. Explicit raw scopes keep native/host JSON out of this protocol.
     bool cooked_properties = false;
+    // Actual typed name components, indexed relative to the presented value roots.
+    Json before_names = Json::object(), after_names = Json::object();
 };
 struct PropertyTableOptions {
     std::size_t max_rows = 20000, max_text_bytes = 2048;

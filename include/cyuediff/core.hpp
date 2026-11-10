@@ -46,6 +46,13 @@ struct ValueIdentityOptions {
     std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
     std::function<void(std::uint32_t, std::uint64_t)> charge;
 };
+// Required typed-name correspondence, collected even when optional observations are disabled.
+// Exhaustion preserves readable values but prevents certification of affected name comparisons.
+struct NameValueReadOptions {
+    std::uint32_t max_names = 100'000;
+    std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
+    std::function<void(std::uint32_t, std::uint64_t)> charge;
+};
 enum class NarrowStringEncoding { unspecified, ascii, latin1, windows_1252, utf8 };
 class DecoderRegistry;
 struct ReadOptions {
@@ -60,6 +67,7 @@ struct ReadOptions {
     OperationControl control;
     NarrowStringEncoding narrow_string_encoding = NarrowStringEncoding::unspecified;
     ValueIdentityOptions value_identities;
+    NameValueReadOptions name_values;
 };
 struct EngineInfo {
     fs::path root;
@@ -237,7 +245,7 @@ struct Package {
     bool complete_input = true;
     Json source_type_context = nullptr;
     // Paths address semantic_snapshot(); observations do not modify asset members.
-    Json value_identities = nullptr;
+    Json value_identities = nullptr, name_values = nullptr;
     Json source_read_limits = nullptr;
     bool source_read_limit_failed = false;
     std::string decoder_context_sha256;

@@ -87,6 +87,44 @@ int main() {
             check(e.code == "view-state" && restored.view_state() == retained,
                   "Invalid root mutates no presentation state");
         }
+        // Original fixture declares two different FNames with the same displayed string.
+        auto name_before = std::make_shared<Package>();
+        ObjectExport named;
+        named.path = named.name = "Named";
+        named.coverage = "properties";
+        named.properties = {{"Selected", {{"type", "NameProperty"}, {"value", "Item_1"}}}};
+        name_before->exports.push_back(named);
+        name_before->name_values = {
+            {"schema", "cyuediff.name-values/1"},
+            {"root", "semantic-snapshot"},
+            {"status", "complete"},
+            {"names", {{"/objects/Named/properties/Selected/value", {{"base", "Item_1"}, {"number", 0}}}}}};
+        auto name_after = std::make_shared<Package>(*name_before);
+        name_after->name_values["names"]["/objects/Named/properties/Selected/value"] = {{"base", "Item"},
+                                                                                        {"number", 2}};
+        AssetView named_view;
+        named_view.set_packages(name_before, name_after);
+        check(named_view.set_property_scope(""), "Named source values bind to the reusable browser");
+        bool hidden_visible = false;
+        for (const auto &row : named_view.property_browser().page().table.rows)
+            if (row.path == "/Selected")
+                hidden_visible = row.change == ChangeKind::modified &&
+                                 row.before.find("number=0") != std::string::npos &&
+                                 row.after.find("number=2") != std::string::npos;
+        check(hidden_visible, "AssetView forwards actual component-only changes and component previews");
+        auto name_legacy = std::make_shared<Package>(*name_after);
+        name_legacy->name_values = nullptr;
+        named_view.set_packages(name_before, name_legacy);
+        named_view.set_property_scope("");
+        bool missing_unknown = false;
+        for (const auto &row : named_view.property_browser().page().table.rows)
+            if (row.path == "/Selected")
+                missing_unknown =
+                    row.change == ChangeKind::unknown && row.before_available && row.after_available;
+        check(missing_unknown,
+              "Missing name identities preserve readable values with unknown correspondence");
+        named_view.set_packages(name_before, name_after);
+        named_view.set_property_scope("");
         int frames = 0;
         for (const auto &theme : cyui::builtInThemes())
             for (const auto *locale : {"en", "fr"}) {

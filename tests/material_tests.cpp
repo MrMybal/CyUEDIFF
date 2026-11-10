@@ -1,4 +1,5 @@
 #include "../src/material_io.hpp"
+#include "literal_name_fixture.hpp"
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -7,6 +8,9 @@
 #include <limits>
 using namespace cyuediff;
 namespace {
+auto compare_material_literals(const Package &a, const Package &b) {
+    return compare_materials(test::literal_name_fixture(a), test::literal_name_fixture(b));
+}
 int checks = 0;
 void check(bool good, const char *message) {
     ++checks;
@@ -252,7 +256,7 @@ int main() {
         check(g["nodes"][c]["inputs"]["A"]["mask"]["r"] == 1, "Mask retained in model");
         auto n = m;
         n.exports[2].properties["DefaultValue"]["value"] = 0.75;
-        auto diff = compare_materials(m, n);
+        auto diff = compare_material_literals(m, n);
         check(diff.complete && diff.changes.size() == 1 &&
                   diff.changes[0]["path"] == "/graphs/M/nodes/" + a + "/properties/DefaultValue/value",
               "Parameter default diff");
@@ -262,7 +266,8 @@ int main() {
         n = m;
         n.exports[3].properties["A"]["value"]["expression"] = "Missing";
         check(graph(n)["complete"] == false && graph(n)["links"].size() == 2, "Dangling link retained");
-        check(!compare_materials(n, n).complete && compare_materials(n, n).status() == "incomplete",
+        check(!compare_material_literals(n, n).complete &&
+                  compare_material_literals(n, n).status() == "incomplete",
               "Incomplete self comparison not equal");
         n = m;
         n.exports[2].properties["Outputs"] = property(Json::array({Json::object()}), "ArrayProperty");
@@ -336,7 +341,7 @@ int main() {
         auto ri = mi;
         std::swap(ri.exports[0].properties["ScalarParameterValues"]["value"][0],
                   ri.exports[0].properties["ScalarParameterValues"]["value"][1]);
-        check(compare_materials(mi, ri).changes.empty(), "Instance parameter reorder ignored");
+        check(compare_material_literals(mi, ri).changes.empty(), "Instance parameter reorder ignored");
         auto &values = ri.exports[0].properties["ScalarParameterValues"]["value"];
         values.push_back(parameter("Power", 0.9f, 0, "LayerParameter"));
         check(ri.material_snapshot()["instances"]["MI"]["parameters"]["scalar"].size() == 3,
@@ -348,11 +353,11 @@ int main() {
               "Duplicate parameters preserved");
         ri = mi;
         ri.exports[0].properties["EditorOnlyData"] = property("Missing");
-        check(!compare_materials(ri, ri).complete, "Missing instance editor data not ignored");
+        check(!compare_material_literals(ri, ri).complete, "Missing instance editor data not ignored");
         ri = mi;
         ri.exports[0].properties["StaticParameters"] = {{"type", {{"name", "StructProperty"}}},
                                                         {"opaque", {{"bytes", 20}}}};
-        check(!compare_materials(ri, ri).complete, "Opaque static parameter set incomplete");
+        check(!compare_material_literals(ri, ri).complete, "Opaque static parameter set incomplete");
         ri = mi;
         Json static_switch = {{"ParameterName", property("Enabled", "NameProperty")},
                               {"Value", property(false, "BoolProperty")},
@@ -373,7 +378,7 @@ int main() {
         auto &switches = nested_reordered.exports[0]
                              .properties["StaticParameters"]["value"]["StaticSwitchParameters"]["value"];
         std::swap(switches[0], switches[1]);
-        check(compare_materials(nested, nested_reordered).changes.empty(),
+        check(compare_material_literals(nested, nested_reordered).changes.empty(),
               "Nested static parameters normalize in settings too");
         Json mask = {{"ParameterName", property("Channels", "NameProperty")},
                      {"R", property(true, "BoolProperty")}};
@@ -384,30 +389,33 @@ int main() {
               "Omitted mask components use native constructor defaults");
         ri.exports[0].properties["StaticComponentMaskParameters"]["value"][0]["G"] = {
             {"opaque", {{"bytes", 1}}}};
-        check(!compare_materials(ri, ri).complete, "Opaque mask component is not a default");
+        check(!compare_material_literals(ri, ri).complete, "Opaque mask component is not a default");
         ri = mi;
         ri.exports[0].properties["ScalarParameterValues"]["value"][0]["ParameterValue"] = {
             {"opaque", {{"bytes", 4}, {"sha256", "before"}}}};
         auto opaque_after = ri;
         opaque_after.exports[0]
             .properties["ScalarParameterValues"]["value"][0]["ParameterValue"]["opaque"]["sha256"] = "after";
-        auto opaque_diff = compare_materials(ri, opaque_after);
+        auto opaque_diff = compare_material_literals(ri, opaque_after);
         check(!opaque_diff.complete && opaque_diff.changes.size() == 1 &&
                   opaque_diff.changes[0]["before"] == "before",
               "Undecoded parameter hashes retained for comparison");
         ri = mi;
         ri.exports[0].properties["ScalarParameterValues"]["value"][0]["ParameterInfo"]["value"]
                                 ["Association"] = {{"opaque", {{"bytes", 8}}}};
-        check(!compare_materials(ri, ri).complete, "Opaque parameter identity not defaulted to global");
+        check(!compare_material_literals(ri, ri).complete,
+              "Opaque parameter identity not defaulted to global");
         ri = mi;
         ri.exports[0].properties["ScalarParameterValues"]["value"][0].erase("ParameterValue");
-        check(!compare_materials(ri, ri).complete, "Omitted value is not an effective parent value");
+        check(!compare_material_literals(ri, ri).complete, "Omitted value is not an effective parent value");
         n = m;
         n.exports[2].coverage = "metadata";
         check(graph(n)["complete"] == false, "Metadata-only expression incomplete");
-        check(!compare_materials(Package{}, Package{}).complete, "No material is not an identical material");
+        check(!compare_material_literals(Package{}, Package{}).complete,
+              "No material is not an identical material");
         m.complete_input = false;
-        check(!compare_materials(m, material()).complete, "Missing companion cannot establish equality");
+        check(!compare_material_literals(m, material()).complete,
+              "Missing companion cannot establish equality");
         fs::remove(file);
         std::cout << checks << " material checks passed\n";
     } catch (const std::exception &e) {

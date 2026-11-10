@@ -939,7 +939,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     sidecar.replace_extension(".uexp");
     if (fs::is_regular_file(sidecar))
         export_data = std::make_unique<Archive>(sidecar, options);
-    detail::ValueIdentityJournal value_identities(options.value_identities, options.control);
+    detail::ValueIdentityJournal value_identities(options.value_identities, options.control,
+                                                  options.name_values);
     for (auto &entry : p.exports) {
         options.control.checkpoint("Reading exports", static_cast<std::uint64_t>(&entry - p.exports.data()),
                                    p.exports.size());
@@ -1162,6 +1163,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     if (s.flags & unversioned_properties)
         p.diagnostics.push_back(
             "Unversioned properties require a schema backend; export bytes are retained as opaque hashes.");
+    p.name_values = value_identities.name_values();
+    p.name_values["root"] = "semantic-snapshot";
     p.value_identities = value_identities.finish();
     if (!p.value_identities.is_null())
         p.value_identities["root"] = "semantic-snapshot";
@@ -1284,6 +1287,8 @@ Json Package::to_json() const {
         result["sourceTypeContext"] = source_type_context;
     if (!value_identities.is_null())
         result["valueIdentities"] = value_identities;
+    if (!name_values.is_null())
+        result["nameValues"] = name_values;
     return result;
 }
 } // namespace cyuediff

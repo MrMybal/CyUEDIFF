@@ -1,9 +1,16 @@
 #include "collision_file_fixture.hpp"
+#include "literal_name_fixture.hpp"
 #include <chrono>
 #include <iostream>
 #include <limits>
 using namespace cyuediff;
 using namespace cyuediff::test;
+auto compare_literal_collisions(const Package &a, const Package &b, const CollisionOptions &o = {}) {
+    return compare_collisions(literal_name_fixture(a), literal_name_fixture(b), o);
+}
+auto compare_literal_sources(const Package &a, const Package &b) {
+    return compare(literal_name_fixture(a), literal_name_fixture(b));
+}
 int main(int argc, char **argv) {
     int checks = 0;
     try {
@@ -222,18 +229,18 @@ int main(int argc, char **argv) {
         balls.push_back(collision_shape("sphere", "Second"));
         const auto ordered = reordered;
         std::swap(balls[0], balls[1]);
-        auto order_diff = compare_collisions(ordered, reordered);
+        auto order_diff = compare_literal_collisions(ordered, reordered);
         check(order_diff.complete && order_diff.changes.empty(),
               "Unique named shapes retain identity after reordering");
-        check(!compare(ordered, reordered).changes.empty() &&
-                  compare(ordered, reordered).collision_changes.empty(),
+        check(!compare_literal_sources(ordered, reordered).changes.empty() &&
+                  compare_literal_sources(ordered, reordered).collision_changes.empty(),
               "Generic serialized order changes remain distinct from collision correspondence");
         balls[1]["Radius"]["value"] = 7.;
-        const auto radius_diff = compare_collisions(ordered, reordered);
+        const auto radius_diff = compare_literal_collisions(ordered, reordered);
         check(radius_diff.status() == "changed" && radius_diff.changes.size() == 1 &&
                   radius_diff.changes[0]["path"] == "/bodies/SM.Body/shapes/sphere:name:Ball/geometry/radius",
               "Reordered named sphere reports only its actual radius change");
-        check(!compare(ordered, reordered).collision_changes.empty(),
+        check(!compare_literal_sources(ordered, reordered).collision_changes.empty(),
               "General package diff includes specialized collision changes");
         auto anonymous = ordered;
         auto &anon = anonymous.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"];
@@ -243,7 +250,7 @@ int main(int argc, char **argv) {
         auto flipped = anonymous;
         std::swap(flipped.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0],
                   flipped.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][1]);
-        check(!compare_collisions(anonymous, flipped).changes.empty(),
+        check(!compare_literal_collisions(anonymous, flipped).changes.empty(),
               "Unnamed shape indices remain order-sensitive");
         auto duplicates = ordered;
         duplicates.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][1]["Name"]["value"] =
@@ -252,9 +259,9 @@ int main(int argc, char **argv) {
         check(duplicate_snapshot["bodies"]["SM.Body"]["shapes"].contains("sphere:index:0") &&
                   duplicate_snapshot["bodies"]["SM.Body"]["shapes"].contains("sphere:index:1"),
               "Duplicate names cannot overwrite either shape");
-        check(compare_collisions(package, package).status() == "identical",
+        check(compare_literal_collisions(package, package).status() == "identical",
               "Complete matching collision projection");
-        check(compare_collisions(Package{}, Package{}).status() == "incomplete",
+        check(compare_literal_collisions(Package{}, Package{}).status() == "incomplete",
               "Absent collision data cannot establish equality");
         auto unusual = package;
         unusual.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Name"]["value"] =
@@ -262,12 +269,12 @@ int main(int argc, char **argv) {
         auto unusual_after = unusual;
         unusual_after.exports[0]
             .properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Radius"]["value"] = 6.;
-        auto escaped = compare_collisions(unusual, unusual_after);
+        auto escaped = compare_literal_collisions(unusual, unusual_after);
         check(escaped.changes[0]["path"] == "/bodies/SM.Body/shapes/sphere:name:A~1B~0C/geometry/radius",
               "Collision diff paths escape names without ambiguity");
         bool diff_cancelled = false;
         try {
-            compare_collisions(package, package, cancelled);
+            compare_literal_collisions(package, package, cancelled);
         } catch (const Error &e) {
             diff_cancelled = e.code == "cancelled";
         }

@@ -8,6 +8,7 @@
 #include <cyuediff/skeleton.hpp>
 #include <cyuediff/attachments.hpp>
 #include "source_availability.hpp"
+#include "name_value_diff.hpp"
 #include <algorithm>
 #include "json_equality.hpp"
 #include "json_output.hpp"
@@ -618,6 +619,7 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
     append_projection(result.material_changes, "/materials", result.changes, control);
     append_projection(result.mesh_changes, "/meshes", result.changes, control);
     compare_objects(before, after, result.changes, coverage, control);
+    detail::merge_name_changes(result.changes, coverage.name_changes);
     append_projection(result.texture_changes, "", result.changes, control);
     projection(before.blueprint_snapshot(), after.blueprint_snapshot(), result.graph_changes, "blueprint");
     CollisionOptions collision_options;

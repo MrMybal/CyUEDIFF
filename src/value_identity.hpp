@@ -4,7 +4,7 @@
 namespace cyuediff::detail {
 // A bounded side journal: output paths refer to decoded values, never replace them.
 // Failed value/key transactions discard observations without refunding spent work.
-class ValueIdentityJournal {
+class ValueIdentityRecorder {
     ValueIdentityOptions options_;
     OperationControl control_;
     Json names_;
@@ -48,23 +48,23 @@ class ValueIdentityJournal {
             result += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
         return result;
     }
-    explicit ValueIdentityJournal(const ValueIdentityOptions &options, const OperationControl &control)
+    explicit ValueIdentityRecorder(const ValueIdentityOptions &options, const OperationControl &control)
         : options_(options), control_(control) {
         if (options_.names)
             names_ = Json::object();
     }
-    ValueIdentityJournal(const ValueIdentityJournal &) = delete;
-    ValueIdentityJournal &operator=(const ValueIdentityJournal &) = delete;
-    ValueIdentityJournal(ValueIdentityJournal &&other)
+    ValueIdentityRecorder(const ValueIdentityRecorder &) = delete;
+    ValueIdentityRecorder &operator=(const ValueIdentityRecorder &) = delete;
+    ValueIdentityRecorder(ValueIdentityRecorder &&other)
         : options_(std::move(other.options_)), control_(std::move(other.control_)),
           names_(std::move(other.names_)), target_(&names_), path_(std::move(other.path_)),
           entries_(other.entries_), text_(other.text_), limited_(other.limited_), paused_(other.paused_),
           blocked_(other.blocked_) {}
     class Scope {
-        ValueIdentityJournal *journal_ = nullptr;
+        ValueIdentityRecorder *journal_ = nullptr;
         std::size_t size_ = 0;
         bool blocked_ = false;
-        void append(ValueIdentityJournal &journal, const std::string &key) {
+        void append(ValueIdentityRecorder &journal, const std::string &key) {
             if (!journal.options_.names || journal.limited_)
                 return;
             journal.control_.check();
@@ -102,8 +102,8 @@ class ValueIdentityJournal {
         }
 
       public:
-        Scope(ValueIdentityJournal &journal, const std::string &key) { append(journal, key); }
-        Scope(ValueIdentityJournal &journal, std::size_t index) {
+        Scope(ValueIdentityRecorder &journal, const std::string &key) { append(journal, key); }
+        Scope(ValueIdentityRecorder &journal, std::size_t index) {
             if (journal.options_.names && !journal.limited_)
                 append(journal, std::to_string(index));
         }
@@ -119,14 +119,14 @@ class ValueIdentityJournal {
         }
     };
     class Buffer {
-        ValueIdentityJournal *journal_ = nullptr;
+        ValueIdentityRecorder *journal_ = nullptr;
         Json *previous_ = nullptr;
         Json pending_;
         std::size_t prefix_size_ = 0;
         bool committed_ = false;
 
       public:
-        explicit Buffer(ValueIdentityJournal &journal) {
+        explicit Buffer(ValueIdentityRecorder &journal) {
             if (journal.options_.names && !journal.limited_ && !journal.blocked_) {
                 journal_ = &journal;
                 previous_ = journal.target_;
@@ -201,7 +201,7 @@ class ValueIdentityJournal {
     // Functional key capture is independent of optional observation limits. Parent scopes
     // and transactions stay alive but dormant until this nested frame is restored.
     class KeyProbe {
-        ValueIdentityJournal &journal_;
+        ValueIdentityRecorder &journal_;
         ValueIdentityOptions options_;
         Json names_;
         Json *target_;
@@ -227,7 +227,7 @@ class ValueIdentityJournal {
         }
 
       public:
-        KeyProbe(ValueIdentityJournal &journal, ValueIdentityOptions options)
+        KeyProbe(ValueIdentityRecorder &journal, ValueIdentityOptions options)
             : journal_(journal), options_(std::move(journal.options_)), names_(std::move(journal.names_)),
               target_(journal.target_), path_(std::move(journal.path_)), entries_(journal.entries_),
               text_(journal.text_), limited_(journal.limited_), paused_(journal.paused_),
@@ -257,35 +257,18 @@ class ValueIdentityJournal {
         void publish() {
             Json observed = std::move(journal_.names_);
             restore();
-            if (!journal_.options_.names || journal_.limited_ || journal_.paused_ || journal_.blocked_)
-                return;
-            const auto prefix_size = journal_.path_.size();
-            struct RestorePath {
-                std::string &path;
-                std::size_t size;
-                ~RestorePath() { path.resize(size); }
-            } path_scope{journal_.path_, prefix_size};
-            for (auto it = observed.begin(); it != observed.end(); ++it) {
-                journal_.control_.check();
-                if (prefix_size > journal_.options_.max_text_bytes ||
-                    it.key().size() > journal_.options_.max_text_bytes - prefix_size) {
-                    journal_.limited_ = true;
-                    break;
-                }
-                journal_.path_.resize(prefix_size);
-                journal_.path_ += it.key();
-                journal_.name(it->at("base").get_ref<const std::string &>(),
-                              it->at("number").get<std::uint32_t>(), it->at("source") == "zero-mask");
-            }
+            journal_.replay(observed);
         }
+        Json observations() const { return journal_.names_; }
+
         ~KeyProbe() { restore(); }
     };
     // Native text/declarative callbacks without a value path cannot claim an identity location.
     class Pause {
-        ValueIdentityJournal &journal_;
+        ValueIdentityRecorder &journal_;
 
       public:
-        explicit Pause(ValueIdentityJournal &journal) : journal_(journal) { ++journal_.paused_; }
+        explicit Pause(ValueIdentityRecorder &journal) : journal_(journal) { ++journal_.paused_; }
         ~Pause() { --journal_.paused_; }
         Pause(const Pause &) = delete;
     };
@@ -305,6 +288,34 @@ class ValueIdentityJournal {
         Json identity = {{"base", base}, {"number", number}, {"source", zero ? "zero-mask" : "wire"}};
         insert(*target_, path_, std::move(identity));
     }
+    void replay(const Json &observed) {
+        if (!options_.names || limited_ || paused_)
+            return;
+        if (blocked_) {
+            if (!observed.empty())
+                limited_ = true;
+            return;
+        }
+        const auto prefix_size = path_.size();
+        struct RestorePath {
+            std::string &path;
+            std::size_t size;
+            ~RestorePath() { path.resize(size); }
+        } path_scope{path_, prefix_size};
+        for (auto it = observed.begin(); it != observed.end(); ++it) {
+            control_.check();
+            if (prefix_size > options_.max_text_bytes ||
+                it.key().size() > options_.max_text_bytes - prefix_size) {
+                limited_ = true;
+                break;
+            }
+            path_.resize(prefix_size);
+            path_ += it.key();
+            name(it->at("base").get_ref<const std::string &>(), it->at("number").get<std::uint32_t>(),
+                 it->at("source") == "zero-mask");
+        }
+    }
+    bool selected() const { return options_.names && !limited_; }
     Json finish() {
         if (!options_.names)
             return nullptr;
@@ -315,6 +326,82 @@ class ValueIdentityJournal {
                 {"names", std::move(names_)},
                 {"namesRead", entries_},
                 {"textBytes", text_}};
+    }
+};
+// Mandatory typed-value correspondence is independent of optional observations.
+class ValueIdentityJournal {
+    ValueIdentityRecorder values_, observations_;
+
+  public:
+    ValueIdentityJournal(const ValueIdentityOptions &optional, const OperationControl &control,
+                         const NameValueReadOptions &functional = {})
+        : values_(
+              ValueIdentityOptions{true, functional.max_names, functional.max_text_bytes, functional.charge},
+              control),
+          observations_(optional, control) {}
+    ValueIdentityJournal(ValueIdentityJournal &&) = default;
+    ValueIdentityJournal(const ValueIdentityJournal &) = delete;
+    static std::string token(const std::string &s) { return ValueIdentityRecorder::token(s); }
+    class Scope {
+        ValueIdentityRecorder::Scope values_, observations_;
+
+      public:
+        template <class T>
+        Scope(ValueIdentityJournal &j, const T &key)
+            : values_(j.values_, key), observations_(j.observations_, key) {}
+    };
+    class Buffer {
+        ValueIdentityRecorder::Buffer values_, observations_;
+
+      public:
+        explicit Buffer(ValueIdentityJournal &j) : values_(j.values_), observations_(j.observations_) {}
+        void commit() {
+            values_.commit();
+            observations_.commit();
+        }
+        void commit_at(const std::initializer_list<std::string> &keys) {
+            values_.commit_at(keys);
+            observations_.commit_at(keys);
+        }
+    };
+    class Pause {
+        ValueIdentityRecorder::Pause values_, observations_;
+
+      public:
+        explicit Pause(ValueIdentityJournal &j) : values_(j.values_), observations_(j.observations_) {}
+    };
+    class KeyProbe {
+        ValueIdentityJournal &journal_;
+        ValueIdentityRecorder::KeyProbe values_;
+        std::unique_ptr<ValueIdentityRecorder::Pause> pause_;
+        bool published_ = false;
+
+      public:
+        KeyProbe(ValueIdentityJournal &j, ValueIdentityOptions o)
+            : journal_(j), values_(j.values_, std::move(o)),
+              pause_(std::make_unique<ValueIdentityRecorder::Pause>(j.observations_)) {}
+        bool complete() const { return values_.complete(); }
+        Json names() const { return values_.names(); }
+        void publish() {
+            if (published_)
+                return;
+            const auto observed = journal_.observations_.selected() ? values_.observations() : Json(nullptr);
+            values_.publish();
+            pause_.reset();
+            if (!observed.is_null())
+                journal_.observations_.replay(observed);
+            published_ = true;
+        }
+    };
+    void name(const std::string &base, std::uint32_t number, bool zero = false) {
+        values_.name(base, number, zero);
+        observations_.name(base, number, zero);
+    }
+    Json finish() { return observations_.finish(); }
+    Json name_values() {
+        auto result = values_.finish();
+        result["schema"] = "cyuediff.name-values/1";
+        return result;
     }
 };
 } // namespace cyuediff::detail

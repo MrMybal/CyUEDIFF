@@ -1,4 +1,5 @@
 #include "cooked_property_diff.hpp"
+#include "name_value_diff.hpp"
 #include <cyuediff/zen.hpp>
 #include <cyuediff/string_encoding.hpp>
 #include "archive.hpp"
@@ -526,6 +527,8 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
         p.schema_context_sha256 = context.fingerprint();
     }
     std::uint32_t property_work = 0, identity_names = 0;
+    std::uint32_t functional_names = 0;
+    std::uint64_t functional_text = 0;
     std::uint64_t identity_text = 0;
     for (auto &e : p.exports) {
         e.references = {{"outer", reference(e.outer_index)},
@@ -548,6 +551,15 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                         throw Error("bounds", "Property offset exceeds cooked export", e.offset);
                     UnversionedReadOptions props;
                     props.names = &p.names;
+                    props.name_values = options.name_values;
+                    props.name_values.max_names -= functional_names;
+                    props.name_values.max_text_bytes -= functional_text;
+                    props.name_values.charge = [&](std::uint32_t names, std::uint64_t text) {
+                        functional_names += names;
+                        functional_text += text;
+                        if (options.name_values.charge)
+                            options.name_values.charge(names, text);
+                    };
                     props.value_identities = options.value_identities;
                     props.value_identities.max_names -= identity_names;
                     props.value_identities.max_text_bytes -= identity_text;
@@ -629,6 +641,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                                        {"defaultsResolved", false},
                                        {"mappingVerified", false},
                                        {"nativePayloadDecoded", false}};
+                    e.property_read["nameValues"] = std::move(decoded.name_values);
                     if (!decoded.value_identities.is_null())
                         e.property_read["valueIdentities"] = std::move(decoded.value_identities);
                     ++p.property_exports_decoded;
@@ -858,6 +871,31 @@ ZenPackage read_zen_package(const Container &container, std::size_t entry, const
     read.control = parse.control;
     return ZenPackage::parse(container.read(entry, read), parse);
 }
+namespace {
+const Json &cooked_names(const Json *read) {
+    static const Json empty = nullptr;
+    if (!read || !read->is_object() || !read->contains("nameValues"))
+        return empty;
+    return read->at("nameValues");
+}
+bool cooked_names_ready(const Json *read) {
+    const auto &n = cooked_names(read);
+    return n.is_object() && n.value("status", "") == "complete";
+}
+detail::NameValueDiff cooked_name_diff(const Json &a, const Json &b, const std::string &prefix,
+                                       const OperationControl &control) {
+    auto lookup = [](const Json &read, const std::string &path) -> const Json * {
+        try {
+            return &read.at("properties").at(Json::json_pointer(path));
+        } catch (const Json::out_of_range &) {
+            return nullptr;
+        }
+    };
+    return detail::compare_name_values(
+        cooked_names(&a), cooked_names(&b), [&](const std::string &p) { return lookup(a, p); },
+        [&](const std::string &p) { return lookup(b, p); }, "properties", prefix, control);
+}
+} // namespace
 ValueCoverage cooked_property_coverage(const Json *before, const Json *after,
                                        const OperationControl &control) {
     control.check();
@@ -896,12 +934,22 @@ ValueCoverage cooked_property_coverage(const Json *before, const Json *after,
         if (decoded(before) && decoded(after)) {
             const auto &ac = context(before), &bc = context(after);
             detail::CookedPropertyDiff property{ac, bc, changes, unavailable, control, noop, &result};
+            property.names_ready = cooked_names_ready(before) && cooked_names_ready(after);
             if (!valid(ac) || !valid(bc))
                 property.unknown("", "cooked-interpretation-unavailable");
             else
                 property.structure(before->at("properties"), after->at("properties"), ac.at("schema"),
                                    bc.at("schema"), "", 0);
         }
+    }
+    if (decoded(before) && !cooked_names(before).is_null())
+        result.before_names = detail::name_value_entries(cooked_names(before), "properties");
+    if (decoded(after) && !cooked_names(after).is_null())
+        result.after_names = detail::name_value_entries(cooked_names(after), "properties");
+    if (before != after && decoded(before) && decoded(after)) {
+        auto names = cooked_name_diff(*before, *after, "", control);
+        for (const auto &row : names.unavailable)
+            result.comparison_unavailable.push_back(row.at("path").get<std::string>());
     }
     std::sort(result.raw.begin(), result.raw.end());
     result.raw.erase(std::unique(result.raw.begin(), result.raw.end()), result.raw.end());
@@ -943,14 +991,37 @@ Json compare_zen_packages(const ZenPackage &before, const ZenPackage &after,
         const auto &ac = decoded && ar.contains("interpretation") ? ar.at("interpretation") : empty;
         const auto &bc = decoded && br.contains("interpretation") ? br.at("interpretation") : empty;
         detail::CookedPropertyDiff property{ac, bc, changes, unavailable, control, walk};
+        property.names_ready = cooked_names_ready(&ar) && cooked_names_ready(&br);
         if (!decoded)
             property.unknown(path, "cooked-properties-unavailable");
         else if (ac.value("format", "") != "cyuediff.cooked-interpretation/1" ||
                  bc.value("format", "") != "cyuediff.cooked-interpretation/1")
             property.unknown(path, "cooked-interpretation-unavailable");
-        else
+        else {
+            const auto first = changes.size(), unknown_first = unavailable.size();
             property.structure(ar.at("properties"), br.at("properties"), ac.at("schema"), bc.at("schema"),
                                path, 0);
+            auto names = cooked_name_diff(ar, br, path, control);
+            for (const auto &row : names.unavailable)
+                unavailable.push_back(row);
+            auto excluded = [&](const std::string &p) {
+                for (auto i = unknown_first; i < unavailable.size(); ++i) {
+                    const auto q = unavailable[i].at("path").get<std::string>();
+                    if (p == q ||
+                        (p.size() > q.size() && p.compare(0, q.size(), q) == 0 && p[q.size()] == '/'))
+                        return true;
+                }
+                return false;
+            };
+            for (auto i = changes.size(); i > first; --i)
+                if (excluded(changes[i - 1].at("path").get<std::string>()))
+                    changes.erase(changes.begin() + static_cast<Json::difference_type>(i - 1));
+            Json known = Json::array();
+            for (auto &row : names.changes)
+                if (!excluded(row.at("path").get<std::string>()))
+                    known.push_back(std::move(row));
+            detail::merge_name_changes(changes, known);
+        }
     }
     Json table_changes = Json::array();
     walk(a, b, "", table_changes, control);

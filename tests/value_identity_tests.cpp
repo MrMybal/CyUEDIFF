@@ -1,6 +1,7 @@
 #include <cyuediff/schema.hpp>
 #include <cyuediff/cache.hpp>
 #include <cyuediff/zen.hpp>
+#include <cyuediff/property_page.hpp>
 #include "zen_fixture.hpp"
 #include "package_fixture.hpp"
 #include "tagged_hybrid_fixture.hpp"
@@ -520,6 +521,133 @@ int main() {
         check(cooked_names == 1 && limited_cooked.property_exports_decoded == 2 &&
                   limited_cooked.exports[1].property_read.at("valueIdentities").at("status") == "incomplete",
               "Cooked identity budget is aggregate across exports without discarding stored values");
+        // Functional names are independent of the optional observation flag and limits.
+        check(before.value_identities.is_null() && before.name_values.at("status") == "complete" &&
+                  before.name_values.at("names") == after.name_values.at("names"),
+              "Default source reads retain functional names without optional observations");
+        const auto literal_path = path + "Literal/value", numbered_path = path + "Numbered/value";
+        auto hidden = before;
+        hidden.name_values["names"][literal_path] = hidden.name_values.at("names").at(numbered_path);
+        const auto hidden_diff = compare(before, hidden);
+        check(hidden_diff.changes.size() == 1 &&
+                  hidden_diff.changes[0].at("before") == hidden_diff.changes[0].at("after") &&
+                  hidden_diff.changes[0].at("beforeName").at("number") == 0 &&
+                  hidden_diff.changes[0].at("afterName").at("number") == 2,
+              "Equal display source names produce a typed component change");
+        auto incomplete = before;
+        incomplete.name_values["status"] = "incomplete";
+        incomplete.name_values["names"] = Json::object();
+        auto unknown_names = compare(before, incomplete);
+        check(unknown_names.changes.empty() && !unknown_names.unavailable_scopes.empty(),
+              "An incomplete functional name index cannot certify scalar or container equality");
+        auto stale = hidden;
+        stale.exports[0].properties["Literal"]["value"] = "Unrelated";
+        check(!compare(before, stale).unavailable_scopes.empty(),
+              "Stale name metadata cannot certify an unrelated display value");
+        ReadOptions no_names;
+        no_names.name_values.max_names = 0;
+        const auto bounded_names = Package::open(file, no_names);
+        check(bounded_names.semantic_snapshot() == before.semantic_snapshot() &&
+                  bounded_names.name_values.at("status") == "incomplete",
+              "Functional name limits preserve stored values and report incomplete correspondence");
+        unsigned functional_charge = 0;
+        ReadOptions charged_names;
+        charged_names.name_values.charge = [&](auto n, auto) { functional_charge += n; };
+        const auto charged_first = cache.open(file, charged_names),
+                   charged_second = cache.open(file, charged_names);
+        check(charged_first != charged_second && functional_charge > 0,
+              "Charged functional name reads bypass cache retention");
+        check(plain_cooked.exports[0].property_read.at("nameValues").at("status") == "complete",
+              "Cooked default reads retain functional components");
+        auto changed_cooked = plain_cooked;
+        auto &name_index = changed_cooked.exports[0].property_read["nameValues"]["names"];
+        const auto selected_name = name_index.begin().key();
+        const auto &original_name =
+            plain_cooked.exports[0].property_read.at("nameValues").at("names").at(selected_name);
+        const auto number = original_name.at("number").get<unsigned>();
+        check(number == 3, "Cooked test fixture has an actual numbered FName");
+        name_index[selected_name]["base"] = original_name.at("base").get<std::string>() + "_2";
+        name_index[selected_name]["number"] = 0;
+        const auto cooked_hidden = compare_zen_packages(plain_cooked, changed_cooked);
+        check(cooked_hidden.at("unavailableScopes").empty() && cooked_hidden.at("changes").size() == 1 &&
+                  cooked_hidden.at("changes")[0].at("before") == cooked_hidden.at("changes")[0].at("after") &&
+                  cooked_hidden.at("changes")[0].at("afterName").at("number") == 0,
+              "Cooked hidden name changes retain equal displays and distinct components");
+        ZenReadOptions functional_cooked = cooked_options;
+        functional_cooked.name_values.max_names = 1;
+        unsigned functional_cooked_charge = 0;
+        functional_cooked.name_values.charge = [&](auto n, auto) { functional_cooked_charge += n; };
+        const auto limited_functional = ZenPackage::parse(cooked_bytes.data, functional_cooked);
+        check(functional_cooked_charge == 1 && limited_functional.property_exports_decoded == 2 &&
+                  limited_functional.exports[1].property_read.at("nameValues").at("status") == "incomplete",
+              "Cooked functional name budgets span exports and preserve stored reads");
+        check(!compare_zen_packages(plain_cooked, limited_functional).at("unavailableScopes").empty(),
+              "Incomplete cooked name components cannot certify equality");
+        PropertyTableOptions table_options;
+        table_options.coverage.before_names = {
+            {"/Literal/value", before.name_values.at("names").at(literal_path)}};
+        table_options.coverage.after_names = {
+            {"/Literal/value", hidden.name_values.at("names").at(literal_path)}};
+        const auto table =
+            property_table(&before.exports[0].properties, &hidden.exports[0].properties, table_options);
+        bool found_hidden = false;
+        for (const auto &row : table.rows)
+            if (row.path == "/Literal")
+                found_hidden = row.change == ChangeKind::modified &&
+                               row.before.find("number=0") != std::string::npos &&
+                               row.after.find("number=2") != std::string::npos;
+        check(found_hidden, "Flat typed properties reveal component-only name changes");
+        PropertyPageOptions page_options;
+        page_options.coverage = table_options.coverage;
+        const auto page =
+            property_page(&before.exports[0].properties, &hidden.exports[0].properties, "", page_options);
+        found_hidden = false;
+        for (const auto &row : page.table.rows)
+            if (row.path == "/Literal")
+                found_hidden = row.change == ChangeKind::modified && row.before != row.after;
+        check(found_hidden, "Paged properties share the same name correspondence and previews");
+        auto missing_components = before;
+        missing_components.name_values["names"].erase(literal_path);
+        check(!compare(before, missing_components).unavailable_scopes.empty(),
+              "A missing matched name component stays unknown even if its index says complete");
+        auto no_name_cache = cache.open(file, no_names);
+        auto full_name_cache = cache.open(file);
+        check(no_name_cache != full_name_cache && no_name_cache->name_values.at("status") == "incomplete" &&
+                  full_name_cache->name_values.at("status") == "complete",
+              "Cache profiles distinguish functional name limits");
+        auto unicode_values = before.exports[0].properties;
+        const std::string unicode_base = u8"\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9_1";
+        unicode_values["Literal"]["value"] = unicode_base;
+        PropertyTableOptions unicode_options;
+        unicode_options.max_text_bytes = 13;
+        unicode_options.coverage.before_names = {{"/Literal/value", {{"base", unicode_base}, {"number", 0}}}};
+        unicode_options.coverage.after_names = unicode_options.coverage.before_names;
+        const auto unicode_table = property_table(&unicode_values, &unicode_values, unicode_options);
+        bool valid_unicode = false;
+        for (const auto &row : unicode_table.rows)
+            if (row.path == "/Literal") {
+                const auto encoded = Json(row.before).dump();
+                valid_unicode = !encoded.empty();
+            }
+        check(valid_unicode, "Bounded name previews preserve UTF8 code point boundaries");
+        Package enum_a;
+        ObjectExport enum_object;
+        enum_object.name = enum_object.path = "EnumAsset";
+        enum_object.coverage = "properties";
+        enum_object.properties = {{"Mode", {{"type", "ByteProperty"}, {"value", "Item_1"}}},
+                                  {"Count", {{"type", "IntProperty"}, {"value", 1}}}};
+        enum_a.exports.push_back(enum_object);
+        enum_a.name_values = {{"schema", "cyuediff.name-values/1"},
+                              {"root", "semantic-snapshot"},
+                              {"status", "incomplete"},
+                              {"names", Json::object()}};
+        auto enum_b = enum_a;
+        enum_b.exports[0].properties["Count"]["value"] = 2;
+        const auto enum_diff = compare(enum_a, enum_b);
+        check(
+            !enum_diff.unavailable_scopes.empty() && enum_diff.changes.size() == 1 &&
+                enum_diff.changes[0].at("path") == "/objects/EnumAsset/properties/Count/value",
+            "Missing enum-backed byte components stay unknown while independent integers remain comparable");
         std::cout << checks << " value identity checks passed\n";
         fs::remove_all(root);
         return 0;

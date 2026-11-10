@@ -32,6 +32,7 @@ struct ZenReadOptions {
     std::uint32_t max_property_values = 1'000'000;
     OperationControl control;
     ValueIdentityOptions value_identities;
+    NameValueReadOptions name_values;
 };
 class ScriptObjects {
     std::map<std::uint64_t, std::string> paths_;

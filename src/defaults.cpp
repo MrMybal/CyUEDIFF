@@ -73,7 +73,8 @@ struct CaptureReader {
     UnversionedReadOptions read_options;
     std::uint64_t wire_bytes = 0, text_bytes = 0;
     std::uint32_t values_read = 0;
-    std::uint32_t identity_names = 0;
+    std::uint32_t identity_names = 0, functional_names = 0;
+    std::uint64_t functional_text = 0;
     std::uint64_t identity_text = 0;
     CaptureReader(const DefaultSnapshotReadOptions &opts, const Json &document,
                   const UnversionedSchemas &registry)
@@ -205,6 +206,14 @@ struct CaptureReader {
                     "Duplicate captured object reference");
         }
         auto read = read_options;
+        read.name_values.max_names -= functional_names;
+        read.name_values.max_text_bytes -= functional_text;
+        read.name_values.charge = [&](std::uint32_t count, std::uint64_t text) {
+            functional_names += count;
+            functional_text += text;
+            if (options.values.name_values.charge)
+                options.values.name_values.charge(count, text);
+        };
         read.value_identities.max_names -= identity_names;
         read.value_identities.max_text_bytes -= identity_text;
         read.value_identities.charge = [&](std::uint32_t count, std::uint64_t text) {
@@ -248,6 +257,7 @@ struct CaptureReader {
             result["available"] = true;
             result["value"] = std::move(value.value);
             result["interpretation"] = std::move(value.interpretation);
+            result["nameValues"] = std::move(value.name_values);
             if (!value.value_identities.is_null())
                 result["valueIdentities"] = std::move(value.value_identities);
         } catch (const Error &error) {

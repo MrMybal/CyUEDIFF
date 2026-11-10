@@ -376,6 +376,16 @@ ValueCoverage AssetView::value_coverage(const std::string &object, int root) con
                 break;
             }
     };
+    auto names = [&](const std::shared_ptr<const Package> &package, Json &out) {
+        if (!package || !package->name_values.is_object())
+            return;
+        for (auto i = package->name_values.at("names").begin(); i != package->name_values.at("names").end();
+             ++i)
+            if (auto relative = local(i.key()))
+                out[*relative] = i.value();
+    };
+    names(before_, out.before_names);
+    names(after_, out.after_names);
     missing(before_, false);
     missing(after_, true);
     if (!comparison_) {
@@ -383,6 +393,9 @@ ValueCoverage AssetView::value_coverage(const std::string &object, int root) con
         out.before_unavailable = selected;
         out.after_unavailable = selected;
         out.comparison_unavailable.clear();
+        const auto selected_names = properties_after_ ? out.after_names : out.before_names;
+        out.before_names = selected_names;
+        out.after_names = selected_names;
     }
     return out;
 }

@@ -1,5 +1,6 @@
 #include <cyuediff/asset_view.hpp>
 #include "collision_fixture.hpp"
+#include "literal_name_fixture.hpp"
 #include <iostream>
 using namespace cyuediff;
 using namespace cyuediff::test;
@@ -17,7 +18,7 @@ int main() {
         io.DisplaySize = {1200, 850};
         io.DeltaTime = 1.f / 60;
         AssetView::register_translations();
-        auto before = collision_extended_fixture(), after = before;
+        auto before = literal_name_fixture(collision_extended_fixture()), after = before;
         after.exports[0].properties["AggGeom"]["value"]["SphereElems"]["value"][0]["Radius"]["value"] = 7.;
         CollisionOptions snapshot_options;
         snapshot_options.source_indices = false;

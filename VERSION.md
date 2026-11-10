@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.201.0 — Stored FName correspondence
+
+Source and cooked property reads now retain independently bounded functional FName components even when optional observations are disabled. Ordinary Core/CLI/Git differences and flat/paged inspectors reveal same-display component changes. Missing components remain unavailable, and raw native JSON is not reinterpreted as typed names. Rebuild SDK consumers against 0.201 headers/libraries. The latest assembled Windows archive remains 0.199.0. [Contract](docs/VALUE_IDENTITIES.md).
+
 ## 0.200.0 — Prepared Blueprint defaults
 
 The standalone Core reconstructs selected UE5.3.2 Windows Blueprint class defaults from an independently prepared parent-template factory seed, and Blueprint instances from their real captured CDO. Exact generated-class ancestry, field GUIDs and saved import/package/companion fingerprints bind each context. CLI, installed Core consumers and the existing EN/FR effective-property desktop use the shared root selector. Independent native references verify the inheritance and identical-instance/different-default cases. General archetype/subobject, cooked and runtime semantics remain open; the latest assembled Windows archive remains 0.199.0. [Contract](docs/EFFECTIVE_DEFAULTS.md#blueprint-class-defaults-and-instances).

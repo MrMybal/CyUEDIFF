@@ -19,6 +19,7 @@ struct CookedPropertyDiff {
     const OperationControl &control;
     CookedWalk walk;
     ValueCoverage *coverage = nullptr;
+    bool names_ready = true;
     void check(unsigned depth) const {
         control.check();
         if (depth >= 256)
@@ -204,6 +205,10 @@ struct CookedPropertyDiff {
         const auto kind = at.value("kind", 255);
         if (kind != bt.value("kind", 255) || at.value("name", "") != bt.value("name", "")) {
             unknown(path, "cooked-reader-type-incompatible");
+            return;
+        }
+        if (!names_ready && (kind == 5 || kind == 6 || kind == 13 || kind == 17 || kind == 27)) {
+            unknown(path, "stored-name-components-unavailable");
             return;
         }
         if (kind == 9) {

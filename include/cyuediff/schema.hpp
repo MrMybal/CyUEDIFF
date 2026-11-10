@@ -139,6 +139,7 @@ struct UnversionedReadOptions {
     // but their reference-dependent values cannot certify paired correspondence.
     std::string reference_identity;
     ValueIdentityOptions value_identities;
+    NameValueReadOptions name_values;
 };
 struct UnversionedProperties {
     Json properties = Json::object();
@@ -146,13 +147,13 @@ struct UnversionedProperties {
     std::uint32_t values_read = 0;
     // Selected qualified schema/type/program inventory, separate from stored asset values.
     Json interpretation = nullptr;
-    Json value_identities = nullptr;
+    Json value_identities = nullptr, name_values = nullptr;
 };
 struct UnversionedValue {
     Json value = nullptr, interpretation = nullptr;
     std::uint64_t consumed_bytes = 0, text_bytes = 0;
     std::uint32_t values_read = 0;
-    Json value_identities = nullptr;
+    Json value_identities = nullptr, name_values = nullptr;
 };
 // One explicitly typed serialized value, without an enclosing property/header tag.
 // Names/references and native routes remain caller supplied. No defaults are invented.

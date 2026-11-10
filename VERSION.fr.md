@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.201.0 — Correspondance des FName stockés
+
+Les lecteurs de propriétés source et cooked conservent un index fonctionnel borné des composants FName, même sans observations facultatives. Les différences ordinaires Core/CLI/Git et les inspecteurs plats/par pages révèlent les changements masqués par un affichage identique. Les composants manquants restent indéterminés et le JSON natif brut garde son sens. Recompilez les clients SDK avec les en-têtes/bibliothèques 0.201. La dernière archive Windows assemblée reste la 0.199.0. [Contrat](docs/VALUE_IDENTITIES.md).
+
 ## 0.200.0 — Défauts Blueprint préparés
 
 Le Core autonome reconstruit les défauts de classes Blueprint UE5.3.2 Windows pris en charge depuis un état initial préparé indépendamment à partir du modèle parent, et leurs instances depuis le vrai CDO capturé. Héritage qualifié, GUID des champs et empreintes des packages importés/compagnons lient chaque contexte. CLI, clients Core installés et bureau EN/FR utilisent le même sélecteur de racine. Les références natives vérifient l’héritage et le cas d’une instance identique soumise à des défauts différents. Les archétypes/sous-objets généraux, cooked et comportements d’exécution restent ouverts ; la dernière archive Windows assemblée reste la 0.199.0. [Contrat](docs/EFFECTIVE_DEFAULTS.md#blueprint-class-defaults-and-instances).

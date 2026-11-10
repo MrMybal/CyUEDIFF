@@ -3,7 +3,7 @@
 #include <set>
 namespace cyuediff::detail {
 struct SourceCoverage {
-    Json unavailable = Json::array();
+    Json unavailable = Json::array(), name_changes = Json::array();
     std::set<std::string> suppressed;
     std::set<std::string> affected_objects;
     bool excludes(const std::string &path) const;

@@ -1894,14 +1894,15 @@ PropertyReader prepare_property_reader(const std::vector<std::uint8_t> &bytes, s
         std::any_of(options.reference_identity.begin(), options.reference_identity.end(),
                     [](unsigned char c) { return c < 0x21 || c > 0x7e; }))
         throw Error("schema-context", "Invalid property reference resolver identity", offset);
-    PropertyReader reader{{bytes, options.control, offset, offset + size},
-                          schemas,
-                          options,
-                          detail::ValueIdentityJournal(options.value_identities, options.control),
-                          {},
-                          {},
-                          {},
-                          {}};
+    PropertyReader reader{
+        {bytes, options.control, offset, offset + size},
+        schemas,
+        options,
+        detail::ValueIdentityJournal(options.value_identities, options.control, options.name_values),
+        {},
+        {},
+        {},
+        {}};
     for (const auto &binding : options.native_structs) {
         reader.charge();
         native_struct_layout_name(binding.second);
@@ -1949,6 +1950,8 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
     reader.inventory_schema(root, 0);
     reader.result.properties = reader.structure(schema, false, 0);
     reader.result.consumed_bytes = reader.r.pos - offset;
+    reader.result.name_values = reader.identities.name_values();
+    reader.result.name_values["root"] = "properties";
     reader.result.value_identities = reader.identities.finish();
     if (!reader.result.value_identities.is_null())
         reader.result.value_identities["root"] = "properties";
@@ -1978,12 +1981,15 @@ UnversionedValue decode_unversioned_value(const std::vector<std::uint8_t> &bytes
     reader.inventory_type(type, 0);
     auto value = reader.read_value(type, false, 0);
     options.control.check();
+    auto names = reader.identities.name_values();
+    names["root"] = "value";
     auto identities = reader.identities.finish();
     if (!identities.is_null())
         identities["root"] = "value";
     return {std::move(value),          std::move(reader.result.interpretation),
             reader.r.pos - offset,     reader.result.text_bytes,
-            reader.result.values_read, std::move(identities)};
+            reader.result.values_read, std::move(identities),
+            std::move(names)};
 }
 
 } // namespace cyuediff

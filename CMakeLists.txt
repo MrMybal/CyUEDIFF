@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CyUEDiff VERSION 0.200.0 LANGUAGES C CXX)
+project(CyUEDiff VERSION 0.201.0 LANGUAGES C CXX)
 # Pre-1.0 package compatibility uses the minor version. Never ship an example
 # whose explicitly requested SDK version cannot select this package.
 file(GLOB CYUEDIFF_EXAMPLE_PROJECTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/*/CMakeLists.txt")

@@ -1,5 +1,6 @@
 #include "source_availability.hpp"
 #include "key_identity.hpp"
+#include "name_value_diff.hpp"
 #include <algorithm>
 namespace cyuediff::detail {
 namespace {
@@ -71,6 +72,7 @@ struct Builder {
     const SourceCoverageOptions &o;
     const std::map<std::string, std::string> &before_definitions, &after_definitions;
     SourceCoverage out;
+    bool before_names_ready = true, after_names_ready = true;
     struct Definitions {
         const std::string *before = nullptr, *after = nullptr;
         bool compatible() const { return (!before && !after) || (before && after && *before == *after); }
@@ -261,6 +263,25 @@ struct Builder {
         }
         return false;
     }
+    bool needs_names(const Json &type, unsigned depth = 0) {
+        tick();
+        if (depth > 256)
+            throw Error("source-coverage-limit", "Name type depth exceeded");
+        const auto name = type.is_string() ? type.get<std::string>() : type.value("name", "");
+        if (name == "ByteProperty")
+            return true; // Enum-backed bytes may serialize an FName.
+        if (name == "NameProperty" || name == "EnumProperty" || name == "FieldPathProperty" ||
+            name == "DelegateProperty" || name == "MulticastDelegateProperty" ||
+            name == "SoftObjectProperty" || name == "SoftClassProperty")
+            return true;
+        if (type.is_object())
+            for (const char *key : {"parameters", "arguments"})
+                if (type.contains(key))
+                    for (const auto &child : type.at(key))
+                        if (needs_names(child, depth + 1))
+                            return true;
+        return false;
+    }
     void values(const Json *a, const Json *b, const std::string &path, unsigned depth = 0) {
         tick();
         if (depth > 256)
@@ -289,6 +310,24 @@ struct Builder {
                     cut(path + "/opaque");
                 else
                     cut(path + "/opaque/reason");
+                return;
+            }
+            const auto numeric_bytes = [](const Json &tag) {
+                const auto &type = tag.at("type");
+                const auto name = type.is_string() ? type.get<std::string>() : type.value("name", "");
+                if (name == "ByteProperty")
+                    return tag.at("value").is_number();
+                if (name != "ArrayProperty" || !tag.at("value").is_array())
+                    return false;
+                return std::all_of(tag.at("value").begin(), tag.at("value").end(),
+                                   [](const Json &v) { return v.is_number(); });
+            };
+            if (ta && tb && (!before_names_ready || !after_names_ready) &&
+                !(numeric_bytes(*a) && numeric_bytes(*b)) &&
+                (needs_names(a->contains("resolvedType") ? a->at("resolvedType") : a->at("type")) ||
+                 needs_names(b->contains("resolvedType") ? b->at("resolvedType") : b->at("type")))) {
+                cut(path + "/value");
+                unknown(path + "/value", false, false, "stored-name-components-unavailable");
                 return;
             }
             if (ta && tb) {
@@ -628,6 +667,8 @@ SourceCoverage source_coverage(const Package &a, const Package &b, const SourceC
         throw Error("source-coverage-limit", "Invalid source coverage budgets");
     o.control.checkpoint("source-coverage");
     Builder r{o, a.decoder_definitions, b.decoder_definitions};
+    r.before_names_ready = a.name_values.is_object() && a.name_values.value("status", "") == "complete";
+    r.after_names_ready = b.name_values.is_object() && b.name_values.value("status", "") == "complete";
     std::map<std::string, const ObjectExport *> left, right;
     for (const auto &e : a.exports) {
         r.tick();
@@ -643,6 +684,26 @@ SourceCoverage source_coverage(const Package &a, const Package &b, const SourceC
         auto i = right.find(e.first);
         if (i != right.end())
             r.exports(*e.second, *i->second);
+    }
+    auto names = compare_name_values(
+        a.name_values, b.name_values, [&](const std::string &path) { return source_name_value(left, path); },
+        [&](const std::string &path) { return source_name_value(right, path); }, "semantic-snapshot", "",
+        o.control);
+    for (const auto &row : names.unavailable) {
+        const auto path = row.at("path").get<std::string>();
+        const auto slash = path.find('/', 9);
+        r.object = Json::json_pointer("/" + path.substr(9, slash - 9)).back();
+        if (!r.out.excludes(path)) {
+            r.cut(path);
+            r.unknown(path, false, false, "stored-name-components-unavailable");
+        }
+    }
+    for (auto &row : names.changes) {
+        const auto path = row.at("path").get<std::string>();
+        r.tick();
+        r.path_cost(path.size());
+        if (!r.out.excludes(path))
+            r.out.name_changes.push_back(std::move(row));
     }
     o.control.check();
     return std::move(r.out);

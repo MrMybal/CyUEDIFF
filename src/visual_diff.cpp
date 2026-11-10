@@ -2,6 +2,7 @@
 #include <cyuediff/property_page.hpp>
 #include <algorithm>
 #include "json_equality.hpp"
+#include "name_value_diff.hpp"
 #include <set>
 namespace cyuediff {
 const char *change_name(ChangeKind change) {
@@ -154,6 +155,8 @@ class CoverageIndex {
     std::set<std::string> before_, after_, unknown_, ignored_, raw_;
     const Json *root_before_, *root_after_;
     bool cooked_;
+    const Json &before_names_, &after_names_;
+    std::set<std::string> names_changed_;
     static bool cooked_tag(const Json *value) {
         return value && value->is_object() && !type(value).empty() && value->contains("value") &&
                value->contains("schemaIndex") && value->at("schemaIndex").is_number_unsigned() &&
@@ -185,7 +188,8 @@ class CoverageIndex {
 
   public:
     explicit CoverageIndex(const ValueCoverage &v, const Json *before, const Json *after)
-        : root_before_(before), root_after_(after), cooked_(v.cooked_properties) {
+        : root_before_(before), root_after_(after), cooked_(v.cooked_properties),
+          before_names_(v.before_names), after_names_(v.after_names) {
         std::size_t count = 0, bytes = 0;
         auto load = [&](const auto &paths, auto &set) {
             for (const auto &path : paths) {
@@ -206,6 +210,27 @@ class CoverageIndex {
         load(v.comparison_unavailable, unknown_);
         load(v.ignored, ignored_);
         load(v.raw, raw_);
+        auto names = [&](const Json &a, const Json &b) {
+            if (!a.is_object() || !b.is_object())
+                throw Error("property-coverage-scope", "Invalid name-value coverage");
+            for (auto i = a.begin(); i != a.end(); ++i) {
+                const auto cost = i.key().size() + detail::name_component_bytes(*i);
+                if (++count > 400000 || cost > 64 * 1024 * 1024 - bytes)
+                    throw Error("property-coverage-limit", "Name-value coverage exceeds its budget");
+                bytes += cost;
+                try {
+                    Json::json_pointer valid(i.key());
+                    (void)valid;
+                } catch (const Json::exception &) {
+                    throw Error("property-coverage-scope", "Invalid name-value pointer");
+                }
+                const auto peer = b.find(i.key());
+                if (peer != b.end() && detail::name_components(*i) != detail::name_components(*peer))
+                    names_changed_.insert(i.key());
+            }
+        };
+        names(before_names_, after_names_);
+        names(after_names_, before_names_);
     }
     static bool covers(const std::set<std::string> &set, std::string path) {
         for (;;) {
@@ -237,6 +262,28 @@ class CoverageIndex {
         return covers(before_, p) || covers(after_, p) || covers(unknown_, p);
     }
     bool empty_ignored() const { return ignored_.empty(); }
+    bool named(const std::string &path) const {
+        return before_names_.contains(path) || after_names_.contains(path);
+    }
+    std::string preview(const Json *value, const std::string &path, bool after, std::size_t limit,
+                        bool escaped) const {
+        const auto &names = after ? after_names_ : before_names_;
+        const auto found = names.find(path);
+        if (!value || found == names.end() ||
+            !detail::name_display_matches(detail::name_components(*found), *value))
+            return text(value, limit, escaped);
+        auto result = text(value, limit / 2, escaped) +
+                      " [number=" + std::to_string(found->at("number").get<std::uint32_t>()) +
+                      ", base=" + text(&found->at("base"), limit / 3, escaped) + "]";
+        if (result.size() > limit) {
+            std::size_t end = limit;
+            while (end && (static_cast<unsigned char>(result[end]) & 0xc0) == 0x80)
+                --end;
+            result.resize(end);
+            result += "...";
+        }
+        return result;
+    }
     bool equal(const Json *a, const Json *b, const std::string &path, std::size_t &work, std::size_t max,
                const OperationControl &control, unsigned depth = 0, bool known_only = false) const {
         if (ignored(path) || (known_only && uncertain_at(path)))
@@ -247,8 +294,10 @@ class CoverageIndex {
             control.checkpoint("property-values", work);
         if (!a || !b)
             return a == b;
-        if (a == b)
+        if (a == b && !intersects(names_changed_, path))
             return true;
+        if (names_changed_.count(path))
+            return false;
         if (a->type() != b->type())
             return a->is_number() && b->is_number() && detail::numeric_equal(*a, *b);
         if (a->is_object()) {
@@ -419,10 +468,15 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
                  : ChangeKind::modified;
         if (!ra && !rb && same_opaque(a, b) && !coverage.uncertain(source))
             change = ChangeKind::unchanged;
-        result.rows.push_back({path, label_type,
-                               ka ? text(x, options.max_text_bytes, options.escape_non_bmp) : "Unavailable",
-                               kb ? text(y, options.max_text_bytes, options.escape_non_bmp) : "Unavailable",
-                               change, depth, bool(a), bool(b)});
+        if (!ra && !rb && coverage.named(value_path))
+            label_type = "NameProperty";
+        result.rows.push_back(
+            {path, label_type,
+             ka ? coverage.preview(x, value_path, false, options.max_text_bytes, options.escape_non_bmp)
+                : "Unavailable",
+             kb ? coverage.preview(y, value_path, true, options.max_text_bytes, options.escape_non_bmp)
+                : "Unavailable",
+             change, depth, bool(a), bool(b)});
         result.rows.back().before_available = ka;
         result.rows.back().after_available = kb;
         result.rows.back().source_path = source;
@@ -593,14 +647,17 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
                                                : ChangeKind::modified;
         if (!rx && !ry && same_opaque(x, y) && !coverage.uncertain(path))
             change = ChangeKind::unchanged;
-        PropertyRow row{path,
-                        t,
-                        kx ? text(xv, 2048, options.escape_non_bmp) : "Unavailable",
-                        ky ? text(yv, 2048, options.escape_non_bmp) : "Unavailable",
-                        change,
-                        depth,
-                        bool(x),
-                        bool(y)};
+        if (!rx && !ry && coverage.named(value_path))
+            t = "NameProperty";
+        PropertyRow row{
+            path,
+            t,
+            kx ? coverage.preview(xv, value_path, false, 2048, options.escape_non_bmp) : "Unavailable",
+            ky ? coverage.preview(yv, value_path, true, 2048, options.escape_non_bmp) : "Unavailable",
+            change,
+            depth,
+            bool(x),
+            bool(y)};
         row.before_available = kx;
         row.after_available = ky;
         row.source_path = path;
