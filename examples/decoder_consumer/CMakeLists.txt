@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(CyUEDiffDecoderConsumer LANGUAGES CXX)
-find_package(CyUEDiff 0.194 CONFIG REQUIRED)
+find_package(CyUEDiff 0.199 CONFIG REQUIRED)
 add_executable(custom_diff main.cpp)
 target_link_libraries(custom_diff PRIVATE CyUEDiff::Core)
 if(MSVC)
