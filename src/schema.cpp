@@ -4,6 +4,7 @@
 #include "archive.hpp"
 #include "text_value.hpp"
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -149,7 +150,7 @@ NativeStructLayout parse_native_struct_layout(const std::string &name) {
     throw Error("schema-context", "Unsupported native struct layout: " + name);
 }
 struct UnversionedSchemas::Impl {
-    std::string hash;
+    std::string hash, source_format = "cyuediff.usmap/1";
     unsigned version = 0;
     Json versioning = nullptr, extensions = Json::array();
     std::map<std::string, SchemaDefinition> schemas;
@@ -530,6 +531,247 @@ const SchemaDefinition &UnversionedSchemas::schema(const std::string &name) cons
 const SchemaEnum &UnversionedSchemas::enumeration(const std::string &name) const {
     return resolve_identity(impl_->enums, impl_->enum_aliases, name);
 }
+UnversionedSchemas UnversionedSchemas::from_runtime_capture(const Json &capture,
+                                                            const SchemaReadOptions &options) {
+    options.control.check();
+    try {
+        if (!capture.is_object() || capture.at("format") != "cyuediff.engine-default-capture/1" ||
+            capture.at("completeCapture") != true || !capture.at("declarations").is_object() ||
+            !capture.at("enumerations").is_object())
+            throw Error("schema-runtime", "Expected complete runtime declarations");
+        auto p = std::make_shared<Impl>();
+        p->source_format = "cyuediff.runtime-schemas/1";
+        p->version = 1;
+        if (!capture.at("filterEditorOnly").is_boolean())
+            throw Error("schema-runtime", "Invalid runtime editor-filter state");
+        std::uint64_t entries = 0, text_bytes = 0, encoded_bytes = 0;
+        auto encoded = [&](std::uint64_t bytes) {
+            if (bytes > options.max_bytes - encoded_bytes)
+                throw Error("schema-limit", "Runtime declaration bytes exceed limit");
+            encoded_bytes += bytes;
+        };
+        auto encoded_string = [&](const std::string &value) {
+            encoded(2);
+            for (std::size_t i = 0; i < value.size(); ++i) {
+                if (!(i & 4095))
+                    options.control.check();
+                const auto c = static_cast<unsigned char>(value[i]);
+                encoded(c == '"' || c == '\\' || c == '\b' || c == '\f' || c == '\n' || c == '\r' || c == '\t'
+                            ? 2
+                        : c < 32 ? 6
+                                 : 1);
+            }
+        };
+        auto charge = [&](std::uint64_t work, std::uint64_t bytes) {
+            options.control.check();
+            if (work > options.max_entries - entries || bytes > options.max_text_bytes - text_bytes)
+                throw Error("schema-limit", "Runtime declaration budget exceeded");
+            entries += work;
+            text_bytes += bytes;
+        };
+        std::function<void(const Json &, unsigned)> measure = [&](const Json &value, unsigned depth) {
+            if (depth >= options.max_depth)
+                throw Error("schema-limit", "Runtime declaration depth exceeds limit");
+            charge(1, 0);
+            if (value.is_string()) {
+                const auto &text = value.get_ref<const std::string &>();
+                charge(0, text.size());
+                encoded_string(text);
+            } else if (value.is_object()) {
+                encoded(2 + (value.empty() ? 0 : value.size() - 1));
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    charge(0, it.key().size());
+                    encoded_string(it.key());
+                    encoded(1);
+                    measure(it.value(), depth + 1);
+                }
+            } else if (value.is_array()) {
+                encoded(2 + (value.empty() ? 0 : value.size() - 1));
+                for (const auto &child : value)
+                    measure(child, depth + 1);
+            } else {
+                if (value.is_binary() || value.is_discarded() ||
+                    (value.is_number_float() && !std::isfinite(value.get<double>())))
+                    throw Error("schema-runtime", "Invalid declaration JSON value");
+                encoded(value.dump().size());
+            }
+        };
+        const auto &declarations = capture.at("declarations"), &enums = capture.at("enumerations");
+        measure(declarations, 0);
+        measure(enums, 0);
+        encoded(Json{{"format", p->source_format}, {"filterEditorOnly", capture.at("filterEditorOnly")}}
+                    .dump()
+                    .size() +
+                std::string(",\"declarations\":,\"enumerations\":").size());
+        Json document = {{"format", p->source_format},
+                         {"declarations", declarations},
+                         {"enumerations", enums},
+                         {"filterEditorOnly", capture.at("filterEditorOnly")}};
+        const auto canonical = document.dump();
+        if (canonical.size() > options.max_bytes)
+            throw Error("schema-limit", "Runtime declaration bytes exceed limit");
+        auto word = [&](const Json &j) {
+            auto value = j.get<std::string>();
+            if (value.empty() || value.size() > 65536 || value.find('\0') != std::string::npos)
+                throw Error("schema-runtime", "Invalid runtime declaration name");
+            charge(0, value.size());
+            return value;
+        };
+        auto unsigned_number = [](const Json &j, std::uint64_t maximum) {
+            if (!j.is_number_integer() || (!j.is_number_unsigned() && j.get<std::int64_t>() < 0) ||
+                j.get<std::uint64_t>() > maximum)
+                throw Error("schema-runtime", "Invalid runtime unsigned integer");
+            return j.get<std::uint64_t>();
+        };
+        auto qualified = [&](const std::string &path, std::string &module, std::string &name) {
+            const auto dot = path.find_last_of('.');
+            if (path.empty() || path.front() != '/' || dot == std::string::npos || dot + 1 == path.size() ||
+                path.find('\\') != std::string::npos)
+                throw Error("schema-runtime", "Expected a qualified runtime identity");
+            module = path.substr(0, dot);
+            name = path.substr(dot + 1);
+        };
+        std::function<SchemaType(const Json &, unsigned)> type = [&](const Json &j, unsigned depth) {
+            if (depth >= options.max_depth)
+                throw Error("schema-limit", "Runtime type depth exceeds limit");
+            charge(1, 0);
+            auto name = word(j.at("name"));
+            if (name == "ObjectPtrProperty" || name == "ClassProperty" || name == "ClassPtrProperty")
+                name = "ObjectProperty";
+            if (name == "SoftClassProperty")
+                name = "SoftObjectProperty";
+            if (name == "MulticastInlineDelegateProperty" || name == "MulticastSparseDelegateProperty")
+                name = "MulticastDelegateProperty";
+            SchemaType result;
+            for (unsigned i = 0; i <= 30; ++i)
+                if (name == type_name(i))
+                    result.kind = static_cast<std::uint8_t>(i);
+            if (result.kind == 9 || result.kind == 26)
+                result.name = word(j.at("schema"));
+            const auto args = j.find("arguments");
+            const auto count =
+                result.kind == 24                                                                 ? 2u
+                : result.kind == 8 || result.kind == 25 || result.kind == 26 || result.kind == 28 ? 1u
+                                                                                                  : 0u;
+            if ((args != j.end() && (!args->is_array() || args->size() != count)) ||
+                (count && args == j.end()))
+                throw Error("schema-runtime", "Invalid runtime type arity");
+            if (args != j.end())
+                for (const auto &arg : *args)
+                    result.arguments.push_back(type(arg, depth + 1));
+            return result;
+        };
+        for (auto it = enums.begin(); it != enums.end(); ++it) {
+            charge(1, 0);
+            SchemaEnum e;
+            e.path = word(it.key());
+            qualified(e.path, e.module, e.name);
+            e.attributes_present = true;
+            if (!it->is_array())
+                throw Error("schema-runtime", "Expected runtime enum entries");
+            std::set<std::string> names;
+            for (const auto &value : *it) {
+                charge(1, 0);
+                auto name = word(value.at("name"));
+                const auto decimal = word(value.at("value"));
+                std::int64_t number = 0;
+                const auto parsed = std::from_chars(decimal.data(), decimal.data() + decimal.size(), number);
+                if (!names.insert(name).second || parsed.ec != std::errc{} ||
+                    parsed.ptr != decimal.data() + decimal.size())
+                    throw Error("schema-runtime", "Invalid runtime enum entry");
+                e.values.push_back({{"name", std::move(name)}, {"value", number}});
+            }
+            p->enum_aliases[e.name].push_back(e.path);
+            p->enums.emplace(e.path, std::move(e));
+        }
+        for (auto it = declarations.begin(); it != declarations.end(); ++it) {
+            charge(1, 0);
+            SchemaDefinition definition;
+            definition.path = word(it.key());
+            if (it->at("path") != definition.path)
+                throw Error("schema-runtime", "Runtime identity/key disagree");
+            qualified(definition.path, definition.module, definition.name);
+            definition.super = it->at("super").get<std::string>();
+            definition.slots = static_cast<std::uint16_t>(unsigned_number(it->at("slots"), UINT16_MAX));
+            definition.attributes_present = true;
+            const auto kind = it->at("kind").get<std::string>();
+            if (kind != "class" && kind != "struct" && kind != "native-struct")
+                throw Error("schema-runtime", "Invalid runtime declaration kind");
+            definition.struct_kind = kind == "class" ? 0 : kind == "struct" ? 1 : 2;
+            if (!it->at("properties").is_array())
+                throw Error("schema-runtime", "Expected runtime properties");
+            std::set<std::string> names;
+            for (const auto &field : it->at("properties")) {
+                charge(1, 0);
+                SchemaProperty property;
+                property.name = word(field.at("name"));
+                if (!names.insert(property.name).second)
+                    throw Error("schema-runtime", "Duplicate runtime field name");
+                const auto index = unsigned_number(field.at("index"), UINT16_MAX),
+                           dim = unsigned_number(field.at("arrayDim"), UINT8_MAX);
+                if (!dim || dim > UINT8_MAX || index >= definition.slots || dim > definition.slots - index)
+                    throw Error("schema-runtime", "Invalid runtime static array range");
+                property.index = static_cast<std::uint16_t>(index);
+                property.array_size = static_cast<std::uint8_t>(dim);
+                property.type = type(field.at("type"), 0);
+                std::uint64_t type_nodes = 0, type_text = 0;
+                std::function<void(const SchemaType &)> measure_type = [&](const SchemaType &t) {
+                    ++type_nodes;
+                    type_text += t.name.size();
+                    for (const auto &child : t.arguments)
+                        measure_type(child);
+                };
+                measure_type(property.type);
+                charge(dim + (dim - 1) * type_nodes, (dim - 1) * type_text);
+                for (std::uint64_t i = 0; i < dim; ++i) {
+                    charge(0, property.name.size());
+                    if (!definition.properties.emplace(static_cast<std::uint16_t>(index + i), property)
+                             .second)
+                        throw Error("schema-runtime", "Overlapping runtime property slots");
+                }
+            }
+            p->schema_aliases[definition.name].push_back(definition.path);
+            p->schemas.emplace(definition.path, std::move(definition));
+        }
+        UnversionedSchemas registry(p);
+        std::function<void(const SchemaType &)> references = [&](const SchemaType &t) {
+            options.control.check();
+            if (t.kind == 9) {
+                const auto &target = registry.schema(t.name);
+                if (target.struct_kind == 0)
+                    throw Error("schema-runtime", "Struct descriptor targets a class");
+            }
+            if (t.kind == 26)
+                registry.enumeration(t.name);
+            for (const auto &a : t.arguments)
+                references(a);
+        };
+        for (const auto &pair : p->schemas) {
+            const auto *definition = &pair.second;
+            std::set<std::string> seen;
+            while (definition) {
+                charge(1, 0);
+                if (!seen.insert(definition->path).second)
+                    throw Error("schema-runtime", "Cyclic runtime inheritance");
+                if (seen.size() > options.max_depth)
+                    throw Error("schema-limit", "Runtime inheritance exceeds limit");
+                if (definition->super.empty())
+                    break;
+                const auto parent = p->schemas.find(definition->super);
+                if (parent == p->schemas.end())
+                    throw Error("schema-runtime", "Missing qualified runtime base");
+                definition = &parent->second;
+            }
+            for (const auto &field : pair.second.properties)
+                references(field.second.type);
+        }
+        p->hash =
+            sha256_bytes(std::vector<std::uint8_t>(canonical.begin(), canonical.end()), options.control);
+        return registry;
+    } catch (const Json::exception &) {
+        throw Error("schema-runtime", "Invalid runtime declaration JSON");
+    }
+}
 const std::string &UnversionedSchemas::sha256() const {
     return impl_->hash;
 }
@@ -573,7 +815,7 @@ Json UnversionedSchemas::to_json() const {
                                  {"attributesPresent", e.attributes_present},
                                  {"flags", e.flags}});
     }
-    return {{"schema", "cyuediff.usmap/1"},
+    return {{"schema", impl_->source_format},
             {"version", impl_->version},
             {"sha256", impl_->hash},
             {"versioning", impl_->versioning},
@@ -1584,9 +1826,10 @@ struct PropertyReader {
     }
 };
 } // namespace
-UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes, std::uint64_t offset,
-                                         std::uint64_t size, const UnversionedSchemas &schemas,
-                                         const std::string &schema, const UnversionedReadOptions &options) {
+namespace {
+PropertyReader prepare_property_reader(const std::vector<std::uint8_t> &bytes, std::uint64_t offset,
+                                       std::uint64_t size, const UnversionedSchemas &schemas,
+                                       const UnversionedReadOptions &options) {
     if (offset > bytes.size() || size > bytes.size() - offset)
         throw Error("bounds", "Invalid unversioned property window", offset);
     options.control.check();
@@ -1630,6 +1873,13 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
              schemas.schema(definition.name).path == definition.path))
             throw Error("schema-context", "Conflicting hybrid struct binding: " + definition.path);
     }
+    return reader;
+}
+} // namespace
+UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes, std::uint64_t offset,
+                                         std::uint64_t size, const UnversionedSchemas &schemas,
+                                         const std::string &schema, const UnversionedReadOptions &options) {
+    auto reader = prepare_property_reader(bytes, offset, size, schemas, options);
     const auto &root = schemas.schema(schema);
     reader.result.interpretation = {
         {"schema", root.path}, {"schemas", Json::object()}, {"format", "cyuediff.cooked-interpretation/1"}};
@@ -1639,4 +1889,31 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
     options.control.check();
     return std::move(reader.result);
 }
+UnversionedValue decode_unversioned_value(const std::vector<std::uint8_t> &bytes, std::uint64_t offset,
+                                          std::uint64_t size, const UnversionedSchemas &schemas,
+                                          const SchemaType &type, const UnversionedReadOptions &options) {
+    auto reader = prepare_property_reader(bytes, offset, size, schemas, options);
+    reader.result.interpretation = {{"format", "cyuediff.cooked-value-interpretation/1"},
+                                    {"schemas", Json::object()}};
+    std::function<void(const SchemaType &, unsigned)> validate = [&](const SchemaType &t, unsigned nesting) {
+        reader.depth(nesting);
+        reader.charge();
+        const auto count = t.kind == 24                                                  ? 2u
+                           : t.kind == 8 || t.kind == 25 || t.kind == 26 || t.kind == 28 ? 1u
+                                                                                         : 0u;
+        if ((t.kind > 30 && t.kind != 255) || t.arguments.size() != count ||
+            ((t.kind == 9 || t.kind == 26) != !t.name.empty()))
+            throw Error("schema-type", "Malformed standalone value descriptor", offset);
+        for (const auto &argument : t.arguments)
+            validate(argument, nesting + 1);
+    };
+    validate(type, 0);
+    reader.result.interpretation["type"] = reader.type_context(type, 0);
+    reader.inventory_type(type, 0);
+    auto value = reader.read_value(type, false, 0);
+    options.control.check();
+    return {std::move(value), std::move(reader.result.interpretation), reader.r.pos - offset,
+            reader.result.text_bytes, reader.result.values_read};
+}
+
 } // namespace cyuediff

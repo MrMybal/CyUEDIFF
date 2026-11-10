@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.195.0 — Captured class-default values
+
+The optional matching Engine exporter and standalone `DefaultSnapshot` Core reader preserve qualified declarations, inherited CDO values, initialized struct defaults, actual per-field wires and exact archive provenance. Native routes remain explicit; unsupported fields stay unavailable. The installed consumer reads the capture without Unreal. Snapshots remain unbound and do not apply defaults to an asset; effective reconstruction and desktop integration are still in development. The latest assembled Windows archive remains 0.194.0. [Contract](docs/DEFAULT_SNAPSHOTS.md).
+
 ## 0.194.0 — Cooked interpretation and key correspondence
 
 Cooked mapped values retain qualified schema/type/native programme inventories outside asset values. Equivalent catalogue-local layouts no longer create false changes. Incompatible definitions, keys, fields and failed peers stay explicitly unavailable while independently known values remain comparable. Both flat and paged desktop inspectors use the same correspondence, preserving existing navigation paths. The selected native programme hash excludes unrelated catalogue entries; custom reference contracts remain explicit. [Contract](docs/COOKED_CONTEXT.md).

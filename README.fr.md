@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.194.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.195.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.194.0**
+> **EN DÉVELOPPEMENT · 0.195.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -51,6 +51,7 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 - **Identité des définitions natives :** un schéma déclaratif ou explicitement identifié modifié sous le même nom reste indéterminé ; les ajouts sans rapport au catalogue restent du contexte et les champs lisibles restent comparables. [Contrat](docs/DECODER_IDENTITY.md).
 - **Comparaisons et rapports moins coûteux :** les comparaisons source parcourent les propriétés existantes, distinguent exactement entiers et flottants et écrivent les rapports en flux dans Core/CLI/Git/interface. [Mémoire et propriété des données](docs/COMPARISON_MEMORY.md).
 - **Couverture des comparaisons source :** les champs lisibles restent comparables à côté des valeurs indisponibles ; les propriétés EN/FR distinguent données indéterminées, contexte des décodeurs et vrais retraits. [Contrat](docs/SOURCE_AVAILABILITY.md).
+- **Valeurs par défaut capturées (Core) :** lecture des données de champs de CDO et des structures initialisées, avec déclarations qualifiées et provenance du moteur. La reconstruction de l’état effectif des assets reste en développement. [Contrat](docs/DEFAULT_SNAPSHOTS.md).
 - **Tissus physiques source :** les packages balisés UE 5.3 sélectionnés partagent le modèle physique, les requêtes/OBJ/différences et le bureau EN/FR réutilisable, avec objets indépendants et valeurs par défaut indéterminées visibles. [Contrat](docs/SOURCE_PHYSICAL_CLOTH.md).
 - **Différences d’assets lisibles** : propriétés typées consultables par recherche, références d’objets stables, textes structurés des pins Blueprint, graphes de matériau et paramètres d’instance enregistrés, avec une couverture partielle ou opaque explicitée.
 - **Inspection des images et géométries sources** : sources et mips Texture2D LDR/HDR pris en charge, différences de pixels/échantillons, filaires MeshDescription modernes, différences de géométrie et export OBJ de la géométrie de base. Les os sources modernes, profils de poids bruts et deltas de morph nommés sont validés sur des jeux de test synthétiques.

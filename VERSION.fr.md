@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.195.0 — Valeurs par défaut de classes capturées
+
+L’exporteur Engine optionnel et le lecteur autonome `DefaultSnapshot` du Core conservent les déclarations qualifiées, les valeurs héritées du CDO, les structures initialisées, les données sérialisées de chaque champ et la provenance exacte de l’archive. Les formats natifs restent explicites ; les champs non pris en charge restent indisponibles. Le client SDK lit la capture sans Unreal. Les captures ne sont pas liées à un asset et ne lui appliquent aucune valeur : la reconstruction effective et son intégration à l’interface restent en développement. La dernière archive Windows assemblée reste la 0.194.0. [Contrat](docs/DEFAULT_SNAPSHOTS.md).
+
 ## 0.194.0 — Interprétation cooked et correspondance des clés
 
 Les valeurs cooked conservent leur inventaire de schémas, types et programmes natifs séparément des valeurs de l’asset. Les layouts locaux équivalents ne créent plus de faux changements. Les définitions, clés, champs incompatibles et lectures échouées restent explicitement indéterminés, tout en conservant les changements connus indépendants. Les inspecteurs plat et paginé utilisent la même correspondance et conservent leurs chemins de navigation. L’empreinte du programme natif exclut les entrées inutilisées du catalogue ; les contrats de références personnalisées restent explicites. [Contract](docs/COOKED_CONTEXT.md).

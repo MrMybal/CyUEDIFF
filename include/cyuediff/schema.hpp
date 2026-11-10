@@ -37,7 +37,7 @@ struct SchemaEnum {
     std::uint32_t flags = 0;
     Json values = Json::array();
 };
-// Immutable, explicit host-supplied USMAP mappings. No asset or engine discovery.
+// Immutable, explicit host-supplied mappings/runtime declarations. No asset or engine discovery.
 class UnversionedSchemas {
     struct Impl;
     std::shared_ptr<const Impl> impl_;
@@ -46,6 +46,9 @@ class UnversionedSchemas {
   public:
     static UnversionedSchemas parse(const std::vector<std::uint8_t> &, const SchemaReadOptions & = {});
     static UnversionedSchemas read(const fs::path &, const SchemaReadOptions & = {});
+    // Qualified runtime declarations captured by the optional matching Engine tool.
+    // Builds metadata only; native wire bindings and producer verification stay explicit.
+    static UnversionedSchemas from_runtime_capture(const Json &, const SchemaReadOptions & = {});
     // Exact qualified identity, or a unique short name. Ambiguous names throw.
     const SchemaDefinition &schema(const std::string &) const;
     const SchemaEnum &enumeration(const std::string &) const;
@@ -143,6 +146,16 @@ struct UnversionedProperties {
     // Selected qualified schema/type/program inventory, separate from stored asset values.
     Json interpretation = nullptr;
 };
+struct UnversionedValue {
+    Json value = nullptr, interpretation = nullptr;
+    std::uint64_t consumed_bytes = 0, text_bytes = 0;
+    std::uint32_t values_read = 0;
+};
+// One explicitly typed serialized value, without an enclosing property/header tag.
+// Names/references and native routes remain caller supplied. No defaults are invented.
+UnversionedValue decode_unversioned_value(const std::vector<std::uint8_t> &, std::uint64_t offset,
+                                          std::uint64_t size, const UnversionedSchemas &, const SchemaType &,
+                                          const UnversionedReadOptions & = {});
 // Decodes only properties present in the header. Skipped slots require archetype
 // defaults and are not synthesized. Throws on unsupported types or invalid data;
 // callers must discard the whole result and retain the original opaque range.

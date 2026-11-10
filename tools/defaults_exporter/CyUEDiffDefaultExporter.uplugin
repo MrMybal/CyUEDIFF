@@ -1,0 +1,16 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "CyUEDiff default capture",
+  "Description": "Explicit read-only capture of selected loaded object defaults; caller owns output.",
+  "CanContainContent": false,
+  "EnabledByDefault": false,
+  "Modules": [
+    {
+      "Name": "CyUEDiffDefaultExporter",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ]
+}

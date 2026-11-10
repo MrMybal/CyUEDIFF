@@ -99,6 +99,11 @@
       "id": "coverage",
       "title": "Coverage and next steps",
       "html": "<p>Support is explicit by engine/build/platform and selected data projection. Supported UE 5.3 Windows cooked textures, geometry, Chaos data, animation/curves and Nanite inspection have independent local evidence; this does not certify every version, plugin or native serializer.</p><p>Additional producers, arbitrary plugin serializers, broader physical cloth/configuration coverage and default reconstruction and runtime evaluation remain open. Missing data keeps diagnostics and fingerprints. Source-only modern skeletal/morph formats retain their documented fixture/real-corpus limits. See the repository roadmap for exact coverage. This bundled HTML reader works offline; GitHub/reference links need a connection.</p>"
+    },
+    {
+      "id": "captured-defaults",
+      "title": "Captured class defaults",
+      "html": "<p>The optional matching Engine exporter prepares qualified CDO fields and initialized struct defaults. The standalone Core reads their actual serialized values without loading Unreal. Native layouts remain explicit, and unsupported fields stay unavailable.</p><p>This is currently a Core/SDK preparation workflow. Captures remain unbound to an asset or Blueprint/module dependency; effective default reconstruction and desktop controls are still in development. Stored asset properties are preserved. See the bundled DEFAULT_SNAPSHOTS.md contract and default_snapshot_consumer example.</p>"
     }
   ],
   "fr": [
@@ -201,6 +206,11 @@
       "id": "coverage",
       "title": "Couverture et suite",
       "html": "<p>La prise en charge est explicite selon le moteur/build/plateforme et la projection sélectionnée. Les textures cuites, géométries, données Chaos, animations/courbes et inspections Nanite UE 5.3 Windows prises en charge possèdent des preuves locales indépendantes ; cela ne certifie pas toutes les versions, plugins ou sérialisations natives.</p><p>D’autres producteurs, les sérialiseurs arbitraires de plugins, la couverture plus large du tissu physique et la reconstruction des valeurs par défaut et l’évaluation à l’exécution restent ouverts. Les données manquantes conservent leurs diagnostics et empreintes. Les formats sources modernes de squelettes/morphs gardent leurs limites de corpus réel/fixtures documentées. Consultez la feuille de route pour la couverture exacte. Ce lecteur HTML fonctionne hors ligne ; les liens GitHub/de référence nécessitent une connexion.</p>"
+    },
+    {
+      "id": "captured-defaults",
+      "title": "Valeurs par défaut de classes capturées",
+      "html": "<p>L’exporteur Engine optionnel prépare les champs qualifiés du CDO et les structures initialisées. Le Core autonome lit leurs valeurs sérialisées sans charger Unreal. Les formats natifs restent explicites et les champs non pris en charge restent indisponibles.</p><p>Ce flux de préparation utilise actuellement le Core et le SDK. Les captures ne sont pas liées à un asset ni aux dépendances Blueprint/module ; la reconstruction effective et ses contrôles dans l’interface restent en développement. Les propriétés stockées des assets sont conservées. Consulter le contrat DEFAULT_SNAPSHOTS.md et l’exemple default_snapshot_consumer fournis.</p>"
     }
   ]
 }
