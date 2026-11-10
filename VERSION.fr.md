@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.193.0 — Contexte des clés source et métadonnées lisibles
+
+Le texte des clés de maps/sets stockées exclut seulement les annotations connues du lecteur. Son encodage progressif est borné ; les formats et définitions incompatibles restent indéterminés. Les chemins de lecture des structures restent du contexte et les propriétaires intégrés sont complétés de façon cohérente. L’inspection conserve les métadonnées lisibles à côté des valeurs opaques ou ignorées, sans faux ajouts/suppressions. Les membres natifs bruts conservent leur sens. Relisez les deux côtés avec un SDK actuel correspondant. [Contract](docs/SOURCE_KEY_CONTEXT.md).
+
 ## 0.192.0 — GUID des structures et sérialisation explicite
 
 Les GUID des structures, propriétaires complets et tags internes des anciens tableaux sont conservés. Un certificat de sérialisation réfléchi lit les maps de propriétés stockées vides sans inventer les valeurs par défaut. Les extensions natives peuvent sélectionner un GUID exact et consulter le type effectif emprunté. La comparaison tient compte des identités observées. La version deux des empreintes distingue les contraintes de sélection du programme immuable. Recompilez les intégrations avec les en-têtes et bibliothèques 0.192 correspondants. [Contract](docs/STRUCT_IDENTITY.md).

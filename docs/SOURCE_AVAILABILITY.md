@@ -64,3 +64,5 @@ See [source read policies](SOURCE_READ_LIMITS.md), [tagged type contexts](TAGGED
 Source development 0.191 adds [per-binding native definition identity](DECODER_IDENTITY.md). Interpretation hashes stay separate from asset members; explicit incompatible definitions preserve readable values and mark native correspondence unknown.
 
 Source development 0.192 retains [stored struct GUID/owner identities](STRUCT_IDENTITY.md), supports exact GUID selectors and separates matched profile applicability from immutable declarative program identity.
+
+Source development 0.193 adds [source key/reader context and readable serialization metadata](SOURCE_KEY_CONTEXT.md). Reader observations are context, and key encoding is bounded separately from raw native data.

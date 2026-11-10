@@ -1,4 +1,5 @@
 #include "source_availability.hpp"
+#include "key_identity.hpp"
 #include <algorithm>
 namespace cyuediff::detail {
 namespace {
@@ -135,43 +136,121 @@ struct Builder {
         out.unavailable.push_back(std::move(row));
         out.affected_objects.insert(object);
     }
-    bool unread_key(const Json &v, bool &definition_incompatible, unsigned depth = 0) {
+    using KeyFormats = std::map<std::string, std::set<std::string>>;
+    void key_format(KeyFormats &formats, const std::string &path, std::string identity) {
+        auto i = formats.find(path);
+        if (i != formats.end() && i->second.count(identity))
+            return;
+        path_cost(path.size() + identity.size() + 64);
+        formats[path].insert(std::move(identity));
+    }
+    bool unread_key(const Json &v, bool &definition_incompatible, KeyFormats &formats,
+                    const std::string &path = {}, unsigned depth = 0) {
         tick();
         if (depth > 256)
             throw Error("source-coverage-limit", "Source key depth exceeded");
-        if (tag(v) && (!v.contains("value") || skipped(v)))
-            return true;
         if (v.is_object() && v.contains("decoder") && v["decoder"].is_string() && v.contains("data")) {
             definition_incompatible =
                 definition_incompatible || !definitions(v["decoder"], v["decoder"]).compatible();
-            if (v.value("prefix", Json{}) == "tagged-properties") {
+            const auto &id = v["decoder"].get_ref<const std::string &>();
+            const auto prefix = v.value("prefix", Json{});
+            if (!prefix.is_null() &&
+                (!prefix.is_string() || prefix.get_ref<const std::string &>().size() > 256))
+                throw Error("source-coverage-identity", "Invalid source key prefix identity");
+            key_format(formats, path,
+                       "native:" + id + ":" + (prefix.is_null() ? std::string{} : prefix.get<std::string>()));
+            if (prefix == "tagged-properties") {
                 const auto &data = v.at("data");
                 auto i = data.find("properties");
-                return i != data.end() && unread_key(*i, definition_incompatible, depth + 1);
+                return i != data.end() &&
+                       unread_key(*i, definition_incompatible, formats, path + "/prefix", depth + 1);
             }
             return false;
         }
-        if (v.is_structured())
+        if (tag(v)) {
+            if (!v.contains("value") || skipped(v))
+                return true;
+            const auto &type = v.contains("resolvedType") ? v["resolvedType"] : v["type"];
+            const auto descriptor = type.is_string() ? Json{{"name", type}} : type;
+            auto identity =
+                source_key_identity(descriptor, o.control, [&](std::uint64_t n) { path_cost(n); }, false);
+            key_format(formats, path, "type:" + identity);
+            auto f = v.find("readFormats");
+            if (f != v.end() && f->is_object())
+                for (auto i = f->begin(); i != f->end(); ++i) {
+                    auto value = source_key_identity(
+                        i.value(), o.control, [&](std::uint64_t n) { path_cost(n); }, false);
+                    key_format(formats, path + "/reader" + i.key(), "reader:" + value);
+                }
+            return unread_key(v["value"], definition_incompatible, formats, path + "/value", depth + 1);
+        }
+        key_format(formats, path, "source");
+        if (v.is_array()) {
             for (const auto &child : v)
-                if (unread_key(child, definition_incompatible, depth + 1))
+                if (unread_key(child, definition_incompatible, formats, path + "/*", depth + 1))
                     return true;
+        } else if (v.is_object()) {
+            const auto kind = v.value("kind", Json{});
+            if (kind == "stored-map-delta" || kind == "stored-set-delta") {
+                const bool map = kind == "stored-map-delta";
+                for (const auto &key : v.at("removed"))
+                    if (unread_key(key, definition_incompatible, formats, path + "/key", depth + 1))
+                        return true;
+                for (const auto &entry : v.at("entries")) {
+                    if (unread_key(map ? entry.at("key") : entry, definition_incompatible, formats,
+                                   path + "/key", depth + 1))
+                        return true;
+                    if (map && unread_key(entry.at("value"), definition_incompatible, formats,
+                                          path + "/mapped", depth + 1))
+                        return true;
+                }
+            } else
+                for (auto i = v.begin(); i != v.end(); ++i)
+                    if (unread_key(i.value(), definition_incompatible, formats, path + "/" + token(i.key()),
+                                   depth + 1))
+                        return true;
+        }
         return false;
     }
-    bool unread_map_keys(const Json &v, bool &definition_incompatible) {
+    bool unread_map_keys(const Json &v, bool &definition_incompatible, KeyFormats &formats, bool map) {
         if (!v.is_object())
             return false;
         auto removed = v.find("removed");
         if (removed != v.end())
             for (const auto &key : *removed)
-                if (unread_key(key, definition_incompatible))
+                if (unread_key(key, definition_incompatible, formats))
                     return true;
         auto entries = v.find("entries");
         if (entries != v.end() && entries->is_object())
             for (const auto &entry : *entries) {
-                auto key = entry.find("key");
-                if (key != entry.end() && unread_key(*key, definition_incompatible))
+                if (map) {
+                    auto key = entry.find("key");
+                    if (key != entry.end() && unread_key(*key, definition_incompatible, formats))
+                        return true;
+                } else if (unread_key(entry, definition_incompatible, formats))
                     return true;
             }
+        return false;
+    }
+    static bool key_formats_disagree(const KeyFormats &a, const KeyFormats &b) {
+        for (const auto &entry : a) {
+            auto i = b.find(entry.first);
+            if (i != b.end() && i->second != entry.second)
+                return true;
+        }
+        return false;
+    }
+    static bool readers_disagree(const Json &a, const Json &b) {
+        const auto &x = member(a, "readFormats"), &y = member(b, "readFormats");
+        if (x.is_null() && y.is_null())
+            return false;
+        if (!x.is_object() || !y.is_object())
+            return true;
+        for (auto i = x.begin(); i != x.end(); ++i) {
+            auto j = y.find(i.key());
+            if (j != y.end() && *i != *j)
+                return true;
+        }
         return false;
     }
     void values(const Json *a, const Json *b, const std::string &path, unsigned depth = 0) {
@@ -185,6 +264,8 @@ struct Builder {
             const Json empty = nullptr;
             const auto &oa = ta && a->contains("opaque") ? (*a)["opaque"] : empty;
             const auto &ob = tb && b->contains("opaque") ? (*b)["opaque"] : empty;
+            if (member(a ? *a : empty, "readFormats") != member(b ? *b : empty, "readFormats"))
+                cut(path + "/readFormats");
             if ((a && a->contains("resolvedType")) || (b && b->contains("resolvedType"))) {
                 const auto &x = a ? member(*a, "resolvedType") : Json{},
                            &y = b ? member(*b, "resolvedType") : Json{};
@@ -212,6 +293,11 @@ struct Builder {
                     const auto &type = value.contains("resolvedType") ? value["resolvedType"] : value["type"];
                     return type.is_string() ? Json{{"name", type}} : type;
                 };
+                if (readers_disagree(*a, *b)) {
+                    cut(path + "/value");
+                    unknown(path + "/value", false, false, "source-reader-format-incompatible");
+                    return;
+                }
                 if (effective(*a) != effective(*b)) {
                     cut(path + "/value");
                     unknown(path + "/value", false, false, "source-type-format-incompatible");
@@ -221,15 +307,22 @@ struct Builder {
         }
         if (!a || !b)
             return;
-        if (a->is_object() && b->is_object() && a->value("kind", Json{}) == "stored-map-delta" &&
-            b->value("kind", Json{}) == "stored-map-delta") {
+        if (a->is_object() && b->is_object() && a->value("kind", Json{}) == b->value("kind", Json{}) &&
+            (a->value("kind", Json{}) == "stored-map-delta" ||
+             a->value("kind", Json{}) == "stored-set-delta")) {
+            const bool map = (*a)["kind"] == "stored-map-delta";
             bool da = false, db = false;
-            const bool ka = unread_map_keys(*a, da), kb = unread_map_keys(*b, db);
-            if (ka || kb || da || db) {
+            KeyFormats fa, fb;
+            const bool ka = unread_map_keys(*a, da, fa, map), kb = unread_map_keys(*b, db, fb, map);
+            const bool formats = key_formats_disagree(fa, fb);
+            if (ka || kb || da || db || formats) {
                 cut(path + "/entries");
                 cut(path + "/removed");
-                unknown(path + "/entries", false, false,
-                        da || db ? "map-key-definition-incompatible" : "map-key-identity-unavailable");
+                const auto reason =
+                    da || db   ? (map ? "map-key-definition-incompatible" : "set-key-definition-incompatible")
+                    : ka || kb ? (map ? "map-key-identity-unavailable" : "set-key-identity-unavailable")
+                               : (map ? "map-key-format-incompatible" : "set-key-format-incompatible");
+                unknown(path + "/entries", false, false, reason);
                 out.unavailable.back()["beforeKeysUnavailable"] = ka;
                 out.unavailable.back()["afterKeysUnavailable"] = kb;
                 if (da || db) {

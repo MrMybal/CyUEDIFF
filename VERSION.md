@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.193.0 — Source key context and readable metadata
+
+Stored map/set key text excludes only known reader annotations, with bounded incremental encoding and explicit key format/definition availability. Struct read routes remain separate context; builtin owner interpretation is completed consistently. Serialization inspection keeps readable metadata beside opaque/skipped values and prevents false additions/removals. Native raw members retain their meaning. Reparse both sides using a matching current SDK. [Contract](docs/SOURCE_KEY_CONTEXT.md).
+
 ## 0.192.0 — Stored struct GUIDs and explicit serialization
 
 Preserves custom struct GUIDs, complete owners and legacy array inner tags; explicit matching tagged certificates read empty override maps without inventing defaults. Native extensions may select an exact GUID and borrow the effective type. Source value correspondence includes observed identities. Declarative definition contract version two separates matched applicability constraints from immutable program identity. Rebuild integrations against matching 0.192 headers/libraries. [Contract](docs/STRUCT_IDENTITY.md).

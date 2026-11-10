@@ -43,6 +43,7 @@ int run(const std::vector<std::string> &args) {
             load("comparisonUnavailable", options.coverage.comparison_unavailable);
             load("ignored", options.coverage.ignored);
             load("raw", options.coverage.raw);
+            options.serialization_fields = masks->value("serializationFields", false);
         }
         const auto &text = args[3];
         const auto parsed = std::from_chars(text.data(), text.data() + text.size(), options.first);

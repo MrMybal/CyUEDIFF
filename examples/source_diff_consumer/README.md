@@ -1,6 +1,6 @@
 # Borrowed source comparison and streamed JSON
 
-Build this independent C++17 consumer against the matching installed 0.192 Core SDK. It does not link CyUI, Git, Unreal or a plugin binary.
+Build this independent C++17 consumer against the matching installed 0.193 Core SDK. It does not link CyUI, Git, Unreal or a plugin binary.
 
 ```sh
 cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/sdk

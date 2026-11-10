@@ -138,7 +138,7 @@ bool same_opaque(const Json *a, const Json *b) {
         (!x["bytes"].is_number_unsigned() && x["bytes"].get<std::int64_t>() < 0) ||
         (!y["bytes"].is_number_unsigned() && y["bytes"].get<std::int64_t>() < 0))
         return false;
-    for (const auto *key : {"type", "guid", "serializationFlags", "extensions"}) {
+    for (const auto *key : {"type", "guid", "serializationFlags", "extensions", "wireTypes"}) {
         const auto u = field(a, key), v = field(b, key);
         if (bool(u) != bool(v) || (u && *u != *v))
             return false;
@@ -259,11 +259,14 @@ class CoverageIndex {
                (v || !comparison(p));
     }
 };
-bool raw_context(const Json *root, const std::string &path, const CoverageIndex &coverage) {
+struct ValueContext {
+    bool raw = false, unavailable = false;
+};
+ValueContext value_context(const Json *root, const std::string &path, const CoverageIndex &coverage) {
     if (coverage.raw(path))
-        return true;
+        return {true, false};
     if (!root)
-        return false;
+        return {};
     const Json *current = root;
     bool hybrid_data = false;
     std::size_t first = path.empty() ? 0 : 1;
@@ -279,15 +282,19 @@ bool raw_context(const Json *root, const std::string &path, const CoverageIndex 
         }
         if (hybrid_data) {
             if (token != "properties")
-                return true;
+                return {true, false};
             hybrid_data = false;
         } else if (current->is_object() && current->contains("decoder") &&
                    (*current)["decoder"].is_string() && current->contains("data") && token == "data") {
             if (current->value("prefix", Json{}) != "tagged-properties")
-                return true;
+                return {true, false};
             hybrid_data = true;
-        } else if (!type(current).empty() && token != "value")
-            return true;
+        } else if (!type(current).empty()) {
+            if (token != "value")
+                return {true, false};
+            if (opaque_value(current) || skipped_value(current))
+                return {false, true};
+        }
         if (current->is_object()) {
             auto i = current->find(token);
             current = i == current->end() ? nullptr : &*i;
@@ -308,7 +315,7 @@ bool raw_context(const Json *root, const std::string &path, const CoverageIndex 
             break;
         first = last + 1;
     }
-    return false;
+    return {};
 }
 } // namespace
 GraphChanges graph_changes(const Json *before, const Json *after) {
@@ -356,15 +363,15 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
             result.truncated = true;
             return;
         }
-        const bool ra = metadata || raw_context(before, source, coverage),
-                   rb = metadata || raw_context(after, source, coverage);
+        const auto ac = value_context(before, source, coverage), bc = value_context(after, source, coverage);
+        const bool ra = metadata || ac.raw, rb = metadata || bc.raw;
         auto ta = ra ? std::string{} : type(a), tb = rb ? std::string{} : type(b);
         auto av = field(a, "value"), bv = field(b, "value");
         bool unwrap = (!a || (!ta.empty() && (av || opaque_value(a) || skipped_value(a)))) &&
                       (!b || (!tb.empty() && (bv || opaque_value(b) || skipped_value(b))));
         const auto value_path = source + (unwrap ? "/value" : "");
-        const bool ka = coverage.available(a, value_path, false, ra),
-                   kb = coverage.available(b, value_path, true, rb);
+        const bool ka = !ac.unavailable && coverage.available(a, value_path, false, ra),
+                   kb = !bc.unavailable && coverage.available(b, value_path, true, rb);
         auto x = unwrap ? av : a, y = unwrap ? bv : b;
         std::string label_type;
         if (unwrap)
@@ -412,7 +419,7 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
             auto metadata = [&](const Json *source, Json &target) {
                 if (source)
                     for (auto i = source->begin(); i != source->end(); ++i)
-                        if (i.key() != "value" && i.key() != "resolvedType" &&
+                        if (i.key() != "value" && i.key() != "resolvedType" && i.key() != "readFormats" &&
                             (i.key() != "type" || type_changed))
                             target[i.key()] = i.value();
             };
@@ -499,9 +506,10 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
         }
     };
     const auto a = resolve(before), b = resolve(after);
+    const auto ac = value_context(before, scope, coverage), bc = value_context(after, scope, coverage);
     PropertyPage result;
     result.scope = scope;
-    result.available = a || b || coverage.uncertain(scope);
+    result.available = a || b || ac.unavailable || bc.unavailable || coverage.uncertain(scope);
     if (!result.available)
         return result;
 
@@ -530,14 +538,15 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
             }
             return name;
         };
-        const bool rx = raw_context(before, path, coverage), ry = raw_context(after, path, coverage);
+        const auto xc = value_context(before, path, coverage), yc = value_context(after, path, coverage);
+        const bool rx = xc.raw, ry = yc.raw;
         auto tx = rx ? std::string{} : bounded_type(x), ty = ry ? std::string{} : bounded_type(y);
         auto vx = field(x, "value"), vy = field(y, "value");
         const bool unwrap = (!x || (!tx.empty() && (vx || opaque_value(x) || skipped_value(x)))) &&
                             (!y || (!ty.empty() && (vy || opaque_value(y) || skipped_value(y))));
         const auto value_path = path + (unwrap ? "/value" : "");
-        const bool kx = coverage.available(x, value_path, false, rx),
-                   ky = coverage.available(y, value_path, true, ry);
+        const bool kx = !xc.unavailable && coverage.available(x, value_path, false, rx),
+                   ky = !yc.unavailable && coverage.available(y, value_path, true, ry);
         auto xv = unwrap ? vx : x, yv = unwrap ? vy : y;
         auto t = unwrap ? (tx == ty || ty.empty() ? tx
                            : tx.empty()           ? ty
@@ -572,14 +581,20 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
         result.expandable.push_back((kx && x && x->is_structured()) || (ky && y && y->is_structured()));
     };
     append(a, b, scope, scope.empty() ? "/" : Json::json_pointer(scope).back(), 0);
-    const bool ra = raw_context(before, scope, coverage), rb = raw_context(after, scope, coverage);
+    const bool ra = ac.raw, rb = bc.raw;
     auto av = field(a, "value"), bv = field(b, "value");
     result.unwrapped = !options.serialization_fields &&
                        (!a || (!ra && !type(a).empty() && (av || opaque_value(a) || skipped_value(a)))) &&
                        (!b || (!rb && !type(b).empty() && (bv || opaque_value(b) || skipped_value(b))));
     const auto base = scope + (result.unwrapped ? "/value" : "");
-    const auto x = coverage.available(a, base, false, ra) ? (result.unwrapped ? av : a) : nullptr,
-               y = coverage.available(b, base, true, rb) ? (result.unwrapped ? bv : b) : nullptr;
+    // Serialization fields remain readable even when this tag's value is opaque.
+    // Explicit side masks and an unread ancestor value still take precedence.
+    const auto x = !ac.unavailable && coverage.available(a, base, false, ra || options.serialization_fields)
+                       ? (result.unwrapped ? av : a)
+                       : nullptr,
+               y = !bc.unavailable && coverage.available(b, base, true, rb || options.serialization_fields)
+                       ? (result.unwrapped ? bv : b)
+                       : nullptr;
     const bool object = (!x || x->is_object()) && (!y || y->is_object());
     result.array = (!x || x->is_array()) && (!y || y->is_array());
     if (!object && !result.array)

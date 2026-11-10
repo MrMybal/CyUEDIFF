@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Application license</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.192.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
+      <p><sub>Source version</sub><br><a href="VERSION.md"><strong>0.193.0</strong></a><br><strong>IN DEVELOPMENT</strong></p>
       <p><sub>Windows x64 desktop<br>No public application release yet</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspect Unreal Engine assets and understand what changed **without launching Unreal Editor**. CyUEDiff provides a Windows desktop application, a JSON command-line tool and a reusable C++17 reader for Unreal developers, technical artists and tool authors.
 
-> **IN DEVELOPMENT · 0.192.0**
+> **IN DEVELOPMENT · 0.193.0**
 >
 > This source version provides explicit, evolving format coverage. Unknown data keeps its diagnostics and byte fingerprints. Read the [version notes, supported platforms and known limitations](VERSION.md) before choosing a workflow.
 
@@ -45,6 +45,7 @@ These are real desktop and embeddable CyUI captures using original generated dem
 
 ## Features
 
+- **Source key context:** reader annotations stay separate from stored map/set key identity; incompatible key formats remain Unknown. Metadata stays inspectable beside unread values. [Contract](docs/SOURCE_KEY_CONTEXT.md).
 - **Stored struct identity:** preserves custom GUIDs and qualified owners, with explicit tagged/native certificates and GUID-selected native extensions. Ambiguous empty bytes remain unavailable. [Contract](docs/STRUCT_IDENTITY.md).
 - **Native definition identity:** changed declarative or explicitly fingerprinted schemas under the same decoder ID stay unknown; unrelated catalogue entries remain context, with readable siblings preserved. [Contract](docs/DECODER_IDENTITY.md).
 - **Lower comparison/report overhead:** source comparisons borrow existing property trees, preserve exact mixed integer/float differences and stream reports through Core/CLI/Git/desktop without duplicate output trees. [Memory and ownership](docs/COMPARISON_MEMORY.md).
@@ -84,7 +85,7 @@ Link `CyUEDiff::Core` through `add_subdirectory`, or install the SDK and use `fi
 
 ## Installation
 
-**No public application release is available yet.** Build from source using the instructions below. The earlier 0.181 Core/CLI milestone passed hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled; the unpushed 0.192 source has local Windows validation. Local Windows development archives include the bilingual offline HTML manual and version/component/runtime metadata; they are prepared and validated separately from public releases. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
+**No public application release is available yet.** Build from source using the instructions below. The earlier 0.181 Core/CLI milestone passed hosted CI on Windows 2022 and Ubuntu 24.04 with Git enabled and disabled; the unpushed 0.193 source has local Windows validation. Local Windows development archives include the bilingual offline HTML manual and version/component/runtime metadata; they are prepared and validated separately from public releases. The desktop is verified locally on Windows x64 with Direct3D 11; no Linux or macOS desktop build is offered.
 
 Windows builds using the default dynamic MSVC runtime need the matching Microsoft Visual C++ x64 runtime. Git features require a separate Git 2.45+ installation; loose-file inspection does not. Keep an extracted CPack archive together with its documentation and license notices. See [distribution and runtime requirements](docs/DISTRIBUTION.md).
 

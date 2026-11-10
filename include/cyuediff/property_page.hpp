@@ -18,7 +18,8 @@ struct PropertyPage {
 // A root summary and a bounded page of direct children; no input pointers survive this call.
 // Row paths are actual JSON pointers, including stored /value wrappers. A missing scope is unavailable.
 // serialization_fields=false unwraps a paired typed value for child enumeration; true exposes its tag fields.
-// A null input pointer means known absence. Callers must handle unknown/unread peers before comparison.
+// A null input pointer means known absence. Typed opaque/skipped ancestors preserve unknown values;
+// use coverage for additional unread export/native scopes. Serialization metadata stays separately readable.
 PropertyPage property_page(const Json *before, const Json *after, const std::string &scope = {},
                            const PropertyPageOptions &options = {});
 } // namespace cyuediff

@@ -66,3 +66,5 @@ USMAPs describe reflected fields and may omit editor-only fields or lose distinc
 Explicit source work/window limits are available in Core, CLI and EN/FR desktop, with independent after policies and workspace format 14 retention. Versions 1–13 preserve their original default policy. A failed limit/count guard keeps inspection fingerprints/diagnostics and prevents invented semantic removals in a paired comparison. The selected real Humanoid source can use a deliberately larger work policy; dedicated source physical projection, defaults, broader acceptance and final delivery remain open. See [SOURCE_READ_LIMITS.md](SOURCE_READ_LIMITS.md).
 
 Source development 0.192 adds optional schema/type `structGuid` and schema `serialization` certificates. See [the complete identity contract](STRUCT_IDENTITY.md); these fields do not reconstruct omitted defaults.
+
+Source development 0.193 adds [source key/reader context and readable serialization metadata](SOURCE_KEY_CONTEXT.md). Reader observations are context, and key encoding is bounded separately from raw native data.

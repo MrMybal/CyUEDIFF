@@ -9,6 +9,7 @@
 #include "decoders.hpp"
 #include "archive_text.hpp"
 #include "struct_identity.hpp"
+#include "key_identity.hpp"
 #include <cmath>
 #include <memory>
 #include <set>
@@ -146,7 +147,47 @@ class PropertyReader {
     const ReadOptions &options;
     std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0, native_nodes_ = 0;
     std::uint64_t text_blob_bytes_ = 0, extension_nodes_ = 0, extension_text_ = 0;
-    std::uint64_t identity_text_ = 0;
+    std::uint64_t identity_text_ = 0, key_text_ = 0;
+    static bool struct_type(const Type &type) {
+        if (type.name == "StructProperty")
+            return true;
+        if (type.name == "ArrayProperty" || type.name == "MapProperty" || type.name == "SetProperty" ||
+            type.name == "OptionalProperty")
+            for (const auto &part : type.parameters)
+                if (struct_type(part))
+                    return true;
+        return false;
+    }
+    void prepare_type(Type &type) const {
+        if (type.name == "StructProperty" && !type.parameters.empty()) {
+            const auto identity = detail::struct_identity(type);
+            auto expected = detail::builtin_struct_owner(identity.name);
+            if (expected.empty() && detail::is_material_input(identity.name))
+                expected = "/Script/Engine." + identity.name;
+            if (!expected.empty() && !identity.custom_guid() &&
+                (identity.owner.empty() || identity.owner == expected)) {
+                const auto mode = options.decoders && options.decoders->tagged_types()
+                                      ? options.decoders->tagged_types()->serialization(
+                                            identity.owner.empty() ? identity.name : identity.owner,
+                                            identity.guid, p.summary)
+                                      : TaggedSerialization::unspecified;
+                if (mode != TaggedSerialization::tagged)
+                    type.schema = expected;
+            }
+        } else if (type.name == "ArrayProperty" || type.name == "MapProperty" || type.name == "SetProperty" ||
+                   type.name == "OptionalProperty")
+            for (auto &part : type.parameters)
+                prepare_type(part);
+    }
+    void format(Json *formats, const std::string &path, const char *kind) const {
+        if (!formats)
+            return;
+        auto i = formats->find(path);
+        if (i != formats->end() && *i != kind)
+            throw Error("reader-format", "Struct readers disagree within one type path", a.tell());
+        if (i == formats->end())
+            (*formats)[path] = kind;
+    }
     void charge_identity(std::size_t bytes) {
         if (bytes > options.max_property_bytes - identity_text_)
             throw Error("text-limit", "Stored type identity text exceeds its source budget", a.tell());
@@ -267,7 +308,8 @@ class PropertyReader {
         return {{"nonFinite", std::isnan(value) ? "NaN" : (value > 0 ? "Infinity" : "-Infinity")}};
     }
     Json value(const Type &t, std::uint64_t end, unsigned depth, bool exact_size = true,
-               Type *observed = nullptr, Json *wire_types = nullptr, const std::string &type_path = {}) {
+               Type *observed = nullptr, Json *wire_types = nullptr, const std::string &type_path = {},
+               Json *read_formats = nullptr) {
         depth_check(depth);
         const auto &n = t.name;
         if (n == "IntProperty")
@@ -343,6 +385,7 @@ class PropertyReader {
                 }
             }
             if (const auto *decoder = selected_decoder) {
+                format(read_formats, type_path, "extension");
                 const auto begin = a.tell();
                 const auto opaque_before = opaque_properties_;
                 Json prefix;
@@ -374,6 +417,13 @@ class PropertyReader {
                                          serialization != TaggedSerialization::tagged &&
                                          (identity.owner.empty() || identity.owner == builtin_owner);
             if (builtin_allowed) {
+                const bool reflected_builtin =
+                    (s == "Transform" && p.summary.ue5_version >= 1004) ||
+                    (s == "RawAnimSequenceTrack" &&
+                     p.summary.custom_versions.value("d89b5e4224bd4d468412aca8df641779", -1) < 39) ||
+                    (detail::is_material_input(s) && !detail::native_material_input(p.summary));
+                if (!builtin_owner.empty() && !reflected_builtin)
+                    format(read_formats, type_path, "builtin");
                 if (s == "RichCurveKey") {
                     if (p.summary.ue4_version != 522 || p.summary.licensee_version ||
                         (p.summary.ue5_version != 0 && p.summary.ue5_version != 1004 &&
@@ -579,6 +629,7 @@ class PropertyReader {
                 throw Error("struct-serialization-ambiguous",
                             "Empty struct bytes need a tagged serialization certificate or native binding",
                             a.tell());
+            format(read_formats, type_path, "tagged");
             return reflected;
         }
         if ((n == "MapProperty" && t.parameters.size() == 2) ||
@@ -587,29 +638,34 @@ class PropertyReader {
             // These are stored deltas; inherited/default values are deliberately not fabricated.
             Json removed = Json::object(), entries = Json::object();
             auto insert = [&](Json &target, Json key, Json data) {
-                auto identity = key.dump();
+                auto identity = detail::source_key_identity(key, options.control, [&](std::uint64_t bytes) {
+                    if (bytes > options.max_property_bytes - key_text_)
+                        throw Error("text-limit", "Encoded source key identities exceed their text budget",
+                                    a.tell());
+                    key_text_ += bytes;
+                });
                 if (target.contains(identity))
                     throw Error("container-identity", "Duplicate map/set key", a.tell());
                 target[identity] = std::move(data);
             };
             auto removed_count = a.count(options.max_properties);
             for (std::uint32_t i = 0; i < removed_count; ++i) {
-                auto key =
-                    value(t.parameters[0], end, depth + 1, false,
-                          observed ? &observed->parameters[0] : nullptr, wire_types, type_path + "/key");
+                auto key = value(t.parameters[0], end, depth + 1, false,
+                                 observed ? &observed->parameters[0] : nullptr, wire_types,
+                                 type_path + "/key", read_formats);
                 insert(removed, key, key);
             }
             auto count = a.count(options.max_properties);
             if (count > options.max_properties - removed_count)
                 throw Error("limit", "Map/set entry budget exceeded", a.tell());
             for (std::uint32_t i = 0; i < count; ++i) {
-                auto key =
-                    value(t.parameters[0], end, depth + 1, false,
-                          observed ? &observed->parameters[0] : nullptr, wire_types, type_path + "/key");
+                auto key = value(t.parameters[0], end, depth + 1, false,
+                                 observed ? &observed->parameters[0] : nullptr, wire_types,
+                                 type_path + "/key", read_formats);
                 Json data = map ? Json{{"key", key},
                                        {"value", value(t.parameters[1], end, depth + 1, false,
                                                        observed ? &observed->parameters[1] : nullptr,
-                                                       wire_types, type_path + "/value")}}
+                                                       wire_types, type_path + "/value", read_formats)}}
                                 : key;
                 insert(entries, key, std::move(data));
             }
@@ -636,6 +692,7 @@ class PropertyReader {
                 inner = inner.schema.empty() ? std::move(element.type)
                                              : TaggedTypes::complete(element.type, inner);
             }
+            prepare_type(inner);
             // Legacy array tags omit the enum type. Exact size distinguishes FNames from raw bytes.
             if (observed)
                 observed->parameters[0] = inner;
@@ -647,7 +704,7 @@ class PropertyReader {
                 values.push_back(enum_names ? Json(fname(a, p))
                                             : value(inner, end, depth + 1, false,
                                                     observed ? &observed->parameters[0] : nullptr, wire_types,
-                                                    type_path + "/*"));
+                                                    type_path + "/*", read_formats));
             }
             return values;
         }
@@ -696,6 +753,9 @@ class PropertyReader {
                             entry["resolvedType"] = tagged_type_json(effective);
                     }
                 }
+                prepare_type(effective);
+                if (tagged_type_json(effective) != tagged_type_json(t.type))
+                    entry["resolvedType"] = tagged_type_json(effective);
                 if (t.extensions.is_object() && t.extensions.value("experimentalOverridable", false))
                     throw Error("property-extension",
                                 "Experimental overridable values require a schema decoder", a.tell());
@@ -705,7 +765,11 @@ class PropertyReader {
                     entry["value"] = nullptr;
                 else {
                     auto observed = effective;
-                    entry["value"] = value(effective, next, depth + 1, true, &observed, &wire_types);
+                    Json read_formats = Json::object();
+                    entry["value"] =
+                        value(effective, next, depth + 1, true, &observed, &wire_types, "", &read_formats);
+                    if (struct_type(effective))
+                        entry["readFormats"] = std::move(read_formats);
                     if (tagged_type_json(observed) != tagged_type_json(t.type))
                         entry["resolvedType"] = tagged_type_json(observed);
                 }
@@ -718,6 +782,7 @@ class PropertyReader {
                 partial = true;
                 ++opaque_properties_;
                 entry.erase("value");
+                entry.erase("readFormats");
                 entry["opaque"] = {{"bytes", t.bytes}, {"reason", e.code}};
                 if (options.fingerprints)
                     entry["opaque"]["sha256"] = a.hash(start, t.bytes);
