@@ -9,7 +9,8 @@ auto profile(const ReadOptions &o) {
                            o.native_materials, o.native_skeletons, o.native_skeleton_retargeting,
                            o.native_skeleton_metadata, o.native_reflection, o.max_table_entries,
                            o.max_string_bytes, o.max_property_bytes, o.max_properties, o.max_depth,
-                           o.decoders.get(), o.narrow_string_encoding);
+                           o.decoders.get(), o.narrow_string_encoding, o.value_identities.names,
+                           o.value_identities.max_names, o.value_identities.max_text_bytes);
 }
 struct Identity {
     Json files = Json::array();
@@ -57,6 +58,13 @@ PackageCache::~PackageCache() = default;
 std::shared_ptr<const Package> PackageCache::open(const fs::path &file, const ReadOptions &options) {
     options.control.checkpoint("Checking package cache");
     auto path = fs::weakly_canonical(fs::absolute(file));
+    if (options.value_identities.names && options.value_identities.charge) {
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            ++state_->stats.misses;
+        }
+        return std::make_shared<const Package>(Package::open(path, options));
+    }
     // Large inputs bypass retention without adding a redundant full hash pass.
     auto measured = identity(path, options.control, false);
     if (measured.bytes > state_->options.max_source_bytes) {
@@ -87,6 +95,7 @@ std::shared_ptr<const Package> PackageCache::open(const fs::path &file, const Re
         return package;
     ReadOptions saved = options;
     saved.control = {}; // Cached profiles never retain worker/session callbacks.
+    saved.value_identities.charge = {};
     std::lock_guard<std::mutex> lock(state_->mutex);
     for (auto it = state_->entries.begin(); it != state_->entries.end();) {
         if (it->path == path && profile(it->options) == profile(options)) {

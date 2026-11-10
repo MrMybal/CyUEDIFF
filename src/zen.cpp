@@ -525,7 +525,8 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
         }
         p.schema_context_sha256 = context.fingerprint();
     }
-    std::uint32_t property_work = 0;
+    std::uint32_t property_work = 0, identity_names = 0;
+    std::uint64_t identity_text = 0;
     for (auto &e : p.exports) {
         e.references = {{"outer", reference(e.outer_index)},
                         {"class", reference(e.class_index)},
@@ -547,6 +548,15 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                         throw Error("bounds", "Property offset exceeds cooked export", e.offset);
                     UnversionedReadOptions props;
                     props.names = &p.names;
+                    props.value_identities = options.value_identities;
+                    props.value_identities.max_names -= identity_names;
+                    props.value_identities.max_text_bytes -= identity_text;
+                    props.value_identities.charge = [&](std::uint32_t names, std::uint64_t text) {
+                        identity_names += names;
+                        identity_text += text;
+                        if (options.value_identities.charge)
+                            options.value_identities.charge(names, text);
+                    };
                     props.reflected_structs = context.reflected_structs;
                     props.native_structs = context.native_structs;
                     props.binary_layouts = context.binary_layouts;
@@ -619,6 +629,8 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                                        {"defaultsResolved", false},
                                        {"mappingVerified", false},
                                        {"nativePayloadDecoded", false}};
+                    if (!decoded.value_identities.is_null())
+                        e.property_read["valueIdentities"] = std::move(decoded.value_identities);
                     ++p.property_exports_decoded;
                 } catch (const Error &error) {
                     // Budgets and cancellation are operation-wide failures, never opaque fallbacks.

@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.195.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.196.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.195.0**
+> **EN DÉVELOPPEMENT · 0.196.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -45,6 +45,7 @@ Ces captures réelles de l’application et des composants CyUI intégrables uti
 
 ## Fonctionnalités
 
+- **Identités des noms typés (Core/CLI) :** conservation optionnelle du nom de base et du numéro des FName sérialisés, à côté des valeurs lisibles, avec des observations bornées et des chemins stables. [Contrat](docs/VALUE_IDENTITIES.md).
 - **Interprétation cooked :** les programmes natifs équivalents et métadonnées du catalogue restent distincts des changements stockés ; les lecteurs incompatibles restent indéterminés dans les zones concernées, dans le Core et les deux inspecteurs. [Contrat](docs/COOKED_CONTEXT.md).
 - **Contexte des clés source :** les annotations du lecteur restent distinctes des clés de maps/sets stockées ; les formats incompatibles restent indéterminés. Les métadonnées restent consultables à côté des valeurs illisibles. [Contrat](docs/SOURCE_KEY_CONTEXT.md).
 - **Identité des structures stockées :** GUID et propriétaires qualifiés conservés, certificats explicites de sérialisation et extensions natives sélectionnées par GUID. Les octets vides ambigus restent indéterminés. [Contrat](docs/STRUCT_IDENTITY.md).

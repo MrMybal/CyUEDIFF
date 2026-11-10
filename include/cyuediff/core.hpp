@@ -39,6 +39,13 @@ struct OperationControl {
         check();
     }
 };
+// Optional side observations. Limits affect identity availability, not decoded stored values.
+struct ValueIdentityOptions {
+    bool names = false;
+    std::uint32_t max_names = 100'000;
+    std::uint64_t max_text_bytes = 4ull * 1024 * 1024;
+    std::function<void(std::uint32_t, std::uint64_t)> charge;
+};
 enum class NarrowStringEncoding { unspecified, ascii, latin1, windows_1252, utf8 };
 class DecoderRegistry;
 struct ReadOptions {
@@ -52,6 +59,7 @@ struct ReadOptions {
     std::shared_ptr<const DecoderRegistry> decoders;
     OperationControl control;
     NarrowStringEncoding narrow_string_encoding = NarrowStringEncoding::unspecified;
+    ValueIdentityOptions value_identities;
 };
 struct EngineInfo {
     fs::path root;
@@ -228,6 +236,8 @@ struct Package {
     std::vector<std::string> diagnostics;
     bool complete_input = true;
     Json source_type_context = nullptr;
+    // Paths address semantic_snapshot(); observations do not modify asset members.
+    Json value_identities = nullptr;
     Json source_read_limits = nullptr;
     bool source_read_limit_failed = false;
     std::string decoder_context_sha256;

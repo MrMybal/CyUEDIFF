@@ -10,6 +10,7 @@
 #include "archive_text.hpp"
 #include "struct_identity.hpp"
 #include "key_identity.hpp"
+#include "value_identity.hpp"
 #include <cmath>
 #include <memory>
 #include <set>
@@ -24,10 +25,12 @@ std::uint64_t positive64(Archive &a) {
         throw Error("format", "Negative export range", a.tell() - 8);
     return static_cast<std::uint64_t>(v);
 }
-std::string fname(Archive &a, const Package &p) {
+std::string fname(Archive &a, const Package &p, detail::ValueIdentityJournal *identities = nullptr) {
     auto index = a.get<std::int32_t>(), number = a.get<std::int32_t>();
     if (index < 0 || static_cast<std::size_t>(index) >= p.names.size() || number < 0)
         throw Error("name-index", "Invalid FName index", a.tell() - 8);
+    if (identities)
+        identities->name(p.names[index], static_cast<std::uint32_t>(number));
     return p.names[index] + (number ? "_" + std::to_string(number - 1) : "");
 }
 std::string engine_version(Archive &a) {
@@ -145,6 +148,7 @@ class PropertyReader {
     const Package &p;
     const ObjectExport &object;
     const ReadOptions &options;
+    detail::ValueIdentityJournal &identities_;
     std::uint32_t count_ = 0, type_nodes_ = 0, text_nodes_ = 0, native_nodes_ = 0;
     std::uint64_t text_blob_bytes_ = 0, extension_nodes_ = 0, extension_text_ = 0;
     std::uint64_t identity_text_ = 0, key_text_ = 0;
@@ -333,11 +337,11 @@ class PropertyReader {
         if (n == "BoolProperty")
             return a.get<std::uint8_t>() != 0;
         if (n == "NameProperty" || n == "EnumProperty")
-            return fname(a, p);
+            return fname(a, p, &identities_);
         if (n == "ByteProperty") {
             if (t.parameters.empty() || t.parameters[0].name == "None")
                 return a.get<std::uint8_t>();
-            return fname(a, p);
+            return fname(a, p, &identities_);
         }
         if (n == "Utf8StrProperty" || n == "AnsiStrProperty") {
             if (p.summary.ue5_version < 1013)
@@ -637,7 +641,7 @@ class PropertyReader {
             const bool map = n == "MapProperty";
             // These are stored deltas; inherited/default values are deliberately not fabricated.
             Json removed = Json::object(), entries = Json::object();
-            auto insert = [&](Json &target, Json key, Json data) {
+            auto key_identity = [&](Json &target, const Json &key) {
                 auto identity = detail::source_key_identity(key, options.control, [&](std::uint64_t bytes) {
                     if (bytes > options.max_property_bytes - key_text_)
                         throw Error("text-limit", "Encoded source key identities exceed their text budget",
@@ -646,28 +650,39 @@ class PropertyReader {
                 });
                 if (target.contains(identity))
                     throw Error("container-identity", "Duplicate map/set key", a.tell());
-                target[identity] = std::move(data);
+                return identity;
             };
             auto removed_count = a.count(options.max_properties);
             for (std::uint32_t i = 0; i < removed_count; ++i) {
+                detail::ValueIdentityJournal::Buffer key_names(identities_);
                 auto key = value(t.parameters[0], end, depth + 1, false,
                                  observed ? &observed->parameters[0] : nullptr, wire_types,
                                  type_path + "/key", read_formats);
-                insert(removed, key, key);
+                auto id = key_identity(removed, key);
+                key_names.commit_at({"removed", id});
+                removed[id] = std::move(key);
             }
             auto count = a.count(options.max_properties);
             if (count > options.max_properties - removed_count)
                 throw Error("limit", "Map/set entry budget exceeded", a.tell());
             for (std::uint32_t i = 0; i < count; ++i) {
+                detail::ValueIdentityJournal::Buffer key_names(identities_);
                 auto key = value(t.parameters[0], end, depth + 1, false,
                                  observed ? &observed->parameters[0] : nullptr, wire_types,
                                  type_path + "/key", read_formats);
-                Json data = map ? Json{{"key", key},
-                                       {"value", value(t.parameters[1], end, depth + 1, false,
-                                                       observed ? &observed->parameters[1] : nullptr,
-                                                       wire_types, type_path + "/value", read_formats)}}
-                                : key;
-                insert(entries, key, std::move(data));
+                auto id = key_identity(entries, key);
+                if (map) {
+                    key_names.commit_at({"entries", id, "key"});
+                    detail::ValueIdentityJournal::Scope list(identities_, "entries"), item(identities_, id),
+                        mapped(identities_, "value");
+                    entries[id] = {{"key", std::move(key)},
+                                   {"value", value(t.parameters[1], end, depth + 1, false,
+                                                   observed ? &observed->parameters[1] : nullptr, wire_types,
+                                                   type_path + "/value", read_formats)}};
+                } else {
+                    key_names.commit_at({"entries", id});
+                    entries[id] = std::move(key);
+                }
             }
             return Json{{"kind", map ? "stored-map-delta" : "stored-set-delta"},
                         {"removed", std::move(removed)},
@@ -699,9 +714,10 @@ class PropertyReader {
             bool enum_names = inner.name == "ByteProperty" && inner.parameters.empty() && count &&
                               p.summary.ue5_version < 1012 && end - a.tell() == std::uint64_t(count) * 8;
             for (std::uint32_t i = 0; i < count; ++i) {
+                detail::ValueIdentityJournal::Scope item_identity(identities_, static_cast<std::size_t>(i));
                 if (a.tell() >= end)
                     throw Error("bounds", "Array exceeds property payload", a.tell());
-                values.push_back(enum_names ? Json(fname(a, p))
+                values.push_back(enum_names ? Json(fname(a, p, &identities_))
                                             : value(inner, end, depth + 1, false,
                                                     observed ? &observed->parameters[0] : nullptr, wire_types,
                                                     type_path + "/*", read_formats));
@@ -712,8 +728,9 @@ class PropertyReader {
     }
 
   public:
-    PropertyReader(Archive &ar, const Package &package, const ObjectExport &entry, const ReadOptions &o)
-        : a(ar), p(package), object(entry), options(o) {}
+    PropertyReader(Archive &ar, const Package &package, const ObjectExport &entry, const ReadOptions &o,
+                   detail::ValueIdentityJournal &identities)
+        : a(ar), p(package), object(entry), options(o), identities_(identities) {}
     bool partial = false, limit_failed = false;
     Json properties(std::uint64_t end, unsigned depth = 0, bool root = true, const std::string &owner = {}) {
         depth_check(depth);
@@ -732,6 +749,10 @@ class PropertyReader {
             if (a.tell() > end || t.bytes > end - a.tell())
                 throw Error("bounds", "Property range exceeds script stream", a.tell());
             auto start = a.tell(), next = start + t.bytes;
+            const auto key = t.name + (t.index ? "[" + std::to_string(t.index) + "]" : "");
+            detail::ValueIdentityJournal::Buffer property_names(identities_);
+            detail::ValueIdentityJournal::Scope property_identity(identities_, key),
+                value_identity(identities_, "value");
             Json entry = {{"type", type_json(t.type)}};
             if (!t.guid.empty())
                 entry["guid"] = t.guid;
@@ -775,6 +796,7 @@ class PropertyReader {
                 }
                 if (a.tell() != next)
                     throw Error("opaque", "Property decoder did not consume exact payload", a.tell());
+                property_names.commit();
             } catch (const Error &e) {
                 if (e.code == "cancelled")
                     throw;
@@ -790,7 +812,6 @@ class PropertyReader {
             if (!wire_types.empty())
                 entry["wireTypes"] = std::move(wire_types);
             a.seek(next);
-            auto key = t.name + (t.index ? "[" + std::to_string(t.index) + "]" : "");
             if (result.contains(key))
                 throw Error("property-key", "Duplicate property identity", start);
             result[key] = std::move(entry);
@@ -899,6 +920,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     sidecar.replace_extension(".uexp");
     if (fs::is_regular_file(sidecar))
         export_data = std::make_unique<Archive>(sidecar, options);
+    detail::ValueIdentityJournal value_identities(options.value_identities, options.control);
     for (auto &entry : p.exports) {
         options.control.checkpoint("Reading exports", static_cast<std::uint64_t>(&entry - p.exports.data()),
                                    p.exports.size());
@@ -943,11 +965,16 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
         }
         try {
             data->seek(start);
-            PropertyReader reader(*data, p, entry, options);
+            detail::ValueIdentityJournal::Scope identity_objects(value_identities, "objects"),
+                identity_object(value_identities, entry.path),
+                identity_properties(value_identities, "properties");
+            detail::ValueIdentityJournal::Buffer object_names(value_identities);
+            PropertyReader reader(*data, p, entry, options, value_identities);
             entry.properties = reader.properties(end);
             p.source_read_limit_failed = p.source_read_limit_failed || reader.limit_failed;
             if (entry.script_end && data->tell() != end)
                 throw Error("script-range", "Property terminator does not match script range", data->tell());
+            object_names.commit();
             entry.coverage = reader.partial ? "partial-properties" : "properties";
             if (start > base)
                 entry.opaque["prefix"] = opaque_range(*data, base, start - base, options);
@@ -1116,6 +1143,9 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     if (s.flags & unversioned_properties)
         p.diagnostics.push_back(
             "Unversioned properties require a schema backend; export bytes are retained as opaque hashes.");
+    p.value_identities = value_identities.finish();
+    if (!p.value_identities.is_null())
+        p.value_identities["root"] = "semantic-snapshot";
     return p;
 }
 std::string Package::reference(std::int32_t index) const {
@@ -1233,6 +1263,8 @@ Json Package::to_json() const {
         result["sourceReadLimits"] = source_read_limits;
     if (!source_type_context.is_null())
         result["sourceTypeContext"] = source_type_context;
+    if (!value_identities.is_null())
+        result["valueIdentities"] = value_identities;
     return result;
 }
 } // namespace cyuediff

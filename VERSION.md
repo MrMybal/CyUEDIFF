@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.196.0 — Typed name component observations
+
+Optional bounded Core/CLI observations preserve FName plain names and internal numbers without changing legacy display values or container IDs. Source, unversioned, cooked and default-capture reads retain value-relative locations; cache profiles include selection/limits and charged reads bypass retention. Native source assets prove equal displays can conceal different identities. Component-aware key codecs, comparisons and effective-default integration remain open. The latest assembled Windows archive remains 0.194.0. [Contract](docs/VALUE_IDENTITIES.md).
+
 ## 0.195.0 — Captured class-default values
 
 The optional matching Engine exporter and standalone `DefaultSnapshot` Core reader preserve qualified declarations, inherited CDO values, initialized struct defaults, actual per-field wires and exact archive provenance. Native routes remain explicit; unsupported fields stay unavailable. The installed consumer reads the capture without Unreal. Snapshots remain unbound and do not apply defaults to an asset; effective reconstruction and desktop integration are still in development. The latest assembled Windows archive remains 0.194.0. [Contract](docs/DEFAULT_SNAPSHOTS.md).

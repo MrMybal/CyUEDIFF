@@ -280,6 +280,29 @@ int main() {
         invalid.insert(1, std::string("\"invalid\":\"") + char(0xff) + "\",");
         rejects([&] { DefaultSnapshot::parse({invalid.begin(), invalid.end()}, options()); },
                 "default-capture");
+        auto named_capture = json;
+        auto named_property = property("StoredName", 4, {{"name", "NameProperty"}});
+        named_capture["declarations"]["/Script/Test.Child"]["properties"].push_back(named_property);
+        named_capture["declarations"]["/Script/Test.Child"]["slots"] = 5;
+        auto named_field = node("/Script/Test.Child", named_property, "0000000002000000");
+        named_field["wire"]["names"] = Json::array({"Item"});
+        named_capture["fields"]["/Script/Test.Child.StoredName"] = named_field;
+        auto name_options = options();
+        name_options.values.value_identities.names = true;
+        auto named_snapshot = parse(named_capture, name_options);
+        const auto &stored_name = named_snapshot.fields().at("/Script/Test.Child.StoredName");
+        check(stored_name.at("value") == "Item_1" &&
+                  stored_name.at("valueIdentities").at("names").at("").at("base") == "Item" &&
+                  named_snapshot.provenance().at("identityNamesRead") == 1,
+              "Default capture preserves actual field name identity alongside the display value");
+        name_options.values.value_identities.max_names = 0;
+        auto unnamed_snapshot = parse(named_capture, name_options);
+        check(unnamed_snapshot.fields().at("/Script/Test.Child.StoredName").at("available") == true &&
+                  unnamed_snapshot.fields()
+                          .at("/Script/Test.Child.StoredName")
+                          .at("valueIdentities")
+                          .at("status") == "incomplete",
+              "Default snapshot identity limits do not discard a decoded field");
         std::cout << checks << " default snapshot checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';

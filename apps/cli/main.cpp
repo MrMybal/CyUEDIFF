@@ -60,6 +60,7 @@ int run(const std::vector<std::string> &args) {
                "  cyuediff layouts DESCRIPTION.json [--out REPORT.json]\n"
                "  inspect/diff/git-inspect/git-diff accept --layouts DESCRIPTION.json.\n"
                "  diff/git-diff accept independent --after-layouts DESCRIPTION.json.\n"
+               "  inspect/git-inspect/zen-inspect accept --name-identities for typed FName components.\n"
                "  Source commands accept --max-properties COUNT and --max-property-bytes BYTES.\n"
                "  Comparisons accept independent --after-max-properties and --after-max-property-bytes.\n"
                "  cyuediff inspect ASSET [--metadata] [--snapshot] [--project PROJECT] [--engine-root "
@@ -345,7 +346,7 @@ int run(const std::vector<std::string> &args) {
                 throw Error("arguments", "Missing value for " + arg);
             flags[arg] = args[++i];
         } else if (arg == "--metadata" || arg == "--snapshot" || arg == "--no-engine" ||
-                   arg == "--include-engine")
+                   arg == "--include-engine" || arg == "--name-identities")
             flags[arg] = true;
         else if (arg.compare(0, 2, "--") == 0)
             throw Error("arguments", "Unknown option " + arg);
@@ -479,6 +480,13 @@ int run(const std::vector<std::string> &args) {
     const bool geometry_command = command == "geometry" || command == "export-mesh" || command == "mesh-diff";
     for (auto it = flags.begin(); it != flags.end(); ++it) {
         const auto &key = it.key();
+        if (key == "--name-identities") {
+            if ((command != "inspect" && command != "git-inspect" && command != "zen-inspect") ||
+                flags.contains("--snapshot") || flags.contains("--metadata"))
+                throw Error("arguments",
+                            "Name identities require full inspect/git-inspect/zen-inspect output");
+            continue;
+        }
         if (key == "--max-properties" || key == "--max-property-bytes" || key == "--after-max-properties" ||
             key == "--after-max-property-bytes") {
             if (!source_read)
@@ -846,6 +854,7 @@ int run(const std::vector<std::string> &args) {
     fs::path png_destination;
     int exit_code = 0;
     ReadOptions options;
+    options.value_identities.names = flags.contains("--name-identities");
     before_limits.apply(options);
     options.decoders = before_decoders;
     options.narrow_string_encoding = before_layouts ? before_layouts->narrow_string_encoding() : NarrowStringEncoding::unspecified;
@@ -973,6 +982,7 @@ int run(const std::vector<std::string> &args) {
             throw Error("zen-profile", "Supported cooked profiles are ue5.3 and ue5.5");
         };
         ZenReadOptions before_options;
+        before_options.value_identities.names = flags.contains("--name-identities");
         before_options.profile = profile("--cooked-profile", ZenProfile::unspecified);
         if (before_options.profile == ZenProfile::unspecified)
             throw Error("zen-profile", "Cooked reads require --cooked-profile");

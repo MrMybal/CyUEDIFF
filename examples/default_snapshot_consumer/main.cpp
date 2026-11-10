@@ -18,14 +18,16 @@ int main(int argc, char **argv) {
             throw Error(
                 "argument",
                 "Usage: default_snapshot_consumer capture.json exact-engine-version ue4 ue5 "
-                "[--filtered] [--text-ue5-history] [--sha256 hash] [--native /qualified/type=layout]");
+                "[--filtered] [--name-identities] [--text-ue5-history] [--sha256 hash] [--native /qualified/type=layout]");
         DefaultSnapshotReadOptions options;
         options.expected_engine_version = argv[2];
         options.expected_ue4 = number(argv[3]);
         options.expected_ue5 = number(argv[4]);
         for (int i = 5; i < argc; ++i) {
             const std::string argument = argv[i];
-            if (argument == "--filtered")
+            if (argument == "--name-identities")
+                options.values.value_identities.names = true;
+            else if (argument == "--filtered")
                 options.filter_editor_only = true;
             else if (argument == "--text-ue5-history")
                 options.values.text_layout = TextLayout::ue5_history;

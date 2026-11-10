@@ -73,6 +73,8 @@ struct CaptureReader {
     UnversionedReadOptions read_options;
     std::uint64_t wire_bytes = 0, text_bytes = 0;
     std::uint32_t values_read = 0;
+    std::uint32_t identity_names = 0;
+    std::uint64_t identity_text = 0;
     CaptureReader(const DefaultSnapshotReadOptions &opts, const Json &document,
                   const UnversionedSchemas &registry)
         : options(opts), capture(document), schemas(registry),
@@ -198,6 +200,14 @@ struct CaptureReader {
                     "Duplicate captured object reference");
         }
         auto read = read_options;
+        read.value_identities.max_names -= identity_names;
+        read.value_identities.max_text_bytes -= identity_text;
+        read.value_identities.charge = [&](std::uint32_t count, std::uint64_t text) {
+            identity_names += count;
+            identity_text += text;
+            if (options.values.value_identities.charge)
+                options.values.value_identities.charge(count, text);
+        };
         read.names = &names;
         read.reference = [&](std::int32_t index) -> Json {
             if (!index)
@@ -233,6 +243,8 @@ struct CaptureReader {
             result["available"] = true;
             result["value"] = std::move(value.value);
             result["interpretation"] = std::move(value.interpretation);
+            if (!value.value_identities.is_null())
+                result["valueIdentities"] = std::move(value.value_identities);
         } catch (const Error &error) {
             if (error.code != "schema-type" && error.code != "schema-context")
                 throw;
@@ -413,6 +425,10 @@ DefaultSnapshot DefaultSnapshot::parse(const std::vector<std::uint8_t> &bytes,
                             {"wireBytes", reader.wire_bytes},
                             {"valuesRead", reader.values_read},
                             {"valueTextBytes", reader.text_bytes}};
+        if (options.values.value_identities.names) {
+            impl->provenance["identityNamesRead"] = reader.identity_names;
+            impl->provenance["identityTextBytes"] = reader.identity_text;
+        }
         options.capture.control.check();
         options.values.control.check();
         return DefaultSnapshot(std::move(impl));

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(ValueIdentityConsumer LANGUAGES CXX)
+find_package(CyUEDiff 0.196.0 EXACT CONFIG REQUIRED)
+add_executable(value_identity_consumer main.cpp)
+target_link_libraries(value_identity_consumer PRIVATE CyUEDiff::Core)
+if(MSVC)
+    target_compile_options(value_identity_consumer PRIVATE /EHsc /utf-8)
+endif()

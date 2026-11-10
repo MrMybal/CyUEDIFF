@@ -18,3 +18,5 @@ For a capture produced by the tested exact UE 5.3.2 archive:
 Select `--filtered` only for an editor-filtered capture. `--sha256 <64 lowercase hex digits>` optionally checks the exact capture bytes. Native layout choices are explicit evidence-based bindings for this memory archive, not generic Engine name aliases.
 
 Exit 0 means every captured field wire decoded; 1 retains unavailable fields; 2 rejects a capture or argument. JSON reports `binding: "unbound"` and `defaultsApplied: false`. Stored asset overrides, archetype/dependency binding, map/set equality and effective asset reconstruction remain separate work; this example does not apply default values to a package.
+
+Add `--name-identities` to retain exact typed FName bases/numbers beside the legacy display values. These observations are bounded and do not by themselves certify runtime key equality.

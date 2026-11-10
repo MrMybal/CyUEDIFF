@@ -104,6 +104,11 @@
       "id": "captured-defaults",
       "title": "Captured class defaults",
       "html": "<p>The optional matching Engine exporter prepares qualified CDO fields and initialized struct defaults. The standalone Core reads their actual serialized values without loading Unreal. Native layouts remain explicit, and unsupported fields stay unavailable.</p><p>This is currently a Core/SDK preparation workflow. Captures remain unbound to an asset or Blueprint/module dependency; effective default reconstruction and desktop controls are still in development. Stored asset properties are preserved. See the bundled DEFAULT_SNAPSHOTS.md contract and default_snapshot_consumer example.</p>"
+    },
+    {
+      "id": "typed-name-identities",
+      "title": "Typed name identities",
+      "html": "<p>An optional Core and CLI journal retains serialized FName bases and internal numbers alongside readable values. Two different names can display as Item_1. Source, mapped cooked and captured-default reads retain bounded observations with value-relative paths.</p><p>Use full inspection with --name-identities. This is currently a Core/CLI workflow; component-specific desktop inspection, new container key codecs, runtime equality and effective-default merging remain in development. A complete journal does not mean every asset property was decoded.</p>"
     }
   ],
   "fr": [
@@ -211,6 +216,11 @@
       "id": "captured-defaults",
       "title": "Valeurs par défaut de classes capturées",
       "html": "<p>L’exporteur Engine optionnel prépare les champs qualifiés du CDO et les structures initialisées. Le Core autonome lit leurs valeurs sérialisées sans charger Unreal. Les formats natifs restent explicites et les champs non pris en charge restent indisponibles.</p><p>Ce flux de préparation utilise actuellement le Core et le SDK. Les captures ne sont pas liées à un asset ni aux dépendances Blueprint/module ; la reconstruction effective et ses contrôles dans l’interface restent en développement. Les propriétés stockées des assets sont conservées. Consulter le contrat DEFAULT_SNAPSHOTS.md et l’exemple default_snapshot_consumer fournis.</p>"
+    },
+    {
+      "id": "typed-name-identities",
+      "title": "Identités des noms typés",
+      "html": "<p>Un journal optionnel dans le Core et la CLI conserve les noms de base et les numéros internes des FName à côté des valeurs lisibles. Deux noms différents peuvent afficher Item_1. Les lectures source, cooked avec schéma et de captures de défauts conservent des observations bornées avec des chemins relatifs aux valeurs.</p><p>Utiliser une inspection complète avec --name-identities. Ce flux concerne actuellement le Core et la CLI ; l’inspection spécialisée dans l’interface, le codec de clés, l’égalité à l’exécution et la fusion effective des défauts restent en développement. Un journal complet ne signifie pas que toutes les propriétés ont été décodées.</p>"
     }
   ]
 }

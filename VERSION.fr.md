@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.196.0 — Composants des noms typés
+
+Des observations optionnelles et bornées dans le Core et la CLI conservent les noms de base et les numéros internes des FName, sans modifier les valeurs affichées ni les identifiants actuels des conteneurs. Les lectures source, non versionnées, cooked et de captures de défauts conservent les chemins des valeurs ; le cache distingue les options et leurs limites. Des assets natifs prouvent que deux identités peuvent avoir le même affichage. Le codec de clés, les comparaisons et la reconstruction effective restent à intégrer. La dernière archive Windows assemblée reste la 0.194.0. [Contrat](docs/VALUE_IDENTITIES.md).
+
 ## 0.195.0 — Valeurs par défaut de classes capturées
 
 L’exporteur Engine optionnel et le lecteur autonome `DefaultSnapshot` du Core conservent les déclarations qualifiées, les valeurs héritées du CDO, les structures initialisées, les données sérialisées de chaque champ et la provenance exacte de l’archive. Les formats natifs restent explicites ; les champs non pris en charge restent indisponibles. Le client SDK lit la capture sans Unreal. Les captures ne sont pas liées à un asset et ne lui appliquent aucune valeur : la reconstruction effective et son intégration à l’interface restent en développement. La dernière archive Windows assemblée reste la 0.194.0. [Contrat](docs/DEFAULT_SNAPSHOTS.md).

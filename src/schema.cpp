@@ -1,5 +1,6 @@
 #include <cyuediff/schema.hpp>
 #include "string_value.hpp"
+#include "value_identity.hpp"
 #include <cyuediff/string_encoding.hpp>
 #include "archive.hpp"
 #include "text_value.hpp"
@@ -829,6 +830,7 @@ struct PropertyReader {
     Reader r;
     const UnversionedSchemas &schemas;
     const UnversionedReadOptions &options;
+    detail::ValueIdentityJournal identities;
     UnversionedProperties result;
     std::map<std::string, NativeStructLayout> native_structs;
     std::map<std::string, std::string> struct_layouts;
@@ -1002,6 +1004,8 @@ struct PropertyReader {
         if (p.array_size > 1)
             key += "[" + std::to_string(local - p.index) + "]";
         text(key.size());
+        detail::ValueIdentityJournal::Scope field_identity(identities, key),
+            value_identity(identities, "value");
         Json decoded;
         try {
             decoded = read_value(p.type, zero, nesting + 1);
@@ -1325,23 +1329,30 @@ struct PropertyReader {
                 throw Error("schema-value", "Invalid map/set removal count", r.pos - 4);
             if (static_cast<std::uint32_t>(removed_count) > options.max_values - result.values_read)
                 throw Error("schema-limit", "Map/set removal count exceeds remaining work", r.pos - 4);
-            auto insert = [&](Json &target, Json key, bool pair) {
+            auto read_item = [&](Json &target, bool pair, const std::string &part) {
+                detail::ValueIdentityJournal::Buffer key_names(identities);
+                auto key = read_value(type.arguments.at(0), false, nesting + 1);
                 auto id = identity(key, type.arguments.at(0));
                 if (target.contains(id))
                     throw Error("schema-identity", "Duplicate serialized map/set identity", r.pos);
                 if (pair) {
+                    key_names.commit_at({part, id, "key"});
+                    detail::ValueIdentityJournal::Scope list(identities, part), item(identities, id),
+                        mapped(identities, "value");
                     auto value = read_value(type.arguments.at(1), false, nesting + 1);
-                    target[std::move(id)] = {{"key", std::move(key)}, {"value", std::move(value)}};
-                } else
-                    target[std::move(id)] = std::move(key);
+                    target[id] = {{"key", std::move(key)}, {"value", std::move(value)}};
+                } else {
+                    key_names.commit_at({part, id});
+                    target[id] = std::move(key);
+                }
             };
             for (std::int32_t j = 0; j < removed_count; ++j) {
-                insert(removed, read_value(type.arguments.at(0), false, nesting + 1), false);
+                read_item(removed, false, "removed");
                 options.control.checkpoint("unversioned-container-removals", j + 1, removed_count);
             }
             auto count = r.count(options.max_values - result.values_read);
             for (std::uint32_t j = 0; j < count; ++j) {
-                insert(entries, read_value(type.arguments.at(0), false, nesting + 1), map);
+                read_item(entries, map, "entries");
                 options.control.checkpoint("unversioned-container-entries", j + 1, count);
             }
         }
@@ -1548,6 +1559,7 @@ struct PropertyReader {
                 return {{"bytes", bytes}, {"sha256", std::move(hash)}};
             };
             reader.scalar = [&](detail::TextScalar kind, unsigned level) -> Json {
+                detail::ValueIdentityJournal::Pause unlocated_text_name(identities);
                 unsigned type = 0;
                 switch (kind) {
                 case detail::TextScalar::uint8:
@@ -1590,6 +1602,7 @@ struct PropertyReader {
                 throw Error("schema-context", "Delegate requires an explicit persistent package layout",
                             r.pos);
             auto object = read_value(SchemaType{4, {}, {}}, zero, nesting + 1);
+            detail::ValueIdentityJournal::Scope function_identity(identities, "function");
             auto function = read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
             return {{"kind", "script-delegate"},
                     {"object", std::move(object)},
@@ -1601,7 +1614,9 @@ struct PropertyReader {
                             "Multicast delegate requires an explicit persistent package layout", r.pos);
             const auto count = zero ? 0 : r.count(options.max_values - result.values_read);
             Json bindings = Json::array();
+            detail::ValueIdentityJournal::Scope bindings_identity(identities, "bindings");
             for (unsigned i = 0; i < count; ++i) {
+                detail::ValueIdentityJournal::Scope binding_identity(identities, static_cast<std::size_t>(i));
                 bindings.push_back(read_value(SchemaType{6, {}, {}}, false, nesting + 1));
                 options.control.checkpoint("unversioned-delegate-bindings", i + 1, count);
             }
@@ -1635,8 +1650,14 @@ struct PropertyReader {
             if (!zero && options.soft_path_layout != SoftPathLayout::ue5_top_level_names)
                 throw Error("schema-context", "Soft object paths require an explicit supported layout",
                             r.pos);
-            auto package = read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
-            auto asset = read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
+            auto package = [&] {
+                detail::ValueIdentityJournal::Scope part(identities, "packageName");
+                return read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
+            }();
+            auto asset = [&] {
+                detail::ValueIdentityJournal::Scope part(identities, "assetName");
+                return read_value(SchemaType{5, {}, {}}, zero, nesting + 1);
+            }();
             auto subpath = read_value(SchemaType{10, {}, {}}, zero, nesting + 1);
             return {{"kind", "soft-object-path"},
                     {"packageName", std::move(package)},
@@ -1646,6 +1667,7 @@ struct PropertyReader {
         case 5: {
             if (zero) {
                 text(4);
+                identities.name("None", 0, true);
                 return "None";
             }
             auto index = r.i32(), number = r.i32();
@@ -1654,6 +1676,7 @@ struct PropertyReader {
                 throw Error("schema-context", "Invalid package name index or number", r.pos - 8);
             const auto &base = (*options.names)[static_cast<std::size_t>(index)];
             text(base.size() + 12);
+            identities.name(base, static_cast<std::uint32_t>(number));
             return number ? base + "_" + std::to_string(number - 1) : base;
         }
         case 29:
@@ -1758,9 +1781,13 @@ struct PropertyReader {
                 throw Error("schema-context", "Field path requires an explicit owner/name layout", r.pos);
             const auto count = zero ? 0 : r.count(options.max_values - result.values_read);
             Json path = Json::array();
-            for (unsigned j = 0; j < count; ++j) {
-                path.push_back(read_value(SchemaType{5, {}, {}}, false, nesting + 1));
-                options.control.checkpoint("unversioned-field-path", j + 1, count);
+            {
+                detail::ValueIdentityJournal::Scope path_identity(identities, "path");
+                for (unsigned j = 0; j < count; ++j) {
+                    detail::ValueIdentityJournal::Scope component(identities, static_cast<std::size_t>(j));
+                    path.push_back(read_value(SchemaType{5, {}, {}}, false, nesting + 1));
+                    options.control.checkpoint("unversioned-field-path", j + 1, count);
+                }
             }
             auto owner = read_value(SchemaType{4, {}, {}}, zero, nesting + 1);
             return {{"kind", "field-path"}, {"path", std::move(path)}, {"owner", std::move(owner)}};
@@ -1773,15 +1800,19 @@ struct PropertyReader {
             if (present > 1)
                 throw Error("schema-value", "Invalid optional presence marker", r.pos - 4);
             Json value = {{"kind", "optional"}, {"isSet", present != 0}};
-            if (present)
+            if (present) {
+                detail::ValueIdentityJournal::Scope optional_value(identities, "value");
                 value["value"] = read_value(type.arguments.at(0), false, nesting + 1);
+            }
             return value;
         }
         case 8: {
             auto count = zero ? 0 : r.count(options.max_values - result.values_read);
             Json values = Json::array();
-            for (unsigned j = 0; j < count; ++j)
+            for (unsigned j = 0; j < count; ++j) {
+                detail::ValueIdentityJournal::Scope item_identity(identities, static_cast<std::size_t>(j));
                 values.push_back(read_value(type.arguments.at(0), false, nesting + 1));
+            }
             return values;
         }
         case 24:
@@ -1801,7 +1832,10 @@ struct PropertyReader {
                     throw Error("schema-type", "Hybrid native zero defaults require an explicit value model",
                                 r.pos);
                 text(16); // The two fixed wrapper keys: properties and native.
-                auto properties = structure(definition.path, false, nesting + 1);
+                auto properties = [&] {
+                    detail::ValueIdentityJournal::Scope prefix(identities, "properties");
+                    return structure(definition.path, false, nesting + 1);
+                }();
                 auto native_tail = layout_value(tail->second, false, nesting + 1);
                 return {{"properties", std::move(properties)}, {"native", std::move(native_tail)}};
             }
@@ -1838,7 +1872,14 @@ PropertyReader prepare_property_reader(const std::vector<std::uint8_t> &bytes, s
         std::any_of(options.reference_identity.begin(), options.reference_identity.end(),
                     [](unsigned char c) { return c < 0x21 || c > 0x7e; }))
         throw Error("schema-context", "Invalid property reference resolver identity", offset);
-    PropertyReader reader{{bytes, options.control, offset, offset + size}, schemas, options, {}, {}, {}, {}};
+    PropertyReader reader{{bytes, options.control, offset, offset + size},
+                          schemas,
+                          options,
+                          detail::ValueIdentityJournal(options.value_identities, options.control),
+                          {},
+                          {},
+                          {},
+                          {}};
     for (const auto &binding : options.native_structs) {
         reader.charge();
         native_struct_layout_name(binding.second);
@@ -1886,6 +1927,9 @@ UnversionedProperties decode_unversioned(const std::vector<std::uint8_t> &bytes,
     reader.inventory_schema(root, 0);
     reader.result.properties = reader.structure(schema, false, 0);
     reader.result.consumed_bytes = reader.r.pos - offset;
+    reader.result.value_identities = reader.identities.finish();
+    if (!reader.result.value_identities.is_null())
+        reader.result.value_identities["root"] = "properties";
     options.control.check();
     return std::move(reader.result);
 }
@@ -1912,8 +1956,12 @@ UnversionedValue decode_unversioned_value(const std::vector<std::uint8_t> &bytes
     reader.inventory_type(type, 0);
     auto value = reader.read_value(type, false, 0);
     options.control.check();
-    return {std::move(value), std::move(reader.result.interpretation), reader.r.pos - offset,
-            reader.result.text_bytes, reader.result.values_read};
+    auto identities = reader.identities.finish();
+    if (!identities.is_null())
+        identities["root"] = "value";
+    return {std::move(value),          std::move(reader.result.interpretation),
+            reader.r.pos - offset,     reader.result.text_bytes,
+            reader.result.values_read, std::move(identities)};
 }
 
 } // namespace cyuediff
