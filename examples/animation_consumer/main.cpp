@@ -31,6 +31,13 @@ cyuediff::Package host_model() {
                           {"InternalTrackData", tag("StructProperty", raw, "RawAnimSequenceTrack")}}}),
             "StructProperty");
     p.exports.push_back(std::move(e));
+    // Explicit authoring contract for the original literal root name in this host demo.
+    p.name_values = {{"schema", "cyuediff.name-values/1"},
+                     {"root", "semantic-snapshot"},
+                     {"status", "complete"},
+                     {"names",
+                      {{"/objects/Animation.Model/properties/BoneAnimationTracks/value/0/Name/value",
+                        {{"base", "root"}, {"number", 0}, {"source", "host-demo-literal"}}}}}};
     return p;
 }
 } // namespace

@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.202.0 — Métadonnées de packages stockées
+
+Le lecteur source autonome décode désormais les maps de racine et d’objets UMetaData prises en charge, avec leur GUID optionnel. Les composants des clés conservent les noms distincts de même affichage ; Core/CLI/Git et Propriétés EN/FR exposent les modifications nommées. Les décodeurs hôtes explicites restent prioritaires ; les suffixes invalides ou non pris en charge restent opaques, avec limites et annulation. Les références de l’API Unreal vérifient cinq vrais packages UE5.3.2. Recompilez les clients SDK avec les en-têtes/bibliothèques0.202. Une archive de développement Windows locale correspondante est préparée avec le manuel bilingue hors ligne. [Contrat](docs/PACKAGE_METADATA.md).
+
 ## 0.201.0 — Correspondance des FName stockés
 
 Les lecteurs de propriétés source et cooked conservent un index fonctionnel borné des composants FName, même sans observations facultatives. Les différences ordinaires Core/CLI/Git et les inspecteurs plats/par pages révèlent les changements masqués par un affichage identique. Les composants manquants restent indéterminés et le JSON natif brut garde son sens. Recompilez les clients SDK avec les en-têtes/bibliothèques 0.201. La dernière archive Windows assemblée reste la 0.199.0. [Contrat](docs/VALUE_IDENTITIES.md).

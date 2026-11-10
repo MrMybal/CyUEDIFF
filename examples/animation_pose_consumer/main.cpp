@@ -34,6 +34,15 @@ cyuediff::Package animation_model() {
     }
     e.properties["BoneAnimationTracks"] = tag("ArrayProperty", tracks, "StructProperty");
     p.exports.push_back(e);
+    // Original host demo names are literal plain names, with internal number zero.
+    p.name_values = {{"schema", "cyuediff.name-values/1"},
+                     {"root", "semantic-snapshot"},
+                     {"status", "complete"},
+                     {"names",
+                      {{"/objects/Animation.Model/properties/BoneAnimationTracks/value/0/Name/value",
+                        {{"base", "root"}, {"number", 0}, {"source", "host-demo-literal"}}},
+                       {"/objects/Animation.Model/properties/BoneAnimationTracks/value/1/Name/value",
+                        {{"base", "arm"}, {"number", 0}, {"source", "host-demo-literal"}}}}}};
     return p;
 }
 cyuediff::Package skeleton_model() {
@@ -64,6 +73,14 @@ cyuediff::Package skeleton_model() {
                          {"BoneName", tag("NameProperty", "arm")},
                          {"RelativeLocation", tag("StructProperty", {1., 2., 3.}, "Vector")}};
     p.exports.push_back(std::move(socket));
+    p.name_values = {{"schema", "cyuediff.name-values/1"},
+                     {"root", "semantic-snapshot"},
+                     {"status", "complete"},
+                     {"names",
+                      {{"/objects/Rig.Grip/properties/SocketName/value",
+                        {{"base", "Grip"}, {"number", 0}, {"source", "host-demo-literal"}}},
+                       {"/objects/Rig.Grip/properties/BoneName/value",
+                        {{"base", "arm"}, {"number", 0}, {"source", "host-demo-literal"}}}}}};
     return p;
 }
 } // namespace

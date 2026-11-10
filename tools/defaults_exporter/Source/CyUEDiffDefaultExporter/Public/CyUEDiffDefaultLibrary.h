@@ -12,6 +12,10 @@ class CYUEDIFFDEFAULTEXPORTER_API UCyUEDiffDefaultLibrary : public UBlueprintFun
     // The selected Blueprint class and its real default object must already be loaded.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Defaults")
     static FString CaptureBlueprintFactory(UClass* Class, bool FilterEditorOnly = false);
+    // Reads the actual API maps of an explicitly selected, already loaded UMetaData object.
+    // No package search, save, key rewriting or default reconstruction is performed.
+    UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Metadata")
+    static FString CapturePackageMetadata(UObject* Object);
     // Own commandlet sessions can prevent shutdown/user-settings writes while collecting a pinned context.
     // Returns false in an interactive editor; the change lasts only for the commandlet process.
     UFUNCTION(BlueprintCallable, Category = "CyUEDiff|Defaults")

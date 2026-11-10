@@ -22,6 +22,8 @@
 #include "UObject/LinkerLoad.h"
 #include "Misc/PackageName.h"
 #include "UObject/Package.h"
+#include "UObject/MetaData.h"
+#include "UObject/LazyObjectPtr.h"
 #include <limits>
 IMPLEMENT_MODULE(FDefaultModuleImpl, CyUEDiffDefaultExporter)
 namespace {
@@ -706,6 +708,78 @@ FString UCyUEDiffDefaultLibrary::CaptureBlueprintFactory(UClass *Class, bool Fil
     Factory->SetField(TEXT("parentDefault"), Reference(ParentDefault));
     Factory->SetField(TEXT("targetDefault"), Reference(OriginalDefault));
     J->SetObjectField(TEXT("factory"), Factory);
+    return Write(J);
+}
+FString UCyUEDiffDefaultLibrary::CapturePackageMetadata(UObject *Object) {
+    UMetaData *Metadata = Cast<UMetaData>(Object);
+    if (!Metadata || !Metadata->GetOutermost())
+        return TEXT("{}");
+    auto J = MakeShared<FJsonObject>();
+    J->SetStringField(TEXT("format"), TEXT("cyuediff.engine-package-metadata/1"));
+    J->SetStringField(TEXT("engineVersion"), FEngineVersion::Current().ToString());
+    J->SetField(TEXT("object"), Reference(Metadata));
+    J->SetStringField(TEXT("state"), TEXT("loaded-api-maps-after-engine-redirects"));
+    const FUniqueObjectGuid ExistingGuid(Metadata);
+    if (ExistingGuid.IsValid())
+        J->SetStringField(TEXT("objectGuid"), ExistingGuid.GetGuid().ToString(EGuidFormats::Digits));
+    uint32 Work = 0;
+    int64 Text = 0;
+    bool Failed = false;
+    auto Charge = [&](const FString &Value) {
+        Text += Value.Len() * 3ll;
+        if (++Work > 100000 || Text > 32ll * 1024 * 1024)
+            Failed = true;
+    };
+    auto Pairs = [&](const TMap<FName, FString> &Values) {
+        TArray<JValue> Rows;
+        for (const auto &Pair : Values) {
+            Charge(Pair.Key.GetPlainNameString());
+            Charge(Pair.Value);
+            if (Failed)
+                break;
+            auto Row = MakeShared<FJsonObject>();
+            Row->SetObjectField(TEXT("name"), NameValue(Pair.Key));
+            Row->SetStringField(TEXT("value"), Pair.Value);
+            Rows.Add(ObjectValue(Row));
+        }
+        return Rows;
+    };
+    J->SetArrayField(TEXT("rootValues"), Pairs(Metadata->RootMetaDataMap));
+    TArray<JValue> Objects;
+    for (const auto &Pair : Metadata->ObjectMetaDataMap) {
+        Charge(FString());
+        if (Failed)
+            break;
+        UObject *Target = Pair.Key.Get(true);
+        auto Row = MakeShared<FJsonObject>();
+        Row->SetField(TEXT("object"), Reference(Target));
+        TArray<FString> Parts;
+        UObject *Current = Target;
+        uint32 Depth = 0;
+        while (Current && Current != Metadata->GetOutermost()) {
+            if (++Depth > 128) {
+                Failed = true;
+                break;
+            }
+            Charge(Current->GetName());
+            if (Failed)
+                break;
+            Parts.Insert(Current->GetName(), 0);
+            Current = Current->GetOuter();
+        }
+        Row->SetField(TEXT("reference"),
+                      Target ? StringValue(FString::Join(Parts, TEXT("."))) : MakeShared<FJsonValueNull>());
+        Row->SetArrayField(TEXT("values"), Pairs(Pair.Value));
+        if (Failed)
+            break;
+        Objects.Add(ObjectValue(Row));
+    }
+    J->SetArrayField(TEXT("objectValues"), MoveTemp(Objects));
+    J->SetBoolField(TEXT("completeCapture"), !Failed);
+    if (Failed) {
+        J->RemoveField(TEXT("rootValues"));
+        J->RemoveField(TEXT("objectValues"));
+    }
     return Write(J);
 }
 bool UCyUEDiffDefaultLibrary::BeginReadOnlyCommandletCapture() {

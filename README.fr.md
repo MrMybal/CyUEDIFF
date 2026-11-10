@@ -12,7 +12,7 @@
     </td>
     <td width="300" align="right" valign="top">
       <p><sub>Licence de l’application</sub><br><a href="LICENSE"><strong>MIT</strong></a></p>
-      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.201.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
+      <p><sub>Version des sources</sub><br><a href="VERSION.fr.md"><strong>0.202.0</strong></a><br><strong>EN DÉVELOPPEMENT</strong></p>
       <p><sub>Application Windows x64<br>Aucune release publique de l’application</sub></p>
     </td>
   </tr>
@@ -22,7 +22,7 @@
 
 Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unreal Editor**. CyUEDiff propose une application Windows, un outil en ligne de commande JSON et un lecteur C++17 réutilisable pour les développeurs Unreal, les artistes techniques et les créateurs d’outils.
 
-> **EN DÉVELOPPEMENT · 0.201.0**
+> **EN DÉVELOPPEMENT · 0.202.0**
 >
 > Cette version des sources propose une couverture des formats explicite et évolutive. Les données inconnues conservent leurs diagnostics et empreintes binaires. Consultez les [notes de version, plateformes prises en charge et limites connues](VERSION.fr.md) avant de choisir votre méthode de travail.
 
@@ -33,6 +33,8 @@ Inspectez les assets Unreal Engine et comprenez ce qui change **sans lancer Unre
 Ouvrez un asset ou comparez deux versions, puis passez des propriétés typées aux graphes Blueprint et de matériau, textures, meshes sources, collisions, squelettes, clés d’animation et courbes. Recherchez une propriété ou un nœud, inspectez ses valeurs enregistrées et suivez les changements surlignés. Chaque côté peut utiliser son propre contexte de projet, moteur et schéma.
 
 Examinez des packages libres `.uasset` / `.umap` avec leurs fichiers compagnons, des révisions Git locales avec un contenu LFS local vérifié ou des membres Pak/IoStore pris en charge. Gardez jusqu’à huit documents ouverts et enregistrez des espaces de travail explicites avec les sélections, filtres, navigations et proportions des panneaux pris en charge. L’anglais est la langue par défaut ; le français est intégré. Les noms d’assets et valeurs sérialisées conservent leur langue d’origine.
+
+Les packages éditeur pris en charge exposent aussi les métadonnées stockées de racine et d’objets, leurs vrais composants de noms et leurs différences dans le Core, la CLI et Propriétés. Consulter le [profil et ses limites](docs/PACKAGE_METADATA.md).
 
 <table>
   <tr>
@@ -88,7 +90,7 @@ Liez `CyUEDiff::Core` avec `add_subdirectory`, ou installez le SDK et utilisez `
 
 ## Installation
 
-**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources de développement 0.201 disposent d’une validation locale Windows. L’archive locale Windows 0.199 a passé les contrôles d’extraction, de démarrage et des clients SDK, avec un runtime MSVC lié statiquement. Les archives de développement Windows locales comprennent le manuel HTML bilingue hors ligne et les métadonnées de version, composants et runtime ; leur préparation et validation restent distinctes d’une release publique. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
+**Aucune release publique de l’application n’est encore disponible.** Compilez les sources avec les instructions ci-dessous. Le jalon Core/CLI 0.181 a passé la CI hébergée sur Windows 2022 et Ubuntu 24.04, avec et sans Git ; les sources de développement 0.202 disposent d’une validation locale Windows. L’archive locale Windows 0.202 a passé les contrôles d’extraction, de démarrage et des clients SDK, avec un runtime MSVC lié statiquement. Les archives de développement Windows locales comprennent le manuel HTML bilingue hors ligne et les métadonnées de version, composants et runtime ; leur préparation et validation restent distinctes d’une release publique. L’application est vérifiée localement sur Windows x64 avec Direct3D 11 ; aucun build desktop Linux ou macOS n’est proposé.
 
 Les builds Windows utilisant le runtime MSVC dynamique par défaut nécessitent le runtime Microsoft Visual C++ x64 correspondant. Les fonctions Git nécessitent une installation séparée de Git 2.45+ ; l’inspection de fichiers libres n’en dépend pas. Conservez les archives CPack extraites avec leur documentation et leurs notices de licence. Voir les [conditions de distribution et d’exécution](docs/DISTRIBUTION.md).
 

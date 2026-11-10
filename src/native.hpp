@@ -5,6 +5,8 @@ struct NativeDecodeResult {
     Json data;
     std::uint64_t end = 0;
 };
+bool is_package_metadata(const ObjectExport &);
+NativeDecodeResult decode_package_metadata(Archive &, const Package &, std::uint64_t, const ReadOptions &);
 bool is_reflected_struct(const ObjectExport &);
 NativeDecodeResult decode_struct_definition(Archive &, const Package &, std::uint64_t end,
                                             const ReadOptions &);

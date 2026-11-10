@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(DefaultSnapshotConsumer LANGUAGES CXX)
-find_package(CyUEDiff 0.201.0 EXACT CONFIG REQUIRED)
+find_package(CyUEDiff 0.202.0 EXACT CONFIG REQUIRED)
 add_executable(default_snapshot_consumer main.cpp)
 target_link_libraries(default_snapshot_consumer PRIVATE CyUEDiff::Core)
 target_compile_features(default_snapshot_consumer PRIVATE cxx_std_17)

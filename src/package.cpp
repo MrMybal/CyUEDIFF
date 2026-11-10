@@ -1022,6 +1022,23 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
                     data->seek(consumed);
                 }
             }
+            if (!extension_native && options.native_metadata && detail::is_package_metadata(entry)) {
+                try {
+                    entry.native_start = consumed - base;
+                    auto decoded = detail::decode_package_metadata(*data, p, base + entry.size, options);
+                    entry.native_data = std::move(decoded.data);
+                    entry.native_coverage = "package-metadata";
+                    entry.native_end = decoded.end - base;
+                    consumed = decoded.end;
+                } catch (const Error &error) {
+                    if (error.code == "cancelled")
+                        throw;
+                    p.source_read_limit_failed = p.source_read_limit_failed || read_limit_failed(error);
+                    entry.native_coverage = "opaque";
+                    p.diagnostics.push_back(entry.path + ": " + error.code + ": " + error.what());
+                    data->seek(consumed);
+                }
+            }
             if (!extension_native && options.native_reflection && detail::is_reflected_struct(entry)) {
                 try {
                     entry.native_start = consumed - base;

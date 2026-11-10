@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.202.0 — Stored package metadata
+
+The standalone source reader now decodes selected UMetaData root/object maps and optional GUIDs. Component-aware stored name keys preserve same-display names; ordinary Core/CLI/Git differences and the EN/FR Properties inspector expose named metadata edits. Explicit host decoders retain precedence, malformed/unsupported suffixes stay opaque and budgets/cancellation remain enforced. Independent Engine API references verify five actual UE5.3.2 packages. Rebuild SDK consumers against0.202 headers/libraries. A matching local Windows development archive is prepared with the bilingual offline manual. [Contract](docs/PACKAGE_METADATA.md).
+
 ## 0.201.0 — Stored FName correspondence
 
 Source and cooked property reads now retain independently bounded functional FName components even when optional observations are disabled. Ordinary Core/CLI/Git differences and flat/paged inspectors reveal same-display component changes. Missing components remain unavailable, and raw native JSON is not reinterpreted as typed names. Rebuild SDK consumers against 0.201 headers/libraries. The latest assembled Windows archive remains 0.199.0. [Contract](docs/VALUE_IDENTITIES.md).

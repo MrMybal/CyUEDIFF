@@ -32,3 +32,7 @@ Version0.198 adds capture-time SHA256 file identities, bounded recorded environm
 ## Blueprint preparation (0.200)
 
 `CaptureBlueprintFactory` captures a fresh transient class-default initialization from an explicit real parent template; `Capture` on the real CDO prepares instance defaults. Neither operation saves an asset or replaces the class CDO. Blueprint captures also record qualified ancestry, actual property GUIDs and capture-time package/import/companion identities. Missing already loaded dependency linkers fail capture. Use the appropriate capture with the Blueprint package or instance in `prepare_default_context.py`. See [the complete Blueprint preparation contract](../../docs/EFFECTIVE_DEFAULTS.md#blueprint-class-defaults-and-instances), including the distinction between initial factory values and final target CDO values. Soft/runtime dependencies and arbitrary subobject rebasing remain outside this profile.
+
+## Package metadata validation
+
+`CapturePackageMetadata(Object)` inspects an explicitly selected, already loaded UMetaData object. It reads the native root/object maps and existing GUID without loading, creating or saving metadata. The output records API state after Engine metadata-key redirects, bounded complete/incomplete capture and actual FName components. It is an independent validation reference for selected stored-map fixtures, not a replacement for the standalone reader. See [the stored metadata contract](../../docs/PACKAGE_METADATA.md).

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(CyUEDiffCurveConsumer LANGUAGES CXX)
-find_package(CyUEDiff CONFIG REQUIRED)
+find_package(CyUEDiff 0.202 CONFIG REQUIRED)
 add_executable(curve_consumer main.cpp)
 target_link_libraries(curve_consumer PRIVATE CyUEDiff::Core)
 if(MSVC)

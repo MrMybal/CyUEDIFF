@@ -44,6 +44,16 @@ int main(int argc, char **argv) {
             socket.properties={{"SocketName",property("Grip","NameProperty")},{"BoneName",property("arm","NameProperty")},
                                {"RelativeLocation",property({1.,0.,0.},"StructProperty","Vector")}};
             before.exports.push_back(socket);
+            // These original demo names are declared literal base names, with internal number zero.
+            // A host reading actual files must use components provided by its decoder.
+            before.name_values = {{"schema", "cyuediff.name-values/1"},
+                                  {"root", "semantic-snapshot"},
+                                  {"status", "complete"},
+                                  {"names",
+                                   {{"/objects/Skeleton.Grip/properties/SocketName/value",
+                                     {{"base", "Grip"}, {"number", 0}, {"source", "host-demo-literal"}}},
+                                    {"/objects/Skeleton.Grip/properties/BoneName/value",
+                                     {{"base", "arm"}, {"number", 0}, {"source", "host-demo-literal"}}}}}};
             after = before;
             after.exports[0].native_data["localPoses"][1]["translation"][0] = 12.;
             after.exports[0].native_data["curveMetadata"]["containers"]["AnimationCurves"]["Smile"]["maxLOD"]=3;

@@ -48,6 +48,15 @@ cyuediff::Package model(bool transform = false) {
                                           "AnimationCurveData")}};
     }
     p.exports.push_back(std::move(e));
+    // The authored transform demo declares Root as a literal name; no suffix inference is used.
+    if (transform)
+        p.name_values = {
+            {"schema", "cyuediff.name-values/1"},
+            {"root", "semantic-snapshot"},
+            {"status", "complete"},
+            {"names",
+             {{"/objects/Curve/properties/CurveData/value/TransformCurves/value/0/CurveName/value",
+               {{"base", "Root"}, {"number", 0}, {"source", "host-demo-literal"}}}}}};
     return p;
 }
 } // namespace
