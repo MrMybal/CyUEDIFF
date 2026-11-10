@@ -71,6 +71,9 @@ struct AssetDecoder {
     DecoderCallback decode;
     // Struct callbacks read the native tail after an explicitly certified tagged prefix.
     DecoderPrefix prefix = DecoderPrefix::none;
+    // Optional canonical SHA-256 of this implementation/schema, separate from stored values.
+    // Hosts remain responsible for stable versioned IDs and honest callback/state identities.
+    std::string definition_sha256;
 };
 // Immutable after construction. Callbacks and their captured state must support the host's threading.
 class TaggedTypes;
@@ -90,5 +93,8 @@ class DecoderRegistry {
     // No match returns nullptr; overlapping matches fail instead of depending on registration order.
     const AssetDecoder *find(DecoderKind, const std::string &target, const PackageSummary &) const;
     std::size_t size() const;
+    // Explicit definition hashes for registrations matching this archive profile.
+    std::map<std::string, std::string> definitions(const PackageSummary &,
+                                                   const OperationControl & = {}) const;
 };
 } // namespace cyuediff

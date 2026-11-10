@@ -34,7 +34,9 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-layout-desktop-',dir=Path.cwd
     value['layouts']['Record']['fields'][0]['name']='renamed'
     alternate.write_text(json.dumps(value),encoding='utf-8')
     paired=run(*base,'--after-layouts',alternate,'--save-workspace',workspace)
-    assert paired['document']['layoutContexts']['contextChanged'] and 'renamed' in json.dumps(paired['document']['diff'])
+    assert paired['document']['layoutContexts']['contextChanged']
+    assert paired['document']['diff']['status']=='unverified' and not paired['document']['diff']['changes']
+    assert any(x['reason']=='native-struct-definition-incompatible' and x.get('beforeDefinitionSha256')!=x.get('afterDefinitionSha256') for x in paired['document']['diff']['unavailableScopes'])
     assert run('--workspace',workspace)['document']==paired['document']
     disabled=run(*base,'--no-after-layouts','--save-workspace',workspace)
     assert disabled['document']['layoutContexts']['afterSha256']==''

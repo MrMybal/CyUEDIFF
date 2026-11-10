@@ -15,6 +15,8 @@ struct BinaryLayoutReadOptions {
     std::function<Json(std::int32_t)> reference;
     // Optional enclosing-operation budget. Charges include failed reads.
     std::function<void(std::uint32_t, std::uint64_t)> charge;
+    // Required with a custom reference resolver in decoder_registry(); direct decode is unchanged.
+    std::string reference_identity;
 };
 // Immutable descriptions of serialized little-endian bytes, not C++ memory layouts.
 // No engine/plugin code is discovered or executed.

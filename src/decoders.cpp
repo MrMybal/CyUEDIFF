@@ -40,6 +40,10 @@ DecoderRegistry::DecoderRegistry(std::vector<AssetDecoder> entries, std::shared_
         if (entry.prefix != DecoderPrefix::none &&
             (entry.kind != DecoderKind::struct_value || entry.prefix != DecoderPrefix::tagged_properties))
             throw Error("decoder-registration", "Only struct values support a tagged property prefix");
+        if (!entry.definition_sha256.empty() &&
+            (entry.definition_sha256.size() != 64 ||
+             entry.definition_sha256.find_first_not_of("0123456789abcdef") != std::string::npos))
+            throw Error("decoder-registration", "Expected a canonical decoder definition SHA-256");
         range(entry.profile.ue4);
         range(entry.profile.ue5);
         for (const auto &version : entry.profile.custom_versions) {
@@ -69,6 +73,20 @@ const AssetDecoder *DecoderRegistry::find(DecoderKind kind, const std::string &t
 }
 std::size_t DecoderRegistry::size() const {
     return entries_.size();
+}
+
+std::map<std::string, std::string> DecoderRegistry::definitions(const PackageSummary &summary,
+                                                                const OperationControl &control) const {
+    control.check();
+    std::map<std::string, std::string> result;
+    std::size_t work = 0;
+    for (const auto &entry : entries_) {
+        if (!(++work & 1023))
+            control.check();
+        if (!entry.definition_sha256.empty() && entry.profile.matches(summary))
+            result.emplace(entry.id, entry.definition_sha256);
+    }
+    return result;
 }
 
 namespace detail {

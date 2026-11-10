@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-tagged-hybrid-cli-',dir=Path.
     def run(*args,code=0):
         global checks
         p=subprocess.run([exe,*map(str,args)],env=env,capture_output=True,timeout=45);assert p.returncode==code,(args,p.returncode,p.stderr.decode('utf-8','replace'));checks+=1
-        return json.loads(p.stderr if code==2 else p.stdout)
+        return json.loads(p.stdout if p.stdout else p.stderr)
     layouts=root/'layouts.json';identity=run('layouts',layouts)['sha256']
     for version in (0,1004,1010,1011,1012,1013):
         before=root/f'before-{version}.uasset';after=root/f'after-{version}.uasset'
@@ -24,7 +24,11 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-tagged-hybrid-cli-',dir=Path.
         bad=run('inspect',root/f'bad-{version}.uasset','--layouts',layouts)['snapshot']['objects']['TestAsset']['properties'];assert 'value' not in bad['Native'] and 'opaque' in bad['Native'] and bad['AfterNative']['value']==987
         unbound=run('inspect',before,'--layouts',root/'empty-layouts.json')['snapshot']['objects']['TestAsset']['properties'];assert 'value' not in unbound['Native']
     d=json.loads(layouts.read_text(encoding='utf-8'));d['layouts']['OuterTail']['fields'][0]['name']='values';alternate=root/'alternate.json';alternate.write_text(json.dumps(d),encoding='utf-8')
-    changed=run('diff',root/'before-1013.uasset',root/'after-1013.uasset','--layouts',layouts,'--after-layouts',alternate,code=1);assert changed['layoutContexts']['contextChanged']
+    changed=run('diff',root/'before-1013.uasset',root/'after-1013.uasset','--layouts',layouts,'--after-layouts',alternate,code=2)
+    assert changed['layoutContexts']['contextChanged'] and changed['status']=='unverified'
+    assert any(x['reason']=='native-struct-definition-incompatible' for x in changed['unavailableScopes'])
+    assert any(x['path'].endswith('/data/properties/Mode/value') for x in changed['changes'])
+    assert not any('/data/native/samples' in x['path'] or '/data/native/values' in x['path'] for x in changed['changes'])
     run('inspect',root/'before-1013.uasset','--layouts',layouts,'--out',layouts,code=2)
     link=root/'layout-alias.json'
     try:os.link(layouts,link)

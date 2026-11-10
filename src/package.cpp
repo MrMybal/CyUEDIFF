@@ -688,8 +688,10 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     p.source = fs::weakly_canonical(fs::absolute(file));
     Archive header(file, options);
     read_summary(header, p.summary);
-    if (options.decoders)
+    if (options.decoders) {
         p.decoder_context_sha256 = options.decoders->context_sha256();
+        p.decoder_definitions = options.decoders->definitions(p.summary, options.control);
+    }
     if (options.decoders && options.decoders->tagged_types()) {
         const auto &types = *options.decoders->tagged_types();
         p.source_type_context = {{"sha256", types.sha256()},
@@ -1101,6 +1103,8 @@ Json Package::to_json() const {
                    {"diagnostics", diagnostics}};
     if (!decoder_context_sha256.empty())
         result["decoderContextSha256"] = decoder_context_sha256;
+    if (!decoder_definitions.empty())
+        result["decoderDefinitions"] = decoder_definitions;
     if (source_read_limit_failed)
         result["sourceReadLimitFailed"] = true;
     if (!source_read_limits.is_null())

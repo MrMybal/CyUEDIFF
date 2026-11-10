@@ -68,7 +68,37 @@ bool skipped(const Json &v) {
 }
 struct Builder {
     const SourceCoverageOptions &o;
+    const std::map<std::string, std::string> &before_definitions, &after_definitions;
     SourceCoverage out;
+    struct Definitions {
+        const std::string *before = nullptr, *after = nullptr;
+        bool compatible() const { return (!before && !after) || (before && after && *before == *after); }
+    };
+    Definitions definitions(const Json &a, const Json &b) const {
+        const auto find = [](const auto &entries, const Json &id) -> const std::string * {
+            const auto &name = id.get_ref<const std::string &>();
+            if (name.size() > 256)
+                throw Error("source-coverage-identity", "Decoder identity exceeds its budget");
+            const auto i = entries.find(name);
+            if (i == entries.end())
+                return nullptr;
+            if (i->second.size() != 64 ||
+                i->second.find_first_not_of("0123456789abcdef") != std::string::npos)
+                throw Error("source-coverage-identity", "Invalid decoder definition SHA-256");
+            return &i->second;
+        };
+        return {find(before_definitions, a), find(after_definitions, b)};
+    }
+    void definition_evidence(const Definitions &pair) {
+        if (pair.before) {
+            path_cost(pair.before->size());
+            out.unavailable.back()["beforeDefinitionSha256"] = *pair.before;
+        }
+        if (pair.after) {
+            path_cost(pair.after->size());
+            out.unavailable.back()["afterDefinitionSha256"] = *pair.after;
+        }
+    }
     std::size_t nodes = 0, path_bytes = 0;
     std::string object;
     void tick() {
@@ -105,39 +135,41 @@ struct Builder {
         out.unavailable.push_back(std::move(row));
         out.affected_objects.insert(object);
     }
-    bool unread_key(const Json &v, unsigned depth = 0) {
+    bool unread_key(const Json &v, bool &definition_incompatible, unsigned depth = 0) {
         tick();
         if (depth > 256)
             throw Error("source-coverage-limit", "Source key depth exceeded");
         if (tag(v) && (!v.contains("value") || skipped(v)))
             return true;
         if (v.is_object() && v.contains("decoder") && v["decoder"].is_string() && v.contains("data")) {
+            definition_incompatible =
+                definition_incompatible || !definitions(v["decoder"], v["decoder"]).compatible();
             if (v.value("prefix", Json{}) == "tagged-properties") {
                 const auto &data = v.at("data");
                 auto i = data.find("properties");
-                return i != data.end() && unread_key(*i, depth + 1);
+                return i != data.end() && unread_key(*i, definition_incompatible, depth + 1);
             }
             return false;
         }
         if (v.is_structured())
             for (const auto &child : v)
-                if (unread_key(child, depth + 1))
+                if (unread_key(child, definition_incompatible, depth + 1))
                     return true;
         return false;
     }
-    bool unread_map_keys(const Json &v) {
+    bool unread_map_keys(const Json &v, bool &definition_incompatible) {
         if (!v.is_object())
             return false;
         auto removed = v.find("removed");
         if (removed != v.end())
             for (const auto &key : *removed)
-                if (unread_key(key))
+                if (unread_key(key, definition_incompatible))
                     return true;
         auto entries = v.find("entries");
         if (entries != v.end() && entries->is_object())
             for (const auto &entry : *entries) {
                 auto key = entry.find("key");
-                if (key != entry.end() && unread_key(*key))
+                if (key != entry.end() && unread_key(*key, definition_incompatible))
                     return true;
             }
         return false;
@@ -191,13 +223,19 @@ struct Builder {
             return;
         if (a->is_object() && b->is_object() && a->value("kind", Json{}) == "stored-map-delta" &&
             b->value("kind", Json{}) == "stored-map-delta") {
-            const bool ka = unread_map_keys(*a), kb = unread_map_keys(*b);
-            if (ka || kb) {
+            bool da = false, db = false;
+            const bool ka = unread_map_keys(*a, da), kb = unread_map_keys(*b, db);
+            if (ka || kb || da || db) {
                 cut(path + "/entries");
                 cut(path + "/removed");
-                unknown(path + "/entries", false, false, "map-key-identity-unavailable");
+                unknown(path + "/entries", false, false,
+                        da || db ? "map-key-definition-incompatible" : "map-key-identity-unavailable");
                 out.unavailable.back()["beforeKeysUnavailable"] = ka;
                 out.unavailable.back()["afterKeysUnavailable"] = kb;
+                if (da || db) {
+                    out.unavailable.back()["beforeKeyDefinitionsIncompatible"] = da;
+                    out.unavailable.back()["afterKeyDefinitionsIncompatible"] = db;
+                }
                 return;
             }
         }
@@ -218,11 +256,15 @@ struct Builder {
                 cut(path + "/prefix");
             const bool hybrid = a->value("prefix", Json{}) == "tagged-properties" &&
                                 b->value("prefix", Json{}) == "tagged-properties";
+            const auto identity = definitions((*a)["decoder"], (*b)["decoder"]);
             if ((*a)["decoder"] != (*b)["decoder"] ||
-                a->value("prefix", Json{}) != b->value("prefix", Json{})) {
+                a->value("prefix", Json{}) != b->value("prefix", Json{}) || !identity.compatible()) {
                 const auto target = path + (hybrid ? "/data/native" : "/data");
                 cut(target);
-                unknown(target, false, false, "native-struct-format-incompatible");
+                unknown(target, false, false,
+                        identity.compatible() ? "native-struct-format-incompatible"
+                                              : "native-struct-definition-incompatible");
+                definition_evidence(identity);
                 for (const auto *key : {"beforeDecoder", "afterDecoder"}) {
                     const auto &id = std::string(key) == "beforeDecoder" ? (*a)["decoder"] : (*b)["decoder"];
                     const auto &name = id.get_ref<const std::string &>();
@@ -277,7 +319,12 @@ struct Builder {
         const bool same_decoder =
             a.native_data.is_object() && b.native_data.is_object() &&
             a.native_data.value("decoder", Json{}) == b.native_data.value("decoder", Json{});
-        if (na && nb && a.native_coverage == b.native_coverage &&
+        Definitions identity;
+        if (a.native_coverage == "extension" && b.native_coverage == "extension" &&
+            a.native_data.contains("decoder") && a.native_data["decoder"].is_string() &&
+            b.native_data.contains("decoder") && b.native_data["decoder"].is_string())
+            identity = definitions(a.native_data["decoder"], b.native_data["decoder"]);
+        if (na && nb && a.native_coverage == b.native_coverage && identity.compatible() &&
             (a.native_coverage != "extension" || same_decoder)) {
             if (a.native_coverage == "extension" &&
                 a.native_data.value("decoder", Json{}) != b.native_data.value("decoder", Json{}))
@@ -288,7 +335,10 @@ struct Builder {
             cut(base + "/native");
             if (na || nb) {
                 unknown(base + "/native", !na, !nb,
-                        na && nb ? "native-format-incompatible" : "native-projection-unavailable");
+                        !identity.compatible() ? "native-definition-incompatible"
+                        : na && nb             ? "native-format-incompatible"
+                                               : "native-projection-unavailable");
+                definition_evidence(identity);
                 for (const auto *side : {"beforeDecoder", "afterDecoder"}) {
                     const auto &data = std::string(side) == "beforeDecoder" ? a.native_data : b.native_data;
                     auto id = data.find("decoder");
@@ -476,7 +526,7 @@ SourceCoverage source_coverage(const Package &a, const Package &b, const SourceC
         !o.max_path_bytes || o.max_path_bytes > 256 * 1024 * 1024)
         throw Error("source-coverage-limit", "Invalid source coverage budgets");
     o.control.checkpoint("source-coverage");
-    Builder r{o};
+    Builder r{o, a.decoder_definitions, b.decoder_definitions};
     std::map<std::string, const ObjectExport *> left, right;
     for (const auto &e : a.exports) {
         r.tick();

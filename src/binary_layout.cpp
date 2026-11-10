@@ -1,6 +1,7 @@
 #include <cyuediff/binary_layout.hpp>
 #include <cyuediff/tagged_types.hpp>
 #include "string_value.hpp"
+#include "layout_identity.hpp"
 #include <cyuediff/string_encoding.hpp>
 #include <algorithm>
 #include <cmath>
@@ -138,6 +139,7 @@ struct BinaryLayouts::Impl {
     Json document;
     std::string hash;
     std::shared_ptr<const TaggedTypes> tagged_types;
+    std::vector<std::string> layout_order;
 };
 BinaryLayouts::BinaryLayouts(std::shared_ptr<const Impl> impl) : impl_(std::move(impl)) {}
 BinaryLayouts BinaryLayouts::parse(const Json &document, const BinaryLayoutOptions &options) {
@@ -156,6 +158,7 @@ BinaryLayouts BinaryLayouts::parse(const Json &document, const BinaryLayoutOptio
             node(it.value(), edges[it.key()]);
         }
         std::map<std::string, unsigned> depths;
+        std::vector<std::string> layout_order;
         std::set<std::string> visiting;
         std::function<unsigned(const std::string &)> visit = [&](const std::string &key) {
             options.control.check();
@@ -173,6 +176,7 @@ BinaryLayouts BinaryLayouts::parse(const Json &document, const BinaryLayoutOptio
             if (depth >= options.max_depth)
                 throw Error("layout-limit", "Layout reference nesting exceeds limit");
             depths.emplace(key, depth);
+            layout_order.push_back(key);
             return depth;
         };
         for (const auto &entry : edges)
@@ -194,6 +198,7 @@ BinaryLayouts BinaryLayouts::parse(const Json &document, const BinaryLayoutOptio
             throw Error("layout-limit", "Layout definition exceeds byte limit");
         auto impl = std::make_shared<Impl>();
         impl->document = document;
+        impl->layout_order = std::move(layout_order);
         if (document.contains("taggedTypes")) {
             TaggedTypesOptions hints;
             hints.max_nodes = options.max_nodes;
@@ -504,12 +509,29 @@ Json BinaryLayouts::decode(DecoderInput &input, const std::string &name,
 }
 std::shared_ptr<const DecoderRegistry>
 BinaryLayouts::decoder_registry(const BinaryLayoutReadOptions &options) const {
+    options.control.check();
+    if ((options.reference && options.reference_identity.empty()) ||
+        (!options.reference && !options.reference_identity.empty()) ||
+        options.reference_identity.size() > 256 ||
+        std::any_of(options.reference_identity.begin(), options.reference_identity.end(),
+                    [](unsigned char c) { return c < 0x21 || c > 0x7e; }))
+        throw Error("layout-reference-identity",
+                    "A registry reference resolver requires a stable ASCII identity");
+    auto encoding = options.narrow_string_encoding;
+    if (encoding == NarrowStringEncoding::unspecified)
+        encoding = narrow_string_encoding();
+    if (encoding == NarrowStringEncoding::unspecified)
+        encoding = NarrowStringEncoding::ascii;
+    detail::DefinitionIdentity identity{options, encoding, {}};
+    for (const auto &name : impl_->layout_order)
+        identity.layouts.emplace(name, identity.node(impl_->document["layouts"].at(name)));
     std::vector<AssetDecoder> result;
     if (impl_->document.contains("decoders"))
         for (const auto &value : impl_->document["decoders"]) {
             options.control.check();
             auto entry = binding(value);
             auto name = value["layout"].get<std::string>();
+            entry.definition_sha256 = identity.binding(entry, name);
             entry.decode = [catalog = *this, name, options](DecoderInput &input,
                                                             const DecoderContext &context) {
                 auto selected = options;

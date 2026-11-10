@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-layout-cli-', dir=Path.cwd())
         result = subprocess.run([exe, *map(str, args)], env=env, capture_output=True, timeout=40)
         assert result.returncode == code, (result.returncode, args, result.stdout.decode('utf-8','replace'), result.stderr.decode('utf-8','replace'))
         checks += 1
-        return json.loads(result.stderr if code == 2 else result.stdout)
+        return json.loads(result.stdout if result.stdout else result.stderr)
     layout = root / 'layouts.json'
     report = run('layouts', layout)
     identity = report['sha256']
@@ -39,8 +39,16 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-layout-cli-', dir=Path.cwd())
     value = json.loads(layout.read_text(encoding='utf-8'))
     value['layouts']['Record']['fields'][0]['name'] = 'renamed'
     alternate.write_text(json.dumps(value), encoding='utf-8')
-    different = run('diff', before, after, '--layouts', layout, '--after-layouts', alternate, code=1)
-    assert different['layoutContexts']['contextChanged'] and 'renamed' in json.dumps(different)
+    different = run('diff', before, after, '--layouts', layout, '--after-layouts', alternate, code=2)
+    assert different['layoutContexts']['contextChanged'] and different['status'] == 'unverified'
+    assert not different['changes'] and any(x['reason'] == 'native-struct-definition-incompatible' for x in different['unavailableScopes'])
+    decoded_after = run('inspect', after, '--layouts', alternate)
+    assert decoded_after['snapshot']['objects']['TestAsset']['properties']['Native']['value']['data']['renamed'] == 44
+    unrelated = root / 'unrelated.json'
+    extra = json.loads(layout.read_text(encoding='utf-8')); extra['layouts']['Unrelated'] = {'type':'f64'}
+    unrelated.write_text(json.dumps(extra), encoding='utf-8')
+    kept = run('diff', before, after, '--layouts', layout, '--after-layouts', unrelated, code=1)
+    assert kept['layoutContexts']['contextChanged'] and kept['changes'] == changed['changes'] and not kept.get('unavailableScopes')
     empty = root / 'empty.json'
     empty.write_text(json.dumps({'format':'cyuediff.binary-layouts/1','layouts':{}}), encoding='utf-8')
     plain = run('inspect', before)
@@ -83,8 +91,11 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-layout-cli-', dir=Path.cwd())
         asset.write_bytes(after.read_bytes());git('add','Asset.uasset');git('commit','-q','-m','After')
         inspected=run('git-inspect',repo,'HEAD~1','Asset.uasset','--layouts',layout)
         assert inspected['snapshot']['objects']['TestAsset']['properties']['Native']['value']['data']['number']==42
-        diff=run('git-diff',repo,'HEAD~1','HEAD','Asset.uasset','--layouts',layout,'--after-layouts',alternate,code=1)
-        assert diff['layoutContexts']['contextChanged'] and 'renamed' in json.dumps(diff)
+        diff=run('git-diff',repo,'HEAD~1','HEAD','Asset.uasset','--layouts',layout,'--after-layouts',alternate,code=2)
+        assert diff['layoutContexts']['contextChanged'] and diff['status']=='unverified'
+        assert not diff['comparison']['changes'] and any(x['reason']=='native-struct-definition-incompatible' for x in diff['comparison']['unavailableScopes'])
+        kept=run('git-diff',repo,'HEAD~1','HEAD','Asset.uasset','--layouts',layout,'--after-layouts',unrelated,code=1)
+        assert kept['comparison']['changes']==changed['changes']
         assert asset.read_bytes()==after.read_bytes() and not git('status','--porcelain').stdout
     assert all(hashlib.sha256(p.read_bytes()).hexdigest()==digest for p,digest in originals.items())
     checks += 1

@@ -73,7 +73,7 @@ Une valeur décodée devient :
 {"decoder":"mygame.weather/1","data":{"intensity":0.5,"preset":"Rain"}}
 ```
 
-Elle se trouve sous `properties/<nom>/value` pour une structure, sous `native` pour une fin d’export. Le diff général compare `data` champ par champ et garde l’identité `decoder`. Utiliser des IDs et callbacks déterministes, ainsi que des profils cohérents entre les côtés : changer de schéma peut lui-même produire un changement de snapshot. Les empreintes binaires restent distinctes des valeurs interprétées.
+Elle se trouve sous `properties/<nom>/value` pour une structure, sous `native` pour une fin d’export. La comparaison structurée confronte les membres de `data` lorsque les identités de définition sont compatibles ; une définition explicite incompatible conserve les valeurs lisibles mais marque leur correspondance comme indéterminée. Les instantanés bruts peuvent différer sous deux interprétations sans prouver un changement stocké. Les callbacks de l’hôte gardent une obligation d’identité stable, versionnée et honnête. Les empreintes binaires restent distinctes des valeurs interprétées.
 
 Le même `ReadOptions` est accepté par `GitRevision::open` et les deux surcharges de `compare_git`. L’adaptateur Git/LFS continue de posséder et vérifier les fichiers matérialisés. Aucun module de décodage n’est découvert ou chargé automatiquement ; cette tranche est une API C++, sans commande CLI chargeant du code de projet.
 
@@ -94,3 +94,5 @@ Le script vérifie le changement contrôlé `42 → 44`, l’égalité sur un m�
 ## Declarative descriptions
 
 Since 0.173, hosts can create this registry from bounded JSON descriptions with `BinaryLayouts::decoder_registry()`, without a C++ callback for each serialized type. See [binary layouts](BINARY_LAYOUTS.md). Exact target/profile selection and opaque-on-error behavior are shared with this API.
+
+Source development 0.191 adds [per-binding native definition identity](DECODER_IDENTITY.md). Interpretation hashes stay separate from asset members; explicit incompatible definitions preserve readable values and mark native correspondence unknown.

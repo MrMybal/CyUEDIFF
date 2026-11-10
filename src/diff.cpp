@@ -564,18 +564,22 @@ DiffResult compare(const Package &before, const Package &after, const OperationC
     if (result.binary_comparison_available)
         result.binary_changed = before.fingerprints != after.fingerprints;
     auto context = [](const Package &p) {
-        return Json{{"archive",
-                     {{"ue4Version", p.summary.ue4_version},
-                      {"ue5Version", p.summary.ue5_version},
-                      {"licenseeVersion", p.summary.licensee_version},
-                      {"savedEngine", p.summary.saved_engine},
-                      {"customVersions", p.summary.custom_versions}}},
-                    {"decoderContextSha256", p.decoder_context_sha256},
-                    {"sourceTypeContext", p.source_type_context}};
+        Json result = {{"archive",
+                        {{"ue4Version", p.summary.ue4_version},
+                         {"ue5Version", p.summary.ue5_version},
+                         {"licenseeVersion", p.summary.licensee_version},
+                         {"savedEngine", p.summary.saved_engine},
+                         {"customVersions", p.summary.custom_versions}}},
+                       {"decoderContextSha256", p.decoder_context_sha256},
+                       {"sourceTypeContext", p.source_type_context}};
+        if (!p.decoder_definitions.empty())
+            result["decoderDefinitions"] = p.decoder_definitions;
+        return result;
     };
     auto ca = context(before), cb = context(after);
     if (ca != cb || !before.decoder_context_sha256.empty() || !after.decoder_context_sha256.empty() ||
-        !before.source_type_context.is_null() || !after.source_type_context.is_null())
+        !before.source_type_context.is_null() || !after.source_type_context.is_null() ||
+        !before.decoder_definitions.empty() || !after.decoder_definitions.empty())
         result.source_contexts = {{"before", ca}, {"after", cb}, {"changed", ca != cb}};
     result.source_read_limit_failed = before.source_read_limit_failed || after.source_read_limit_failed;
     if (result.source_read_limit_failed) {

@@ -2,6 +2,10 @@
 
 [README français](README.fr.md) · [English](VERSION.md) · [Suivi des problèmes](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.191.0 — Identité des définitions de décodeurs natifs
+
+Les packages source conservent une empreinte par définition liée au décodeur, séparée des valeurs stockées. Les registres déclaratifs suivent les programmes et références sans transformer les ajouts sans rapport au catalogue ou les renommages internes en changements de format natif. Une définition modifiée sous le même identifiant conserve les valeurs lisibles mais rend leur correspondance indéterminée ; les changements indépendants du préfixe réfléchi restent visibles. Les callbacks/résolveurs de l’hôte gardent leurs obligations d’identité stable. Recompilez avec les en-têtes/bibliothèques 0.191 correspondants ; la dernière archive Windows vérifiée reste la 0.182. [Contrat](docs/DECODER_IDENTITY.md).
+
 ## 0.190.0 — Comparaison sans copie complète et rapports en flux
 
 Les comparaisons source parcourent les propriétés/données natives existantes et conservent leurs propres valeurs modifiées. Les comparaisons entier/flottant distinguent les grands entiers exactement. Core et Git proposent `write_json` ; les rapports JSON CLI/interface utilisent un fichier temporaire voisin avant remplacement et évitent les arbres de sortie dupliqués. Un exemple SDK indépendant montre cette API. Les limites de lecture et valeurs inconnues restent explicites ; la dernière archive Windows vérifiée est encore la 0.182. Voir [le contrat mémoire](docs/COMPARISON_MEMORY.md).

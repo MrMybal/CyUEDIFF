@@ -2,6 +2,10 @@
 
 [README](README.md) · [Français](VERSION.fr.md) · [Issue tracker](https://github.com/MrMybal/CyUEDIFF/issues)
 
+## 0.191.0 — Native decoder definition identity
+
+Source packages retain explicit per-binding definition hashes, separate from stored values. Declarative registries track referenced wire/output programs and certified bindings without treating unrelated catalogue entries or local layout renaming as a native format change. Same-ID changed definitions keep readable values but mark their correspondence unknown, preserving independent hybrid-prefix changes. Host callbacks/resolvers retain explicit stable identity obligations. Rebuild against matching 0.191 headers/libraries; the last verified Windows archive remains 0.182. [Contract](docs/DECODER_IDENTITY.md).
+
 ## 0.190.0 — Borrowed comparison and streamed reports
 
 Generic source comparisons use existing property/native trees and retain owned changed values. Mixed integer/float comparisons preserve exact large integer differences. Core and Git expose `write_json`; CLI and desktop JSON file reports use buffered sibling-file replacement and avoid duplicate output trees. The installed independent source consumer demonstrates the new API. Format/availability semantics remain explicit; the last verified Windows archive is still 0.182. See [ownership, memory and limits](docs/COMPARISON_MEMORY.md).

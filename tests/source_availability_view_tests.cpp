@@ -89,6 +89,42 @@ int main() {
         check(view.property_browser().page().table.rows.front().change == ChangeKind::unknown &&
                   !view.property_browser().page().table.rows.front().context_only,
               "An absent decoded value stays unknown at a direct scope");
+        auto definition_before = std::make_shared<Package>(*before);
+        definition_before->exports[0].properties["Unavailable"] =
+            prop(Json{{"decoder", "declared/1"}, {"data", {{"counter", 42}}}}, "StructProperty");
+        definition_before->decoder_definitions["declared/1"] = std::string(64, 'a');
+        auto definition_after = std::make_shared<Package>(*definition_before);
+        definition_after->decoder_definitions["declared/1"] = std::string(64, 'b');
+        definition_after->exports[0].properties["Known"]["value"] = 2;
+        AssetView definition_view;
+        definition_view.set_packages(definition_before, definition_after);
+        check(!definition_view.text_comparison_available() &&
+                  definition_view.source_comparison_coverage()[0]["reason"] ==
+                      "native-struct-definition-incompatible",
+              "Changed same-ID definitions disable misleading whole-text equality");
+        check(definition_view.set_property_scope(""),
+              "Definition mismatch keeps sibling properties inspectable");
+        check(row(definition_view.property_browser().page().table, "/Known").change == ChangeKind::modified,
+              "A decoder definition mismatch does not hide independent known changes");
+        check(definition_view.set_property_scope("/Unavailable/value/data"),
+              "Readable native values remain available for local inspection");
+        const auto &definition_row =
+            row(definition_view.property_browser().page().table, "/Unavailable/value/data/counter");
+        check(definition_row.change == ChangeKind::unknown && definition_row.before_available &&
+                  definition_row.after_available && definition_row.before == "42" &&
+                  definition_row.after == "42",
+              "Readable equal values have Unknown correspondence under different definitions");
+        auto trusted_definition = std::make_shared<Package>(*definition_after);
+        trusted_definition->decoder_definitions = definition_before->decoder_definitions;
+        trusted_definition->exports[0].properties["Unavailable"]["value"]["data"]["counter"] = 44;
+        definition_view.set_packages(definition_before, trusted_definition);
+        definition_view.set_property_scope("/Unavailable/value/data");
+        check(
+            row(definition_view.property_browser().page().table, "/Unavailable/value/data/counter").change ==
+                ChangeKind::modified,
+            "Matching definitions restore known native field changes");
+        definition_view.set_packages(definition_before, definition_after);
+        definition_view.set_property_scope("/Unavailable/value/data");
         auto ga = graph(), gb = ga;
         gb.exports[1].properties["NodePosX"]["value"] = 2;
         BlueprintView graph_view;
@@ -143,7 +179,7 @@ int main() {
             int width, height;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
             for (auto size : {ImVec2(1280, 800), ImVec2(640, 520)})
-                for (int scene = 0; scene < 5; ++scene) {
+                for (int scene = 0; scene < 6; ++scene) {
                     io.DisplaySize = size;
                     ImGui::NewFrame();
                     ImGui::SetNextWindowPos({0, 0});
@@ -162,8 +198,11 @@ int main() {
                     case 3:
                         skeleton.draw();
                         break;
-                    default:
+                    case 4:
                         collisions.draw();
+                        break;
+                    default:
+                        definition_view.draw("Definition", false);
                     }
                     ImGui::End();
                     ImGui::Render();
