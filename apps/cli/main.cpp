@@ -2089,24 +2089,39 @@ int run(const std::vector<std::string> &args) {
         detail::atomic_output(destination, write_report);
     return exit_code;
 }
-int checked_run(const std::vector<std::string> &args) {
+// Error reports must not throw: MSVC filesystem/system_error messages are in the ANSI code
+// page, so invalid UTF-8 is replaced instead of raising a second exception in the handler.
+int report_error(const Json &error) noexcept {
     try {
-        return run(args);
-    } catch (const Error &e) {
-        std::cerr << Json{{"error", e.code}, {"message", e.what()}, {"offset", e.offset}}.dump() << '\n';
-        return 2;
-    } catch (const std::exception &e) {
-        std::cerr << Json{{"error", "exception"}, {"message", e.what()}}.dump() << '\n';
-        return 2;
+        std::cerr << error.dump(-1, ' ', false, Json::error_handler_t::replace) << '\n';
+    } catch (...) {
+        std::cerr << "{\"error\":\"exception\"}\n";
     }
+    return 2;
+}
+template <class Run> int checked(Run &&run) noexcept {
+    try {
+        return run();
+    } catch (const Error &e) {
+        return report_error({{"error", e.code}, {"message", e.what()}, {"offset", e.offset}});
+    } catch (const std::exception &e) {
+        return report_error({{"error", "exception"}, {"message", e.what()}});
+    } catch (...) {
+        return report_error({{"error", "exception"}});
+    }
+}
+int checked_run(const std::vector<std::string> &args) {
+    return checked([&] { return run(args); });
 }
 } // namespace
 #ifdef _WIN32
 int wmain(int argc, wchar_t **argv) {
-    std::vector<std::string> args;
-    for (int i = 1; i < argc; ++i)
-        args.push_back(fs::path(argv[i]).u8string());
-    return checked_run(args);
+    return checked([&] {
+        std::vector<std::string> args;
+        for (int i = 1; i < argc; ++i)
+            args.push_back(fs::path(argv[i]).u8string());
+        return run(args);
+    });
 }
 #else
 int main(int argc, char **argv) { return checked_run({argv + 1, argv + argc}); }

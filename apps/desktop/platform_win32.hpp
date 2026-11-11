@@ -9,6 +9,8 @@ namespace cyuediff::desktop {
 using Microsoft::WRL::ComPtr;
 std::string utf8(const std::wstring &);
 std::wstring wide(const std::string &);
+// Never throws: for error reporting inside catch handlers (UTF-8, else the ANSI code page).
+std::wstring display_wide(const char *) noexcept;
 class NativeWindow {
     static LRESULT CALLBACK procedure(HWND, UINT, WPARAM, LPARAM);
     HINSTANCE instance_ = nullptr;

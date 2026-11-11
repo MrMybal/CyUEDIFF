@@ -127,6 +127,7 @@ TexturePayload trailer(Archive &a, const fs::path &path, const std::string &id, 
         result.storage = access == 0 ? "local" : (access == 1 ? "referenced" : "virtualized");
         if (access == 0) {
             result.file = path;
+            result.source = a.source();
             result.offset = start + header + static_cast<std::uint64_t>(offset);
         }
     }
@@ -156,16 +157,46 @@ bool boolean(Archive &a) {
     return value != 0;
 }
 } // namespace
+namespace {
+PackageSources sources_beside(const fs::path &path) {
+    PackageSources result;
+    result.name = path;
+    std::error_code error;
+    if (fs::is_regular_file(path, error) && !error)
+        result.package = file_source(path);
+    for (const auto *extension : PackageSources::companion_extensions()) {
+        auto companion = path;
+        companion.replace_extension(extension);
+        if (fs::is_regular_file(companion, error) && !error)
+            result.companions[extension] = file_source(companion);
+    }
+    return result;
+}
+// Hand-built packages without explicit inputs fall back to files beside Package::source.
+std::shared_ptr<const PackageSources> package_inputs(const Package &package) {
+    return package.inputs ? package.inputs : std::make_shared<const PackageSources>(sources_beside(package.source));
+}
+ByteSourcePtr input(const PackageSources &inputs, const char *extension) {
+    return *extension ? inputs.companion(extension) : inputs.package;
+}
+fs::path label(fs::path path, const char *extension) {
+    if (*extension)
+        path.replace_extension(extension);
+    return path;
+}
+} // namespace
 TexturePayload locate_texture_payload(const fs::path &path, const std::string &id, std::uint64_t size,
                                       const ReadOptions &options) {
+    return locate_texture_payload(sources_beside(path), path, id, size, options);
+}
+TexturePayload locate_texture_payload(const PackageSources &inputs, const fs::path &path, const std::string &id,
+                                      std::uint64_t size, const ReadOptions &options) {
     for (const auto *extension : {"", ".uexp", ".upayload"}) {
-        auto file = path;
-        if (*extension)
-            file.replace_extension(extension);
-        if (!fs::is_regular_file(file))
+        auto source = input(inputs, extension);
+        if (!source)
             continue;
-        Archive a(file, options);
-        auto result = trailer(a, file, id, size, options);
+        Archive a(std::move(source), options);
+        auto result = trailer(a, label(path, extension), id, size, options);
         if (result.storage == "unavailable")
             continue;
         if (result.storage == "local") {
@@ -206,17 +237,17 @@ EditorBulkResult read_editor_bulk(Archive &a, const Package &package, const Read
     else if (result.flags & (4u | 8u | 256u))
         payload.storage = "legacy-unsupported";
     else if (result.flags & 512u)
-        payload = locate_texture_payload(package.source, id, size, options);
+        payload = locate_texture_payload(*package_inputs(package), package.source, id, size, options);
     else if (result.flags & 1u)
         payload.storage = "virtualized";
     else {
-        payload.file = package.source;
-        if (result.flags & 2u)
-            payload.file.replace_extension(".upayload");
+        const auto *extension = (result.flags & 2u) ? ".upayload" : "";
+        payload.file = label(package.source, extension);
         payload.offset = offset;
-        if (fs::is_regular_file(payload.file)) {
-            Archive data(payload.file, options);
+        if (auto source = input(*package_inputs(package), extension)) {
+            Archive data(source, options);
             buffer_header(data, payload, data.size());
+            payload.source = std::move(source);
             payload.storage = "local";
             if (options.fingerprints)
                 payload.sha256 = data.hash(payload.offset, payload.stored_bytes);
@@ -313,7 +344,7 @@ TextureDecodeResult decode_texture_source(Archive &a, const Package &package, st
         info.payload.storage = "legacy-unsupported";
         info.diagnostics.push_back("Legacy or workspace-domain payload requires another backend.");
     } else if (flags & 512u) {
-        info.payload = locate_texture_payload(package.source, content, size, options);
+        info.payload = locate_texture_payload(*package_inputs(package), package.source, content, size, options);
         if (info.payload.storage == "unavailable")
             info.diagnostics.push_back("Source payload not found in available package trailers.");
     } else if (flags & 1u)
@@ -325,7 +356,10 @@ TextureDecodeResult decode_texture_source(Archive &a, const Package &package, st
         payload.raw_bytes = size;
         payload.content_id = content;
         payload.storage = "local";
-        Archive file(payload.file, options);
+        payload.source = package_inputs(package)->package;
+        if (!payload.source)
+            throw Error("io", "Cannot open " + package.source.u8string());
+        Archive file(payload.source, options);
         buffer_header(file, payload, file.size());
         if (options.fingerprints)
             payload.sha256 = file.hash(payload.offset, payload.stored_bytes);
@@ -380,10 +414,21 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &source, const B
     if (virtualized) {
         if (p.raw_bytes > options.max_payload_bytes || p.raw_bytes > SIZE_MAX)
             throw Error("limit", "Virtualized bulk source exceeds configured payload limit");
-        p.file = virtualized_payload_file(options.virtualized_payload_root, p.content_id, options.control);
+        if (options.virtualized_payload_source) {
+            options.control.checkpoint("Resolving virtualized payload");
+            virtualized_payload_relative_path(p.content_id); // Validates the FIoHash identity.
+            p.source = options.virtualized_payload_source(p.content_id);
+            if (!p.source)
+                throw Error("virtualized-missing",
+                            "Virtualized payload is absent from the host store: " + p.content_id);
+            p.file = fs::u8path(p.source->name());
+        } else {
+            p.file = virtualized_payload_file(options.virtualized_payload_root, p.content_id, options.control);
+            p.source = file_source(p.file);
+        }
         ReadOptions read;
         read.control = options.control;
-        detail::Archive input(p.file, read);
+        detail::Archive input(p.source, read);
         if (input.size() < 64 || input.size() > options.max_payload_bytes || input.size() > SIZE_MAX)
             throw Error("limit", "Virtualized compressed buffer exceeds configured payload limit");
         p.offset = 0;
@@ -399,7 +444,7 @@ std::vector<std::uint8_t> decode_bulk_payload(const BulkPayload &source, const B
     ReadOptions read;
     read.control = options.control;
     options.control.checkpoint("Reading bulk data", 0, p.raw_bytes);
-    detail::Archive a(p.file, read);
+    detail::Archive a(p.source ? p.source : file_source(p.file), read);
     if (p.offset > a.size() || p.stored_bytes > a.size() - p.offset)
         throw Error("bounds", "Bulk payload escapes input file");
     auto checked = p;

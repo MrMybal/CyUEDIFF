@@ -1,5 +1,6 @@
 #include "default_snapshot_fixture.hpp"
 #include "package_fixture.hpp"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <chrono>
@@ -468,6 +469,20 @@ int main(int argc, char **argv) {
         peer.fields[std::string(root) + ".Selected"]["value"]["number"] = 1;
         check(compare_effective_defaults(left, peer).status() == "changed",
               "Different internal numbers prove distinct names independently of Unicode case");
+        {
+            // "X-y" sorts between "X" and "X/..."; it must not hide the unknown descendant "X/z".
+            EffectiveDefaults a, b;
+            a.complete = b.complete = true;
+            const Json type = {{"name", "OpaqueProperty"}};
+            a.fields["F"] = {{"available", true}, {"type", type}, {"value", {{"X", 1}}}};
+            b.fields["F"] = {{"available", true}, {"type", type}, {"value", Json::object()}};
+            a.unavailable = Json::array({{{"path", "/fields/F/value/X-y"}}, {{"path", "/fields/F/value/X/z"}}});
+            const auto sibling = compare_effective_defaults(a, b);
+            check(sibling.changes.empty() &&
+                      std::any_of(sibling.unavailable.begin(), sibling.unavailable.end(),
+                                  [](const Json &row) { return row.at("path") == "/fields/F/value/X"; }),
+                  "Unknown descendant scopes keep added/removed values uncertain despite sorted siblings");
+        }
         p = f.package();
         p.exports[0].properties["Count"] = {{"type", {{"name", "IntProperty"}}},
                                             {"opaque", {{"reason", "unread"}}}};

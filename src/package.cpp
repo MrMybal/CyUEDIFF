@@ -40,10 +40,12 @@ std::string engine_version(Archive &a) {
     return std::to_string(major) + "." + std::to_string(minor) + "." + std::to_string(patch) + "-" +
            std::to_string(changelist) + branch;
 }
-void table_range(Archive &a, std::int32_t offset, std::int32_t count, std::uint32_t minimum,
-                 std::int32_t header) {
-    if (offset < 0 || count < 0 || static_cast<std::uint64_t>(offset) > a.size() ||
-        std::uint64_t(count) * minimum > a.size() - static_cast<std::uint64_t>(offset) ||
+// Package tables live inside the header (checked again after each table is read), so bound
+// their minimum footprint by header_size before any count-driven reservation.
+void table_range(std::int32_t offset, std::int32_t count, std::uint32_t minimum, std::int32_t header) {
+    if (offset < 0 || count < 0 || header <= 0 || offset > header ||
+        std::uint64_t(count) * minimum >
+            static_cast<std::uint64_t>(header) - static_cast<std::uint64_t>(offset) ||
         (count && (!offset || offset >= header)))
         throw Error("table", "Invalid package table range");
 }
@@ -125,9 +127,9 @@ void read_summary(Archive &a, PackageSummary &s) {
     auto chunks = a.count();
     if (compression || chunks)
         throw Error("compression", "Package-level compression requires a decompression backend");
-    table_range(a, s.name_offset, s.name_count, 8, s.header_size);
-    table_range(a, s.import_offset, s.import_count, 28, s.header_size);
-    table_range(a, s.export_offset, s.export_count, 80, s.header_size);
+    table_range(s.name_offset, s.name_count, 8, s.header_size);
+    table_range(s.import_offset, s.import_count, 28, s.header_size);
+    table_range(s.export_offset, s.export_count, 80, s.header_size);
 }
 using Type = TaggedType;
 Json type_json(const Type &t) { return tagged_type_json(t, false); }
@@ -844,11 +846,24 @@ Json opaque_range(Archive &a, std::uint64_t start, std::uint64_t bytes, const Re
         j["sha256"] = a.hash(start, bytes);
     return j;
 }
+Package open_package(std::shared_ptr<const PackageSources> inputs, fs::path source_path, const ReadOptions &options);
 } // namespace
 Package Package::open(const fs::path &file, const ReadOptions &options) {
+    auto source = fs::weakly_canonical(fs::absolute(file));
+    return open_package(std::make_shared<const PackageSources>(PackageSources::files(file)), std::move(source),
+                        options);
+}
+Package Package::open(const PackageSources &sources, const ReadOptions &options) {
+    sources.validate();
+    auto name = sources.name.empty() ? fs::u8path(sources.package->name()) : sources.name;
+    return open_package(std::make_shared<const PackageSources>(sources), std::move(name), options);
+}
+namespace {
+Package open_package(std::shared_ptr<const PackageSources> inputs, fs::path source_path, const ReadOptions &options) {
     Package p;
-    p.source = fs::weakly_canonical(fs::absolute(file));
-    Archive header(file, options);
+    p.source = std::move(source_path);
+    p.inputs = inputs;
+    Archive header(inputs->package, options);
     read_summary(header, p.summary);
     if (options.decoders) {
         p.decoder_context_sha256 = options.decoders->context_sha256();
@@ -935,10 +950,8 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     for (const auto &entry : p.imports)
         p.reference(entry.outer_index);
     std::unique_ptr<Archive> export_data;
-    auto sidecar = file;
-    sidecar.replace_extension(".uexp");
-    if (fs::is_regular_file(sidecar))
-        export_data = std::make_unique<Archive>(sidecar, options);
+    if (auto sidecar = inputs->companion(".uexp"))
+        export_data = std::make_unique<Archive>(std::move(sidecar), options);
     detail::ValueIdentityJournal value_identities(options.value_identities, options.control,
                                                   options.name_values);
     for (auto &entry : p.exports) {
@@ -1169,13 +1182,13 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
     }
     if (options.fingerprints) {
         p.fingerprints["package"] = {{"bytes", header.size()}, {"sha256", header.hash(0, header.size())}};
-        for (const auto *extension : {".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload"}) {
-            auto companion = file;
-            companion.replace_extension(extension);
-            if (fs::is_regular_file(companion))
-                p.fingerprints[extension] = {{"bytes", fs::file_size(companion)},
-                                             {"sha256", sha256_file(companion, options.control)}};
-        }
+        ReadOptions hashing;
+        hashing.control = options.control;
+        for (const auto *extension : PackageSources::companion_extensions())
+            if (auto companion = inputs->companion(extension)) {
+                Archive bytes(std::move(companion), hashing);
+                p.fingerprints[extension] = {{"bytes", bytes.size()}, {"sha256", bytes.hash(0, bytes.size())}};
+            }
     }
     if (s.flags & unversioned_properties)
         p.diagnostics.push_back(
@@ -1187,6 +1200,7 @@ Package Package::open(const fs::path &file, const ReadOptions &options) {
         p.value_identities["root"] = "semantic-snapshot";
     return p;
 }
+} // namespace
 std::string Package::reference(std::int32_t index) const {
     if (index == 0)
         return "None";

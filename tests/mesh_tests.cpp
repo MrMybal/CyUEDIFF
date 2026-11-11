@@ -219,6 +219,24 @@ int main() {
             virtual_options.virtualized_payload_root = store;
             check(decode_mesh(virtualized, virtual_options).to_json() == decode(data).to_json(),
                   "Public virtualized mesh geometry equals local MeshDescription");
+            MeshDecodeOptions host_store;
+            host_store.virtualized_payload_source = [&](const std::string &id) -> ByteSourcePtr {
+                return id == hash.substr(0, 40)
+                           ? memory_source(std::vector<std::uint8_t>(encoded.data.begin(), encoded.data.end()),
+                                           "host-store")
+                           : nullptr;
+            };
+            check(decode_mesh(virtualized, host_store).to_json() == decode(data).to_json(),
+                  "Host virtualized stores supply payload bytes without a filesystem root");
+            auto absent = virtualized;
+            absent.payload.content_id = std::string(39, '0') + "1";
+            error([&] { decode_mesh(absent, host_store); }, "virtualized-missing");
+            host_store.virtualized_payload_source = [&](const std::string &) -> ByteSourcePtr {
+                auto bytes = std::vector<std::uint8_t>(encoded.data.begin(), encoded.data.end());
+                bytes.back() ^= 1;
+                return memory_source(std::move(bytes));
+            };
+            error([&] { decode_mesh(virtualized, host_store); }, "bulk-hash");
         }
         auto bulk = compressed();
         checksum(bulk);

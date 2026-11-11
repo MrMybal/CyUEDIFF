@@ -163,6 +163,30 @@ int main() {
         auto image = decode_texture(texture);
         check(image.width == 2 && image.pixels == std::vector<std::uint8_t>({255, 0, 0, 255, 0, 255, 0, 128}),
               "BGRA channels and alpha preserved");
+        {
+            // Payloads located through explicit sources keep their bytes without the original file.
+            auto memory = p;
+            memory.source = fs::u8path("Depot/Content/source.uasset");
+            auto inputs = std::make_shared<PackageSources>();
+            inputs->name = memory.source;
+            inputs->package = memory_source(std::vector<std::uint8_t>(original.data.begin(), original.data.end()));
+            memory.inputs = inputs;
+            ReadOptions options;
+            detail::Archive a(inputs->package, options);
+            const auto from_memory = detail::decode_texture_source(a, memory, 0, 60, options).source;
+            const auto moved = root / "moved.uasset";
+            fs::rename(path, moved);
+            bool same = false;
+            try {
+                same = decode_texture(from_memory).pixels == image.pixels;
+            } catch (...) {
+                fs::rename(moved, path);
+                throw;
+            }
+            fs::rename(moved, path);
+            check(same && from_memory.payload.file == memory.source,
+                  "Memory-sourced texture payloads decode after the file is gone");
+        }
         TextureDecodeOptions cancel_texture;
         cancel_texture.control.cancelled = [] { return true; };
         error([&] { decode_texture(texture, 0, cancel_texture); }, "cancelled");

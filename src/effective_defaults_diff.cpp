@@ -22,10 +22,13 @@ struct Compare : detail::EffectiveBudget {
         }
     }
     bool uncertain(const std::string &path) {
-        auto it = unknowns.lower_bound(path);
-        if (it != unknowns.end() && (it->first == path || (it->first.size() > path.size() &&
-                                                           it->first.compare(0, path.size(), path) == 0 &&
-                                                           it->first[path.size()] == '/')))
+        if (unknowns.count(path))
+            return true;
+        // Search descendants from "path/": siblings such as "path-x" or "path.x" sort between
+        // "path" and "path/..." and would otherwise hide an unknown descendant scope.
+        const auto prefix = path + '/';
+        auto it = unknowns.lower_bound(prefix);
+        if (it != unknowns.end() && it->first.compare(0, prefix.size(), prefix) == 0)
             return true;
         spend(0, path.size());
         auto parent = path;

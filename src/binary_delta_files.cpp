@@ -24,8 +24,8 @@ class FileDeltaInput {
         if (!input_)
             return {};
         return {input_->size(), [this](std::uint64_t at, std::uint8_t *out, std::size_t n) {
-                    input_->seek(at);
-                    input_->read(out, n);
+                    // Rereads verify that the file did not change: never serve them from a window.
+                    input_->read_at(at, out, n);
                     return n;
                 }};
     }

@@ -28,27 +28,32 @@ void utf8(std::string &out, std::uint32_t c) {
     }
 }
 } // namespace
-Archive::Archive(const fs::path &path, const ReadOptions &options)
-    : stream_(path, std::ios::binary), options_(options) {
-    if (!stream_)
-        throw Error("io", "Cannot open " + path.u8string());
-    stream_.seekg(0, std::ios::end);
-    auto n = stream_.tellg();
-    if (n < 0)
-        throw Error("io", "Cannot determine file size");
-    end_ = static_cast<std::uint64_t>(n);
+Archive::Archive(const fs::path &path, const ReadOptions &options) : Archive(file_source(path), options) {}
+Archive::Archive(ByteSourcePtr source, const ReadOptions &options)
+    : source_(std::move(source)), options_(options) {
+    if (!source_)
+        throw Error("byte-source", "Missing byte source");
+    session_ = source_->session();
+    if (!session_)
+        throw Error("byte-source", "Byte source returned no session");
+    end_ = source_->size();
     read_limit_ = end_;
     seek(0);
+}
+void Archive::fetch(std::uint64_t offset, std::uint8_t *destination, std::size_t bytes) {
+    try {
+        session_->read(offset, destination, bytes);
+    } catch (const Error &) {
+        throw;
+    } catch (const std::exception &e) {
+        throw Error("io", std::string("Read failed: ") + e.what(), offset);
+    }
 }
 void Archive::seek(std::uint64_t p) {
     options_.control.check();
     if (p > read_limit_)
         throw Error("bounds", "Offset outside file", p);
-    stream_.clear();
-    stream_.seekg(static_cast<std::streamoff>(p));
     position_ = p;
-    if (!stream_)
-        throw Error("io", "Seek failed", p);
 }
 void Archive::skip(std::uint64_t n) {
     if (n > read_limit_ - position_)
@@ -59,12 +64,47 @@ void Archive::read(void *destination, std::size_t bytes) {
     if (bytes > read_limit_ - position_)
         throw Error("bounds", "Truncated data", position_);
     options_.control.check();
-    auto out = static_cast<char *>(destination);
+    auto out = static_cast<std::uint8_t *>(destination);
     while (bytes) {
-        auto chunk = std::min<std::size_t>(bytes, 1024 * 1024);
-        stream_.read(out, static_cast<std::streamsize>(chunk));
-        if (!stream_)
-            throw Error("io", "Read failed", position_);
+        std::size_t chunk = 0;
+        if (position_ >= window_start_ && position_ - window_start_ < window_size_) {
+            const auto at = static_cast<std::size_t>(position_ - window_start_);
+            chunk = std::min(bytes, window_size_ - at);
+            std::memcpy(out, window_.data() + at, chunk);
+        } else if (bytes >= window_bytes) {
+            // Large reads bypass the window, in bounded chunks for progress and cancellation.
+            chunk = std::min<std::size_t>(bytes, 1024 * 1024);
+            fetch(position_, out, chunk);
+        } else {
+            window_.resize(window_bytes);
+            window_size_ = static_cast<std::size_t>(std::min<std::uint64_t>(window_bytes, end_ - position_));
+            window_start_ = position_;
+            try {
+                fetch(window_start_, window_.data(), window_size_);
+            } catch (...) {
+                window_size_ = 0;
+                throw;
+            }
+            continue;
+        }
+        out += chunk;
+        bytes -= chunk;
+        position_ += chunk;
+        progress_bytes_ += chunk;
+        if (progress_bytes_ >= 1024 * 1024) {
+            progress_bytes_ = 0;
+            options_.control.checkpoint("Reading file", position_, end_);
+        }
+    }
+}
+void Archive::read_at(std::uint64_t offset, void *destination, std::size_t bytes) {
+    seek(offset);
+    if (bytes > read_limit_ - position_)
+        throw Error("bounds", "Truncated data", position_);
+    auto out = static_cast<std::uint8_t *>(destination);
+    while (bytes) {
+        const auto chunk = std::min<std::size_t>(bytes, 1024 * 1024);
+        fetch(position_, out, chunk);
         out += chunk;
         bytes -= chunk;
         position_ += chunk;

@@ -52,7 +52,7 @@ add_library(cyuediff_core STATIC
     src/cloth.cpp src/mesh_overlaps.cpp src/vertex_attributes.cpp
     src/compressed_morphs.cpp
     src/tagged_types.cpp
-    src/atomic_output.cpp src/json_output.cpp src/json_equality.cpp src/source_availability.cpp src/source_limits.cpp src/physical_cloth.cpp src/physical_cloth_diff.cpp src/render_morphs.cpp src/compressed_curves.cpp src/cooked_animation.cpp src/animation_compression.cpp src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
+    src/atomic_output.cpp src/json_output.cpp src/json_equality.cpp src/source_availability.cpp src/source_limits.cpp src/physical_cloth.cpp src/physical_cloth_diff.cpp src/render_morphs.cpp src/compressed_curves.cpp src/cooked_animation.cpp src/animation_compression.cpp src/cooked_skeletal.cpp src/cooked_physics_review.cpp src/cooked_physics.cpp src/cooked_collision.cpp src/cooked_mesh.cpp src/cooked_texture.cpp src/gpu_texture.cpp src/reflection.cpp src/archive.cpp src/byte_source.cpp src/binary_delta_format.cpp src/binary_delta.cpp src/animation_socket_pose.cpp src/animation_pose_diff.cpp src/animation_pose.cpp src/animation_frame_diff.cpp src/animation_transform.cpp src/curve_components.cpp src/curve_value_diff.cpp src/curve_weighted.cpp src/curves.cpp src/animation.cpp src/attachments_pose.cpp src/attachments.cpp src/skeleton_pose_diff.cpp src/skeleton_pose.cpp src/skeleton.cpp src/skeleton_native.cpp src/collision_wireframe.cpp src/collision.cpp src/container.cpp src/zen.cpp src/schema_context.cpp src/schema.cpp src/cache.cpp src/decoders.cpp src/descriptor.cpp src/package.cpp src/project.cpp src/catalog.cpp src/diff.cpp src/visual_diff.cpp
     src/native.cpp src/package_metadata.cpp src/blueprint.cpp src/texture.cpp src/image.cpp src/hdr.cpp src/codec.cpp src/mesh.cpp src/material_io.cpp src/material.cpp)
 add_library(CyUEDiff::Core ALIAS cyuediff_core)
 target_sources(cyuediff_core PRIVATE src/defaults.cpp src/default_context.cpp src/blueprint_default_binding.cpp src/effective_defaults.cpp src/effective_defaults_diff.cpp src/nanite_attributes.cpp src/nanite_surface_diff.cpp src/cooked_nanite.cpp src/nanite_geometry.cpp $<TARGET_OBJECTS:cyuediff_blake3> src/content_hash.cpp src/virtualized.cpp src/mesh_skin.cpp src/mesh_morphs.cpp src/string_encoding.cpp src/binary_layout.cpp src/binary_delta_wire.cpp src/binary_delta_compose.cpp src/binary_delta_stream.cpp src/binary_delta_sources.cpp src/binary_delta_files.cpp)
@@ -697,6 +697,13 @@ if(BUILD_TESTING)
     add_executable(cyuediff_mesh_tests tests/mesh_tests.cpp)
     target_link_libraries(cyuediff_mesh_tests PRIVATE CyUEDiff::Core)
     add_test(NAME mesh COMMAND cyuediff_mesh_tests)
+    add_executable(cyuediff_byte_source_tests tests/byte_source_tests.cpp)
+    target_link_libraries(cyuediff_byte_source_tests PRIVATE CyUEDiff::Core)
+    if(NOT MSVC)
+        find_package(Threads REQUIRED)
+        target_link_libraries(cyuediff_byte_source_tests PRIVATE Threads::Threads)
+    endif()
+    add_test(NAME byte_source COMMAND cyuediff_byte_source_tests)
     add_executable(cyuediff_texture_tests tests/texture_tests.cpp)
     target_link_libraries(cyuediff_texture_tests PRIVATE CyUEDiff::Core)
     add_test(NAME texture COMMAND cyuediff_texture_tests)

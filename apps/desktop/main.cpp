@@ -1714,7 +1714,19 @@ class Shell {
         document_tabs_.set_tabs(std::move(tabs), session_.active_id(),
                                 session_.documents().size() < session_.maximum());
     }
+    // Frame-level guard: an exception while presenting a document must not close the
+    // application (and skip persist()); report it on the current document instead.
     void poll(Renderer &renderer) {
+        try {
+            poll_unchecked(renderer);
+        } catch (const std::exception &error) {
+            if (!presentations_.count(session_.active_id()))
+                throw;
+            current().dialog_error = error.what();
+            current().displayed = session_.document();
+        }
+    }
+    void poll_unchecked(Renderer &renderer) {
         for (auto &entry : presentations_)
             entry.second->container_view.poll();
 #ifdef CYUEDIFF_HAS_GIT
@@ -1805,8 +1817,12 @@ class Shell {
             }catch(const std::exception &error){current().gpu_diagnostics.push_back(error.what());}
             if (!current().cooked_view.empty())
                 current().container_view.set_property_mode(current().cooked_view == "properties");
-            if (current().container_tab >= 0 && !current().container_view.select_tab(current().container_tab))
-                throw Error("desktop-option", "Requested container tab is unavailable");
+            // A restored tab may no longer exist (e.g. a rebuilt container without Nanite data):
+            // keep the default tab and report it instead of failing the whole frame.
+            if (current().container_tab >= 0 && !current().container_view.select_tab(current().container_tab)) {
+                current().container_tab = -1;
+                current().dialog_error = "Requested container tab is unavailable";
+            }
             apply_pending_state();
             return;
         }
@@ -1833,7 +1849,8 @@ class Shell {
         current().context_details.clear();
 #ifdef CYUEDIFF_HAS_GIT
         if (current().displayed->git && !current().displayed->git->context_changes.empty())
-            current().context_details = current().displayed->git->context_changes.dump(2);
+            current().context_details =
+                current().displayed->git->context_changes.dump(2, ' ', false, Json::error_handler_t::replace);
 #endif
         current().images.clear();
         current().gpu_diagnostics.clear();
@@ -3330,7 +3347,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';
         if (!hidden)
-            MessageBoxW(nullptr, wide(error.what()).c_str(), L"CyUEDiff", MB_OK | MB_ICONERROR);
+            MessageBoxW(nullptr, display_wide(error.what()).c_str(), L"CyUEDiff", MB_OK | MB_ICONERROR);
+        return 2;
+    } catch (...) {
+        std::cerr << "Unexpected error\n";
+        if (!hidden)
+            MessageBoxW(nullptr, L"Unexpected error", L"CyUEDiff", MB_OK | MB_ICONERROR);
         return 2;
     }
 }

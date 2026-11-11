@@ -15,4 +15,7 @@ TextureDecodeResult decode_texture_source(Archive &, const Package &, std::size_
 // Exposed internally for focused binary fixtures; no scan for payload signatures.
 TexturePayload locate_texture_payload(const fs::path &, const std::string &content_id, std::uint64_t raw_size,
                                       const ReadOptions &);
+// `path` labels reported payload locations; bytes come only from `inputs`.
+TexturePayload locate_texture_payload(const PackageSources &inputs, const fs::path &path,
+                                      const std::string &content_id, std::uint64_t raw_size, const ReadOptions &);
 } // namespace cyuediff::detail

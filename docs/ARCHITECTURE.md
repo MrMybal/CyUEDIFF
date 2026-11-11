@@ -45,6 +45,10 @@ Snapshots omit copies of large bulk payloads. Packages retain decoded property v
 
 The `binary_delta*` modules implement a separate byte-level layer: bounded block matching, JSON/compact manifests, compact output sinks, composition and verified reconstruction. Callback/file-backed generation avoids buffering entire endpoint files. Literals, matching indexes and manifest parsing still use resident storage. A byte-exact reconstruction does not certify semantic understanding of the Unreal asset. Object/block servers, retention and remote transport are outside this layer. See [the binary contract](BINARY_DELTA.md).
 
+## Inputs
+
+Packages, companions and bulk payloads are read through `ByteSource` objects (file, memory, host callback). Hosts therefore supply revisions from any storage or version-control system without temporary files. Packages and payloads keep their sources alive. See [byte sources](BYTE_SOURCES.md).
+
 ## Optional adapters and hosts
 
 `CyUEDiff::Git` owns local revision/LFS materialization and its temporary files. It resolves commits without checkout, filters or fetch, verifies available local LFS objects and supplies provenance. Independent before/after `ReadOptions` support different engine/plugin wire descriptions. Historical project metadata and current local engine content remain distinct sources.

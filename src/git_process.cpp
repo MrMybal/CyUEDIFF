@@ -121,6 +121,39 @@ struct Handle {
     }
     Handle(const Handle &) = delete;
 };
+// CreateProcessW(nullptr, ...) searches the current directory before PATH, so a bare
+// "git" launched from an untrusted repository could run a planted git.exe. Resolve bare
+// names through absolute PATH entries only and pass the result as lpApplicationName.
+fs::path resolve_executable(const fs::path &executable) {
+    if (executable.has_parent_path())
+        return fs::absolute(executable);
+    auto name = executable;
+    if (!name.has_extension())
+        name += L".exe";
+    std::wstring search;
+    auto size = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    if (size) {
+        search.resize(size);
+        size = GetEnvironmentVariableW(L"PATH", search.data(), size);
+        search.resize(size);
+    }
+    std::size_t begin = 0;
+    while (begin <= search.size()) {
+        auto end = search.find(L';', begin);
+        auto entry = search.substr(begin, end == std::wstring::npos ? std::wstring::npos : end - begin);
+        begin = end == std::wstring::npos ? search.size() + 1 : end + 1;
+        if (entry.size() >= 2 && entry.front() == L'"' && entry.back() == L'"')
+            entry = entry.substr(1, entry.size() - 2);
+        const fs::path parent(entry);
+        if (entry.empty() || !parent.is_absolute())
+            continue;
+        std::error_code error;
+        auto candidate = parent / name;
+        if (fs::is_regular_file(candidate, error))
+            return candidate;
+    }
+    throw Error("git-process", "Cannot find Git executable on PATH");
+}
 std::vector<wchar_t> environment() {
     auto block = GetEnvironmentStringsW();
     if (!block)
@@ -152,7 +185,12 @@ int git_process(const GitOptions &options, const fs::path &repository,
     options.control.checkpoint("Reading Git objects");
     if (!options.timeout_ms || !output_limit || options.executable.empty())
         throw Error("git-options", "Git timeout, executable and output limits must be nonzero");
-    std::vector<std::string> args = {options.executable.u8string(), "--no-pager", "--literal-pathspecs", "-C",
+#ifdef _WIN32
+    const auto executable = resolve_executable(options.executable);
+#else
+    const auto &executable = options.executable;
+#endif
+    std::vector<std::string> args = {executable.u8string(), "--no-pager", "--literal-pathspecs", "-C",
                                      repository.u8string()};
     args.insert(args.end(), arguments.begin(), arguments.end());
     for (const auto &arg : args)
@@ -195,15 +233,30 @@ int git_process(const GitOptions &options, const fs::path &repository,
     HANDLE handles[] = {out.value, err.value, input.value};
     auto updated = UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
                                              handles, sizeof(handles), nullptr, nullptr);
+    // Git for Windows' git.exe is a launcher for the real git: terminate the whole tree through
+    // a kill-on-close job so no descendant keeps writing or locking the workspace files.
+    Handle job(CreateJobObjectW(nullptr, nullptr));
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!job.value ||
+        !SetInformationJobObject(job.value, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+        DeleteProcThreadAttributeList(startup.lpAttributeList);
+        throw Error("git-process", "Cannot create Git process job");
+    }
     PROCESS_INFORMATION process{};
-    auto started = updated && CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
+    auto started = updated && CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, TRUE,
                                              CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
-                                                 EXTENDED_STARTUPINFO_PRESENT,
+                                                 EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED,
                                              env.data(), nullptr, &startup.StartupInfo, &process);
     DeleteProcThreadAttributeList(startup.lpAttributeList);
     if (!started)
         throw Error("git-process", "Cannot launch Git executable");
     Handle process_handle(process.hProcess), thread(process.hThread);
+    if (!AssignProcessToJobObject(job.value, process_handle.value) || ResumeThread(thread.value) == DWORD(-1)) {
+        TerminateProcess(process_handle.value, 2);
+        WaitForSingleObject(process_handle.value, INFINITE);
+        throw Error("git-process", "Cannot start Git process in its job");
+    }
     for (;;) {
         auto wait = WaitForSingleObject(process_handle.value, 20);
         if (options.control.cancelled && options.control.cancelled())
@@ -215,7 +268,7 @@ int git_process(const GitOptions &options, const fs::path &repository,
         else if (wait != WAIT_OBJECT_0 && std::chrono::steady_clock::now() >= deadline)
             failure = "git-timeout";
         if (!failure.empty()) {
-            TerminateProcess(process_handle.value, 2);
+            TerminateJobObject(job.value, 2);
             WaitForSingleObject(process_handle.value, INFINITE);
             break;
         }
@@ -252,8 +305,9 @@ int git_process(const GitOptions &options, const fs::path &repository,
         for (;;) {
             auto end = search.find(':', begin);
             auto parent = search.substr(begin, end == std::string::npos ? end : end - begin);
-            auto candidate = fs::path(parent.empty() ? "." : parent) / executable;
-            if (::access(candidate.c_str(), X_OK) == 0) {
+            // Empty or relative PATH entries name the current directory: never search it.
+            auto candidate = fs::path(parent) / executable;
+            if (!parent.empty() && parent.front() == '/' && ::access(candidate.c_str(), X_OK) == 0) {
                 executable = fs::absolute(candidate);
                 break;
             }
@@ -273,6 +327,8 @@ int git_process(const GitOptions &options, const fs::path &repository,
     }
     auto pid = fork();
     if (pid == 0) {
+        // Own process group, so timeouts and cancellation also stop Git's descendants.
+        setpgid(0, 0);
         int input = ::open("/dev/null", O_RDONLY);
         dup2(out, STDOUT_FILENO);
         dup2(err, STDERR_FILENO);
@@ -287,6 +343,7 @@ int git_process(const GitOptions &options, const fs::path &repository,
     close(err);
     if (pid < 0)
         throw Error("git-process", "Cannot fork Git process");
+    setpgid(pid, pid); // Also set by the child; whichever runs first wins the race.
     int status = 0;
     for (;;) {
         auto wait = waitpid(pid, &status, WNOHANG);
@@ -300,6 +357,7 @@ int git_process(const GitOptions &options, const fs::path &repository,
             failure = "git-timeout";
         if (!failure.empty()) {
             if (wait != pid) {
+                kill(-pid, SIGKILL);
                 kill(pid, SIGKILL);
                 while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
                 }

@@ -39,6 +39,56 @@ struct OperationControl {
         check();
     }
 };
+// Random-access bytes of one input: a local file, memory, a version-control blob, a network
+// range... The Core reads packages only through sources, so hosts keep their own storage and
+// versioning systems. See docs/BYTE_SOURCES.md.
+// Contract: size() is constant; read() fills exactly `bytes` bytes at `offset`, where
+// offset + bytes <= size(), or throws. Const calls may run concurrently from several threads.
+class ByteSource {
+  public:
+    virtual ~ByteSource() = default;
+    virtual std::uint64_t size() const = 0;
+    virtual void read(std::uint64_t offset, std::uint8_t *destination, std::size_t bytes) const = 0;
+    // Label for diagnostics (file name, depot path, URL...). The Core never opens it.
+    virtual std::string name() const { return {}; }
+    // Optional sequential session holding a resource (file handle, connection) while one
+    // decoder reads. Sessions are used by a single thread. The default forwards to read().
+    class Session {
+      public:
+        virtual ~Session() = default;
+        virtual void read(std::uint64_t offset, std::uint8_t *destination, std::size_t bytes) = 0;
+    };
+    virtual std::unique_ptr<Session> session() const;
+};
+using ByteSourcePtr = std::shared_ptr<const ByteSource>;
+// Local file. Its size is captured now; each session reopens it and rejects a size change
+// with Error("source-changed"). No handle stays open between sessions.
+ByteSourcePtr file_source(const fs::path &);
+// Owned bytes (moved in).
+ByteSourcePtr memory_source(std::vector<std::uint8_t> bytes, std::string name = {});
+// Zero-copy view of host memory, kept alive by `owner` for as long as the source exists.
+ByteSourcePtr memory_source(std::shared_ptr<const void> owner, const std::uint8_t *data, std::size_t size,
+                            std::string name = {});
+// Host callback (VCS API, network range reads...). It must follow the ByteSource::read contract.
+using ByteReadCallback = std::function<void(std::uint64_t offset, std::uint8_t *destination, std::size_t bytes)>;
+ByteSourcePtr callback_source(std::uint64_t size, ByteReadCallback read, std::string name = {});
+// One package and the companion files of the same revision, keyed by extension. A missing key
+// means "absent": with explicit sources the Core never looks for siblings on disk.
+struct PackageSources {
+    ByteSourcePtr package;
+    // Keys: ".uexp", ".ubulk", ".uptnl", ".m.ubulk", ".o.ubulk", ".upayload".
+    std::map<std::string, ByteSourcePtr> companions;
+    // Logical asset path (repository/depot path, file name...) reported as Package::source.
+    // Empty: package->name().
+    fs::path name;
+    static const std::array<const char *, 6> &companion_extensions();
+    // The package file plus the companions present beside it on disk.
+    static PackageSources files(const fs::path &asset);
+    // Null when absent.
+    ByteSourcePtr companion(const std::string &extension) const;
+    // Rejects a null package source, unknown extensions and null companions.
+    void validate() const;
+};
 // Optional side observations. Limits affect identity availability, not decoded stored values.
 struct ValueIdentityOptions {
     bool names = false;
@@ -116,7 +166,10 @@ struct ObjectExport {
     std::string coverage = "metadata";
 };
 struct BulkPayload {
+    // Location label for reports; bytes are read from `source` when set, else from `file`.
     fs::path file;
+    // Keeps the payload's bytes alive and readable without the original file.
+    ByteSourcePtr source;
     std::uint64_t offset = 0, stored_bytes = 0, raw_bytes = 0;
     std::uint32_t method = 0;
     std::string storage = "unavailable", content_id, sha256;
@@ -130,6 +183,9 @@ struct BulkDecodeOptions {
     BlockDecoder decoder;
     OperationControl control;
     fs::path virtualized_payload_root;
+    // Host store for virtualized payloads (DDC, VCS virtualization backend...), keyed by the
+    // 40-digit FIoHash. Takes precedence over virtualized_payload_root. Return null when absent.
+    std::function<ByteSourcePtr(const std::string &content_id)> virtualized_payload_source;
     // Virtualized reads always verify the full raw BLAKE3. Local reads may opt in.
     bool verify_raw_hash = false;
 };
@@ -233,7 +289,11 @@ MeshGeometry decode_mesh(const MeshSource &, const MeshDecodeOptions &options = 
 MeshComparison compare_meshes(const MeshGeometry &, const MeshGeometry &);
 void write_obj(const fs::path &, const MeshGeometry &);
 struct Package {
+    // Canonical file path, or PackageSources::name for explicit sources.
     fs::path source;
+    // Byte sources this package was read from; null for hand-built packages, which fall back
+    // to files beside `source`.
+    std::shared_ptr<const PackageSources> inputs;
     PackageSummary summary;
     std::vector<std::string> names;
     std::vector<ObjectImport> imports;
@@ -252,6 +312,8 @@ struct Package {
     // Decoder IDs to explicit definition identities; provenance, not stored asset members.
     std::map<std::string, std::string> decoder_definitions;
     static Package open(const fs::path &file, const ReadOptions &options = {});
+    // Reads from host-supplied bytes; never touches the filesystem for the package or companions.
+    static Package open(const PackageSources &sources, const ReadOptions &options = {});
     std::string reference(std::int32_t index) const;
     Json semantic_snapshot() const;
     // Graphs, nodes and pins are keyed by GUID; dangling connections stay visible.

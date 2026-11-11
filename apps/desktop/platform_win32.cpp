@@ -39,6 +39,26 @@ std::wstring wide(const std::string &text) {
                         result.data(), chars);
     return result;
 }
+std::wstring display_wide(const char *text) noexcept {
+    try {
+        const std::string value = text ? text : "";
+        if (value.empty())
+            return {};
+        // UTF-8 first; MSVC filesystem/system_error messages use the ANSI code page instead.
+        for (auto page : {CP_UTF8, CP_ACP}) {
+            const auto flags = page == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0;
+            const int chars =
+                MultiByteToWideChar(page, flags, value.data(), static_cast<int>(value.size()), nullptr, 0);
+            if (!chars)
+                continue;
+            std::wstring result(chars, L'\0');
+            MultiByteToWideChar(page, flags, value.data(), static_cast<int>(value.size()), result.data(), chars);
+            return result;
+        }
+    } catch (...) {
+    }
+    return L"Unexpected error";
+}
 namespace {
 BOOL CALLBACK monitor_area(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
     auto &areas = *reinterpret_cast<std::vector<WindowWorkArea> *>(data);
