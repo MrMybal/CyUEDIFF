@@ -399,6 +399,63 @@ ValueCoverage AssetView::value_coverage(const std::string &object, int root) con
     }
     return out;
 }
+bool AssetView::oversized(bool after, std::size_t index) const {
+    const auto &raw = after ? after_properties_ : before_properties_;
+    const auto &peer_raw = after ? before_properties_ : after_properties_;
+    const auto peer = (after ? after_peer_ : before_peer_)[index];
+    return raw[index].empty() || (peer >= 0 && peer_raw[static_cast<std::size_t>(peer)].empty());
+}
+PropertyView AssetView::build_inspection(bool after, std::size_t index, bool summary) const {
+    const auto &local = after ? after_ : before_;
+    const auto &peer_package = after ? before_ : after_;
+    const auto &entry = local->exports[index];
+    const auto peer = (after ? after_peer_ : before_peer_)[index];
+    const ObjectExport *match = peer < 0 ? nullptr : &peer_package->exports[static_cast<std::size_t>(peer)];
+    PropertyView view;
+    if (oversized(after, index)) {
+        const auto *a = &entry.properties;
+        const auto *b = match ? &match->properties : nullptr;
+        if (after)
+            std::swap(a, b);
+        if (!comparison_)
+            a = b = &entry.properties;
+        PropertyTableOptions options;
+        options.coverage = value_coverage(entry.path, 0);
+        options.max_rows = 1;
+        options.escape_non_bmp = sizeof(ImWchar) == 2;
+        view.set_table(property_table(a, b, options), comparison_);
+        return view;
+    }
+    auto data = [](const ObjectExport &e) {
+        return Json{{"properties", e.properties}, {"opaque", e.opaque}, {"native", e.native_data}};
+    };
+    auto a = data(entry), b = match ? data(*match) : Json{};
+    const Json *other = match ? &b : nullptr;
+    PropertyTableOptions options;
+    options.coverage = value_coverage(entry.path);
+    options.escape_non_bmp = sizeof(ImWchar) == 2;
+    if (summary)
+        options.max_rows = 1; // The root row: the same change kind as the full table's first row.
+    if (comparison_)
+        view.set_table(property_table(after ? other : &a, after ? &a : other, options), true);
+    else
+        view.set_table(property_table(&a, &a, options), false);
+    return view;
+}
+PropertyView &AssetView::inspection(bool after, std::size_t index) {
+    auto &views = after ? after_inspection_ : before_inspection_;
+    auto &full = after ? after_full_ : before_full_;
+    if (!full[index]) {
+        views[index] = build_inspection(after, index, false);
+        full[index] = 1;
+        auto &pending = (after ? after_pending_ : before_pending_)[index];
+        if (!pending.is_null()) {
+            views[index].restore_view_state(pending);
+            pending = nullptr;
+        }
+    }
+    return views[index];
+}
 void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_ptr<const Package> after,
                              bool compare_missing_side) {
     if (before && after && (before->source_read_limit_failed || after->source_read_limit_failed))
@@ -428,15 +485,12 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     bound_browser_root_ = -1;
     comparison_ = (before_ && after_) || (compare_missing_side && (before_ || after_));
     properties_after_ = !before_;
+    // One bounded serialization per export: the combined JSON exceeds the display limits
+    // whenever its properties or native data alone would.
     auto prepare_inspection = [](const std::shared_ptr<const Package> &package) {
         std::vector<std::string> result;
         if (package)
             for (const auto &entry : package->exports) {
-                if (detail::presentation_json(entry.properties).empty() ||
-                    detail::presentation_json(entry.native_data).empty()) {
-                    result.emplace_back();
-                    continue;
-                }
                 Json data = {{"properties", entry.properties}, {"opaque", entry.opaque}};
                 if (!entry.native_data.empty())
                     data["native"] = entry.native_data;
@@ -446,58 +500,43 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     };
     before_properties_ = prepare_inspection(before_);
     after_properties_ = prepare_inspection(after_);
-    auto inspections = [&](const auto &local, const auto &peer, bool after) {
-        std::vector<PropertyView> views;
-        std::map<std::string, const ObjectExport *> objects;
+    auto peers = [](const auto &local, const auto &peer) {
+        std::vector<std::ptrdiff_t> result;
+        std::map<std::string, std::ptrdiff_t> objects;
         if (peer)
-            for (const auto &entry : peer->exports)
-                objects[entry.path] = &entry;
-        auto data = [](const ObjectExport &entry) {
-            return Json{
-                {"properties", entry.properties}, {"opaque", entry.opaque}, {"native", entry.native_data}};
-        };
+            for (std::size_t i = 0; i < peer->exports.size(); ++i)
+                objects[peer->exports[i].path] = static_cast<std::ptrdiff_t>(i);
         if (local)
             for (const auto &entry : local->exports) {
-                auto it = objects.find(entry.path);
-                const auto &raw = after ? after_properties_ : before_properties_;
-                const auto &peer_raw = after ? before_properties_ : after_properties_;
-                const auto local_index = static_cast<std::size_t>(&entry - local->exports.data());
-                const auto peer_index =
-                    it == objects.end() ? 0 : static_cast<std::size_t>(it->second - peer->exports.data());
-                if (raw[local_index].empty() || (it != objects.end() && peer_raw[peer_index].empty())) {
-                    const auto *a = &entry.properties;
-                    const auto *b = it == objects.end() ? nullptr : &it->second->properties;
-                    if (after)
-                        std::swap(a, b);
-                    if (!comparison_)
-                        a = b = &entry.properties;
-                    PropertyTableOptions options;
-                    options.coverage = value_coverage(entry.path, 0);
-                    options.max_rows = 1;
-                    options.escape_non_bmp = sizeof(ImWchar) == 2;
-                    auto table = property_table(a, b, options);
-                    PropertyView view;
-                    view.set_table(std::move(table), comparison_);
-                    views.push_back(std::move(view));
+                const auto it = objects.find(entry.path);
+                result.push_back(it == objects.end() ? -1 : it->second);
+            }
+        return result;
+    };
+    before_peer_ = peers(before_, after_);
+    after_peer_ = peers(after_, before_);
+    // Only root rows are prepared now (change colors, initial selection); an export's full
+    // table is built when it is shown. Oversized exports keep their bounded root-only table.
+    auto inspections = [&](bool after) {
+        const auto &local = after ? after_ : before_;
+        std::vector<PropertyView> views;
+        auto &full = after ? after_full_ : before_full_;
+        auto &pending = after ? after_pending_ : before_pending_;
+        full.clear();
+        pending.clear();
+        if (local)
+            for (std::size_t i = 0; i < local->exports.size(); ++i) {
+                const bool large = oversized(after, i);
+                if (large)
                     browse_properties_ = true;
-                    continue;
-                }
-                auto a = data(entry), b = it == objects.end() ? Json{} : data(*it->second);
-                const Json *match = it == objects.end() ? nullptr : &b;
-                PropertyView view;
-                PropertyTableOptions options;
-                options.coverage = value_coverage(entry.path);
-                options.escape_non_bmp = sizeof(ImWchar) == 2;
-                if (comparison_)
-                    view.set_table(property_table(after ? match : &a, after ? &a : match, options), true);
-                else
-                    view.set_table(property_table(&a, &a, options), false);
-                views.push_back(std::move(view));
+                views.push_back(build_inspection(after, i, !large));
+                full.push_back(large);
+                pending.emplace_back();
             }
         return views;
     };
-    before_inspection_ = inspections(before_, after_, false);
-    after_inspection_ = inspections(after_, before_, true);
+    before_inspection_ = inspections(false);
+    after_inspection_ = inspections(true);
     const auto &initial = properties_after_ ? after_inspection_ : before_inspection_;
     if (comparison_) {
         bool selected = false;
@@ -682,7 +721,7 @@ void AssetView::bind_property_browser() {
     const auto input = property_browser_inputs();
     property_browser_.set_values(input.before, input.after, input.comparing, input.coverage);
     const auto &views = properties_after_ ? after_inspection_ : before_inspection_;
-    if (selected_ < views.size() && views[selected_].table().truncated)
+    if (selected_ < views.size() && inspection(properties_after_, selected_).table().truncated)
         browse_properties_ = true;
 }
 bool AssetView::set_property_scope(const std::string &scope, std::size_t first, int root) {
@@ -768,8 +807,13 @@ Json AssetView::view_state() const {
         const auto &package = after ? after_ : before_;
         const auto &views = after ? after_inspection_ : before_inspection_;
         Json properties = Json::object();
-        if (package && selected_ < views.size())
-            properties[package->exports[selected_].path] = views[selected_].view_state();
+        if (package && selected_ < views.size()) {
+            // An export not shown yet keeps the state restored for it.
+            const auto &pending = (after ? after_pending_ : before_pending_)[selected_];
+            properties[package->exports[selected_].path] =
+                (after ? after_full_ : before_full_)[selected_] || pending.is_null() ? views[selected_].view_state()
+                                                                                       : pending;
+        }
         Json textures = Json::object();
         const auto &tv = after ? after_textures_ : before_textures_;
         if (texture_selected_ < tv.size())
@@ -922,8 +966,11 @@ void AssetView::restore_view_state(const Json &state) {
         if (p && v.contains("properties"))
             for (std::size_t i = 0; i < views.size(); ++i) {
                 auto it = v["properties"].find(p->exports[i].path);
-                if (it != v["properties"].end())
-                    views[i].restore_view_state(*it);
+                if (it != v["properties"].end()) {
+                    views[i].restore_view_state(*it); // Validates now; re-applied to the full table.
+                    if (!(after ? after_full_ : before_full_)[i])
+                        (after ? after_pending_ : before_pending_)[i] = *it;
+                }
             }
     }
     if (state.contains("browserRoot"))
@@ -1063,7 +1110,7 @@ void AssetView::draw(const char *id, bool show_language) {
                                         .c_str());
                             property_browser_.draw(input.before, input.after);
                         } else
-                            (properties_after_ ? after_inspection_ : before_inspection_)[selected_].draw();
+                            this->inspection(properties_after_, selected_).draw();
                     }
                     layout_.end_table();
                 }

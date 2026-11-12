@@ -50,6 +50,13 @@ class AssetView {
     std::size_t selected_ = 0;
     bool properties_after_ = false, comparison_ = false, raw_properties_ = false;
     std::vector<PropertyView> before_inspection_, after_inspection_;
+    // Full property tables are built when an export is shown; until then each holds its root row.
+    std::vector<char> before_full_, after_full_;
+    std::vector<Json> before_pending_, after_pending_;
+    std::vector<std::ptrdiff_t> before_peer_, after_peer_;
+    bool oversized(bool after, std::size_t index) const;
+    PropertyView build_inspection(bool after, std::size_t index, bool summary) const;
+    PropertyView &inspection(bool after, std::size_t index);
     PropertyBrowserView property_browser_;
     bool browse_properties_ = false, browser_after_ = false;
     bool effective_properties_ = false;
