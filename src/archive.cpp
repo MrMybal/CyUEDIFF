@@ -134,8 +134,14 @@ std::string Archive::string() {
         if (s.back() != 0)
             throw Error("format", "Unterminated FString", tell());
         s.pop_back();
-        return options_.narrow_string_encoding == NarrowStringEncoding::unspecified ? s :
-            decode_narrow_string(s, options_.narrow_string_encoding, options_.max_string_bytes, options_.control);
+        if (options_.narrow_string_encoding == NarrowStringEncoding::unspecified) {
+            // Without an explicit character set, narrow strings must be ASCII (as in the schema and
+            // layout readers): raw high bytes would otherwise become invalid UTF-8 in every report.
+            validate_byte_string(s, true, options_.control, "string-encoding", tell() - s.size() - 1);
+            return s;
+        }
+        return decode_narrow_string(s, options_.narrow_string_encoding, options_.max_string_bytes,
+                                    options_.control);
     }
     std::string s;
     for (std::int64_t i = 0; i < chars; ++i) {

@@ -100,6 +100,19 @@ int main(int argc, char **argv) {
         check(Package::open(fixture_file, options).exports[0].properties["EncodingText"]["value"] ==
                   "caf\xc3\xa9 \xe2\x82\xac",
               "Tagged FString explicit encoding");
+        {
+            // Found by fuzzing: without an explicit encoding, non-ASCII narrow bytes used to stay raw
+            // and broke every later JSON serialization with a non-cyuediff exception.
+            const auto unspecified = Package::open(fixture_file);
+            const auto &property = unspecified.exports[0].properties["EncodingText"];
+            check(!property.contains("value") && property.at("opaque").at("reason") == "string-encoding",
+                  "Unspecified encoding keeps non-ASCII narrow FStrings opaque");
+            check(!unspecified.semantic_snapshot().dump().empty() &&
+                      compare(unspecified, unspecified).changes.empty(),
+                  "Packages with non-ASCII narrow strings still serialize and compare");
+            detail::Archive input(root / "string.bin", ReadOptions{});
+            rejects([&] { input.string(); }, "string-encoding");
+        }
         PackageCache cache;
         auto first = cache.open(fixture_file, options);
         options.narrow_string_encoding = NarrowStringEncoding::latin1;

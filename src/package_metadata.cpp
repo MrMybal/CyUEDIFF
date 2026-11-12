@@ -74,7 +74,17 @@ struct MetadataReader {
         if (static_cast<std::uint64_t>(units) > o.max_string_bytes / (length < 0 ? 2 : 1) ||
             (units && static_cast<std::uint64_t>(units - 1) > o.max_property_bytes - text))
             throw Error("limit", "Metadata FString exceeds its limit", start);
-        auto value = a.string();
+        std::string value;
+        try {
+            value = a.string();
+        } catch (const Error &e) {
+            // Archive::string() already requires ASCII for unspecified narrow strings; keep the
+            // metadata contract's own code and offset (relative to the length field, as before).
+            if (e.code == "string-encoding" && length >= 0 &&
+                o.narrow_string_encoding == NarrowStringEncoding::unspecified)
+                throw Error("metadata-string-encoding", e.what(), e.offset - 4);
+            throw;
+        }
         if (length >= 0 && o.narrow_string_encoding == NarrowStringEncoding::unspecified)
             validate_byte_string(value, true, o.control, "metadata-string-encoding", start);
         else
