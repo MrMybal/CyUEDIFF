@@ -102,6 +102,65 @@ jobs:
           path: build-ci/CyUEDiff-*.zip
           if-no-files-found: error
           retention-days: 14
+  desktop:
+    # Core, Git, CyUI views and the Windows desktop application, with the complete suite.
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check out pinned CyUI
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: MrMybal/CyUI
+          ref: 0ba1ba663b4b2bf46d066a32829bc91ea2743cba
+          path: external/cyui
+          persist-credentials: false
+      - name: Require Git integration test runner
+        run: python -c "import re, subprocess; version=tuple(map(int,re.search(r'(\d+)\.(\d+)',subprocess.check_output(['git','--version'],text=True)).groups())); assert version >= (2,45), 'Git 2.45+ required for integration tests'"
+      - name: Configure
+        run: cmake -S . -B build-desktop -DCMAKE_BUILD_TYPE=Release -DCYUEDIFF_BUILD_GIT=ON -DCYUEDIFF_BUILD_UI=ON -DCYUEDIFF_BUILD_DESKTOP=ON "-DCYUEDIFF_CYUI_SOURCE_DIR=${{ github.workspace }}/external/cyui" -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Build
+        run: cmake --build build-desktop --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir build-desktop -C Release --output-on-failure --timeout 300
+  fuzz:
+    # Short coverage-guided campaigns on every push; see docs/FUZZING.md.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Clang with libFuzzer
+        run: sudo apt-get update && sudo apt-get install -y clang-18 libclang-rt-18-dev
+      - name: Configure
+        run: cmake -S . -B build-fuzz -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCYUEDIFF_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF -DCYUEDIFF_BUILD_CLI=OFF -DCYUEDIFF_BUILD_GIT=OFF
+      - name: Build
+        run: cmake --build build-fuzz --parallel 2 --target cyuediff_package_fuzzer cyuediff_package_diff_fuzzer cyuediff_zen_fuzzer cyuediff_container_fuzzer cyuediff_package_fuzz_seeds
+      - name: Fuzz each target for two minutes
+        working-directory: build-fuzz
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./cyuediff_package_fuzz_seeds corpus corpus-diff
+          ./cyuediff_zen_fuzzer --write-seeds corpus-zen
+          ./cyuediff_container_fuzzer --write-seeds corpus-container
+          mkdir -p findings
+          for target in package:corpus package_diff:corpus-diff zen:corpus-zen container:corpus-container; do
+            name="${target%%:*}"
+            corpus="${target#*:}"
+            "./cyuediff_${name}_fuzzer" "$corpus" -max_total_time=120 -max_len=16384 -timeout=10 -rss_limit_mb=2048 "-artifact_prefix=findings/${name}-"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: fuzz-findings
+          path: build-fuzz/findings
+          if-no-files-found: ignore
+          retention-days: 14
   secrets:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
