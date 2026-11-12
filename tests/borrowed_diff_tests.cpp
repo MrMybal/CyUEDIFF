@@ -107,6 +107,103 @@ int main() {
         y.exports[0].native_data["data"]["value"] = 9007199254740992.0;
         check(compare(x, y).changes.size() == 1,
               "Generic source diff detects mixed numeric rounding loss inside an explicit native model");
+        {
+            // Arrays of different lengths report insertions/removals, not a whole-array replacement.
+            const std::string array = "/objects/Keep/properties/Array/value";
+            auto changes_for = [&](const Json &before, const Json &after) {
+                Package p, q;
+                p.exports = {object("Keep", 3)};
+                q = p;
+                p.exports[0].properties["Array"]["value"] = before;
+                q.exports[0].properties["Array"]["value"] = after;
+                return compare(p, q).changes;
+            };
+            auto front = changes_for({1, 2, 3, 4, 5, 6}, {0, 1, 2, 3, 4, 5, 6});
+            check(front == Json::array({{{"op", "add"}, {"path", array + "/0"}, {"after", 0}}}),
+                  "Inserting at the front of an array is one addition");
+            auto middle = changes_for({1, 2, 3, 4, 5}, {1, 2, 4, 5});
+            check(middle == Json::array({{{"op", "remove"}, {"path", array + "/2"}, {"before", 3}}}),
+                  "Removing inside an array is one removal at its before index");
+            auto mixed = changes_for({1, 2, 3}, {1, 9, 8, 3});
+            check(mixed == Json::array({{{"op", "replace"}, {"path", array + "/1"}, {"before", 2}, {"after", 9}},
+                                        {{"op", "add"}, {"path", array + "/2"}, {"after", 8}}}),
+                  "Changed and inserted middle elements are paired, then added");
+            auto structs = changes_for(Json::array({{{"x", 1}}, {{"x", 2}}}),
+                                       Json::array({{{"x", 1}}, {{"x", 5}}, {{"x", 2}}}));
+            check(structs == Json::array({{{"op", "add"}, {"path", array + "/1"}, {"after", {{"x", 5}}}}}),
+                  "Struct elements align by value");
+            check(changes_for(Json::array(), {1}) ==
+                      Json::array({{{"op", "add"}, {"path", array + "/0"}, {"after", 1}}}),
+                  "Empty arrays gain elements by addition");
+
+            // Stored typed names correspond by identical index: keep index pairing there.
+            Package p, q;
+            p.exports = {object("Keep", 3)};
+            q = p;
+            p.exports[0].properties["Array"]["value"] = {"A", "B"};
+            q.exports[0].properties["Array"]["value"] = {"N", "A", "B"};
+            auto names = [&](const std::vector<std::string> &values) {
+                Json entries = Json::object();
+                for (std::size_t i = 0; i < values.size(); ++i)
+                    entries[array + "/" + std::to_string(i)] = {{"base", values[i]}, {"number", 0}};
+                return Json{{"schema", "cyuediff.name-values/1"},
+                            {"root", "semantic-snapshot"},
+                            {"status", "complete"},
+                            {"names", entries}};
+            };
+            p.name_values = names({"A", "B"});
+            q.name_values = names({"N", "A", "B"});
+            const auto named = compare(p, q).changes;
+            check(named.size() == 3 && named[0].at("path") == array + "/0" && named[0].at("op") == "replace" &&
+                      named[0].contains("afterName") && named[2].at("op") == "add" &&
+                      named[2].at("path") == array + "/2",
+                  "Arrays holding stored names keep index correspondence with their name changes");
+
+            // Name locations resolve like JSON pointers: escaped tokens, absent members ignored,
+            // malformed locations rejected.
+            Package r, s;
+            r.exports = {object("Z/~", 3)};
+            s = r;
+            r.exports[0].properties["Array"]["value"] = {"A_1"};
+            s.exports[0].properties["Array"]["value"] = {"A_1"};
+            const std::string escaped = "/objects/Z~1~0/properties/Array/value";
+            auto index_with = [](Json entries) {
+                return Json{{"schema", "cyuediff.name-values/1"},
+                            {"root", "semantic-snapshot"},
+                            {"status", "complete"},
+                            {"names", std::move(entries)}};
+            };
+            r.name_values = index_with({{escaped + "/0", {{"base", "A"}, {"number", 2}}},
+                                        {escaped + "/7", {{"base", "A"}, {"number", 2}}},
+                                        {"/objects/Z~1~0/properties/Missing/value", {{"base", "A"}, {"number", 0}}}});
+            s.name_values = index_with({{escaped + "/0", {{"base", "A_1"}, {"number", 0}}},
+                                        {escaped + "/7", {{"base", "A"}, {"number", 2}}}});
+            const auto resolved = compare(r, s).changes;
+            check(resolved.size() == 1 && resolved[0].at("path") == escaped + "/0" &&
+                      resolved[0].at("beforeName") == Json({{"base", "A"}, {"number", 2}}),
+                  "Escaped name locations resolve; absent members and indices are ignored");
+            auto rejects_location = [&](const std::string &location) {
+                auto bad = r;
+                bad.name_values = index_with({{location, {{"base", "A"}, {"number", 2}}}});
+                try {
+                    (void)compare(bad, s);
+                } catch (const Error &e) {
+                    return e.code == "name-values";
+                }
+                return false;
+            };
+            check(rejects_location(escaped + "/01"), "Leading-zero array indices are invalid name locations");
+            check(rejects_location(escaped + "/+1"), "Signed array indices are invalid name locations");
+            {
+                auto unresolved = r;
+                unresolved.name_values = index_with({{escaped + "/x", {{"base", "A"}, {"number", 2}}},
+                                                     {escaped + "/1x", {{"base", "A"}, {"number", 2}}}});
+                check(compare(unresolved, s).changes.empty(),
+                      "Other non-numeric array indices are unresolved locations, not errors");
+            }
+            check(rejects_location("/objects/Z~2/properties/Array/value/0"),
+                  "Invalid pointer escapes are invalid name locations");
+        }
         OperationControl cancelled;
         cancelled.cancelled = [] { return true; };
         try {

@@ -47,17 +47,30 @@ void walk(const Json &before, const Json &after, const std::string &path, Json &
                 !(coverage && coverage->excludes(path + "/" + pointer_token(it.key()))))
                 changes.push_back(
                     {{"op", "add"}, {"path", path + "/" + pointer_token(it.key())}, {"after", it.value()}});
-    } else if (before.is_array() && after.is_array() &&
-               (before.size() == after.size() || (coverage && coverage->intersects(path)))) {
-        for (std::size_t i = 0; i < std::min(before.size(), after.size()); ++i)
+    } else if (before.is_array() && after.is_array()) {
+        // "remove" paths address `before`, "add" paths address `after`, paired paths both.
+        const auto nb = before.size(), na = after.size(), shortest = std::min(nb, na);
+        std::size_t prefix = 0, suffix = 0;
+        // Different lengths: skip the common prefix and suffix, so one insertion or removal is
+        // reported as such instead of replacing the whole array. Unavailable scopes and stored
+        // typed names correspond by identical index, so those arrays keep index pairing.
+        if (nb != na && !(coverage && (coverage->intersects(path) || coverage->names_within(path)))) {
+            while (prefix < shortest && detail::json_equal(before[prefix], after[prefix], control))
+                ++prefix;
+            while (suffix < shortest - prefix &&
+                   detail::json_equal(before[nb - 1 - suffix], after[na - 1 - suffix], control))
+                ++suffix;
+        }
+        const auto paired = shortest - suffix;
+        for (std::size_t i = prefix; i < paired; ++i)
             walk(before[i], after[i], path + "/" + std::to_string(i), changes, control, coverage);
-        for (std::size_t i = after.size(); i < before.size(); ++i) {
+        for (std::size_t i = paired; i < nb - suffix; ++i) {
             control.check();
             auto child = path + "/" + std::to_string(i);
             if (!coverage || !coverage->excludes(child))
                 changes.push_back({{"op", "remove"}, {"path", child}, {"before", before[i]}});
         }
-        for (std::size_t i = before.size(); i < after.size(); ++i) {
+        for (std::size_t i = paired; i < na - suffix; ++i) {
             control.check();
             auto child = path + "/" + std::to_string(i);
             if (!coverage || !coverage->excludes(child))

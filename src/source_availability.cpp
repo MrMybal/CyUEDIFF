@@ -4,12 +4,36 @@
 #include <algorithm>
 namespace cyuediff::detail {
 namespace {
+void append_token(std::string &out, const std::string &s) {
+    if (s.find_first_of("~/") == std::string::npos) {
+        out += s;
+        return;
+    }
+    for (char c : s) {
+        if (c == '~')
+            out += "~0";
+        else if (c == '/')
+            out += "~1";
+        else
+            out += c;
+    }
+}
 std::string token(const std::string &s) {
     std::string out;
-    for (char c : s)
-        out += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+    append_token(out, s);
     return out;
 }
+// Extends a shared path buffer for one nested call and restores it afterwards.
+class PathPush {
+    std::string &path_;
+    std::size_t size_;
+
+  public:
+    explicit PathPush(std::string &path) : path_(path), size_(path.size()) {}
+    ~PathPush() { path_.resize(size_); }
+    PathPush(const PathPush &) = delete;
+    PathPush &operator=(const PathPush &) = delete;
+};
 bool fingerprint(const Json &v) {
     if (!v.is_object() || !v.contains("bytes") || !v["bytes"].is_number_integer() || !v.contains("sha256") ||
         !v["sha256"].is_string())
@@ -17,6 +41,17 @@ bool fingerprint(const Json &v) {
     const auto &sha = v["sha256"].get_ref<const std::string &>();
     return (!v["bytes"].is_number_unsigned() ? v["bytes"].get<std::int64_t>() >= 0 : true) &&
            sha.size() == 64 && sha.find_first_not_of("0123456789abcdef") == std::string::npos;
+}
+// Equality of type descriptors, where a string type means {"name": type}; no copies.
+bool same_descriptor(const Json &x, const Json &y) {
+    if (x.is_string() == y.is_string())
+        return x == y;
+    const auto &name = x.is_string() ? x : y;
+    const auto &object = x.is_string() ? y : x;
+    if (!object.is_object() || object.size() != 1)
+        return false;
+    const auto i = object.find("name");
+    return i != object.end() && *i == name;
 }
 bool same_bytes(const Json &a, const Json &b) {
     return fingerprint(a) && fingerprint(b) && a["bytes"] == b["bytes"] && a["sha256"] == b["sha256"];
@@ -282,10 +317,14 @@ struct Builder {
                             return true;
         return false;
     }
-    void values(const Json *a, const Json *b, const std::string &path, unsigned depth = 0) {
+    // `path` is a shared buffer: nested calls extend it and restore it on return.
+    void values(const Json *a, const Json *b, std::string &path, unsigned depth = 0) {
         tick();
         if (depth > 256)
             throw Error("source-coverage-limit", "Source coverage depth exceeded");
+        // Scalars carry no tags, wrappers or containers: nothing below applies to them.
+        if ((!a || a->is_primitive()) && (!b || b->is_primitive()))
+            return;
         const bool ta = a && tag(*a), tb = b && tag(*b);
         if (ta || tb) {
             const bool sa = ta && skipped(*a), sb = tb && skipped(*b);
@@ -331,21 +370,17 @@ struct Builder {
                 return;
             }
             if (ta && tb) {
-                auto descriptor = [](const Json &type) {
-                    return type.is_string() ? Json{{"name", type}} : type;
-                };
-                if ((*a)["type"] != (*b)["type"] && descriptor((*a)["type"]) == descriptor((*b)["type"]))
+                if ((*a)["type"] != (*b)["type"] && same_descriptor((*a)["type"], (*b)["type"]))
                     cut(path + "/type");
-                auto effective = [](const Json &value) {
-                    const auto &type = value.contains("resolvedType") ? value["resolvedType"] : value["type"];
-                    return type.is_string() ? Json{{"name", type}} : type;
+                auto effective = [](const Json &value) -> const Json & {
+                    return value.contains("resolvedType") ? value["resolvedType"] : value["type"];
                 };
                 if (readers_disagree(*a, *b)) {
                     cut(path + "/value");
                     unknown(path + "/value", false, false, "source-reader-format-incompatible");
                     return;
                 }
-                if (effective(*a) != effective(*b)) {
+                if (!same_descriptor(effective(*a), effective(*b))) {
                     cut(path + "/value");
                     unknown(path + "/value", false, false, "source-type-format-incompatible");
                     return;
@@ -354,9 +389,8 @@ struct Builder {
         }
         if (!a || !b)
             return;
-        if (a->is_object() && b->is_object() && a->value("kind", Json{}) == b->value("kind", Json{}) &&
-            (a->value("kind", Json{}) == "stored-map-delta" ||
-             a->value("kind", Json{}) == "stored-set-delta")) {
+        if (a->is_object() && b->is_object() && member(*a, "kind") == member(*b, "kind") &&
+            (member(*a, "kind") == "stored-map-delta" || member(*a, "kind") == "stored-set-delta")) {
             const bool map = (*a)["kind"] == "stored-map-delta";
             bool da = false, db = false;
             KeyFormats fa, fb;
@@ -392,13 +426,13 @@ struct Builder {
             b->contains("data")) {
             if ((*a)["decoder"] != (*b)["decoder"])
                 cut(path + "/decoder");
-            if (a->value("prefix", Json{}) != b->value("prefix", Json{}))
+            if (member(*a, "prefix") != member(*b, "prefix"))
                 cut(path + "/prefix");
-            const bool hybrid = a->value("prefix", Json{}) == "tagged-properties" &&
-                                b->value("prefix", Json{}) == "tagged-properties";
+            const bool hybrid =
+                member(*a, "prefix") == "tagged-properties" && member(*b, "prefix") == "tagged-properties";
             const auto identity = definitions((*a)["decoder"], (*b)["decoder"]);
-            if ((*a)["decoder"] != (*b)["decoder"] ||
-                a->value("prefix", Json{}) != b->value("prefix", Json{}) || !identity.compatible()) {
+            if ((*a)["decoder"] != (*b)["decoder"] || member(*a, "prefix") != member(*b, "prefix") ||
+                !identity.compatible()) {
                 const auto target = path + (hybrid ? "/data/native" : "/data");
                 cut(target);
                 unknown(target, false, false,
@@ -417,27 +451,38 @@ struct Builder {
             if (hybrid) {
                 const auto &x = a->at("data"), &y = b->at("data");
                 const auto i = x.find("properties"), j = y.find("properties");
-                if (i != x.end() && j != y.end())
-                    values(&*i, &*j, path + "/data/properties", depth + 1);
+                if (i != x.end() && j != y.end()) {
+                    const PathPush restore(path);
+                    path += "/data/properties";
+                    values(&*i, &*j, path, depth + 1);
+                }
             }
             return;
         }
         if (a->is_object() && b->is_object()) {
-            if (a->value("prefix", Json{}) == "tagged-properties" &&
-                b->value("prefix", Json{}) == "tagged-properties")
+            if (member(*a, "prefix") == "tagged-properties" && member(*b, "prefix") == "tagged-properties")
                 cut(path + "/decoder");
             for (auto i = a->begin(); i != a->end(); ++i) {
                 auto j = b->find(i.key());
-                values(&i.value(), j == b->end() ? nullptr : &j.value(), path + "/" + token(i.key()),
-                       depth + 1);
+                const PathPush restore(path);
+                path += '/';
+                append_token(path, i.key());
+                values(&i.value(), j == b->end() ? nullptr : &j.value(), path, depth + 1);
             }
             for (auto i = b->begin(); i != b->end(); ++i)
-                if (!a->contains(i.key()))
-                    values(nullptr, &i.value(), path + "/" + token(i.key()), depth + 1);
+                if (!a->contains(i.key())) {
+                    const PathPush restore(path);
+                    path += '/';
+                    append_token(path, i.key());
+                    values(nullptr, &i.value(), path, depth + 1);
+                }
         } else if (a->is_array() && b->is_array()) {
-            for (std::size_t i = 0; i < std::max(a->size(), b->size()); ++i)
-                values(i < a->size() ? &(*a)[i] : nullptr, i < b->size() ? &(*b)[i] : nullptr,
-                       path + "/" + std::to_string(i), depth + 1);
+            for (std::size_t i = 0; i < std::max(a->size(), b->size()); ++i) {
+                const PathPush restore(path);
+                path += '/';
+                path += std::to_string(i);
+                values(i < a->size() ? &(*a)[i] : nullptr, i < b->size() ? &(*b)[i] : nullptr, path, depth + 1);
+            }
         }
     }
     void exports(const ObjectExport &a, const ObjectExport &b) {
@@ -445,8 +490,10 @@ struct Builder {
         object = a.path;
         const auto base = "/objects/" + token(object);
         const bool ka = properties_known(a), kb = properties_known(b);
-        if (ka && kb)
-            values(&a.properties, &b.properties, base + "/properties");
+        if (ka && kb) {
+            auto path = base + "/properties";
+            values(&a.properties, &b.properties, path);
+        }
         else {
             cut(base + "/properties");
             if (!same_bytes(opaque(a, "export"), opaque(b, "export")))
@@ -649,6 +696,20 @@ bool SourceCoverage::intersects(const std::string &path) const {
     auto i = suppressed.lower_bound(prefix);
     return i != suppressed.end() && i->compare(0, prefix.size(), prefix) == 0;
 }
+bool SourceCoverage::names_within(const std::string &path) const {
+    const auto prefix = path + "/";
+    for (const auto *names : {before_names, after_names}) {
+        if (!names || !names->is_object())
+            continue;
+        const auto &entries = names->get_ref<const Json::object_t &>();
+        if (entries.count(path))
+            return true;
+        const auto i = entries.lower_bound(prefix);
+        if (i != entries.end() && i->first.compare(0, prefix.size(), prefix) == 0)
+            return true;
+    }
+    return false;
+}
 bool SourceCoverage::excludes(const std::string &path) const {
     auto current = path;
     for (;;) {
@@ -705,6 +766,8 @@ SourceCoverage source_coverage(const Package &a, const Package &b, const SourceC
         if (!r.out.excludes(path))
             r.out.name_changes.push_back(std::move(row));
     }
+    r.out.before_names = &name_value_entries(a.name_values, "semantic-snapshot");
+    r.out.after_names = &name_value_entries(b.name_values, "semantic-snapshot");
     o.control.check();
     return std::move(r.out);
 }

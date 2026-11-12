@@ -133,6 +133,16 @@ void read_summary(Archive &a, PackageSummary &s) {
 }
 using Type = TaggedType;
 Json type_json(const Type &t) { return tagged_type_json(t, false); }
+// Same result as comparing tagged_type_json(a) with tagged_type_json(b), without building JSON.
+bool same_type_json(const Type &a, const Type &b) {
+    if (a.name != b.name || a.struct_guid != b.struct_guid || a.schema != b.schema ||
+        a.parameters.size() != b.parameters.size())
+        return false;
+    for (std::size_t i = 0; i < a.parameters.size(); ++i)
+        if (!same_type_json(a.parameters[i], b.parameters[i]))
+            return false;
+    return true;
+}
 bool read_limit_failed(const Error &error) {
     return error.code == "limit" || error.code == "decoder-limit" || error.code == "layout-limit" ||
            error.code == "text-limit";
@@ -734,6 +744,7 @@ class PropertyReader {
                 observed->parameters[0] = inner;
             bool enum_names = inner.name == "ByteProperty" && inner.parameters.empty() && count &&
                               p.summary.ue5_version < 1012 && end - a.tell() == std::uint64_t(count) * 8;
+            const auto element_path = type_path + "/*";
             for (std::uint32_t i = 0; i < count; ++i) {
                 detail::ValueIdentityJournal::Scope item_identity(identities_, static_cast<std::size_t>(i));
                 if (a.tell() >= end)
@@ -741,7 +752,7 @@ class PropertyReader {
                 values.push_back(enum_names ? Json(fname(a, p, &identities_))
                                             : value(inner, end, depth + 1, false,
                                                     observed ? &observed->parameters[0] : nullptr, wire_types,
-                                                    type_path + "/*", read_formats));
+                                                    element_path, read_formats));
             }
             return values;
         }
@@ -774,14 +785,16 @@ class PropertyReader {
             detail::ValueIdentityJournal::Buffer property_names(identities_);
             detail::ValueIdentityJournal::Scope property_identity(identities_, key),
                 value_identity(identities_, "value");
-            Json entry = {{"type", type_json(t.type)}};
+            Json entry(Json::value_t::object);
+            entry.emplace("type", type_json(t.type));
             if (!t.guid.empty())
                 entry["guid"] = t.guid;
             if (t.flags & 0x28)
                 entry["serializationFlags"] = t.flags;
             if (!t.extensions.is_null())
                 entry["extensions"] = t.extensions;
-            Json wire_types = Json::object();
+            // Created on first use: most properties record no wire types or reader formats.
+            Json wire_types;
             try {
                 Archive::ReadLimit property_limit(a, next);
                 validate_struct_types(t.type);
@@ -791,12 +804,12 @@ class PropertyReader {
                     if (const auto *declared =
                             hints.property(root ? object.class_name : owner, t.name, t.index, p.summary)) {
                         effective = TaggedTypes::complete(t.type, *declared);
-                        if (tagged_type_json(effective) != tagged_type_json(t.type))
+                        if (!same_type_json(effective, t.type))
                             entry["resolvedType"] = tagged_type_json(effective);
                     }
                 }
                 prepare_type(effective);
-                if (tagged_type_json(effective) != tagged_type_json(t.type))
+                if (!same_type_json(effective, t.type))
                     entry["resolvedType"] = tagged_type_json(effective);
                 if (t.extensions.is_object() && t.extensions.value("experimentalOverridable", false))
                     throw Error("property-extension",
@@ -807,12 +820,12 @@ class PropertyReader {
                     entry["value"] = nullptr;
                 else {
                     auto observed = effective;
-                    Json read_formats = Json::object();
+                    Json read_formats;
                     entry["value"] =
                         value(effective, next, depth + 1, true, &observed, &wire_types, "", &read_formats);
                     if (struct_type(effective))
-                        entry["readFormats"] = std::move(read_formats);
-                    if (tagged_type_json(observed) != tagged_type_json(t.type))
+                        entry["readFormats"] = read_formats.is_null() ? Json::object() : std::move(read_formats);
+                    if (!same_type_json(observed, t.type))
                         entry["resolvedType"] = tagged_type_json(observed);
                 }
                 if (a.tell() != next)
@@ -833,9 +846,8 @@ class PropertyReader {
             if (!wire_types.empty())
                 entry["wireTypes"] = std::move(wire_types);
             a.seek(next);
-            if (result.contains(key))
+            if (!result.emplace(key, std::move(entry)).second)
                 throw Error("property-key", "Duplicate property identity", start);
-            result[key] = std::move(entry);
         }
         throw Error("property-terminator", "Missing None terminator", a.tell());
     }

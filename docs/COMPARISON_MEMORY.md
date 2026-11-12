@@ -6,6 +6,12 @@ Source development 0.190 compares source export properties, native fields and op
 
 `compare(before, after)` borrows the inputs only during its synchronous call. Its returned `DiffResult` owns changed values; the packages may be destroyed after comparison. Whole-object additions/removals and changed large arrays still require owned result values. The result is not a lazy reference into the input packages.
 
+## Arrays of different lengths
+
+Arrays whose lengths differ no longer produce one `replace` holding both complete arrays. Equal leading and trailing elements are skipped. Remaining elements are paired at the same index, and the surplus is reported as `remove` rows (indices of the `before` array) or `add` rows (indices of the `after` array). Inserting one element at the front of a large array is therefore one `add` row.
+
+Arrays that contain unavailable scopes or stored typed names keep index correspondence (pairs at each index, then trailing additions or removals), because those annotations identify values by index. Arrays of equal length are compared index by index, as before. The desktop property inspector still shows array rows by index.
+
 Mixed JSON numeric comparison checks the mathematical integer value instead of rounding an integer to a floating-point number. For example, integer `9007199254740993` differs from floating-point `9007199254740992.0`. Exactly representable equal signed/unsigned/integral floating-point values remain equal. Nested source comparisons and reusable property comparison share this behavior. This does not reconstruct missing defaults or expand reader coverage.
 
 ## Streaming existing results

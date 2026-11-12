@@ -31,21 +31,33 @@ class ValueIdentityRecorder {
     void insert(Json &target, std::string path, Json name) {
         if (target.is_null())
             target = Json::object();
-        auto found = target.find(path);
-        if (found != target.end()) {
-            if (*found != name) {
-                target.erase(found);
-                limited_ = true;
-            }
-        } else
-            target.emplace(std::move(path), std::move(name));
+        auto &object = target.get_ref<Json::object_t &>();
+        // try_emplace leaves `name` untouched when the path is already recorded.
+        const auto [found, inserted] = object.try_emplace(std::move(path), std::move(name));
+        if (!inserted && found->second != name) {
+            object.erase(found);
+            limited_ = true;
+        }
+    }
+    static void append_token(std::string &out, const std::string &value) {
+        if (value.find_first_of("~/") == std::string::npos) {
+            out += value;
+            return;
+        }
+        for (const char c : value) {
+            if (c == '~')
+                out += "~0";
+            else if (c == '/')
+                out += "~1";
+            else
+                out += c;
+        }
     }
 
   public:
     static std::string token(const std::string &value) {
         std::string result;
-        for (const char c : value)
-            result += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+        append_token(result, value);
         return result;
     }
     explicit ValueIdentityRecorder(const ValueIdentityOptions &options, const OperationControl &control)
@@ -96,8 +108,7 @@ class ValueIdentityRecorder {
             }
             // Measure escaping before allocation, including exact budget boundaries.
             journal.path_ += '/';
-            for (const char c : key)
-                journal.path_ += c == '~' ? "~0" : c == '/' ? "~1" : std::string(1, c);
+            append_token(journal.path_, key);
             journal_ = &journal;
         }
 
@@ -139,9 +150,22 @@ class ValueIdentityRecorder {
         void commit() {
             if (!journal_ || committed_)
                 return;
-            for (auto it = pending_.begin(); it != pending_.end(); ++it) {
-                journal_->control_.check();
-                journal_->insert(*previous_, it.key(), std::move(it.value()));
+            journal_->control_.check();
+            if (pending_.is_object() && !pending_.empty()) {
+                if (previous_->is_null())
+                    *previous_ = Json::object();
+                auto &to = previous_->get_ref<Json::object_t &>();
+                auto &from = pending_.get_ref<Json::object_t &>();
+                to.merge(from);
+                // Paths left behind were already recorded: a different identity invalidates them.
+                for (const auto &left : from) {
+                    journal_->control_.check();
+                    const auto found = to.find(left.first);
+                    if (found->second != left.second) {
+                        to.erase(found);
+                        journal_->limited_ = true;
+                    }
+                }
             }
             journal_->target_ = previous_;
             committed_ = true;
@@ -285,7 +309,11 @@ class ValueIdentityRecorder {
         }
         if (!spend(1, base.size() + path_.size()))
             return;
-        Json identity = {{"base", base}, {"number", number}, {"source", zero ? "zero-mask" : "wire"}};
+        Json identity(Json::value_t::object);
+        auto &fields = identity.get_ref<Json::object_t &>();
+        fields.emplace("base", base);
+        fields.emplace("number", number);
+        fields.emplace("source", zero ? "zero-mask" : "wire");
         insert(*target_, path_, std::move(identity));
     }
     void replay(const Json &observed) {
