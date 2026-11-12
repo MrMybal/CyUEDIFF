@@ -1,5 +1,6 @@
 #include "../src/json_equality.hpp"
 #include <cyuediff/property_page.hpp>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -44,6 +45,29 @@ int main() {
         auto page = property_page(&a, &b, "");
         check(page.table.rows[0].change == ChangeKind::modified,
               "Paged values retain exact large integer differences");
+        {
+            // Inspector rows follow the report's array alignment, in the longer array's indices.
+            const Json before = {1, 2, 3, 4}, inserted = {0, 1, 2, 3, 4}, removed = {1, 3, 4};
+            auto rows = property_table(&before, &inserted).rows;
+            check(rows.size() == 6 && rows[1].path == "/0" && rows[1].change == ChangeKind::added &&
+                      std::all_of(rows.begin() + 2, rows.end(),
+                                  [](const PropertyRow &r) { return r.change == ChangeKind::unchanged; }) &&
+                      rows[2].before == "1" && rows[5].after == "4",
+                  "An inserted element is one added row; later rows stay unchanged");
+            rows = property_table(&before, &removed).rows;
+            check(rows.size() == 5 && rows[2].path == "/1" && rows[2].change == ChangeKind::removed &&
+                      rows[3].change == ChangeKind::unchanged && rows[3].before == "3" && rows[3].after == "3",
+                  "A removed element is one removed row in before indices");
+            const auto page = property_page(&before, &inserted, "");
+            check(page.total_children == 5 && page.table.rows[1].change == ChangeKind::added &&
+                      page.table.rows[4].change == ChangeKind::unchanged,
+                  "Paged children use the same alignment");
+            PropertyTableOptions paired;
+            paired.coverage.comparison_unavailable = {"/3"};
+            rows = property_table(&before, &inserted, paired).rows;
+            check(rows[1].change == ChangeKind::modified && rows[1].before == "1" && rows[1].after == "0",
+                  "Arrays with unavailable scopes keep index correspondence");
+        }
         Json array = Json::array();
         for (int i = 0; i < 4096; ++i)
             array.push_back(1);

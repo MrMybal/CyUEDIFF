@@ -10,7 +10,7 @@ Source development 0.190 compares source export properties, native fields and op
 
 Arrays whose lengths differ no longer produce one `replace` holding both complete arrays. Equal leading and trailing elements are skipped. Remaining elements are paired at the same index, and the surplus is reported as `remove` rows (indices of the `before` array) or `add` rows (indices of the `after` array). Inserting one element at the front of a large array is therefore one `add` row.
 
-Arrays that contain unavailable scopes or stored typed names keep index correspondence (pairs at each index, then trailing additions or removals), because those annotations identify values by index. Arrays of equal length are compared index by index, as before. The desktop property inspector still shows array rows by index.
+Arrays that contain unavailable scopes or stored typed names keep index correspondence (pairs at each index, then trailing additions or removals), because those annotations identify values by index. Arrays of equal length are compared index by index, as before. The flat and paged property inspectors use the same alignment. Their array rows are numbered in the longer array's indices, so an inserted element is one added row and every row path is unique.
 
 Mixed JSON numeric comparison checks the mathematical integer value instead of rounding an integer to a floating-point number. For example, integer `9007199254740993` differs from floating-point `9007199254740992.0`. Exactly representable equal signed/unsigned/integral floating-point values remain equal. Nested source comparisons and reusable property comparison share this behavior. This does not reconstruct missing defaults or expand reader coverage.
 

@@ -265,6 +265,26 @@ class CoverageIndex {
     bool named(const std::string &path) const {
         return before_names_.contains(path) || after_names_.contains(path);
     }
+    // True when `path` or a descendant holds a stored typed name on either side.
+    bool names_within(const std::string &path) const {
+        const auto prefix = path + "/";
+        for (const auto *names : {&before_names_, &after_names_}) {
+            if (!names->is_object())
+                continue;
+            const auto &entries = names->get_ref<const Json::object_t &>();
+            if (entries.count(path))
+                return true;
+            const auto i = entries.lower_bound(prefix);
+            if (i != entries.end() && i->first.compare(0, prefix.size(), prefix) == 0)
+                return true;
+        }
+        return false;
+    }
+    // Arrays whose element correspondence must stay by index (unavailable/uncertain scopes,
+    // stored names, cooked or raw contexts), as in the comparison report.
+    bool index_paired(const std::string &path) const {
+        return uncertain(path) || names_within(path) || context_intersects(path) || raw(path);
+    }
     std::string preview(const Json *value, const std::string &path, bool after, std::size_t limit,
                         bool escaped) const {
         const auto &names = after ? after_names_ : before_names_;
@@ -426,6 +446,38 @@ GraphChanges graph_changes(const Json *before, const Json *after) {
         result.node_counts.add(item.second);
     return result;
 }
+// Element correspondence of two arrays, as in the comparison report (diff.cpp): when lengths
+// differ, equal leading and trailing elements are skipped, the rest is paired by index and the
+// surplus is added or removed. Children are numbered in the longer array's indices, so their
+// count is max(before, after) and every child path is unique and addresses that array.
+struct ArrayAlignment {
+    std::size_t before = 0, after = 0, paired = 0, suffix = 0;
+    template <class Equal>
+    ArrayAlignment(const Json *x, const Json *y, bool align, Equal &&equal)
+        : before(x ? x->size() : 0), after(y ? y->size() : 0) {
+        const auto shortest = std::min(before, after);
+        std::size_t prefix = 0;
+        if (align && x && y && before != after) {
+            while (prefix < shortest && equal(&(*x)[prefix], &(*y)[prefix], prefix))
+                ++prefix;
+            while (suffix < shortest - prefix &&
+                   equal(&(*x)[before - 1 - suffix], &(*y)[after - 1 - suffix], std::max(before, after) - 1 - suffix))
+                ++suffix;
+        }
+        paired = shortest - suffix;
+    }
+    std::size_t count() const { return std::max(before, after); }
+    std::pair<const Json *, const Json *> at(const Json *x, const Json *y, std::size_t index) const {
+        if (index < paired)
+            return {&(*x)[index], &(*y)[index]};
+        const bool inserted = after > before;
+        if (index < count() - suffix)
+            return inserted ? std::pair<const Json *, const Json *>{nullptr, &(*y)[index]}
+                            : std::pair<const Json *, const Json *>{&(*x)[index], nullptr};
+        return inserted ? std::pair<const Json *, const Json *>{&(*x)[index - (after - before)], &(*y)[index]}
+                        : std::pair<const Json *, const Json *>{&(*x)[index], &(*y)[index - (before - after)]};
+    }
+};
 PropertyTable property_table(const Json *before, const Json *after, const PropertyTableOptions &options) {
     if (!options.max_rows || options.max_rows > 1000000 || options.max_depth > 128 ||
         !options.max_text_bytes || options.max_text_bytes > 65536 || !options.max_compare_nodes ||
@@ -552,15 +604,22 @@ PropertyTable property_table(const Json *before, const Json *after, const Proper
                     ++r;
                 }
             }
-        } else
-            for (std::size_t i = 0; i < count; ++i) {
+        } else {
+            const ArrayAlignment aligned(
+                x, y, !coverage.index_paired(value_path), [&](const Json *l, const Json *r, std::size_t i) {
+                    return coverage.equal(l, r, value_path + "/" + std::to_string(i), work,
+                                          options.max_compare_nodes, options.control);
+                });
+            for (std::size_t i = 0; i < aligned.count(); ++i) {
                 if (result.rows.size() >= options.max_rows) {
                     result.truncated = true;
                     break;
                 }
-                visit(x && i < x->size() ? &x->at(i) : nullptr, y && i < y->size() ? &y->at(i) : nullptr,
-                      path + "/" + std::to_string(i), value_path + "/" + std::to_string(i), depth + 1, false);
+                const auto pair = aligned.at(x, y, i);
+                visit(pair.first, pair.second, path + "/" + std::to_string(i),
+                      value_path + "/" + std::to_string(i), depth + 1, false);
             }
+        }
     };
     visit(before, after, "", "", 0, false);
     return result;
@@ -716,9 +775,14 @@ PropertyPage property_page(const Json *before, const Json *after, const std::str
             : 0;
     const auto last = std::min(result.total_children, result.first + options.page_size);
     if (result.array) {
-        for (auto i = result.first; i < last; ++i)
-            append(x && i < x->size() ? &x->at(i) : nullptr, y && i < y->size() ? &y->at(i) : nullptr,
-                   base + "/" + std::to_string(i), std::to_string(i), 1);
+        const ArrayAlignment aligned(x, y, !coverage.index_paired(base),
+                                     [&](const Json *l, const Json *r, std::size_t i) {
+                                         return page_equal(l, r, base + "/" + std::to_string(i));
+                                     });
+        for (auto i = result.first; i < last; ++i) {
+            const auto pair = aligned.at(x, y, i);
+            append(pair.first, pair.second, base + "/" + std::to_string(i), std::to_string(i), 1);
+        }
     } else {
         const Json empty = Json::object();
         const auto &left = x ? *x : empty, &right = y ? *y : empty;
