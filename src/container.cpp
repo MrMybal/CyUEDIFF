@@ -14,6 +14,13 @@ void require(bool condition, const char *message) {
     if (!condition)
         throw Error("container-format", message);
 }
+// Narrow container strings are ASCII (Unreal stores other text as UTF-16). Raw high bytes would
+// become invalid UTF-8 in every container report, so they are rejected with their own code.
+void require_ascii(const std::string &value, const char *what) {
+    if (std::any_of(value.begin(), value.end(), [](char c) { return static_cast<unsigned char>(c) >= 0x80; }))
+        throw Error("container-string-encoding",
+                    std::string("Non-ASCII narrow ") + what + " requires an explicit character-set decoder");
+}
 void extent(std::uint64_t offset, std::uint64_t size, std::uint64_t end) {
     if (offset > end || size > end - offset)
         throw Error("bounds", "Container range exceeds its source", offset);
@@ -119,7 +126,9 @@ struct Cursor {
         skip(n);
         auto end = std::find(bytes.begin() + start, bytes.begin() + pos, 0);
         require(end != bytes.begin() + pos, "Unterminated compression method");
-        return std::string(bytes.begin() + start, end);
+        std::string value(bytes.begin() + start, end);
+        require_ascii(value, "compression method name");
+        return value;
     }
     std::string string() {
         auto len = static_cast<std::int32_t>(u32());
@@ -137,6 +146,7 @@ struct Cursor {
                           static_cast<std::size_t>(count - 1));
             skip(byte_count);
             require(result.find('\0') == std::string::npos, "Embedded null in container string");
+            require_ascii(result, "container string");
             return result;
         }
         auto append = [&](std::uint32_t cp) {
