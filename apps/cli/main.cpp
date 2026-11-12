@@ -2051,15 +2051,13 @@ int run(const std::vector<std::string> &args) {
     }
     if (!destination.empty() && !png_destination.empty() && same_file(destination, png_destination))
         throw Error("output-path", "Report and image must have distinct destinations");
-    if (!raw_destination.empty()) {
-        std::ofstream stream(raw_destination, std::ios::binary);
-        if (!stream)
-            throw Error("io", "Cannot create member output");
-        stream.write(reinterpret_cast<const char *>(raw_bytes.data()),
-                     static_cast<std::streamsize>(raw_bytes.size()));
-        if (!stream)
-            throw Error("io", "Cannot write member output");
-    }
+    if (!raw_destination.empty())
+        detail::atomic_output(raw_destination, [&](std::ostream &stream) {
+            stream.write(reinterpret_cast<const char *>(raw_bytes.data()),
+                         static_cast<std::streamsize>(raw_bytes.size()));
+            if (!stream)
+                throw Error("io", "Cannot write member output");
+        });
     if (!obj_destination.empty())
         write_obj(obj_destination, obj);
     if (!png_destination.empty())

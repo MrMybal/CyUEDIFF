@@ -103,7 +103,8 @@ struct CookedAnimationView::Worker {
     std::thread thread;
     std::shared_ptr<const CookedAnimation> cached[2];
     std::shared_ptr<const Json> metadata[2];
-    Worker() : thread([this] { run(); }) {}
+    // Started once every member exists: run() reads the cache members declared after `thread`.
+    Worker() { thread = std::thread([this] { run(); }); }
     ~Worker() {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -300,6 +301,8 @@ struct CookedAnimationView::Worker {
                 output.error = e.code + ": " + e.what();
             } catch (const std::exception &e) {
                 output.error = e.what();
+            } catch (...) {
+                output.error = "Unexpected error";
             }
             std::lock_guard<std::mutex> lock(mutex);
             if (!stopping && !work->cancel->load())

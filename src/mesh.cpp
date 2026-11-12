@@ -5,6 +5,7 @@
 #include <cyuediff/mesh_skin.hpp>
 #include <cyuediff/mesh_morphs.hpp>
 #include "mesh.hpp"
+#include "atomic_output.hpp"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -751,32 +752,32 @@ void write_obj(const fs::path &path, const MeshGeometry &mesh) {
         for (auto id : t.instances)
             if (!instances.count(id))
                 throw Error("mesh-reference", "OBJ triangle references missing instance");
-    std::ofstream out(path, std::ios::binary);
-    if (!out)
-        throw Error("io", "Cannot create mesh OBJ");
-    out.imbue(std::locale::classic());
-    out << std::setprecision(std::numeric_limits<float>::max_digits10)
-        << "# CyUEDiff source coordinates; build settings and coordinate conversions are not applied\n";
-    for (const auto &vertex : mesh.vertices) {
-        const auto &p = vertex.position;
-        out << "v " << p[0] << ' ' << p[1] << ' ' << p[2] << '\n';
-    }
-    for (const auto &i : mesh.instances) {
-        auto uv = i.uvs.empty() ? std::array<float, 2>{} : i.uvs[0];
-        out << "vt " << uv[0] << ' ' << uv[1] << '\n';
-    }
-    for (const auto &i : mesh.instances)
-        out << "vn " << i.normal[0] << ' ' << i.normal[1] << ' ' << i.normal[2] << '\n';
-    for (const auto &t : mesh.triangles) {
-        out << "g section_" << t.group << "\nf";
-        for (auto id : t.instances) {
-            auto index = instances.at(id);
-            out << ' ' << vertex_indices.at(mesh.instances.at(index - 1).vertex) << '/' << index << '/'
-                << index;
+    // Written beside the destination, then replaced: a failure never leaves a truncated OBJ.
+    detail::atomic_output(path, [&](std::ostream &out) {
+        out.imbue(std::locale::classic());
+        out << std::setprecision(std::numeric_limits<float>::max_digits10)
+            << "# CyUEDiff source coordinates; build settings and coordinate conversions are not applied\n";
+        for (const auto &vertex : mesh.vertices) {
+            const auto &p = vertex.position;
+            out << "v " << p[0] << ' ' << p[1] << ' ' << p[2] << '\n';
         }
-        out << '\n';
-    }
-    if (!out)
-        throw Error("io", "Cannot write mesh OBJ");
+        for (const auto &i : mesh.instances) {
+            auto uv = i.uvs.empty() ? std::array<float, 2>{} : i.uvs[0];
+            out << "vt " << uv[0] << ' ' << uv[1] << '\n';
+        }
+        for (const auto &i : mesh.instances)
+            out << "vn " << i.normal[0] << ' ' << i.normal[1] << ' ' << i.normal[2] << '\n';
+        for (const auto &t : mesh.triangles) {
+            out << "g section_" << t.group << "\nf";
+            for (auto id : t.instances) {
+                auto index = instances.at(id);
+                out << ' ' << vertex_indices.at(mesh.instances.at(index - 1).vertex) << '/' << index << '/'
+                    << index;
+            }
+            out << '\n';
+        }
+        if (!out)
+            throw Error("io", "Cannot write mesh OBJ");
+    });
 }
 } // namespace cyuediff

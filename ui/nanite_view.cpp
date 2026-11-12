@@ -107,7 +107,8 @@ struct NaniteView::Worker {
     std::shared_ptr<const Comparison> comparison;
     std::shared_ptr<const Scene> scene;
     Selection scene_selection;
-    Worker() : thread([this] { run(); }) {}
+    // Started once every member exists: run() reads the cache members declared after `thread`.
+    Worker() { thread = std::thread([this] { run(); }); }
     ~Worker() {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -378,6 +379,8 @@ struct NaniteView::Worker {
                 r.error = e.code + ": " + e.what();
             } catch (const std::exception &e) {
                 r.error = e.what();
+            } catch (...) {
+                r.error = "Unexpected error";
             }
             std::lock_guard<std::mutex> lock(mutex);
             if (!stopping && !w->cancel->load())

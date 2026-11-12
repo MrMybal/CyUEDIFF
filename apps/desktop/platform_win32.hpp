@@ -50,7 +50,10 @@ class Renderer {
     ComPtr<ID3D11ShaderResourceView> upload(const ImageRgba8 &);
     void new_frame();
     void draw();
-    void present(bool synchronized);
+    // False when the frame was occluded (hidden window, locked screen).
+    bool present(bool synchronized);
+    // True while presentation would still be occluded; does not show a frame.
+    bool occluded();
     ImageRgba8 capture();
 };
 } // namespace cyuediff::desktop

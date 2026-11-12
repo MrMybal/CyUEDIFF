@@ -10,6 +10,11 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 namespace cyuediff::desktop {
 namespace {
 void require(HRESULT result, const char *operation) {
+    if (result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET ||
+        result == DXGI_ERROR_DEVICE_HUNG || result == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
+        throw Error("desktop-device-lost",
+                    "The graphics device was lost (driver update or reset). The session was saved; "
+                    "restart CyUEDiff to continue (" + std::string(operation) + ").");
     if (FAILED(result))
         throw Error("desktop-d3d11", std::string(operation) + " (HRESULT " +
                                          std::to_string(static_cast<unsigned long>(result)) + ")");
@@ -354,8 +359,20 @@ void Renderer::draw() {
     context_->ClearRenderTargetView(target_.Get(), color);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
-void Renderer::present(bool synchronized) {
-    require(swap_->Present(synchronized ? 1 : 0, 0), "Present frame");
+bool Renderer::present(bool synchronized) {
+    const auto result = swap_->Present(synchronized ? 1 : 0, 0);
+    // A success code: the window is hidden or the screen locked, so the frame was not shown.
+    if (result == DXGI_STATUS_OCCLUDED)
+        return false;
+    require(result, "Present frame");
+    return true;
+}
+bool Renderer::occluded() {
+    const auto result = swap_->Present(0, DXGI_PRESENT_TEST);
+    if (result == DXGI_STATUS_OCCLUDED)
+        return true;
+    require(result, "Test frame presentation");
+    return false;
 }
 ImageRgba8 Renderer::capture() {
     ComPtr<ID3D11Texture2D> buffer, staging;

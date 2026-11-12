@@ -3214,107 +3214,122 @@ int run(Options options) {
         }
     };
     int frames = 0, settled = 0;
+    bool occluded = false;
     auto started = std::chrono::steady_clock::now();
-    for (;;) {
-        if (!window.pump())
-            break;
-        shell.poll(renderer);
-        if (window.resize_width && window.resize_height) {
-            renderer.resize(window.resize_width, window.resize_height);
-            window.resize_width = window.resize_height = 0;
-        }
-        if (window.minimized) {
-            Sleep(16);
-            continue;
-        }
-        renderer.new_frame();
-        auto action = shell.draw(window.quit);
-        ImGui::Render();
-        renderer.draw();
-        ++frames;
-        if (shell.busy())
-            settled = 0;
-        if (options.smoke && !shell.busy() && settled >= 2) {
-            const auto action_started = std::chrono::steady_clock::now();
-            if (shell.perform_next_document_action()) {
-                // A queued reload/duplicate is a new bounded operation, not time spent in the initial load.
-                started = action_started;
+    // A fatal error (lost graphics device...) still saves the session and preferences first.
+    try {
+        for (;;) {
+            if (!window.pump())
+                break;
+            shell.poll(renderer);
+            if (window.resize_width && window.resize_height) {
+                renderer.resize(window.resize_width, window.resize_height);
+                window.resize_width = window.resize_height = 0;
+            }
+            if (window.minimized) {
+                Sleep(16);
+                continue;
+            }
+            // Hidden or locked: Present returns at once, so do not spin a core redrawing unseen frames.
+            if (occluded && !options.smoke) {
+                if (renderer.occluded()) {
+                    Sleep(50);
+                    continue;
+                }
+                occluded = false;
+            }
+            renderer.new_frame();
+            auto action = shell.draw(window.quit);
+            ImGui::Render();
+            renderer.draw();
+            ++frames;
+            if (shell.busy())
                 settled = 0;
+            if (options.smoke && !shell.busy() && settled >= 2) {
+                const auto action_started = std::chrono::steady_clock::now();
+                if (shell.perform_next_document_action()) {
+                    // A queued reload/duplicate is a new bounded operation, not time spent in the initial load.
+                    started = action_started;
+                    settled = 0;
+                }
             }
-        }
-        bool finished = options.smoke && !shell.busy() && ++settled >= 12;
-        if (options.smoke && std::chrono::steady_clock::now() - started > std::chrono::seconds(30))
-            throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");
-        if (finished) {
-            if (!options.workspace_output.empty())
-                shell.write_workspace(options.workspace_output);
-            persist();
-            shell.protect(options);
-            if (!options.capture.empty())
-                write_png(options.capture, renderer.capture());
-            if (!options.report.empty()) {
-                Json report = {
-                    {"schema", "cyuediff.desktop/1"},
-                    {"version", CYUEDIFF_VERSION},
-                    {"releaseChannel", "development"},
-                    {"license", "MIT"},
-                    {"status", shell.result_error().empty() ? "ready" : "failed"},
-                    {"error", shell.result_error()},
-                    {"frames", frames},
-                    {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
-                    {"renderer", "Direct3D11 WARP"},
-                    {"theme", cyui::currentThemeKey()},
-                    {"locale", cyui::locale()},
-                    {"view", options.view},
-                    {"preferences",
-                     {{"enabled", !options.preferences.empty()},
-                      {"loaded", saved.loaded},
-                      {"saved", preferences_saved},
-                      {"diagnostic", options.preferences_diagnostic},
-                      {"values",
-                       [&] {
-                           auto value = shell.preferences();
-                           value.window = window.placement();
-                           return value.to_json();
-                       }()}}},
-                    {"session",
-                     {{"enabled", shell.restore_session()},
-                      {"path", options.session_path.u8string()},
-                      {"loaded", saved_session.loaded},
-                      {"restored", session_restored},
-                      {"saved", session_saved},
-                      {"diagnostic", options.session_diagnostic}}},
-                    {"window",
-                     {{"restored", window.placement_restored},
-                      {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
-                    {"uploadedPreviews", shell.images()},
-                    {"browser", shell.browser_report()},
-                    {"history", shell.history_report()},
-                    {"workspaceFile", shell.workspace_file_report()},
-                    {"containerView", shell.container_view_report()},
-                    {"sourcePhysicalClothView", shell.source_physical_report()},
-                    {"effectiveDefaultsView", shell.effective_defaults_report()},
-                };
-                detail::JsonObject output;
-                for (auto i = report.begin(); i != report.end(); ++i)
-                    output.own(i.key(), std::move(i.value()));
-                output.object("workspace", [&shell] { return shell.workspace_report_view(); });
-                if (shell.session().document()) {
-                    const auto document = shell.session().document();
-                    output.object("document", [document] { return document->report_view(); });
-                } else
-                    output.own("document", nullptr);
-                detail::atomic_output(options.report, [&](std::ostream &stream) {
-                    output.write(stream);
-                    stream.put('\n');
-                });
+            bool finished = options.smoke && !shell.busy() && ++settled >= 12;
+            if (options.smoke && std::chrono::steady_clock::now() - started > std::chrono::seconds(30))
+                throw Error("desktop-timeout", "Document load exceeded smoke-test timeout");
+            if (finished) {
+                if (!options.workspace_output.empty())
+                    shell.write_workspace(options.workspace_output);
+                persist();
+                shell.protect(options);
+                if (!options.capture.empty())
+                    write_png(options.capture, renderer.capture());
+                if (!options.report.empty()) {
+                    Json report = {
+                        {"schema", "cyuediff.desktop/1"},
+                        {"version", CYUEDIFF_VERSION},
+                        {"releaseChannel", "development"},
+                        {"license", "MIT"},
+                        {"status", shell.result_error().empty() ? "ready" : "failed"},
+                        {"error", shell.result_error()},
+                        {"frames", frames},
+                        {"drawVertices", ImGui::GetDrawData()->TotalVtxCount},
+                        {"renderer", "Direct3D11 WARP"},
+                        {"theme", cyui::currentThemeKey()},
+                        {"locale", cyui::locale()},
+                        {"view", options.view},
+                        {"preferences",
+                         {{"enabled", !options.preferences.empty()},
+                          {"loaded", saved.loaded},
+                          {"saved", preferences_saved},
+                          {"diagnostic", options.preferences_diagnostic},
+                          {"values",
+                           [&] {
+                               auto value = shell.preferences();
+                               value.window = window.placement();
+                               return value.to_json();
+                           }()}}},
+                        {"session",
+                         {{"enabled", shell.restore_session()},
+                          {"path", options.session_path.u8string()},
+                          {"loaded", saved_session.loaded},
+                          {"restored", session_restored},
+                          {"saved", session_saved},
+                          {"diagnostic", options.session_diagnostic}}},
+                        {"window",
+                         {{"restored", window.placement_restored},
+                          {"placement", window.placement() ? window.placement()->to_json() : Json(nullptr)}}},
+                        {"uploadedPreviews", shell.images()},
+                        {"browser", shell.browser_report()},
+                        {"history", shell.history_report()},
+                        {"workspaceFile", shell.workspace_file_report()},
+                        {"containerView", shell.container_view_report()},
+                        {"sourcePhysicalClothView", shell.source_physical_report()},
+                        {"effectiveDefaultsView", shell.effective_defaults_report()},
+                    };
+                    detail::JsonObject output;
+                    for (auto i = report.begin(); i != report.end(); ++i)
+                        output.own(i.key(), std::move(i.value()));
+                    output.object("workspace", [&shell] { return shell.workspace_report_view(); });
+                    if (shell.session().document()) {
+                        const auto document = shell.session().document();
+                        output.object("document", [document] { return document->report_view(); });
+                    } else
+                        output.own("document", nullptr);
+                    detail::atomic_output(options.report, [&](std::ostream &stream) {
+                        output.write(stream);
+                        stream.put('\n');
+                    });
+                }
+                return shell.result_error().empty() ? 0 : 2;
             }
-            return shell.result_error().empty() ? 0 : 2;
+            occluded = !renderer.present(!options.smoke);
+            shell.perform(action, window);
+            if (options.smoke)
+                Sleep(2);
         }
-        renderer.present(!options.smoke);
-        shell.perform(action, window);
-        if (options.smoke)
-            Sleep(2);
+    } catch (const std::exception &) {
+        persist();
+        throw;
     }
     persist();
     if (!options.preferences_diagnostic.empty() && options.preference_write && !preferences_saved)

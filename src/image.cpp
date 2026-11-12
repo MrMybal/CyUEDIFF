@@ -1,5 +1,6 @@
 #include "image_bounds.hpp"
 #include "archive.hpp"
+#include "atomic_output.hpp"
 #include <cyuediff/hdr.hpp>
 #include <climits>
 #include <cmath>
@@ -288,17 +289,16 @@ void write_png(const fs::path &path, const ImageRgba8 &image) {
     if (image.width > INT_MAX / 4 || image.height > INT_MAX ||
         count > (std::uint64_t(INT_MAX) - image.height) / 4)
         throw Error("limit", "PNG dimensions exceed encoder limits");
-    std::ofstream stream(path, std::ios::binary);
-    if (!stream)
-        throw Error("io", "Cannot create preview image");
-    auto callback = [](void *context, void *bytes, int count) {
-        auto &target = *static_cast<std::ofstream *>(context);
-        target.write(static_cast<const char *>(bytes), count);
-    };
-    if (!stbi_write_png_to_func(callback, &stream, static_cast<int>(image.width),
-                                static_cast<int>(image.height), 4, image.pixels.data(),
-                                static_cast<int>(image.width * 4)) ||
-        !stream)
-        throw Error("io", "Cannot write preview image");
+    // Written beside the destination, then replaced: a failure never leaves a truncated image.
+    detail::atomic_output(path, [&](std::ostream &stream) {
+        auto callback = [](void *context, void *bytes, int count) {
+            static_cast<std::ostream *>(context)->write(static_cast<const char *>(bytes), count);
+        };
+        if (!stbi_write_png_to_func(callback, &stream, static_cast<int>(image.width),
+                                    static_cast<int>(image.height), 4, image.pixels.data(),
+                                    static_cast<int>(image.width * 4)) ||
+            !stream)
+            throw Error("io", "Cannot write preview image");
+    });
 }
 } // namespace cyuediff
