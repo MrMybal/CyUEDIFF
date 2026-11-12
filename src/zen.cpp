@@ -1,4 +1,5 @@
 #include "cooked_property_diff.hpp"
+#include <optional>
 #include "name_value_diff.hpp"
 #include <cyuediff/zen.hpp>
 #include <cyuediff/string_encoding.hpp>
@@ -530,6 +531,7 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
     std::uint32_t functional_names = 0;
     std::uint64_t functional_text = 0;
     std::uint64_t identity_text = 0;
+    std::optional<UnversionedReadOptions> shared_props;
     for (auto &e : p.exports) {
         e.references = {{"outer", reference(e.outer_index)},
                         {"class", reference(e.class_index)},
@@ -549,86 +551,93 @@ ZenPackage ZenPackage::parse(const std::vector<std::uint8_t> &bytes, const ZenRe
                         throw Error("schema-context", "USMAP decoding requires unversioned properties");
                     if (b.property_offset > e.size)
                         throw Error("bounds", "Property offset exceeds cooked export", e.offset);
-                    UnversionedReadOptions props;
-                    props.names = &p.names;
-                    props.name_values = options.name_values;
-                    props.name_values.max_names -= functional_names;
-                    props.name_values.max_text_bytes -= functional_text;
-                    props.name_values.charge = [&](std::uint32_t names, std::uint64_t text) {
-                        functional_names += names;
-                        functional_text += text;
-                        if (options.name_values.charge)
-                            options.name_values.charge(names, text);
-                    };
-                    props.value_identities = options.value_identities;
-                    props.value_identities.max_names -= identity_names;
-                    props.value_identities.max_text_bytes -= identity_text;
-                    props.value_identities.charge = [&](std::uint32_t names, std::uint64_t text) {
-                        identity_names += names;
-                        identity_text += text;
-                        if (options.value_identities.charge)
-                            options.value_identities.charge(names, text);
-                    };
-                    props.reflected_structs = context.reflected_structs;
-                    props.native_structs = context.native_structs;
-                    props.binary_layouts = context.binary_layouts;
-                    props.struct_layouts = context.struct_layouts;
-                    props.struct_tails = context.struct_tails;
-                    props.narrow_string_encoding = context.narrow_string_encoding;
-                    props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
-                    props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
-                    props.text_layout = TextLayout::ue5_history;
-                    props.text_argument_data_layout =
-                        !p.versioning.is_null() && p.versioning["customVersions"].value(
-                                                       "d89b5e4224bd4d468412aca8df641779", 12) < 12
-                            ? TextArgumentDataLayout::variant_int32
-                            : TextArgumentDataLayout::variant_int64;
-                    props.script_reference_layout = ScriptReferenceLayout::package_indices;
-                    props.field_path_layout = FieldPathLayout::owner_and_names;
-                    if (!p.versioning.is_null()) {
-                        const auto &versions = p.versioning["customVersions"];
-                        const char *release = "9c54d522a8264fbe9421074661b482d0";
-                        const char *fortnite = "601d1886ac644f84aa16d3de0deac7d6";
-                        const bool recorded = versions.contains(release) || versions.contains(fortnite);
-                        const bool modern =
-                            versions.value(release, -1) >= 30 || versions.value(fortnite, -1) >= 33;
-                        if (recorded && !modern)
-                            props.field_path_layout = FieldPathLayout::unspecified;
+                    // Package-wide read options (schema bindings, layouts, encodings) are built
+                    // once, on the first bound export; each export only refreshes its budgets.
+                    if (!shared_props) {
+                        UnversionedReadOptions props;
+                        props.names = &p.names;
+                        props.name_values = options.name_values;
+                        props.name_values.charge = [&](std::uint32_t names, std::uint64_t text) {
+                            functional_names += names;
+                            functional_text += text;
+                            if (options.name_values.charge)
+                                options.name_values.charge(names, text);
+                        };
+                        props.value_identities = options.value_identities;
+                        props.value_identities.charge = [&](std::uint32_t names, std::uint64_t text) {
+                            identity_names += names;
+                            identity_text += text;
+                            if (options.value_identities.charge)
+                                options.value_identities.charge(names, text);
+                        };
+                        props.reflected_structs = context.reflected_structs;
+                        props.native_structs = context.native_structs;
+                        props.binary_layouts = context.binary_layouts;
+                        props.struct_layouts = context.struct_layouts;
+                        props.struct_tails = context.struct_tails;
+                        props.narrow_string_encoding = context.narrow_string_encoding;
+                        props.allow_map_replacement = options.profile == ZenProfile::unreal_5_5;
+                        props.soft_path_layout = SoftPathLayout::ue5_top_level_names;
+                        props.text_layout = TextLayout::ue5_history;
+                        props.text_argument_data_layout =
+                            !p.versioning.is_null() && p.versioning["customVersions"].value(
+                                                           "d89b5e4224bd4d468412aca8df641779", 12) < 12
+                                ? TextArgumentDataLayout::variant_int32
+                                : TextArgumentDataLayout::variant_int64;
+                        props.script_reference_layout = ScriptReferenceLayout::package_indices;
+                        props.field_path_layout = FieldPathLayout::owner_and_names;
+                        if (!p.versioning.is_null()) {
+                            const auto &versions = p.versioning["customVersions"];
+                            const char *release = "9c54d522a8264fbe9421074661b482d0";
+                            const char *fortnite = "601d1886ac644f84aa16d3de0deac7d6";
+                            const bool recorded = versions.contains(release) || versions.contains(fortnite);
+                            const bool modern =
+                                versions.value(release, -1) >= 30 || versions.value(fortnite, -1) >= 33;
+                            if (recorded && !modern)
+                                props.field_path_layout = FieldPathLayout::unspecified;
+                        }
+                        if (options.profile == ZenProfile::unreal_5_5) {
+                            props.optional_layout = OptionalLayout::bool32_value;
+                            props.byte_string_layout = ByteStringLayout::counted_utf8_ascii;
+                        }
+                        // An explicit older editor version cannot certify the modern None layout.
+                        if (!p.versioning.is_null() &&
+                            p.versioning["customVersions"].value("e4b068edf49442e9a231da0b2e46bb41", 32) < 32)
+                            props.text_layout = TextLayout::unspecified;
+                        props.max_values = options.max_property_values;
+                        props.charge = [&](std::uint32_t work, std::uint64_t text) {
+                            if (work > options.max_property_values - property_work)
+                                throw Error("schema-limit", "Cooked package property work exceeds limit");
+                            property_work += work;
+                            budget.add(static_cast<std::size_t>(text));
+                        };
+                        props.max_depth = options.max_depth;
+                        props.control = options.control;
+                        props.reference = [&](std::int32_t index) -> Json {
+                            if (index > 0) {
+                                auto at = static_cast<std::uint32_t>(index - 1);
+                                if (at >= p.exports.size())
+                                    throw Error("schema-context", "Invalid property export index");
+                                return {{"kind", "export"}, {"path", p.exports[at].path}};
+                            }
+                            if (index < 0) {
+                                auto at = static_cast<std::uint64_t>(-static_cast<std::int64_t>(index) - 1);
+                                if (at >= p.imports.size())
+                                    throw Error("schema-context", "Invalid property import index");
+                                return p.imports[static_cast<std::size_t>(at)];
+                            }
+                            return nullptr;
+                        };
+                        props.reference_identity = "cyuediff.zen-package-indices/1";
+                        shared_props = std::move(props);
                     }
-                    if (options.profile == ZenProfile::unreal_5_5) {
-                        props.optional_layout = OptionalLayout::bool32_value;
-                        props.byte_string_layout = ByteStringLayout::counted_utf8_ascii;
-                    }
-                    // An explicit older editor version cannot certify the modern None layout.
-                    if (!p.versioning.is_null() &&
-                        p.versioning["customVersions"].value("e4b068edf49442e9a231da0b2e46bb41", 32) < 32)
-                        props.text_layout = TextLayout::unspecified;
-                    props.max_values = options.max_property_values;
-                    props.charge = [&](std::uint32_t work, std::uint64_t text) {
-                        if (work > options.max_property_values - property_work)
-                            throw Error("schema-limit", "Cooked package property work exceeds limit");
-                        property_work += work;
-                        budget.add(static_cast<std::size_t>(text));
-                    };
-                    props.max_depth = options.max_depth;
+                    auto &props = *shared_props;
+                    props.name_values.max_names = options.name_values.max_names - functional_names;
+                    props.name_values.max_text_bytes = options.name_values.max_text_bytes - functional_text;
+                    props.value_identities.max_names = options.value_identities.max_names - identity_names;
+                    props.value_identities.max_text_bytes =
+                        options.value_identities.max_text_bytes - identity_text;
                     props.max_text_bytes = options.max_text_bytes - budget.text;
-                    props.control = options.control;
-                    props.reference = [&](std::int32_t index) -> Json {
-                        if (index > 0) {
-                            auto at = static_cast<std::uint32_t>(index - 1);
-                            if (at >= p.exports.size())
-                                throw Error("schema-context", "Invalid property export index");
-                            return {{"kind", "export"}, {"path", p.exports[at].path}};
-                        }
-                        if (index < 0) {
-                            auto at = static_cast<std::uint64_t>(-static_cast<std::int64_t>(index) - 1);
-                            if (at >= p.imports.size())
-                                throw Error("schema-context", "Invalid property import index");
-                            return p.imports[static_cast<std::size_t>(at)];
-                        }
-                        return nullptr;
-                    };
-                    props.reference_identity = "cyuediff.zen-package-indices/1";
                     auto decoded =
                         decode_unversioned(bytes, e.offset + b.property_offset, e.size - b.property_offset,
                                            *context.schemas, b.schema, props);
