@@ -45,6 +45,12 @@ int main() {
         fs::create_directories(root / "Content");
         auto asset = save(root / "Content", "Sample é", fixture(1012));
         std::ofstream(root / "Game.uproject") << R"({"FileVersion":3,"EngineAssociation":"{unresolved}"})";
+        fs::create_directories(root / "Plugins/Empty");
+        std::ofstream(root / "Plugins/Empty/Empty.uplugin") << R"({"CanContainContent":true})";
+        const auto context = ProjectContext::open(root / "Game.uproject");
+        check(std::any_of(context.mounts.begin(), context.mounts.end(),
+                          [](const auto &mount) { return mount.name == "/Empty" && mount.allow_missing; }),
+              "Project context preserves the namespace of content-capable plugins without installed content");
         BrowseRequest request;
         request.project = root / "Game.uproject";
         auto document = load_browser(request, [] { return false; });

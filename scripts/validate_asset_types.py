@@ -84,7 +84,9 @@ def main():
     def inspect(index, asset):
         row = {'path': str(asset), 'report': f'reports/{index:05d}.json'}
         try:
-            process = subprocess.run([str(cli), 'inspect', str(asset), *context], env=env,
+            # The catalogue already resolved absolute paths. Reopening project/engine
+            # descriptors for every file adds no read context to this plain inspect command.
+            process = subprocess.run([str(cli), 'inspect', str(asset)], env=env,
                                      capture_output=True, timeout=args.timeout)
             row['exitCode'] = process.returncode
             if process.stdout:

@@ -111,7 +111,7 @@ ProjectContext ProjectContext::open(const fs::path &path, const fs::path &root) 
                 auto duplicate = std::find_if(result.mounts.begin(), result.mounts.end(),
                                               [&](const auto &m) { return m.name == mount; });
                 if (duplicate == result.mounts.end())
-                    result.mounts.push_back({mount, entry.path().parent_path() / "Content"});
+                    result.mounts.push_back({mount, entry.path().parent_path() / "Content", true});
             } catch (const std::exception &e) {
                 result.diagnostics.push_back(entry.path().u8string() + ": " + e.what());
             }

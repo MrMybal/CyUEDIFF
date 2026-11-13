@@ -125,6 +125,13 @@ int main() {
         context.mounts.push_back({"/Missing", root / "does-not-exist"});
         auto missing = catalog_assets(context);
         check(!missing.complete && missing.assets.size() == 4, "Missing mount preserves other results");
+        context.mounts.back().allow_missing = true;
+        auto absent_plugin = catalog_assets(context);
+        check(absent_plugin.complete && absent_plugin.assets.size() == 4 && absent_plugin.diagnostics.empty(),
+              "A declared optional plugin with no Content directory is an empty mount");
+        file(root / "does-not-exist");
+        check(!catalog_assets(context).complete,
+              "An optional mount replaced by a file is still an explicit failure");
         context.mounts.pop_back();
         auto linked = root / "Linked";
         std::error_code error;

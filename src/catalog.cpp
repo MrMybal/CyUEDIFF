@@ -104,6 +104,11 @@ AssetCatalog catalog_assets(const ProjectContext &context, const CatalogOptions 
         if (!options.include_engine && (mount.name == "/Engine" || (!engine.empty() && inside(root, engine))))
             continue;
         auto status = fs::symlink_status(mount.directory, error);
+        if (mount.allow_missing && status.type() == fs::file_type::not_found &&
+            (!error || error == std::errc::no_such_file_or_directory)) {
+            error.clear();
+            continue;
+        }
         if (error || !fs::is_directory(status)) {
             issue(result, "Content mount unavailable: " + mount.name);
             error.clear();

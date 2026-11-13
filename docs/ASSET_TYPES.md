@@ -32,7 +32,7 @@ Unversioned cooked properties require a matching schema and cooked profile. Encr
 
 ## Reproducible corpus audit
 
-The audit visits every package in the project's mounted catalogue, with optional additional loose files. It retains per-package JSON reports, actual stored export classes, property/native coverage, diagnostics, input availability and read-limit failures. It hashes inputs and companion files before/after. Use a new output directory outside the input project/engine.
+The audit resolves the project's mounted catalogue once, then inspects its absolute package paths with optional additional loose files. It avoids rediscovering the same engine/plugins for every package. It retains per-package JSON reports, actual stored export classes, property/native coverage, diagnostics, input availability and read-limit failures. It hashes inputs and companion files before/after. Use a new output directory outside the input project/engine.
 
 ```powershell
 python scripts/validate_asset_types.py --cli build-native/Release/cyuediff.exe `

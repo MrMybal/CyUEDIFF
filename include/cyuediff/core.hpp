@@ -129,6 +129,9 @@ struct EngineInfo {
 struct MountPoint {
     std::string name;
     fs::path directory;
+    // Declared content-capable plugins can legitimately ship without a Content directory.
+    // Only absence is empty: permissions, non-directories and links remain scan failures.
+    bool allow_missing = false;
 };
 struct ProjectContext {
     fs::path project_file;
