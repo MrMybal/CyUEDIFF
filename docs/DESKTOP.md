@@ -7,6 +7,7 @@
 ```powershell
 python scripts/build.py --desktop --cyui D:/path/to/CyUI
 build-native/Release/cyuediff_desktop.exe
+build-native/Release/cyuediff_desktop.exe D:/Projects/Game/Game.uproject
 build-native/Release/cyuediff_desktop.exe before/BP_Player.uasset after/BP_Player.uasset --locale fr
 ```
 
@@ -46,7 +47,7 @@ The Git controls are present when `CYUEDIFF_BUILD_GIT=ON`. A desktop build with 
 
 ## Content browser
 
-After choosing a project, select **Browse content...** or press `Ctrl+B`. In Git mode, a repository and both references are sufficient. The modal scans in the background, filters package names/paths and provides an asset/map selector. Double-click or choose **Open package** to inspect a local asset; **Compare revisions** loads the selected Git path on both sides. **Use before** and **Use after** fill one side while retaining the other. The default action starts a fresh single-asset inspection/comparison; the one-side actions preserve the other path.
+Choose **Open project...** on the welcome screen or toolbar (`Ctrl+P`). Selecting a `.uproject` immediately opens the content browser. Passing a project descriptor as the only positional input, or using `--project FILE` without an asset, does the same. No asset class is excluded: the catalogue lists every mounted `.uasset` and `.umap`, including plugin classes. **Browse content...** or `Ctrl+B` reopens it. In Git mode, a repository and both references are sufficient. The modal scans in the background, filters package names/paths and provides an asset/map selector. Double-click or choose **Open package** to inspect a local asset; **Compare revisions** loads the selected Git path on both sides. **Use before** and **Use after** fill one side while retaining the other. The default action starts a fresh single-asset inspection/comparison; the one-side actions preserve the other path.
 
 Local scans include mounted project/plugin content and exclude local engine/engine-plugin content by default. Toggle **Include engine content** and refresh to include it. Git scans list repository-wide package paths in both commits, independently of historical plugin activation. Presence labels describe exact path existence. Catalogues use filenames, file sizes and Git tree metadata; assets, maps, LFS pointers and invalid/unreadable package contents are not decoded or validated until opened. A catalogue can be browsed while LFS content is unavailable.
 
@@ -56,6 +57,8 @@ build-native/Release/cyuediff_desktop.exe --browse --repo D:/Game --before-revis
 ```
 
 Search filtering is cached between edits and list rendering clips off-screen rows. Closing or refreshing a scan signals cancellation; only the newest requested catalogue can publish. Pending work is bounded to one request. A failure retains the previous catalogue while disabling selection until a successful refresh. A selection pins the resolved commit IDs from its catalogue. See [CATALOG.md](CATALOG.md) for budgets and cancellation limits.
+
+See [asset families and testing](ASSET_TYPES.md) for the distinction between opening a package, inspecting stored properties and specialized previews. Single-asset inspection initially selects the package-named or public top-level asset rather than a preceding metadata/default/nested export. Comparison still starts at a changed object.
 
 ## Views and document lifetime
 

@@ -18,6 +18,23 @@ with tempfile.TemporaryDirectory(prefix='.test-tmp-workspace-desktop-',dir=Path.
         assert p.returncode==code,p.stderr.decode('utf-8','replace')
         checks+=1
         return json.loads(output.read_text(encoding='utf-8')) if output.exists() else None
+    # A descriptor alone opens all mounted packages without a special --browse switch.
+    project = root/'loose/Project.uproject'
+    project.write_text('{"FileVersion":3,"EngineAssociation":"{unresolved}"}', encoding='utf-8')
+    content = root/'loose/Content'
+    content.mkdir()
+    for name, source in [('AnyPluginType.uasset', before), ('AnyMap.umap', after)]:
+        (content/name).write_bytes(source.read_bytes())
+    for entry in ([str(project)], ['--project', str(project)]):
+        report=run(*entry, '--no-preferences', '--no-restore-session')
+        assert report['browser']['open'] and report['browser']['visiblePackages']==2
+        assert report['document'] is None
+        checks+=1
+    report=run(str(project), '--browse-select', '/Game/AnyPluginType', '--no-previews',
+               '--no-preferences', '--no-restore-session')
+    assert report['document'] is not None and not report['browser']['open']
+    checks+=1
+    run(str(project), '--project', str(project), code=2)
     first=['--before',before,'--after',after,'--no-previews']
     second=['--new-document','--container',pak,'--container-entry','Content/A.bin']
     third=['--new-document','--container',schema/'schema.utoc','--container-entry','000000000000000000000001',

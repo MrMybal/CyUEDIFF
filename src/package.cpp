@@ -442,6 +442,18 @@ class PropertyReader {
                     (detail::is_material_input(s) && !detail::native_material_input(p.summary));
                 if (!builtin_owner.empty() && !reflected_builtin)
                     format(read_formats, type_path, "builtin");
+                if (s == "EdGraphPinType") {
+                    auto name = [&](const std::string &parent, const std::string &field) {
+                        if (parent.empty()) {
+                            detail::ValueIdentityJournal::Scope member(identities_, field);
+                            return fname(a, p, &identities_);
+                        }
+                        detail::ValueIdentityJournal::Scope owner(identities_, parent),
+                            member(identities_, field);
+                        return fname(a, p, &identities_);
+                    };
+                    return detail::decode_edgraph_pin_type(a, p, options, name);
+                }
                 if (s == "RichCurveKey") {
                     if (p.summary.ue4_version != 522 || p.summary.licensee_version ||
                         (p.summary.ue5_version != 0 && p.summary.ue5_version != 1004 &&

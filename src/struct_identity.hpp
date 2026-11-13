@@ -94,7 +94,7 @@ inline std::string builtin_struct_owner(const std::string &name) {
         "Quat4f", "Vector4",  "LinearColor", "IntPoint",  "IntVector",   "Color"};
     if (core.count(name))
         return "/Script/CoreUObject." + name;
-    if (name == "RichCurveKey" || name == "RawAnimSequenceTrack")
+    if (name == "RichCurveKey" || name == "RawAnimSequenceTrack" || name == "EdGraphPinType")
         return "/Script/Engine." + name;
     return {};
 }

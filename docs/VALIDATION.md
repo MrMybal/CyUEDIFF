@@ -2,6 +2,16 @@
 
 Environnement vérifié : Windows x64, MSVC 19.40, CMake 3.31.6, configuration Release. Aucun lancement d'Unreal Editor.
 
+## Project entry and varied asset classes (2026-11-13)
+
+The native desktop now exposes Open project on its welcome screen/toolbar, opens a selected or positional `.uproject` directly into the catalogue, and initially selects the actual top-level asset in single-package inspection. No class whitelist is used. Generic opening, specialized interpretation and unavailable data are separate results; see [asset families](ASSET_TYPES.md).
+
+Local read-only checks visited all 150 mounted packages of the authorized UE 5.3 project: 150 opened, no missing inputs, no failed source read limits, and unchanged input/companion hashes. The first audit had 79 failed read guards caused by interpreting native `EdGraphPinType` variable declarations as tagged fields. The checked UE 5.3 editor reader now retains their scalar/container/map terminal/member fields and actual FName components. Fixtures exercise scalar/array/set/map values, same-display name changes, invalid booleans/containers, truncated payloads and unsupported profiles. Decoder identity and foreign/custom struct guards remain applicable.
+
+A separate metadata inventory selected 50 distinct primary classes from local Engine/content plugins, including sound, fonts, texture variants, animation, widgets, Niagara and Control Rig. All 50 selected packages opened in both CLI and the actual native desktop, with available inputs and unchanged hashes; representative captures were reviewed. This is a finite corpus, not exhaustive Unreal coverage. Every selected example retains at least one diagnostic/unsupported native segment. One older Niagara preview Blueprint retains a failed source guard; single-package inspection works, but semantic paired review remains unavailable for that input. Audio playback, Niagara/Control Rig evaluation, font/world rendering and arbitrary plugin native layouts are not supplied by generic opening.
+
+All 276 Windows tests passed after the Core/UI/desktop changes, including project-only startup and unknown plugin-class selection regressions. The bilingual offline HTML manual passed its 106 static checks. Private corpus paths, reports and captures remain local. The reusable `scripts/validate_asset_types.py` emits per-file coverage and a class inventory, verifies input hashes and returns failure for unopened/incomplete/limited inputs; it never equates opened with fully decoded.
+
 ## Vérifications reproductibles
 
 `python scripts/build.py --desktop --cyui <checkout CyUI>` compile le cœur, la CLI, la bibliothèque UI et l’application Windows puis lance :

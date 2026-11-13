@@ -13,6 +13,50 @@ void check(bool b, const char *m) {
     if (!b)
         throw std::runtime_error(m);
 }
+Fixture pin_type_fixture(int container, bool alternate_name = false, bool truncate = false,
+                         int version = 1009, bool invalid_boolean = false) {
+    return fixture(version, 1, false, 0,
+                   {"PinType", "EdGraphPinType", "Type_1", "Type", "ValueType", "Member"},
+                   [&](Bytes &out, const NameWriter &name) {
+                       Bytes payload;
+                       name(payload, alternate_name ? "Type" : "Type_1");
+                       if (alternate_name)
+                           payload.patch(4, 2); // Same display, different stored FName components.
+                       name(payload, "None");
+                       payload.i(0);
+                       payload.put<std::uint8_t>(static_cast<std::uint8_t>(container));
+                       if (container == 3) {
+                           name(payload, "ValueType");
+                           name(payload, "None");
+                           payload.i(0);
+                           payload.i(1);
+                           payload.i(0);
+                           payload.i(1);
+                       }
+                       payload.i(invalid_boolean ? 2 : 1);
+                       payload.i(0);
+                       payload.i(0);
+                       name(payload, "Member");
+                       payload.zeros(16);
+                       payload.i(1);
+                       payload.i(0);
+                       payload.i(1);
+                       if (truncate)
+                           payload.data.pop_back();
+                       name(out, "PinType");
+                       name(out, "StructProperty");
+                       out.i(static_cast<int>(payload.data.size()));
+                       out.i(0);
+                       name(out, "EdGraphPinType");
+                       out.zeros(16);
+                       out.put<std::uint8_t>(0);
+                       out.append(payload);
+                   },
+                   40, 40, -1, -1, -1, 37, -1, "DataAsset", "/Script/CoreUObject",
+                   {{{0xb0d832e4u, 0x1f894f0du, 0xaccf7eb7u, 0x36fd4aa2u}, 10},
+                    {{0x9c54d522u, 0xa8264fbeu, 0x94210746u, 0x61b482d0u}, 44},
+                    {{0x697dd581u, 0xe64f41abu, 0xaa4a51ecu, 0xbeb7b628u}, 101}});
+}
 } // namespace
 int main() {
     auto root =
@@ -100,6 +144,37 @@ int main() {
                 check(raw.exports[0].properties["Native"].contains("opaque"),
                       "Archive operator alone does not certify a native StructProperty serializer");
             }
+        for (int container = 0; container <= 3; ++container) {
+            auto package = Package::open(save(root, "pin", pin_type_fixture(container)));
+            const auto &prop = package.exports[0].properties.at("PinType");
+            check(prop.contains("value") && !package.source_read_limit_failed,
+                  "Native Blueprint variable types do not trigger false tagged/count limits");
+            const auto &value = prop.at("value");
+            check(value.at("category") == "Type_1" && value.at("container") == container &&
+                      value.at("member").at("name") == "Member" && value.at("const") == true &&
+                      value.at("singlePrecisionDefault") == true,
+                  "Scalar, array, set and map variable types retain their serialized fields");
+            check(container != 3 || (value.at("valueType").at("category") == "ValueType" &&
+                                     value.at("valueType").at("objectWrapper") == true),
+                  "Map terminal types preserve their native fields");
+            auto alternate = Package::open(save(root, "pin-after", pin_type_fixture(container, true)));
+            check(alternate.exports[0].properties.at("PinType").at("value") == value &&
+                      !compare(package, alternate).changes.empty(),
+                  "Native pin type names compare actual components even with identical display text");
+            check(package.name_values.at("names")
+                          .at("/objects/TestAsset/properties/PinType/value/member/name")
+                          .at("base") == "Member",
+                  "Native member FName identity is recorded at its real value path");
+        }
+        for (const auto &bad :
+             {pin_type_fixture(4), pin_type_fixture(0, false, true), pin_type_fixture(0, false, false, 1010),
+              pin_type_fixture(0, false, false, 1009, true)}) {
+            const auto package = Package::open(save(root, "pin-refused", bad));
+            check(package.exports[0].properties.at("PinType").contains("opaque") &&
+                      !package.source_read_limit_failed &&
+                      package.exports[0].properties.at("Value").at("value") == 1,
+                  "Invalid native pin values and unknown profiles stay opaque without fake limit failures");
+        }
         fs::remove_all(root);
         std::cout << checks << " tagged native geometry checks passed\n";
         return 0;

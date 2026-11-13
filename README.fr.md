@@ -45,6 +45,8 @@ Les packages éditeur pris en charge exposent aussi les métadonnées stockées 
 
 Ces captures réelles de l’application et des composants CyUI intégrables utilisent des données de démonstration originales générées. Cliquez sur une image pour l’ouvrir à sa taille complète. La [vitrine](https://mrmybal.github.io/CyUEDIFF/?lang=fr) présente d’autres vues.
 
+Ouvrez votre projet avec **Ouvrir un projet...** (`Ctrl+P`), puis double-cliquez sur un asset monté ; `Ctrl+B` rouvre le catalogue. L’inspecteur général accepte toutes les classes enregistrées, y compris celles des plugins. Les aperçus spécialisés dépendent du format. Voir les [familles d’assets et leur validation](docs/ASSET_TYPES.md).
+
 ## Fonctionnalités
 
 - **Noms stockés typés :** les différences de propriétés source et cooked par schéma utilisent les vrais composants FName, révèlent les changements masqués par un affichage identique et montrent base/numéro dans les inspecteurs plats ou par pages. Les observations facultatives restent distinctes. [Contrat](docs/VALUE_IDENTITIES.md).

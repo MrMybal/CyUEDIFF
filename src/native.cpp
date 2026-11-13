@@ -23,17 +23,22 @@ class PinReader {
     std::uint32_t references = 0, text_nodes = 0;
     std::uint64_t text_blob_bytes = 0;
     bool editor;
+    NativeNameReader names_;
 
   public:
-    PinReader(Archive &archive, const Package &package, std::size_t index, const ReadOptions &o)
-        : a(archive), p(package), options(o), owner(index), editor(!(p.summary.flags & 0x80000000u)) {}
+    PinReader(Archive &archive, const Package &package, std::size_t index, const ReadOptions &o,
+              NativeNameReader names = {})
+        : a(archive), p(package), options(o), owner(index), editor(!(p.summary.flags & 0x80000000u)),
+          names_(std::move(names)) {}
     bool boolean() {
         auto v = a.get<std::uint32_t>();
         if (v > 1)
             throw Error("pin-boolean", "Invalid native boolean", a.tell() - 4);
         return v != 0;
     }
-    std::string name() {
+    std::string name(const std::string &field = {}, const std::string &parent = {}) {
+        if (names_ && !field.empty())
+            return names_(parent, field);
         auto index = a.get<std::int32_t>(), number = a.get<std::int32_t>();
         if (index < 0 || static_cast<std::size_t>(index) >= p.names.size() || number < 0)
             throw Error("pin-name", "Invalid native FName", a.tell() - 8);
@@ -64,8 +69,8 @@ class PinReader {
     }
     Json terminal_type() {
         Json type;
-        type["category"] = name();
-        type["subcategory"] = name();
+        type["category"] = name("category", "valueType");
+        type["subcategory"] = name("subcategory", "valueType");
         type["object"] = p.reference(a.get<std::int32_t>());
         type["const"] = boolean();
         type["weak"] = boolean();
@@ -75,8 +80,8 @@ class PinReader {
     }
     Json pin_type() {
         Json type;
-        type["category"] = name();
-        type["subcategory"] = name();
+        type["category"] = name("category");
+        type["subcategory"] = name("subcategory");
         type["object"] = p.reference(a.get<std::int32_t>());
         auto container = a.get<std::uint8_t>();
         if (container > 3)
@@ -88,7 +93,7 @@ class PinReader {
         type["weak"] = boolean();
         Json member;
         member["parent"] = p.reference(a.get<std::int32_t>());
-        member["name"] = name();
+        member["name"] = name("name", "member");
         member["guid"] = a.guid();
         type["member"] = std::move(member);
         type["const"] = boolean();
@@ -143,6 +148,18 @@ void profile(const Package &p) {
         throw Error("pin-profile", "EdGraph native serialization profile is not supported");
 }
 } // namespace
+Json decode_edgraph_pin_type(Archive &archive, const Package &package, const ReadOptions &options,
+                             const NativeNameReader &names) {
+    // FEdGraphPinType::Serialize, checked UE 5.3 editor source packages. A native struct must
+    // never fall through to tagged-property probing: its first name is a category, not a tag.
+    if (package.summary.ue4_version != 522 || package.summary.ue5_version != 1009 ||
+        package.summary.licensee_version || (package.summary.flags & 0x80000000u))
+        throw Error("pin-profile", "EdGraphPinType requires a supported UE 5.3 editor profile",
+                    archive.tell());
+    profile(package);
+    PinReader reader(archive, package, 0, options, names);
+    return reader.pin_type();
+}
 bool is_edgraph_node(const ObjectExport &object) {
     return object.properties.contains("NodeGuid") &&
            (object.class_name.find("K2Node_") != std::string::npos ||

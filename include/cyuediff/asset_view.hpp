@@ -49,6 +49,7 @@ class AssetView {
     cyui::TextFilter filter_;
     std::size_t selected_ = 0;
     bool properties_after_ = false, comparison_ = false, raw_properties_ = false;
+    bool scroll_selection_ = false;
     std::vector<PropertyView> before_inspection_, after_inspection_;
     // Full property tables are built when an export is shown; until then each holds its root row.
     std::vector<char> before_full_, after_full_;

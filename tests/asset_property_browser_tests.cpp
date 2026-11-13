@@ -32,6 +32,44 @@ int main() {
         auto after = std::make_shared<Package>(*before);
         after->exports[0].properties["items"]["value"][40000]["length"] = 2.5;
         after->exports[0].native_data["channels"]["value"][40000]["length"] = 2.5;
+        // An arbitrary plugin asset still opens through the generic inspector. Export order
+        // puts metadata, a class default and a nested object ahead of the actual asset.
+        auto plugin = std::make_shared<Package>();
+        plugin->source = "RenamedPluginAsset.uasset";
+        ObjectExport metadata;
+        metadata.name = metadata.path = "PackageMetaData";
+        metadata.class_name = "/Script/CoreUObject.MetaData";
+        metadata.flags = 2;
+        plugin->exports.push_back(metadata);
+        ObjectExport defaults;
+        defaults.name = defaults.path = "Default__CustomPluginClass";
+        defaults.flags = 0x11;
+        plugin->exports.push_back(defaults);
+        ObjectExport nested;
+        nested.name = "RenamedPluginAsset";
+        nested.path = "Owner.RenamedPluginAsset";
+        nested.outer_index = 4;
+        nested.flags = 1;
+        plugin->exports.push_back(nested);
+        ObjectExport primary;
+        primary.name = primary.path = "OriginalAssetName";
+        primary.class_name = "/Script/OriginalPlugin.ArbitraryAsset";
+        primary.flags = 3;
+        primary.coverage = "partial-properties";
+        primary.properties = {{"Enabled", {{"type", "BoolProperty"}, {"value", true}}}};
+        plugin->exports.push_back(primary);
+        AssetView generic;
+        generic.set_packages(plugin);
+        check(generic.view_state().at("selected") == "OriginalAssetName",
+              "An unknown plugin class opens its public root before metadata, defaults and nested exports");
+        auto exact = std::make_shared<Package>(*plugin);
+        exact->exports[3].name = exact->exports[3].path = "RenamedPluginAsset";
+        generic.set_packages(exact);
+        check(generic.view_state().at("selected") == "RenamedPluginAsset",
+              "The package-named asset is selected independently of export order");
+        generic.set_packages({}, exact);
+        check(generic.view_state().at("selected") == "RenamedPluginAsset",
+              "After-only inspection selects the main asset too");
         AssetView view;
         view.set_packages(before, after);
         check(view.view_state().at("browseProperties") == true,

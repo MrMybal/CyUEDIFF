@@ -1261,7 +1261,8 @@ install(FILES site/assets/screenshots/overview-en.png site/assets/screenshots/ov
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff)
 install(DIRECTORY examples/consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 install(DIRECTORY examples/decoder_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
-install(FILES scripts/validate_decoders.py DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
+install(FILES scripts/validate_decoders.py scripts/validate_asset_types.py
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/scripts)
 install(DIRECTORY examples/hybrid_struct_consumer DESTINATION ${CMAKE_INSTALL_DATADIR}/CyUEDiff/examples)
 # All standalone SDK samples used by the archive verifier must ship with it.
 foreach(example IN ITEMS animation_consumer animation_pose_consumer binary_delta_consumer

@@ -10,6 +10,8 @@ NativeDecodeResult decode_package_metadata(Archive &, const Package &, std::uint
 bool is_reflected_struct(const ObjectExport &);
 NativeDecodeResult decode_struct_definition(Archive &, const Package &, std::uint64_t end,
                                             const ReadOptions &);
+using NativeNameReader = std::function<std::string(const std::string &parent, const std::string &field)>;
+Json decode_edgraph_pin_type(Archive &, const Package &, const ReadOptions &, const NativeNameReader &);
 bool is_edgraph_node(const ObjectExport &object);
 NativeDecodeResult decode_edgraph_node(Archive &, const Package &, std::size_t export_index,
                                        std::uint64_t end, const ReadOptions &);

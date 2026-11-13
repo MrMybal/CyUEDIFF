@@ -478,6 +478,7 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     before_ = std::move(before);
     after_ = std::move(after);
     selected_ = 0;
+    scroll_selection_ = true;
     property_browser_ = PropertyBrowserView{};
     browse_properties_ = false;
     browser_object_.clear();
@@ -538,6 +539,26 @@ void AssetView::set_packages(std::shared_ptr<const Package> before, std::shared_
     before_inspection_ = inspections(false);
     after_inspection_ = inspections(true);
     const auto &initial = properties_after_ ? after_inspection_ : before_inspection_;
+    if (!comparison_) {
+        const auto &package = properties_after_ ? after_ : before_;
+        if (package) {
+            // Export order is a serialization detail. Start on the actual asset, not UMetaData,
+            // a generated class default, or a nested editor object that happens to come first.
+            const auto name = package->source.stem().u8string();
+            int best = -1;
+            for (std::size_t i = 0; i < package->exports.size(); ++i) {
+                const auto &entry = package->exports[i];
+                if (entry.outer_index != 0 || (entry.flags & 0x30) ||
+                    entry.class_name == "/Script/CoreUObject.MetaData")
+                    continue;
+                const int score = (entry.name == name ? 4 : 0) + (entry.flags & 1 ? 2 : 0);
+                if (score > best) {
+                    best = score;
+                    selected_ = i;
+                }
+            }
+        }
+    }
     if (comparison_) {
         bool selected = false;
         for (auto kind :
@@ -920,6 +941,7 @@ void AssetView::restore_view_state(const Json &state) {
     if (state.contains("filter"))
         filter_.query = state["filter"].get<std::string>();
     if (state.contains("selected")) {
+        scroll_selection_ = true;
         selected_ = 0;
         const auto &p = properties_after_ ? after_ : before_;
         if (p)
@@ -1070,6 +1092,10 @@ void AssetView::draw(const char *id, bool show_language) {
                                                       detail::change_color(table.rows.front().change));
                             if (ImGui::Selectable(entry.path.c_str(), selected_ == i))
                                 selected_ = i;
+                            if (scroll_selection_ && selected_ == i) {
+                                ImGui::SetScrollHereY();
+                                scroll_selection_ = false;
+                            }
                             if (changed)
                                 ImGui::PopStyleColor();
                         }

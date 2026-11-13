@@ -420,9 +420,11 @@ Options parse_one(const std::vector<std::string> &args) {
         } else if (argument == "--no-engine") {
             options.settings.discover_engine = false;
             git_options = true;
-        } else if (argument == "--project" || argument == "--before-project")
+        } else if (argument == "--project" || argument == "--before-project") {
+            if (!options.settings.project.empty())
+                throw Error("desktop-option", "Choose one project descriptor");
             options.settings.project = value();
-        else if (argument == "--engine-root" || argument == "--before-engine-root")
+        } else if (argument == "--engine-root" || argument == "--before-engine-root")
             options.settings.engine = value();
         else if (argument == "--after-project")
             options.settings.after_project = value();
@@ -504,13 +506,21 @@ Options parse_one(const std::vector<std::string> &args) {
             options.view = value();
         else if (argument.rfind("--", 0) == 0)
             throw Error("desktop-option", "Unknown option: " + argument);
-        else if (options.settings.before.empty())
+        else if (fs::u8path(argument).extension() == ".uproject") {
+            if (!options.settings.project.empty())
+                throw Error("desktop-option", "Choose one project descriptor");
+            options.settings.project = argument;
+        } else if (options.settings.before.empty())
             options.settings.before = argument;
         else if (options.settings.after.empty())
             options.settings.after = argument;
         else
             throw Error("desktop-option", "Too many package paths");
     }
+    // A project alone is a useful entry point: list every mounted package, of any class.
+    if (options.settings.source == 0 && !options.settings.project.empty() &&
+        options.settings.before.empty() && !options.history)
+        options.browse = true;
     if (limits_parameters) {
         if (options.settings.source == 2 || options.browse || options.history ||
             options.settings.before.empty())
@@ -807,6 +817,14 @@ void register_translations() {
          {"File", "Fichier"},
          {"Open before...", "Ouvrir avant..."},
          {"Open after...", "Ouvrir après..."},
+         {"Open project...", "Ouvrir un projet..."},
+         {"Open asset...", "Ouvrir un asset..."},
+         {"Browse every asset class in a project, or open any loose .uasset / .umap package.",
+          "Parcourez toutes les classes d’assets d’un projet, ou ouvrez un fichier .uasset / .umap."},
+         {"Specialized previews depend on the stored format. Other classes use the property inspector; "
+          "unread data stays identified as opaque.",
+          "Les aperçus spécialisés dépendent du format enregistré. Les autres classes utilisent "
+          "l’inspecteur de propriétés ; les données non lues restent signalées comme opaques."},
          {"Choose project", "Choisir le projet"},
          {"Choose package", "Choisir un package"},
          {"Unreal project (*.uproject)", "Projet Unreal (*.uproject)"},
@@ -1936,7 +1954,7 @@ class Shell {
                         action = Action::open_before;
                     if (ImGui::MenuItem(cyui::trLabel("Open after...").c_str(), "Ctrl+Shift+O"))
                         action = Action::open_after;
-                    if (ImGui::MenuItem(cyui::trLabel("Choose project").c_str()))
+                    if (ImGui::MenuItem(cyui::trLabel("Open project...").c_str(), "Ctrl+P"))
                         action = Action::project;
                 }
                 if (ImGui::MenuItem(cyui::trLabel("Open workspace...").c_str(), "Ctrl+Alt+O"))
@@ -2003,6 +2021,9 @@ class Shell {
             cyui::toolbarSeparator();
             {
                 cyui::ScopedDisabled local_only(current().settings.source != 0);
+                if (cyui::button(cyui::trLabel("Open project...").c_str()))
+                    action = Action::project;
+                ImGui::SameLine();
                 if (cyui::iconButton(cyui::icon::folder, cyui::tr("Open before (Ctrl+O)").c_str()))
                     action = Action::open_before;
                 ImGui::SameLine();
@@ -2687,7 +2708,25 @@ class Shell {
             else if (current().settings.source == 2)
                 cyui::emptyState(cyui::tr("Containers").c_str(),
                                  cyui::tr("Choose a Pak or IoStore TOC, then index it.").c_str());
-            else
+            else if (current().settings.source == 0) {
+                cyui::heading(cyui::tr("No package loaded").c_str(), 2);
+                ImGui::TextWrapped("%s", cyui::tr("Browse every asset class in a project, or open any loose "
+                                                  ".uasset / .umap package.")
+                                             .c_str());
+                if (cyui::primaryButton(cyui::trLabel("Open project...").c_str()))
+                    action = Action::project;
+                ImGui::SameLine();
+                if (cyui::button(cyui::trLabel("Open asset...").c_str()))
+                    action = Action::open_before;
+                if (current().settings.browse_ready() &&
+                    cyui::button(cyui::trLabel("Browse content...").c_str()))
+                    action = Action::browse;
+                ImGui::Spacing();
+                ImGui::TextWrapped("%s", cyui::tr("Specialized previews depend on the stored format. Other "
+                                                  "classes use the property inspector; unread data stays "
+                                                  "identified as opaque.")
+                                             .c_str());
+            } else
                 cyui::emptyState(
                     cyui::tr("No package loaded").c_str(),
                     cyui::tr(current().settings.source == 1
@@ -2799,6 +2838,8 @@ class Shell {
                 action = Action::close_document;
             if (ImGui::IsKeyPressed(ImGuiKey_R, false))
                 action = Action::load;
+            if (ImGui::IsKeyPressed(ImGuiKey_P, false) && current().settings.source == 0)
+                action = Action::project;
             if (ImGui::IsKeyPressed(ImGuiKey_B, false) && current().settings.browse_ready())
                 action = Action::browse;
         }
@@ -2989,9 +3030,11 @@ class Shell {
                 auto path = window.choose_file(action == Action::project);
                 if (!path)
                     return;
-                if (action == Action::project)
+                if (action == Action::project) {
                     current().settings.project = path->u8string();
-                else {
+                    start_browser();
+                    return;
+                } else {
                     (action == Action::open_after ? current().settings.after : current().settings.before) =
                         path->u8string();
                 }
@@ -3051,7 +3094,8 @@ struct ImGuiContextOwner {
 int run(Options options) {
     if (options.help) {
         std::cout
-            << "CyUEDiff desktop [BEFORE.uasset [AFTER.uasset]] [--project FILE] [--engine-root DIR]\n"
+            << "CyUEDiff desktop [PROJECT.uproject | BEFORE.uasset [AFTER.uasset]] [--project FILE] "
+               "[--engine-root DIR]\n"
                "  --repo DIR --before-revision REF --after-revision REF --before REPO_PATH [--after "
                "REPO_PATH]\n"
                "  [--payload-root DIRECTORY] [--after-payload-root DIRECTORY | --no-after-payload-root]\n"

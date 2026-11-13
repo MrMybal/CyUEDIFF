@@ -45,6 +45,8 @@ Selected editor packages also expose stored root/object metadata, with exact nam
 
 These are real desktop and embeddable CyUI captures using original generated demonstration data. Click an image to open its full-size version. The [website](https://mrmybal.github.io/CyUEDIFF/?lang=en) presents additional views.
 
+Open your own project from **Open project...** (`Ctrl+P`), then double-click any mounted asset; `Ctrl+B` returns to the catalogue. The general inspector accepts every stored asset class, including plugin classes. Specialized previews remain format dependent. See [asset families and testing](docs/ASSET_TYPES.md).
+
 ## Features
 
 - **Typed stored names:** ordinary source and mapped cooked property differences use actual FName components, reveal same-display changes and show base/number previews in flat or paged inspectors. Optional observations remain separate. [Contract](docs/VALUE_IDENTITIES.md).
